@@ -11,8 +11,8 @@ display.
 - Uses the custom button on GPIO 1:
   - Short press: select the highlighted menu row, then advance the highlight.
   - Long press: soft screen on/off.
-- Uses the CST816D touch controller when it is present, so menu rows can also be
-  tapped directly.
+- Initializes the CST816D touch controller at `0x15`, while recognizing `0x51`
+  on the I2C bus as the onboard BM8563 RTC.
 
 ## Pin assumptions
 
@@ -31,11 +31,13 @@ the project was cleaned up into a PlatformIO firmware project:
 | Touch INT | GPIO 0 |
 | PI4IOE5V6408 | I2C `0x43` |
 | CST816D touch | I2C `0x15` |
+| BM8563 RTC | I2C `0x51` |
 | Expander panel power | pin 4 |
+| Expander touch/display enable | pin 3 |
 | Expander backlight | pin 2 |
 
 The original vendor demo did not include a battery read example. This firmware
-defaults to `BATTERY_ADC_PIN=3` and `BATTERY_DIVIDER=2.0`. If the first flash
+defaults to `BATTERY_ADC_PIN=3` and `BATTERY_DIVIDER=6.0`. If the first flash
 shows the wrong voltage, change those in `platformio.ini`:
 
 ```ini
@@ -44,7 +46,7 @@ build_flags =
   -D ARDUINO_USB_CDC_ON_BOOT=1
   -D LV_CONF_INCLUDE_SIMPLE
   -D BATTERY_ADC_PIN=3
-  -D BATTERY_DIVIDER=2.0
+  -D BATTERY_DIVIDER=6.0
   -I include
 ```
 

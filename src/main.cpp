@@ -1,7 +1,15 @@
+#define LGFX_USE_V1
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
+
+#if ARDUINO_USB_CDC_ON_BOOT
+#define DEBUG_PORT Serial0
+#else
+#define DEBUG_PORT Serial
+#endif
 
 namespace board {
 constexpr int lcdDc = 2;
@@ -15,10 +23,12 @@ constexpr int touchInt = 0;
 
 constexpr uint8_t ioExpanderAddr = 0x43;
 constexpr uint8_t touchAddr = 0x15;
+constexpr uint8_t rtcAddr = 0x51;
 constexpr uint8_t ioDirectionReg = 0x03;
 constexpr uint8_t ioOutputReg = 0x05;
 constexpr uint8_t ioHighZReg = 0x07;
 constexpr uint8_t ioPanelPower = 4;
+constexpr uint8_t ioTouchPower = 3;
 constexpr uint8_t ioBacklight = 2;
 
 // Verify this against your CrowPanel schematic. The original vendor demo did
@@ -31,9 +41,27 @@ constexpr int batteryAdc = BATTERY_ADC_PIN;
 #endif
 
 #ifndef BATTERY_DIVIDER
-constexpr float batteryDivider = 2.0f;
+constexpr float batteryDivider = 6.0f;
 #else
 constexpr float batteryDivider = BATTERY_DIVIDER;
+#endif
+
+#ifndef TOUCH_SWAP_XY
+constexpr bool touchSwapXy = false;
+#else
+constexpr bool touchSwapXy = TOUCH_SWAP_XY;
+#endif
+
+#ifndef TOUCH_INVERT_X
+constexpr bool touchInvertX = false;
+#else
+constexpr bool touchInvertX = TOUCH_INVERT_X;
+#endif
+
+#ifndef TOUCH_INVERT_Y
+constexpr bool touchInvertY = false;
+#else
+constexpr bool touchInvertY = TOUCH_INVERT_Y;
 #endif
 
 constexpr uint32_t i2cFreq = 400000;
@@ -50,9 +78,9 @@ class CrowPanelDisplay : public lgfx::LGFX_Device {
     auto busCfg = bus_.config();
     busCfg.spi_host = SPI2_HOST;
     busCfg.spi_mode = 0;
-    busCfg.freq_write = 60000000;
-    busCfg.freq_read = 16000000;
-    busCfg.spi_3wire = false;
+    busCfg.freq_write = 80000000;
+    busCfg.freq_read = 20000000;
+    busCfg.spi_3wire = true;
     busCfg.use_lock = true;
     busCfg.dma_channel = SPI_DMA_CH_AUTO;
     busCfg.pin_sclk = board::lcdSck;
@@ -105,9 +133,28 @@ static lv_obj_t* menuButtons[3] = {nullptr, nullptr, nullptr};
 static int selectedMenu = 0;
 static bool screenOn = true;
 static bool touchPresent = false;
+static bool lastFallbackTouch = false;
+static uint8_t activeTouchAddr = board::touchAddr;
+static uint8_t touchChipId = 0;
+static char i2cSummary[80] = "I2C: not scanned";
+static char touchSummary[80] = "Touch: not probed";
+static uint8_t lastTouchRawBytes[4] = {};
+static size_t lastTouchRawByteCount = 0;
 static float lastBatteryVoltage = 0.0f;
 static int lastBatteryPercent = 0;
 static uint32_t lastBatteryReadMs = 0;
+static uint32_t lastTouchLogMs = 0;
+
+namespace theme {
+constexpr uint32_t black = 0x000000;
+constexpr uint32_t panel = 0x0E1720;
+constexpr uint32_t panelHot = 0x132638;
+constexpr uint32_t rail = 0x1B2630;
+constexpr uint32_t cyan = 0x00C8FF;
+constexpr uint32_t amber = 0xFFB000;
+constexpr uint32_t text = 0xF3F7FA;
+constexpr uint32_t muted = 0x9AA8B3;
+}  // namespace theme
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -131,6 +178,30 @@ bool i2cRead(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
   return true;
 }
 
+bool i2cDevicePresent(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
+
+void scanI2cBus() {
+  size_t used = snprintf(i2cSummary, sizeof(i2cSummary), "I2C:");
+  int found = 0;
+
+  for (uint8_t addr = 1; addr < 0x7F; ++addr) {
+    if (!i2cDevicePresent(addr)) {
+      continue;
+    }
+    found++;
+    if (used < sizeof(i2cSummary)) {
+      used += snprintf(i2cSummary + used, sizeof(i2cSummary) - used, " %02X", addr);
+    }
+  }
+
+  if (found == 0) {
+    snprintf(i2cSummary, sizeof(i2cSummary), "I2C: none");
+  }
+}
+
 uint8_t ioOutputState = 0;
 
 void ioSetPin(uint8_t pin, bool high) {
@@ -143,8 +214,14 @@ void ioSetPin(uint8_t pin, bool high) {
 }
 
 void initIoExpander() {
-  i2cWrite8(board::ioExpanderAddr, board::ioDirectionReg, 0xFF);
-  i2cWrite8(board::ioExpanderAddr, board::ioHighZReg, 0x00);
+  constexpr uint8_t enabledPins =
+      (1U << 0) | (1U << 1) | (1U << board::ioBacklight) | (1U << board::ioTouchPower) |
+      (1U << board::ioPanelPower);
+
+  i2cWrite8(board::ioExpanderAddr, board::ioDirectionReg, enabledPins);
+  i2cWrite8(board::ioExpanderAddr, board::ioHighZReg, static_cast<uint8_t>(~enabledPins));
+  ioSetPin(board::ioTouchPower, true);
+  delay(80);
   ioSetPin(board::ioPanelPower, true);
   delay(80);
   ioSetPin(board::ioBacklight, true);
@@ -152,38 +229,109 @@ void initIoExpander() {
 }
 
 bool initTouch() {
-  pinMode(board::touchInt, INPUT_PULLUP);
-  uint8_t chipId = 0;
-  if (!i2cRead(board::touchAddr, 0xA7, &chipId, 1) || chipId != 0xB6) {
+  activeTouchAddr = board::touchAddr;
+
+  pinMode(board::touchInt, OUTPUT);
+  digitalWrite(board::touchInt, HIGH);
+  delay(1);
+  digitalWrite(board::touchInt, LOW);
+  delay(1);
+
+  if (!i2cDevicePresent(activeTouchAddr)) {
+    snprintf(touchSummary, sizeof(touchSummary), "No CST816D at 0x%02X", activeTouchAddr);
+    DEBUG_PORT.printf("%s\n", touchSummary);
     return false;
   }
-  i2cWrite8(board::touchAddr, 0xFE, 0x01);
-  i2cWrite8(board::touchAddr, 0xFA, 0x41);
+
+  i2cRead(activeTouchAddr, 0xA7, &touchChipId, 1);
+  i2cWrite8(activeTouchAddr, 0xFE, 0xFF);
+  snprintf(touchSummary, sizeof(touchSummary), "CST816D 0x%02X id 0x%02X", activeTouchAddr, touchChipId);
+  DEBUG_PORT.printf("%s\n", touchSummary);
   return true;
 }
 
-bool readTouchPoint(uint16_t& x, uint16_t& y) {
+bool readTouchRaw(uint16_t& rawX, uint16_t& rawY) {
   uint8_t points = 0;
-  if (!i2cRead(board::touchAddr, 0x02, &points, 1) || (points & 0x0F) == 0) {
+  if (!i2cRead(activeTouchAddr, 0x02, &points, 1) || points == 0) {
+    lastTouchRawByteCount = 0;
     return false;
   }
 
   uint8_t data[4] = {};
-  if (!i2cRead(board::touchAddr, 0x03, data, sizeof(data))) {
+  if (!i2cRead(activeTouchAddr, 0x03, data, sizeof(data))) {
     return false;
   }
 
-  x = static_cast<uint16_t>(((data[0] & 0x0F) << 8) | data[1]);
-  y = static_cast<uint16_t>(((data[2] & 0x0F) << 8) | data[3]);
-  return x < board::screenWidth && y < board::screenHeight;
+  rawX = static_cast<uint16_t>(((data[0] & 0x0F) << 8) | data[1]);
+  rawY = static_cast<uint16_t>(((data[2] & 0x0F) << 8) | data[3]);
+  memcpy(lastTouchRawBytes, data, sizeof(data));
+  lastTouchRawByteCount = sizeof(data);
+  return true;
+}
+
+bool mapTouchPoint(uint16_t rawX, uint16_t rawY, uint16_t& x, uint16_t& y) {
+  if ((rawX == 0 && rawY == 0) || rawX >= board::screenWidth || rawY >= board::screenHeight) {
+    return false;
+  }
+
+  if (board::touchSwapXy) {
+    const uint16_t temp = rawX;
+    rawX = rawY;
+    rawY = temp;
+  }
+  if (board::touchInvertX) {
+    rawX = board::screenWidth - 1 - rawX;
+  }
+  if (board::touchInvertY) {
+    rawY = board::screenHeight - 1 - rawY;
+  }
+
+  x = rawX;
+  y = rawY;
+  return true;
+}
+
+void formatTouchRawBytes(char* output, size_t outputSize) {
+  size_t used = snprintf(output, outputSize, "bytes:");
+  for (size_t i = 0; i < lastTouchRawByteCount && used < outputSize; ++i) {
+    used += snprintf(output + used, outputSize - used, " %02X", lastTouchRawBytes[i]);
+  }
+  if (lastTouchRawByteCount == 0) {
+    snprintf(output, outputSize, "bytes: none");
+  }
+}
+
+bool readTouchPoint(uint16_t& x, uint16_t& y) {
+  uint16_t rawX = 0;
+  uint16_t rawY = 0;
+  if (!readTouchRaw(rawX, rawY)) {
+    return false;
+  }
+
+  if (!mapTouchPoint(rawX, rawY, x, y)) {
+    return false;
+  }
+
+  const uint32_t now = millis();
+  if ((now - lastTouchLogMs) > 250) {
+    lastTouchLogMs = now;
+    DEBUG_PORT.printf("touch raw=(%u,%u) mapped=(%u,%u) int=%d\n",
+                      static_cast<unsigned>(rawX), static_cast<unsigned>(rawY),
+                      static_cast<unsigned>(x), static_cast<unsigned>(y),
+                      digitalRead(board::touchInt));
+  }
+
+  return true;
 }
 
 void lvFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP) {
   const int32_t width = area->x2 - area->x1 + 1;
   const int32_t height = area->y2 - area->y1 + 1;
-  display.startWrite();
-  display.pushImage(area->x1, area->y1, width, height, reinterpret_cast<uint16_t*>(&colorP->full));
-  display.endWrite();
+  if (display.getStartCount() == 0) {
+    display.endWrite();
+  }
+  display.pushImageDMA(area->x1, area->y1, width, height,
+                       reinterpret_cast<lgfx::swap565_t*>(&colorP->full));
   lv_disp_flush_ready(disp);
 }
 
@@ -257,9 +405,13 @@ void updateBatteryUi() {
   }
 
   char text[48];
-  snprintf(text, sizeof(text), "%d%%  %.2fV", lastBatteryPercent, lastBatteryVoltage);
+  if (lastBatteryVoltage < 2.5f || lastBatteryVoltage > 4.5f) {
+    snprintf(text, sizeof(text), "--  %.2fV", lastBatteryVoltage);
+  } else {
+    snprintf(text, sizeof(text), "%d%%  %.2fV", lastBatteryPercent, lastBatteryVoltage);
+  }
   lv_label_set_text(batteryLabel, text);
-  lv_arc_set_value(batteryArc, lastBatteryPercent);
+  lv_arc_set_value(batteryArc, constrain(lastBatteryPercent, 0, 100));
 }
 
 void setSelectedMenu(int index) {
@@ -280,18 +432,32 @@ void activateMenu(int index) {
   setSelectedMenu(index);
   if (index == 0) {
     lv_label_set_text(statusLabel, "Ready");
-    lv_label_set_text(detailLabel, "Touch a row or short-press the custom button to select.");
+    if (touchPresent) {
+      char text[128];
+      snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
+      lv_label_set_text(detailLabel, text);
+    } else {
+      char text[128];
+      snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
+      lv_label_set_text(detailLabel, text);
+    }
   } else if (index == 1) {
     readBattery();
     updateBatteryUi();
     char text[96];
-    snprintf(text, sizeof(text), "1100 mAh LiPo\n%.2f V estimated at %d%%", lastBatteryVoltage,
-             lastBatteryPercent);
+    if (lastBatteryVoltage < 2.5f || lastBatteryVoltage > 4.5f) {
+      snprintf(text, sizeof(text), "ADC GPIO %d\n%.2f V check divider", board::batteryAdc, lastBatteryVoltage);
+    } else {
+      snprintf(text, sizeof(text), "1100 mAh LiPo\n%.2f V estimated at %d%%", lastBatteryVoltage,
+               lastBatteryPercent);
+    }
     lv_label_set_text(statusLabel, "Battery");
     lv_label_set_text(detailLabel, text);
   } else {
     lv_label_set_text(statusLabel, "CrowPanel 1.28");
-    lv_label_set_text(detailLabel, touchPresent ? "GC9A01 + CST816D + LVGL" : "GC9A01 + LVGL");
+    char text[128];
+    snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
+    lv_label_set_text(detailLabel, text);
   }
 }
 
@@ -302,8 +468,8 @@ void menuEvent(lv_event_t* event) {
 
 void buildUi() {
   lv_obj_t* screen = lv_scr_act();
-  lv_obj_set_style_bg_color(screen, lv_color_hex(0x0B1117), 0);
-  lv_obj_set_style_text_color(screen, lv_color_hex(0xEAF2F8), 0);
+  lv_obj_set_style_bg_color(screen, lv_color_hex(theme::black), 0);
+  lv_obj_set_style_text_color(screen, lv_color_hex(theme::text), 0);
 
   batteryArc = lv_arc_create(screen);
   lv_obj_set_size(batteryArc, 218, 218);
@@ -313,43 +479,50 @@ void buildUi() {
   lv_arc_set_range(batteryArc, 0, 100);
   lv_obj_remove_style(batteryArc, nullptr, LV_PART_KNOB);
   lv_obj_clear_flag(batteryArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(batteryArc, 8, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(batteryArc, 8, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0x22303A), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0x52D273), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(batteryArc, 9, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(batteryArc, 9, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(theme::rail), LV_PART_MAIN);
+  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(theme::cyan), LV_PART_INDICATOR);
 
   batteryLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_16, 0);
-  lv_obj_align(batteryLabel, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(batteryLabel, lv_color_hex(theme::amber), 0);
+  lv_obj_align(batteryLabel, LV_ALIGN_TOP_MID, 0, 18);
 
   statusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(statusLabel, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(statusLabel, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_MID, 0, 54);
+  lv_obj_set_style_text_color(statusLabel, lv_color_hex(theme::cyan), 0);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_MID, 0, 50);
 
   detailLabel = lv_label_create(screen);
-  lv_obj_set_width(detailLabel, 178);
+  lv_obj_set_width(detailLabel, 198);
   lv_label_set_long_mode(detailLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(detailLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(detailLabel, lv_color_hex(0x9FB1BF), 0);
-  lv_obj_align(detailLabel, LV_ALIGN_TOP_MID, 0, 84);
+  lv_obj_set_style_text_font(detailLabel, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(detailLabel, lv_color_hex(theme::muted), 0);
+  lv_obj_align(detailLabel, LV_ALIGN_TOP_MID, 0, 82);
 
   lv_obj_t* list = lv_list_create(screen);
-  lv_obj_set_size(list, 182, 86);
-  lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -18);
+  lv_obj_set_size(list, 194, 82);
+  lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -16);
   lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(list, 0, 0);
   lv_obj_set_style_pad_all(list, 0, 0);
-  lv_obj_set_style_pad_row(list, 4, 0);
+  lv_obj_set_style_pad_row(list, 3, 0);
 
   const char* labels[] = {"Dashboard", "Battery", "About"};
   for (int i = 0; i < 3; ++i) {
     menuButtons[i] = lv_list_add_btn(list, nullptr, labels[i]);
-    lv_obj_set_height(menuButtons[i], 25);
-    lv_obj_set_style_radius(menuButtons[i], 6, 0);
-    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(0x17222B), 0);
-    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(0x266A3F), LV_STATE_CHECKED);
-    lv_obj_set_style_text_color(menuButtons[i], lv_color_hex(0xF4F8FA), 0);
+    lv_obj_set_height(menuButtons[i], 24);
+    lv_obj_set_style_radius(menuButtons[i], 5, 0);
+    lv_obj_set_style_border_width(menuButtons[i], 1, 0);
+    lv_obj_set_style_border_color(menuButtons[i], lv_color_hex(0x233444), 0);
+    lv_obj_set_style_border_color(menuButtons[i], lv_color_hex(theme::amber), LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(theme::panel), 0);
+    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(theme::panelHot), LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(menuButtons[i], lv_color_hex(theme::text), 0);
+    lv_obj_set_style_text_color(menuButtons[i], lv_color_hex(theme::amber), LV_STATE_CHECKED);
+    lv_obj_set_style_text_font(menuButtons[i], &lv_font_montserrat_14, 0);
     lv_obj_add_event_cb(menuButtons[i], menuEvent, LV_EVENT_CLICKED,
                         reinterpret_cast<void*>(static_cast<intptr_t>(i)));
   }
@@ -422,6 +595,47 @@ void pollButton() {
   }
 }
 
+void pollTouchFallback() {
+  if (!screenOn || !touchPresent) {
+    return;
+  }
+
+  uint16_t rawX = 0;
+  uint16_t rawY = 0;
+  uint16_t x = 0;
+  uint16_t y = 0;
+  const bool rawRead = readTouchRaw(rawX, rawY);
+  const bool touched = rawRead && mapTouchPoint(rawX, rawY, x, y);
+  const bool rawNonZero = rawRead && (rawX != 0 || rawY != 0);
+  const bool shouldShowRaw = rawNonZero;
+
+  if (touched && !lastFallbackTouch) {
+    char bytes[48];
+    formatTouchRawBytes(bytes, sizeof(bytes));
+    char text[96];
+    snprintf(text, sizeof(text), "%u,%u raw %u,%u\nint %d %s", static_cast<unsigned>(x),
+             static_cast<unsigned>(y), static_cast<unsigned>(rawX), static_cast<unsigned>(rawY),
+             digitalRead(board::touchInt), bytes);
+    lv_label_set_text(statusLabel, "Touch");
+    lv_label_set_text(detailLabel, text);
+
+    if (y >= 150) {
+      const int row = min(2, max(0, static_cast<int>((y - 150) / 30)));
+      activateMenu(row);
+    }
+  } else if (!touched && shouldShowRaw) {
+    char bytes[48];
+    formatTouchRawBytes(bytes, sizeof(bytes));
+    char text[96];
+    snprintf(text, sizeof(text), "raw %u,%u int %d\n%s", static_cast<unsigned>(rawX),
+             static_cast<unsigned>(rawY), digitalRead(board::touchInt), bytes);
+    lv_label_set_text(statusLabel, "Touch?");
+    lv_label_set_text(detailLabel, text);
+  }
+
+  lastFallbackTouch = touched;
+}
+
 void setupLvgl() {
   lv_init();
   lv_disp_draw_buf_init(&drawBuf, lvBuf1, lvBuf2, board::screenWidth * 32);
@@ -442,11 +656,13 @@ void setupLvgl() {
 }
 
 void setup() {
+  DEBUG_PORT.begin(115200);
   delay(100);
 
   pinMode(board::button, INPUT_PULLUP);
   Wire.begin(board::i2cSda, board::i2cScl, board::i2cFreq);
   initIoExpander();
+  scanI2cBus();
 
   display.init();
   display.setRotation(0);
@@ -467,6 +683,7 @@ void loop() {
   lastTickMs = now;
 
   pollButton();
+  pollTouchFallback();
 
   if (screenOn && (now - lastBatteryReadMs) >= board::batteryRefreshMs) {
     readBattery();
