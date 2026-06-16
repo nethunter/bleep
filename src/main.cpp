@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
@@ -610,27 +612,51 @@ void buildUi() {
   lv_label_set_text(detailLabel, details);
 }
 
-void setScreenPower(bool enabled) {
-  if (screenOn == enabled) {
-    return;
-  }
+void enterDeepSleep() {
+  screenOn = false;
 
-  screenOn = enabled;
-  if (enabled) {
-    ioSetPin(board::ioPanelPower, true);
-    delay(60);
-    display.wakeup();
-    display.fillScreen(TFT_BLACK);
-    ioSetPin(board::ioBacklight, true);
-    lv_obj_invalidate(lv_scr_act());
-  } else {
-    lv_label_set_text(statusLabel, "Off");
-    lv_label_set_text(detailLabel, "Long press to wake");
-    lv_timer_handler();
-    delay(120);
-    ioSetPin(board::ioBacklight, false);
-    display.sleep();
+  if (statusLabel) {
+    lv_label_set_text(statusLabel, "Sleeping");
   }
+  if (detailLabel) {
+    lv_label_set_text(detailLabel, "Press button to wake");
+  }
+  lv_timer_handler();
+  delay(120);
+
+  // Power down the panel, backlight, and touch controller so the board draws
+  // as little current as possible while in deep sleep.
+  ioSetPin(board::ioBacklight, false);
+  display.sleep();
+  ioSetPin(board::ioPanelPower, false);
+  ioSetPin(board::ioTouchPower, false);
+
+  // The long press that triggered sleep likely still holds the button low.
+  // Wait for release so we don't immediately wake back up.
+  while (digitalRead(board::button) == LOW) {
+    delay(10);
+  }
+  delay(50);
+
+  // On the ESP32-C3, RTC GPIOs (GPIO0-5) go high-impedance during deep sleep
+  // unless their pad-hold function is enabled, and the Arduino framework does
+  // not reliably apply the automatic wake pull-up. Without a held pull-up the
+  // wake pin floats and the active-low button press never registers, so the
+  // chip never wakes. Latch the internal pull-up across deep sleep here.
+  const gpio_num_t wakePin = static_cast<gpio_num_t>(board::button);
+  gpio_set_direction(wakePin, GPIO_MODE_INPUT);
+  gpio_pullup_en(wakePin);
+  gpio_pulldown_dis(wakePin);
+  gpio_hold_en(wakePin);
+  gpio_deep_sleep_hold_en();
+
+  // Wake when the button is pressed again (active low). On the ESP32-C3 this
+  // resets the chip, so execution resumes from setup() on wake.
+  const esp_err_t wakeErr =
+      esp_deep_sleep_enable_gpio_wakeup(1ULL << board::button, ESP_GPIO_WAKEUP_GPIO_LOW);
+  DEBUG_PORT.printf("deep sleep: arm wake err=%d\n", static_cast<int>(wakeErr));
+  delay(20);
+  esp_deep_sleep_start();
 }
 
 void handleShortPress() {
@@ -659,7 +685,7 @@ void pollButton() {
   if ((now - lastChangeMs) < board::buttonDebounceMs || rawPressed == stablePressed) {
     if (stablePressed && !longPressHandled && (now - pressStartMs) >= board::longPressMs) {
       longPressHandled = true;
-      setScreenPower(!screenOn);
+      enterDeepSleep();
     }
     return;
   }
@@ -736,6 +762,11 @@ void setupLvgl() {
 void setup() {
   DEBUG_PORT.begin(115200);
   delay(100);
+
+  // Release any pad-hold latched before deep sleep so the button reads normally
+  // again after a wake-from-deep-sleep reset.
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(static_cast<gpio_num_t>(board::button));
 
   pinMode(board::button, INPUT_PULLUP);
   Wire.begin(board::i2cSda, board::i2cScl, board::i2cFreq);
