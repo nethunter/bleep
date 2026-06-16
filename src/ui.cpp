@@ -5,6 +5,7 @@
 
 #include <cstdio>
 
+#include "fonts/roboto_fonts.h"
 #include "shark_client.h"
 #include "shark_protocol.h"
 
@@ -77,13 +78,16 @@ void styleScreen(lv_obj_t* scr) {
 }
 
 lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void* userData,
-                     uint32_t color) {
+                     uint32_t color, const lv_font_t* font = &lv_font_roboto_16) {
   lv_obj_t* btn = lv_btn_create(parent);
   lv_obj_set_style_bg_color(btn, lv_color_hex(color), 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(btn, 8, 0);
   lv_obj_set_style_shadow_width(btn, 0, 0);
+  lv_obj_set_style_pad_hor(btn, 6, 0);
   lv_obj_t* label = lv_label_create(btn);
   lv_label_set_text(label, text);
+  lv_obj_set_style_text_font(label, font, 0);
   lv_obj_set_style_text_color(label, lv_color_hex(kColText), 0);
   lv_obj_center(label);
   if (cb != nullptr) {
@@ -205,12 +209,12 @@ void buildConnectScreen() {
 
   connTitle = lv_label_create(scrConnect);
   lv_label_set_text(connTitle, "Shark Remote");
-  lv_obj_set_style_text_font(connTitle, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(connTitle, &lv_font_roboto_20, 0);
   lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 0, 48);
 
   connStatus = lv_label_create(scrConnect);
   lv_label_set_text(connStatus, "Scanning...");
-  lv_obj_set_style_text_font(connStatus, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(connStatus, &lv_font_roboto_16, 0);
   lv_obj_set_style_text_color(connStatus, lv_color_hex(kColAccent), 0);
   lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, -6);
 
@@ -232,7 +236,7 @@ void buildKeysScreen() {
   styleScreen(scrKeys);
 
   keysHeader = lv_label_create(scrKeys);
-  lv_obj_set_style_text_font(keysHeader, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(keysHeader, &lv_font_roboto_14, 0);
   lv_label_set_text(keysHeader, "Keypoints");
   lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 0, 18);
 
@@ -271,7 +275,8 @@ void buildKeysScreen() {
     lv_obj_add_event_cb(btn, onKeyButton, LV_EVENT_CLICKED,
                         reinterpret_cast<void*>(static_cast<intptr_t>(i)));
     lv_obj_t* label = lv_label_create(btn);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label, &lv_font_roboto_14, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(kColText), 0);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
     keyButtons[i] = btn;
     keyLabels[i] = label;
@@ -283,7 +288,7 @@ void buildRunScreen() {
   styleScreen(scrRun);
 
   runHeader = lv_label_create(scrRun);
-  lv_obj_set_style_text_font(runHeader, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(runHeader, &lv_font_roboto_14, 0);
   lv_label_set_text(runHeader, "Run");
   lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 0, 18);
 
@@ -300,18 +305,22 @@ void buildRunScreen() {
   lv_label_set_text(runPercent, "0%");
   lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 58);
 
-  // Run-state buttons.
-  lv_obj_t* standby = makeButton(scrRun, "Standby", onRunStandby, nullptr, kColPanel);
-  lv_obj_set_size(standby, 54, 34);
-  lv_obj_align(standby, LV_ALIGN_CENTER, -58, -2);
+  // Run-state buttons. These are narrow, so use the 14px face and widen the
+  // longest label ("Standby") enough that nothing clips.
+  lv_obj_t* standby = makeButton(scrRun, "Standby", onRunStandby, nullptr, kColPanel,
+                                 &lv_font_roboto_14);
+  lv_obj_set_size(standby, 72, 36);
+  lv_obj_align(standby, LV_ALIGN_CENTER, -60, -2);
 
-  lv_obj_t* start = makeButton(scrRun, "Start", onRunStart, nullptr, kColAccentDim);
-  lv_obj_set_size(start, 54, 34);
-  lv_obj_align(start, LV_ALIGN_CENTER, 0, -2);
+  lv_obj_t* start = makeButton(scrRun, "Start", onRunStart, nullptr, kColAccentDim,
+                               &lv_font_roboto_14);
+  lv_obj_set_size(start, 52, 36);
+  lv_obj_align(start, LV_ALIGN_CENTER, 4, -2);
 
-  lv_obj_t* stop = makeButton(scrRun, "Stop", onRunStop, nullptr, kColDanger);
-  lv_obj_set_size(stop, 54, 34);
-  lv_obj_align(stop, LV_ALIGN_CENTER, 58, -2);
+  lv_obj_t* stop = makeButton(scrRun, "Stop", onRunStop, nullptr, kColDanger,
+                              &lv_font_roboto_14);
+  lv_obj_set_size(stop, 52, 36);
+  lv_obj_align(stop, LV_ALIGN_CENTER, 62, -2);
 
   // Loop row.
   lv_obj_t* loopLabel = lv_label_create(scrRun);
@@ -348,7 +357,7 @@ void buildModal() {
   lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
 
   modalTitle = lv_label_create(modal);
-  lv_obj_set_style_text_font(modalTitle, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(modalTitle, &lv_font_roboto_20, 0);
   lv_label_set_text(modalTitle, "A");
   lv_obj_align(modalTitle, LV_ALIGN_TOP_MID, 0, 4);
 
