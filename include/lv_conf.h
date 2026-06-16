@@ -2,7 +2,10 @@
 #define LV_CONF_H
 
 #define LV_COLOR_DEPTH 16
+#ifndef LV_COLOR_16_SWAP
 #define LV_COLOR_16_SWAP 0
+#endif
+#define LV_COLOR_MIX_ROUND_OFS 128
 
 #define LV_MEM_CUSTOM 0
 #define LV_MEM_SIZE (32U * 1024U)
@@ -25,6 +28,7 @@
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_24 1
+#define LV_FONT_ANTIALIAS 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_ARC 1

@@ -11,6 +11,22 @@
 #define DEBUG_PORT Serial
 #endif
 
+#ifndef DISPLAY_RGB_ORDER
+#define DISPLAY_RGB_ORDER 0
+#endif
+
+#ifndef DISPLAY_FLUSH_SWAP565
+#define DISPLAY_FLUSH_SWAP565 1
+#endif
+
+#ifndef DISPLAY_REMAP_GB
+#define DISPLAY_REMAP_GB 0
+#endif
+
+#ifndef DISPLAY_VARIANT_NAME
+#define DISPLAY_VARIANT_NAME "custom"
+#endif
+
 namespace board {
 constexpr int lcdDc = 2;
 constexpr int lcdCs = 10;
@@ -67,10 +83,18 @@ constexpr bool touchInvertY = TOUCH_INVERT_Y;
 constexpr uint32_t i2cFreq = 400000;
 constexpr uint16_t screenWidth = 240;
 constexpr uint16_t screenHeight = 240;
+constexpr uint16_t drawBufferRows = 120;
 constexpr uint32_t buttonDebounceMs = 35;
 constexpr uint32_t longPressMs = 1200;
 constexpr uint32_t batteryRefreshMs = 5000;
 }  // namespace board
+
+namespace display_test {
+constexpr bool rgbOrder = DISPLAY_RGB_ORDER != 0;
+constexpr bool flushSwap565 = DISPLAY_FLUSH_SWAP565 != 0;
+constexpr bool remapGreenBlue = DISPLAY_REMAP_GB != 0;
+constexpr const char* variantName = DISPLAY_VARIANT_NAME;
+}  // namespace display_test
 
 class CrowPanelDisplay : public lgfx::LGFX_Device {
  public:
@@ -105,7 +129,7 @@ class CrowPanelDisplay : public lgfx::LGFX_Device {
     panelCfg.dummy_read_bits = 1;
     panelCfg.readable = false;
     panelCfg.invert = true;
-    panelCfg.rgb_order = false;
+    panelCfg.rgb_order = display_test::rgbOrder;
     panelCfg.dlen_16bit = false;
     panelCfg.bus_shared = false;
     panel_.config(panelCfg);
@@ -120,8 +144,9 @@ class CrowPanelDisplay : public lgfx::LGFX_Device {
 CrowPanelDisplay display;
 
 static lv_disp_draw_buf_t drawBuf;
-static lv_color_t lvBuf1[board::screenWidth * 32];
-static lv_color_t lvBuf2[board::screenWidth * 32];
+static lv_color_t lvBuf1[board::screenWidth * board::drawBufferRows];
+static lv_color_t lvBuf2[board::screenWidth * board::drawBufferRows];
+static lv_color_t remapBuf[board::screenWidth * board::drawBufferRows];
 static lv_disp_drv_t dispDrv;
 static lv_indev_drv_t touchDrv;
 
@@ -129,6 +154,7 @@ static lv_obj_t* batteryLabel = nullptr;
 static lv_obj_t* batteryArc = nullptr;
 static lv_obj_t* statusLabel = nullptr;
 static lv_obj_t* detailLabel = nullptr;
+static lv_obj_t* calibrationPanel = nullptr;
 static lv_obj_t* menuButtons[3] = {nullptr, nullptr, nullptr};
 static int selectedMenu = 0;
 static bool screenOn = true;
@@ -144,17 +170,6 @@ static float lastBatteryVoltage = 0.0f;
 static int lastBatteryPercent = 0;
 static uint32_t lastBatteryReadMs = 0;
 static uint32_t lastTouchLogMs = 0;
-
-namespace theme {
-constexpr uint32_t black = 0x000000;
-constexpr uint32_t panel = 0x0E1720;
-constexpr uint32_t panelHot = 0x132638;
-constexpr uint32_t rail = 0x1B2630;
-constexpr uint32_t cyan = 0x00C8FF;
-constexpr uint32_t amber = 0xFFB000;
-constexpr uint32_t text = 0xF3F7FA;
-constexpr uint32_t muted = 0x9AA8B3;
-}  // namespace theme
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -324,14 +339,39 @@ bool readTouchPoint(uint16_t& x, uint16_t& y) {
   return true;
 }
 
+uint8_t expand5To8(uint8_t value) {
+  return static_cast<uint8_t>((value << 3) | (value >> 2));
+}
+
+uint8_t expand6To8(uint8_t value) {
+  return static_cast<uint8_t>((value << 2) | (value >> 4));
+}
+
 void lvFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* colorP) {
   const int32_t width = area->x2 - area->x1 + 1;
   const int32_t height = area->y2 - area->y1 + 1;
+  const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
   if (display.getStartCount() == 0) {
     display.endWrite();
   }
+#if DISPLAY_REMAP_GB
+  for (size_t i = 0; i < pixelCount; ++i) {
+    const lv_color_t color = colorP[i];
+    remapBuf[i] =
+        lv_color_make(expand5To8(LV_COLOR_GET_R(color)), expand5To8(LV_COLOR_GET_B(color)),
+                      expand6To8(LV_COLOR_GET_G(color)));
+  }
+  display.pushImage(area->x1, area->y1, width, height,
+                    reinterpret_cast<lgfx::swap565_t*>(&remapBuf[0].full));
+#else
+#if DISPLAY_FLUSH_SWAP565
   display.pushImageDMA(area->x1, area->y1, width, height,
                        reinterpret_cast<lgfx::swap565_t*>(&colorP->full));
+#else
+  display.pushImageDMA(area->x1, area->y1, width, height,
+                       reinterpret_cast<lgfx::rgb565_t*>(&colorP->full));
+#endif
+#endif
   lv_disp_flush_ready(disp);
 }
 
@@ -414,6 +454,24 @@ void updateBatteryUi() {
   lv_arc_set_value(batteryArc, constrain(lastBatteryPercent, 0, 100));
 }
 
+void setCalibrationVisible(bool visible) {
+  if (detailLabel) {
+    if (visible) {
+      lv_obj_add_flag(detailLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(detailLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  if (calibrationPanel) {
+    if (visible) {
+      lv_obj_clear_flag(calibrationPanel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(calibrationPanel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void setSelectedMenu(int index) {
   selectedMenu = index;
   for (int i = 0; i < 3; ++i) {
@@ -430,35 +488,21 @@ void setSelectedMenu(int index) {
 
 void activateMenu(int index) {
   setSelectedMenu(index);
-  if (index == 0) {
-    lv_label_set_text(statusLabel, "Ready");
-    if (touchPresent) {
-      char text[128];
-      snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
-      lv_label_set_text(detailLabel, text);
-    } else {
-      char text[128];
-      snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
-      lv_label_set_text(detailLabel, text);
-    }
-  } else if (index == 1) {
+  if (index == 1) {
     readBattery();
     updateBatteryUi();
-    char text[96];
-    if (lastBatteryVoltage < 2.5f || lastBatteryVoltage > 4.5f) {
-      snprintf(text, sizeof(text), "ADC GPIO %d\n%.2f V check divider", board::batteryAdc, lastBatteryVoltage);
-    } else {
-      snprintf(text, sizeof(text), "1100 mAh LiPo\n%.2f V estimated at %d%%", lastBatteryVoltage,
-               lastBatteryPercent);
-    }
     lv_label_set_text(statusLabel, "Battery");
-    lv_label_set_text(detailLabel, text);
+  } else if (index == 2) {
+    lv_label_set_text(statusLabel, touchPresent ? "Touch ready" : "No touch");
   } else {
-    lv_label_set_text(statusLabel, "CrowPanel 1.28");
-    char text[128];
-    snprintf(text, sizeof(text), "%s\n%s", touchSummary, i2cSummary);
-    lv_label_set_text(detailLabel, text);
+    lv_label_set_text(statusLabel, "Display test");
   }
+
+  char text[160];
+  snprintf(text, sizeof(text), "%s\nrgb_order=%d lv_swap=%d flush=%s",
+           display_test::variantName, DISPLAY_RGB_ORDER, LV_COLOR_16_SWAP,
+           display_test::flushSwap565 ? "swap565" : "direct");
+  lv_label_set_text(detailLabel, text);
 }
 
 void menuEvent(lv_event_t* event) {
@@ -466,70 +510,104 @@ void menuEvent(lv_event_t* event) {
   activateMenu(index);
 }
 
+void addCalibrationSwatch(lv_obj_t* parent, int column, int row, const char* label, uint32_t color,
+                          uint32_t textColor) {
+  constexpr int swatchWidth = 44;
+  constexpr int swatchHeight = 28;
+  constexpr int gap = 4;
+  constexpr int leftPad = 3;
+  constexpr int topPad = 4;
+
+  lv_obj_t* swatch = lv_obj_create(parent);
+  lv_obj_set_size(swatch, swatchWidth, swatchHeight);
+  lv_obj_set_pos(swatch, leftPad + column * (swatchWidth + gap), topPad + row * (swatchHeight + gap));
+  lv_obj_clear_flag(swatch, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(swatch, lv_color_hex(color), 0);
+  lv_obj_set_style_pad_all(swatch, 0, 0);
+
+  lv_obj_t* text = lv_label_create(swatch);
+  lv_label_set_text(text, label);
+  lv_obj_set_style_text_color(text, lv_color_hex(textColor), 0);
+  lv_obj_center(text);
+}
+
 void buildUi() {
   lv_obj_t* screen = lv_scr_act();
-  lv_obj_set_style_bg_color(screen, lv_color_hex(theme::black), 0);
-  lv_obj_set_style_text_color(screen, lv_color_hex(theme::text), 0);
+  lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_text_color(screen, lv_color_hex(0xF3F4F6), 0);
 
   batteryArc = lv_arc_create(screen);
-  lv_obj_set_size(batteryArc, 218, 218);
-  lv_obj_center(batteryArc);
-  lv_arc_set_bg_angles(batteryArc, 205, 335);
-  lv_arc_set_rotation(batteryArc, 0);
+  lv_obj_set_size(batteryArc, 74, 74);
+  lv_obj_align(batteryArc, LV_ALIGN_LEFT_MID, 16, -3);
   lv_arc_set_range(batteryArc, 0, 100);
-  lv_obj_remove_style(batteryArc, nullptr, LV_PART_KNOB);
   lv_obj_clear_flag(batteryArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(batteryArc, 9, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(batteryArc, 9, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(theme::rail), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(theme::cyan), LV_PART_INDICATOR);
+  lv_obj_remove_style(batteryArc, nullptr, LV_PART_KNOB);
+  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0x2B2F36), LV_PART_MAIN);
+  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0xE5E7EB), LV_PART_INDICATOR);
 
   batteryLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(batteryLabel, lv_color_hex(theme::amber), 0);
-  lv_obj_align(batteryLabel, LV_ALIGN_TOP_MID, 0, 18);
+  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(batteryLabel, lv_color_hex(0xF9FAFB), 0);
+  lv_obj_align(batteryLabel, LV_ALIGN_TOP_MID, 0, 74);
 
   statusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(statusLabel, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(statusLabel, lv_color_hex(theme::cyan), 0);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_MID, 0, 50);
+  lv_label_set_text(statusLabel, "Display test");
+  lv_obj_set_style_text_font(statusLabel, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(statusLabel, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_MID, 0, 14);
 
   detailLabel = lv_label_create(screen);
-  lv_obj_set_width(detailLabel, 198);
+  lv_obj_set_width(detailLabel, 214);
   lv_label_set_long_mode(detailLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(detailLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(detailLabel, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(detailLabel, lv_color_hex(theme::muted), 0);
-  lv_obj_align(detailLabel, LV_ALIGN_TOP_MID, 0, 82);
+  lv_obj_set_style_text_color(detailLabel, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_align(detailLabel, LV_ALIGN_TOP_MID, 0, 36);
 
-  lv_obj_t* list = lv_list_create(screen);
-  lv_obj_set_size(list, 194, 82);
-  lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -16);
-  lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(list, 0, 0);
-  lv_obj_set_style_pad_all(list, 0, 0);
-  lv_obj_set_style_pad_row(list, 3, 0);
+  lv_obj_t* bar = lv_bar_create(screen);
+  lv_obj_set_size(bar, 90, 14);
+  lv_obj_align(bar, LV_ALIGN_RIGHT_MID, -18, -12);
+  lv_bar_set_range(bar, 0, 100);
+  lv_bar_set_value(bar, 65, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(bar, lv_color_hex(0x2B2F36), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E7EB), LV_PART_INDICATOR);
 
-  const char* labels[] = {"Dashboard", "Battery", "About"};
-  for (int i = 0; i < 3; ++i) {
-    menuButtons[i] = lv_list_add_btn(list, nullptr, labels[i]);
-    lv_obj_set_height(menuButtons[i], 24);
-    lv_obj_set_style_radius(menuButtons[i], 5, 0);
-    lv_obj_set_style_border_width(menuButtons[i], 1, 0);
-    lv_obj_set_style_border_color(menuButtons[i], lv_color_hex(0x233444), 0);
-    lv_obj_set_style_border_color(menuButtons[i], lv_color_hex(theme::amber), LV_STATE_CHECKED);
-    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(theme::panel), 0);
-    lv_obj_set_style_bg_color(menuButtons[i], lv_color_hex(theme::panelHot), LV_STATE_CHECKED);
-    lv_obj_set_style_text_color(menuButtons[i], lv_color_hex(theme::text), 0);
-    lv_obj_set_style_text_color(menuButtons[i], lv_color_hex(theme::amber), LV_STATE_CHECKED);
-    lv_obj_set_style_text_font(menuButtons[i], &lv_font_montserrat_14, 0);
-    lv_obj_add_event_cb(menuButtons[i], menuEvent, LV_EVENT_CLICKED,
-                        reinterpret_cast<void*>(static_cast<intptr_t>(i)));
-  }
+  lv_obj_t* button = lv_btn_create(screen);
+  lv_obj_set_size(button, 84, 28);
+  lv_obj_align(button, LV_ALIGN_RIGHT_MID, -21, 19);
+  lv_obj_set_style_bg_color(button, lv_color_hex(0x1F2937), 0);
+  lv_obj_set_style_border_color(button, lv_color_hex(0x94A3B8), 0);
+  lv_obj_set_style_border_width(button, 1, 0);
+  lv_obj_set_style_shadow_width(button, 0, 0);
+  lv_obj_t* buttonLabel = lv_label_create(button);
+  lv_label_set_text(buttonLabel, "LVGL");
+  lv_obj_set_style_text_font(buttonLabel, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(buttonLabel, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_center(buttonLabel);
+
+  calibrationPanel = lv_obj_create(screen);
+  lv_obj_set_size(calibrationPanel, 194, 70);
+  lv_obj_align(calibrationPanel, LV_ALIGN_BOTTOM_MID, 0, -14);
+  lv_obj_clear_flag(calibrationPanel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(calibrationPanel, lv_color_hex(0x050505), 0);
+  lv_obj_set_style_border_color(calibrationPanel, lv_color_hex(0x475569), 0);
+  lv_obj_set_style_pad_all(calibrationPanel, 0, 0);
+  addCalibrationSwatch(calibrationPanel, 0, 0, "RED", 0xFF0000, 0xFFFFFF);
+  addCalibrationSwatch(calibrationPanel, 1, 0, "GRN", 0x00FF00, 0x000000);
+  addCalibrationSwatch(calibrationPanel, 2, 0, "BLU", 0x0000FF, 0xFFFFFF);
+  addCalibrationSwatch(calibrationPanel, 3, 0, "WHT", 0xFFFFFF, 0x000000);
+  addCalibrationSwatch(calibrationPanel, 0, 1, "CYN", 0x00FFFF, 0x000000);
+  addCalibrationSwatch(calibrationPanel, 1, 1, "MAG", 0xFF00FF, 0xFFFFFF);
+  addCalibrationSwatch(calibrationPanel, 2, 1, "YLW", 0xFFFF00, 0x000000);
+  addCalibrationSwatch(calibrationPanel, 3, 1, "BLK", 0x000000, 0xFFFFFF);
 
   readBattery();
   updateBatteryUi();
-  activateMenu(0);
+  char details[160];
+  snprintf(details, sizeof(details), "%s\nrgb_order=%d lv_swap=%d flush=%s",
+           display_test::variantName, DISPLAY_RGB_ORDER, LV_COLOR_16_SWAP,
+           display_test::flushSwap565 ? "swap565" : "direct");
+  lv_label_set_text(detailLabel, details);
 }
 
 void setScreenPower(bool enabled) {
@@ -638,7 +716,7 @@ void pollTouchFallback() {
 
 void setupLvgl() {
   lv_init();
-  lv_disp_draw_buf_init(&drawBuf, lvBuf1, lvBuf2, board::screenWidth * 32);
+  lv_disp_draw_buf_init(&drawBuf, lvBuf1, lvBuf2, board::screenWidth * board::drawBufferRows);
 
   lv_disp_drv_init(&dispDrv);
   dispDrv.hor_res = board::screenWidth;
@@ -665,6 +743,9 @@ void setup() {
   scanI2cBus();
 
   display.init();
+  display.initDMA();
+  display.startWrite();
+  display.setColor(0, 0, 0);
   display.setRotation(0);
   display.fillScreen(TFT_BLACK);
 
