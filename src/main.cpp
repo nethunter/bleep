@@ -49,21 +49,6 @@ constexpr uint8_t ioPanelPower = 4;
 constexpr uint8_t ioTouchPower = 3;
 constexpr uint8_t ioBacklight = 2;
 
-// Verify this against your CrowPanel schematic. The original vendor demo did
-// not include a battery example, so the ADC pin and divider are intentionally
-// easy to override from platformio.ini build_flags.
-#ifndef BATTERY_ADC_PIN
-constexpr int batteryAdc = 3;
-#else
-constexpr int batteryAdc = BATTERY_ADC_PIN;
-#endif
-
-#ifndef BATTERY_DIVIDER
-constexpr float batteryDivider = 6.0f;
-#else
-constexpr float batteryDivider = BATTERY_DIVIDER;
-#endif
-
 #ifndef TOUCH_SWAP_XY
 constexpr bool touchSwapXy = false;
 #else
@@ -88,7 +73,6 @@ constexpr uint16_t screenHeight = 240;
 constexpr uint16_t drawBufferRows = 120;
 constexpr uint32_t buttonDebounceMs = 35;
 constexpr uint32_t longPressMs = 1200;
-constexpr uint32_t batteryRefreshMs = 5000;
 }  // namespace board
 
 namespace display_test {
@@ -152,8 +136,6 @@ static lv_color_t remapBuf[board::screenWidth * board::drawBufferRows];
 static lv_disp_drv_t dispDrv;
 static lv_indev_drv_t touchDrv;
 
-static lv_obj_t* batteryLabel = nullptr;
-static lv_obj_t* batteryArc = nullptr;
 static lv_obj_t* statusLabel = nullptr;
 static lv_obj_t* detailLabel = nullptr;
 static lv_obj_t* calibrationPanel = nullptr;
@@ -168,9 +150,6 @@ static char i2cSummary[80] = "I2C: not scanned";
 static char touchSummary[80] = "Touch: not probed";
 static uint8_t lastTouchRawBytes[4] = {};
 static size_t lastTouchRawByteCount = 0;
-static float lastBatteryVoltage = 0.0f;
-static int lastBatteryPercent = 0;
-static uint32_t lastBatteryReadMs = 0;
 static uint32_t lastTouchLogMs = 0;
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
@@ -395,67 +374,6 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   data->point.y = lastY;
 }
 
-int batteryPercentFromVoltage(float voltage) {
-  struct Point {
-    float voltage;
-    int percent;
-  };
-
-  static constexpr Point curve[] = {
-      {4.20f, 100}, {4.10f, 90}, {4.00f, 80}, {3.92f, 70},
-      {3.85f, 60},  {3.79f, 50}, {3.74f, 40}, {3.70f, 30},
-      {3.64f, 20},  {3.55f, 10}, {3.30f, 0},
-  };
-
-  if (voltage >= curve[0].voltage) {
-    return 100;
-  }
-  if (voltage <= curve[sizeof(curve) / sizeof(curve[0]) - 1].voltage) {
-    return 0;
-  }
-
-  for (size_t i = 1; i < sizeof(curve) / sizeof(curve[0]); ++i) {
-    if (voltage >= curve[i].voltage) {
-      const float highV = curve[i - 1].voltage;
-      const float lowV = curve[i].voltage;
-      const int highP = curve[i - 1].percent;
-      const int lowP = curve[i].percent;
-      const float t = (voltage - lowV) / (highV - lowV);
-      return lowP + static_cast<int>((highP - lowP) * t + 0.5f);
-    }
-  }
-  return 0;
-}
-
-void readBattery() {
-  uint32_t totalMv = 0;
-  constexpr int samples = 16;
-  for (int i = 0; i < samples; ++i) {
-    totalMv += analogReadMilliVolts(board::batteryAdc);
-    delay(2);
-  }
-
-  const float adcMv = static_cast<float>(totalMv) / samples;
-  lastBatteryVoltage = (adcMv * board::batteryDivider) / 1000.0f;
-  lastBatteryPercent = batteryPercentFromVoltage(lastBatteryVoltage);
-  lastBatteryReadMs = millis();
-}
-
-void updateBatteryUi() {
-  if (!batteryLabel || !batteryArc) {
-    return;
-  }
-
-  char text[48];
-  if (lastBatteryVoltage < 2.5f || lastBatteryVoltage > 4.5f) {
-    snprintf(text, sizeof(text), "--  %.2fV", lastBatteryVoltage);
-  } else {
-    snprintf(text, sizeof(text), "%d%%  %.2fV", lastBatteryPercent, lastBatteryVoltage);
-  }
-  lv_label_set_text(batteryLabel, text);
-  lv_arc_set_value(batteryArc, constrain(lastBatteryPercent, 0, 100));
-}
-
 void setCalibrationVisible(bool visible) {
   if (detailLabel) {
     if (visible) {
@@ -490,20 +408,20 @@ void setSelectedMenu(int index) {
 
 void activateMenu(int index) {
   setSelectedMenu(index);
-  if (index == 1) {
-    readBattery();
-    updateBatteryUi();
-    lv_label_set_text(statusLabel, "Battery");
-  } else if (index == 2) {
-    lv_label_set_text(statusLabel, touchPresent ? "Touch ready" : "No touch");
-  } else {
-    lv_label_set_text(statusLabel, "Display test");
-  }
 
   char text[160];
-  snprintf(text, sizeof(text), "%s\nrgb_order=%d lv_swap=%d flush=%s",
-           display_test::variantName, DISPLAY_RGB_ORDER, LV_COLOR_16_SWAP,
-           display_test::flushSwap565 ? "swap565" : "direct");
+  if (index == 1) {
+    lv_label_set_text(statusLabel, "I2C");
+    snprintf(text, sizeof(text), "%s", i2cSummary);
+  } else if (index == 2) {
+    lv_label_set_text(statusLabel, touchPresent ? "Touch ready" : "No touch");
+    snprintf(text, sizeof(text), "%s", touchSummary);
+  } else {
+    lv_label_set_text(statusLabel, "Display test");
+    snprintf(text, sizeof(text), "%s\nrgb_order=%d lv_swap=%d flush=%s",
+             display_test::variantName, DISPLAY_RGB_ORDER, LV_COLOR_16_SWAP,
+             display_test::flushSwap565 ? "swap565" : "direct");
+  }
   lv_label_set_text(detailLabel, text);
 }
 
@@ -537,20 +455,6 @@ void buildUi() {
   lv_obj_t* screen = lv_scr_act();
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF3F4F6), 0);
-
-  batteryArc = lv_arc_create(screen);
-  lv_obj_set_size(batteryArc, 74, 74);
-  lv_obj_align(batteryArc, LV_ALIGN_LEFT_MID, 16, -3);
-  lv_arc_set_range(batteryArc, 0, 100);
-  lv_obj_clear_flag(batteryArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_style(batteryArc, nullptr, LV_PART_KNOB);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0x2B2F36), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(batteryArc, lv_color_hex(0xE5E7EB), LV_PART_INDICATOR);
-
-  batteryLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(batteryLabel, lv_color_hex(0xF9FAFB), 0);
-  lv_obj_align(batteryLabel, LV_ALIGN_TOP_MID, 0, 74);
 
   statusLabel = lv_label_create(screen);
   lv_label_set_text(statusLabel, "Display test");
@@ -603,8 +507,6 @@ void buildUi() {
   addCalibrationSwatch(calibrationPanel, 2, 1, "YLW", 0xFFFF00, 0x000000);
   addCalibrationSwatch(calibrationPanel, 3, 1, "BLK", 0x000000, 0xFFFFFF);
 
-  readBattery();
-  updateBatteryUi();
   char details[160];
   snprintf(details, sizeof(details), "%s\nrgb_order=%d lv_swap=%d flush=%s",
            display_test::variantName, DISPLAY_RGB_ORDER, LV_COLOR_16_SWAP,
@@ -780,9 +682,6 @@ void setup() {
   display.setRotation(0);
   display.fillScreen(TFT_BLACK);
 
-  analogReadResolution(12);
-  analogSetPinAttenuation(board::batteryAdc, ADC_11db);
-
   touchPresent = initTouch();
   setupLvgl();
   buildUi();
@@ -796,11 +695,6 @@ void loop() {
 
   pollButton();
   pollTouchFallback();
-
-  if (screenOn && (now - lastBatteryReadMs) >= board::batteryRefreshMs) {
-    readBattery();
-    updateBatteryUi();
-  }
 
   if (screenOn) {
     lv_timer_handler();

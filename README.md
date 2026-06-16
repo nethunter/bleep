@@ -6,11 +6,11 @@ display.
 ## What it does
 
 - Brings up the 240x240 GC9A01 display with LovyanGFX.
-- Runs a simple LVGL UI with a battery arc, status text, and three menu rows.
-- Reads the 1100 mAh LiPo as voltage and estimates state of charge.
+- Runs a simple LVGL UI with status text and three menu rows
+  (Display test / I2C / Touch).
 - Uses the custom button on GPIO 1:
   - Short press: select the highlighted menu row, then advance the highlight.
-  - Long press: soft screen on/off.
+  - Long press: enter ESP32-C3 deep sleep; press again to wake.
 - Initializes the CST816D touch controller at `0x15`, while recognizing `0x51`
   on the I2C bus as the onboard BM8563 RTC.
 
@@ -36,19 +36,16 @@ the project was cleaned up into a PlatformIO firmware project:
 | Expander touch/display enable | pin 3 |
 | Expander backlight | pin 2 |
 
-The original vendor demo did not include a battery read example. This firmware
-defaults to `BATTERY_ADC_PIN=3` and `BATTERY_DIVIDER=6.0`. If the first flash
-shows the wrong voltage, change those in `platformio.ini`:
+## Battery monitoring
 
-```ini
-build_flags =
-  -D ARDUINO_USB_MODE=1
-  -D ARDUINO_USB_CDC_ON_BOOT=1
-  -D LV_CONF_INCLUDE_SIMPLE
-  -D BATTERY_ADC_PIN=3
-  -D BATTERY_DIVIDER=6.0
-  -I include
-```
+This board has **no onboard battery-sense circuit**: the SH1.0 battery socket is
+power-only, there is no voltage divider or fuel-gauge IC, and there is no ADC
+line wired to the battery. On the ESP32-C3 every ADC-capable pin (GPIO0-GPIO5)
+is already used for other functions on this board (note GPIO3 is the buzzer, not
+a battery line). For that reason the firmware does **not** display a battery
+percentage. Reading the battery would require a hardware modification: solder an
+external voltage divider from BAT+ to a freed-up ADC GPIO and add the read code
+back.
 
 ## Build and flash
 
