@@ -306,7 +306,54 @@ void SharkClient::applyFrame(const ParsedFrame& frame) {
     RunProgress rp;
     if (parseRunProgress(frame, rp)) {
       state_.runProgressKnown = true;
-      state_.runPercent = rp.progressPercent;
+
+      // The button reflects operator intent; an idle slider keeps reporting
+      // "stopped", so a plain "stopped" must NOT clobber a freshly commanded
+      // Standby/Start (it would snap the button back). Only accept "stopped" as
+      // the end of a run we believed was actually running. "running" and an
+      // explicit "standby" report are always trusted.
+      const bool running = (rp.stateCode == kRunStart || rp.stateCode == 0x06);
+      if (running) {
+        state_.runStateCode = kRunStart;
+      } else if (rp.stateCode == kRunStandby) {
+        state_.runStateCode = kRunStandby;
+      } else if (rp.stateCode == kRunStop) {
+        if (state_.runStateCode == kRunStart || state_.runStateCode == 0x06) {
+          state_.runStateCode = kRunStop;
+        }
+      }
+
+      // Only show progress while the slider is actually moving. When the route
+      // finishes (or is stopped/standby) the device may keep its last progress
+      // value or stop notifying; treating non-running states as 0% keeps the
+      // bar from freezing near the end and matches a fresh, ready-to-run UI.
+      if (running) {
+        // The device reports per-segment progress; estimate progress across the
+        // whole route from how many travel segments the configured keypoints
+        // make (present count - 1). `rp.segment` is assumed to be the current
+        // segment index; tune if hardware indexes differently.
+        int presentCount = 0;
+        for (int i = 0; i < kKeypointCount; ++i) {
+          if (state_.present[i]) {
+            ++presentCount;
+          }
+        }
+        const int totalSegments = presentCount - 1;
+        if (totalSegments > 0) {
+          float whole = (rp.segment + rp.progressPercent / 100.0f) / totalSegments * 100.0f;
+          if (whole < 0.0f) {
+            whole = 0.0f;
+          } else if (whole > 100.0f) {
+            whole = 100.0f;
+          }
+          state_.runPercent = whole;
+        } else {
+          state_.runPercent = rp.progressPercent;
+        }
+      } else {
+        state_.runPercent = 0.0f;
+      }
+
       strncpy(state_.runText, runStateLabel(rp.stateCode), sizeof(state_.runText) - 1);
       state_.runText[sizeof(state_.runText) - 1] = '\0';
     }
@@ -437,6 +484,11 @@ void SharkClient::setRunState(uint8_t runState) {
   } else if (runState == kRunStop) {
     text = "stopped";
   }
+  state_.runStateCode = runState;
+  // A fresh command clears any stale/frozen progress; live notifications
+  // repopulate it once a new run actually starts moving.
+  state_.runProgressKnown = false;
+  state_.runPercent = 0.0f;
   strncpy(state_.runText, text, sizeof(state_.runText) - 1);
   state_.runText[sizeof(state_.runText) - 1] = '\0';
 }
@@ -515,6 +567,7 @@ void SharkClient::resetDeviceState() {
   state_.tracking = false;
   state_.runProgressKnown = false;
   state_.runPercent = 0.0f;
+  state_.runStateCode = kRunStop;
   strncpy(state_.runText, "idle", sizeof(state_.runText) - 1);
   state_.runText[sizeof(state_.runText) - 1] = '\0';
   timingPending_ = false;

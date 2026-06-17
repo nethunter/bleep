@@ -44,14 +44,17 @@ lv_obj_t* connDevice = nullptr;
 lv_obj_t* keysHeader = nullptr;
 lv_obj_t* keyButtons[shark::kKeypointCount] = {nullptr};
 lv_obj_t* keyLabels[shark::kKeypointCount] = {nullptr};
+lv_obj_t* gearButtons[shark::kKeypointCount] = {nullptr};
 lv_obj_t* keyList = nullptr;
 
 // Run screen widgets.
 lv_obj_t* runHeader = nullptr;
 lv_obj_t* runBar = nullptr;
 lv_obj_t* runPercent = nullptr;
-lv_obj_t* loopSwitch = nullptr;
-lv_obj_t* dirSwitch = nullptr;
+lv_obj_t* runActionBtn = nullptr;
+lv_obj_t* runActionLabel = nullptr;
+lv_obj_t* loopBtn = nullptr;
+lv_obj_t* dirBtn = nullptr;
 
 // Per-keypoint modal (lives on the top layer so it overlays any screen).
 lv_obj_t* modal = nullptr;
@@ -71,6 +74,12 @@ bool modalOpen = false;
 // Slot whose "set" is being armed: manual tracking is on and the next tap on
 // the same row commits the keypoint. -1 = nothing armed.
 int armedSetSlot = -1;
+
+// Timestamp of the last handled swipe. A horizontal swipe over a full-width
+// row can still raise a button CLICKED on release, so taps that land within
+// this window are ignored.
+uint32_t lastSwipeMs = 0;
+constexpr uint32_t kSwipeClickGuardMs = 350;
 
 uint32_t lastRefreshMs = 0;
 Link lastLinkShown = Link::Disconnected;
@@ -121,26 +130,37 @@ void onScreenGesture(lv_event_t* e) {
   if (scr == scrKeys && dir == LV_DIR_RIGHT) {
     cancelArmedSet();
     currentMain = 1;
-    lv_scr_load(scrRun);
+    lastSwipeMs = millis();
+    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
   } else if (scr == scrRun && dir == LV_DIR_LEFT) {
     currentMain = 0;
-    lv_scr_load(scrKeys);
+    lastSwipeMs = millis();
+    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
   }
 }
 
-void onLoopSwitch(lv_event_t* e) {
-  lv_obj_t* sw = lv_event_get_target(e);
-  gShark.setLoop(lv_obj_has_state(sw, LV_STATE_CHECKED));
+void onLoopToggle(lv_event_t* e) {
+  lv_obj_t* btn = lv_event_get_target(e);
+  gShark.setLoop(lv_obj_has_state(btn, LV_STATE_CHECKED));
 }
 
-void onDirSwitch(lv_event_t* e) {
-  lv_obj_t* sw = lv_event_get_target(e);
-  gShark.setDirection(lv_obj_has_state(sw, LV_STATE_CHECKED));
+void onDirToggle(lv_event_t* e) {
+  lv_obj_t* btn = lv_event_get_target(e);
+  gShark.setDirection(lv_obj_has_state(btn, LV_STATE_CHECKED));
 }
 
-void onRunStandby(lv_event_t*) { gShark.setRunState(shark::kRunStandby); }
-void onRunStart(lv_event_t*) { gShark.setRunState(shark::kRunStart); }
-void onRunStop(lv_event_t*) { gShark.setRunState(shark::kRunStop); }
+// Single run button: advance the run state machine
+// stopped -> standby -> running -> (stop) stopped.
+void onRunAction(lv_event_t*) {
+  const uint8_t code = gShark.state().runStateCode;
+  if (code == shark::kRunStart || code == 0x06 /* preview */) {
+    gShark.setRunState(shark::kRunStop);
+  } else if (code == shark::kRunStandby) {
+    gShark.setRunState(shark::kRunStart);
+  } else {
+    gShark.setRunState(shark::kRunStandby);
+  }
+}
 
 void onRepair(lv_event_t*) { gShark.forgetDevice(); }
 
@@ -157,6 +177,9 @@ void openModal(int slot);
 // Primary row tap. Going to a set keypoint is the fast default; an unset slot
 // arms a hand-positioned "set" that commits on the next tap of the same row.
 void onKeyMain(lv_event_t* e) {
+  if (millis() - lastSwipeMs < kSwipeClickGuardMs) {
+    return;  // release after a swipe, not a real tap
+  }
   const int slot = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
   if (slot < 0 || slot >= shark::kKeypointCount) {
     return;
@@ -178,6 +201,9 @@ void onKeyMain(lv_event_t* e) {
 }
 
 void onKeyGear(lv_event_t* e) {
+  if (millis() - lastSwipeMs < kSwipeClickGuardMs) {
+    return;  // release after a swipe, not a real tap
+  }
   const int slot = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
   openModal(slot);
 }
@@ -334,6 +360,7 @@ void buildKeysScreen() {
 
     keyButtons[i] = btn;
     keyLabels[i] = label;
+    gearButtons[i] = gear;
   }
 }
 
@@ -360,44 +387,43 @@ void buildRunScreen() {
   lv_label_set_text(runPercent, "0%");
   lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 58);
 
-  // Large run-state buttons: the primary purpose of this screen. The 16px face
-  // and taller hit areas make Standby/Start/Stop easy to find and tap.
-  lv_obj_t* standby = makeButton(scrRun, "Standby", onRunStandby, nullptr, kColPanel,
-                                 UI_FONT_16);
-  lv_obj_set_size(standby, 82, 46);
-  lv_obj_align(standby, LV_ALIGN_CENTER, -62, -6);
+  // Single large run-state button. Its label/color and action follow the run
+  // state machine (stopped -> Standby -> Start -> Stop); only one shows at a
+  // time so it stays big and unambiguous.
+  runActionBtn = makeButton(scrRun, "Standby", onRunAction, nullptr, kColPanel, UI_FONT_20);
+  lv_obj_set_size(runActionBtn, 132, 60);
+  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, -6);
+  lv_obj_set_style_radius(runActionBtn, 12, 0);
+  runActionLabel = lv_obj_get_child(runActionBtn, 0);
 
-  lv_obj_t* start = makeButton(scrRun, "Start", onRunStart, nullptr, kColAccentDim,
-                               UI_FONT_16);
-  lv_obj_set_size(start, 56, 46);
-  lv_obj_align(start, LV_ALIGN_CENTER, 18, -6);
+  // Loop / reverse toggles: icon-only checkable buttons in one bottom row.
+  loopBtn = lv_btn_create(scrRun);
+  lv_obj_add_flag(loopBtn, LV_OBJ_FLAG_CHECKABLE);
+  lv_obj_set_size(loopBtn, 46, 34);
+  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -28, -14);
+  lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
+  lv_obj_set_style_radius(loopBtn, 8, 0);
+  lv_obj_set_style_shadow_width(loopBtn, 0, 0);
+  lv_obj_add_event_cb(loopBtn, onLoopToggle, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* loopIcon = lv_label_create(loopBtn);
+  lv_label_set_text(loopIcon, LV_SYMBOL_LOOP);
+  lv_obj_set_style_text_color(loopIcon, lv_color_hex(kColText), 0);
+  lv_obj_center(loopIcon);
 
-  lv_obj_t* stop = makeButton(scrRun, "Stop", onRunStop, nullptr, kColDanger,
-                              UI_FONT_16);
-  lv_obj_set_size(stop, 56, 46);
-  lv_obj_align(stop, LV_ALIGN_CENTER, 78, -6);
-
-  // Loop row.
-  lv_obj_t* loopLabel = lv_label_create(scrRun);
-  lv_label_set_text(loopLabel, "Loop");
-  lv_obj_set_style_text_color(loopLabel, lv_color_hex(kColMuted), 0);
-  lv_obj_align(loopLabel, LV_ALIGN_CENTER, -40, 50);
-  loopSwitch = lv_switch_create(scrRun);
-  lv_obj_set_size(loopSwitch, 44, 22);
-  lv_obj_set_style_bg_color(loopSwitch, lv_color_hex(kColAccent), LV_PART_INDICATOR | LV_STATE_CHECKED);
-  lv_obj_align(loopSwitch, LV_ALIGN_CENTER, 26, 50);
-  lv_obj_add_event_cb(loopSwitch, onLoopSwitch, LV_EVENT_VALUE_CHANGED, nullptr);
-
-  // Direction row.
-  lv_obj_t* dirLabel = lv_label_create(scrRun);
-  lv_label_set_text(dirLabel, "Reverse");
-  lv_obj_set_style_text_color(dirLabel, lv_color_hex(kColMuted), 0);
-  lv_obj_align(dirLabel, LV_ALIGN_CENTER, -40, 78);
-  dirSwitch = lv_switch_create(scrRun);
-  lv_obj_set_size(dirSwitch, 44, 22);
-  lv_obj_set_style_bg_color(dirSwitch, lv_color_hex(kColAccent), LV_PART_INDICATOR | LV_STATE_CHECKED);
-  lv_obj_align(dirSwitch, LV_ALIGN_CENTER, 26, 78);
-  lv_obj_add_event_cb(dirSwitch, onDirSwitch, LV_EVENT_VALUE_CHANGED, nullptr);
+  dirBtn = lv_btn_create(scrRun);
+  lv_obj_add_flag(dirBtn, LV_OBJ_FLAG_CHECKABLE);
+  lv_obj_set_size(dirBtn, 46, 34);
+  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 28, -14);
+  lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
+  lv_obj_set_style_radius(dirBtn, 8, 0);
+  lv_obj_set_style_shadow_width(dirBtn, 0, 0);
+  lv_obj_add_event_cb(dirBtn, onDirToggle, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* dirIcon = lv_label_create(dirBtn);
+  lv_label_set_text(dirIcon, LV_SYMBOL_LEFT);
+  lv_obj_set_style_text_color(dirIcon, lv_color_hex(kColText), 0);
+  lv_obj_center(dirIcon);
 }
 
 void buildModal() {
@@ -579,6 +605,7 @@ void refreshKeys(const shark::SharkClient::State& s) {
       bg = kColAccentDim;
     }
     lv_obj_set_style_bg_color(keyButtons[i], lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_color(gearButtons[i], lv_color_hex(bg), 0);
   }
 }
 
@@ -593,15 +620,28 @@ void refreshRun(const shark::SharkClient::State& s) {
   snprintf(buf, sizeof(buf), "%s  %d%%", s.runText, pct);
   lv_label_set_text(runPercent, buf);
 
+  // Single button: show the action that the next tap will take.
+  const char* action = "Standby";
+  uint32_t actionColor = kColPanel;
+  if (s.runStateCode == shark::kRunStart || s.runStateCode == 0x06) {
+    action = "Stop";
+    actionColor = kColDanger;
+  } else if (s.runStateCode == shark::kRunStandby) {
+    action = "Start";
+    actionColor = kColAccent;
+  }
+  lv_label_set_text(runActionLabel, action);
+  lv_obj_set_style_bg_color(runActionBtn, lv_color_hex(actionColor), 0);
+
   if (s.loopOn) {
-    lv_obj_add_state(loopSwitch, LV_STATE_CHECKED);
+    lv_obj_add_state(loopBtn, LV_STATE_CHECKED);
   } else {
-    lv_obj_clear_state(loopSwitch, LV_STATE_CHECKED);
+    lv_obj_clear_state(loopBtn, LV_STATE_CHECKED);
   }
   if (s.reverse) {
-    lv_obj_add_state(dirSwitch, LV_STATE_CHECKED);
+    lv_obj_add_state(dirBtn, LV_STATE_CHECKED);
   } else {
-    lv_obj_clear_state(dirSwitch, LV_STATE_CHECKED);
+    lv_obj_clear_state(dirBtn, LV_STATE_CHECKED);
   }
 }
 
@@ -672,7 +712,11 @@ void toggleMainScreen() {
   }
   cancelArmedSet();
   currentMain = (currentMain == 0) ? 1 : 0;
-  lv_scr_load(currentMain == 1 ? scrRun : scrKeys);
+  if (currentMain == 1) {
+    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+  } else {
+    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+  }
 }
 
 }  // namespace ui

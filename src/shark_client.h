@@ -46,8 +46,9 @@ class SharkClient {
     bool reverse = false;
 
     char runText[16] = "idle";
+    uint8_t runStateCode = kRunStop;  // drives the single run button
     bool runProgressKnown = false;
-    float runPercent = 0.0f;
+    float runPercent = 0.0f;  // whole-route estimate, 0..100
 
     State() {
       for (int i = 0; i < kKeypointCount; ++i) {
