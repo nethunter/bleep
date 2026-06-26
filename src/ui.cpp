@@ -427,30 +427,68 @@ void buildRunScreen() {
 }
 
 void buildModal() {
+  // Full-screen settings panel. It fills the round display (inset a few pixels
+  // so the accent border reads as a ring just inside the bezel) and overlays
+  // whatever screen is active.
   modal = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(modal, 200, 200);
+  lv_obj_set_size(modal, 236, 236);
   lv_obj_center(modal);
-  lv_obj_set_style_radius(modal, 100, 0);
+  lv_obj_set_style_radius(modal, 118, 0);
   lv_obj_set_style_bg_color(modal, lv_color_hex(kColPanel), 0);
-  lv_obj_set_style_border_color(modal, lv_color_hex(kColAccentDim), 0);
-  lv_obj_set_style_border_width(modal, 2, 0);
+  lv_obj_set_style_border_color(modal, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(modal, 3, 0);
+  lv_obj_set_style_pad_all(modal, 0, 0);
   lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
 
-  modalTitle = lv_label_create(modal);
-  lv_obj_set_style_text_font(modalTitle, UI_FONT_16, 0);
-  lv_label_set_text(modalTitle, "A Settings");
-  lv_obj_align(modalTitle, LV_ALIGN_TOP_MID, 0, 16);
+  // Fixed footer: Delete / Close stay pinned at the bottom of the panel.
+  lv_obj_t* btnRow = lv_obj_create(modal);
+  lv_obj_set_size(btnRow, 176, 40);
+  lv_obj_align(btnRow, LV_ALIGN_BOTTOM_MID, 0, -16);
+  lv_obj_set_style_bg_opa(btnRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(btnRow, 0, 0);
+  lv_obj_set_style_pad_all(btnRow, 0, 0);
+  lv_obj_clear_flag(btnRow, LV_OBJ_FLAG_SCROLLABLE);
 
-  modalPresence = lv_label_create(modal);
+  // Close is the primary action (accent). Delete is intentionally subdued so it
+  // doesn't read as the default CTA.
+  lv_obj_t* closeBtn = makeButton(btnRow, "Close", onModalClose, nullptr, kColAccent);
+  lv_obj_set_size(closeBtn, 104, 36);
+  lv_obj_align(closeBtn, LV_ALIGN_RIGHT_MID, -2, 0);
+
+  lv_obj_t* delBtn = makeButton(btnRow, "Delete", onModalDelete, nullptr, kColAbsent, UI_FONT_14);
+  lv_obj_set_size(delBtn, 58, 32);
+  lv_obj_align(delBtn, LV_ALIGN_LEFT_MID, 2, 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(delBtn, 0), lv_color_hex(kColMuted), 0);
+
+  // Scrollable content above the fixed footer. Title, presence, speed, and hold
+  // flow vertically and can be scrolled into the wide center of the round panel.
+  lv_obj_t* content = lv_obj_create(modal);
+  lv_obj_set_size(content, 232, 178);
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(content, 0, 0);
+  lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(content, 52, 0);
+  lv_obj_set_style_pad_bottom(content, 20, 0);
+  lv_obj_set_style_pad_left(content, 0, 0);
+  lv_obj_set_style_pad_right(content, 0, 0);
+  lv_obj_set_style_pad_row(content, 12, 0);
+  lv_obj_set_scroll_dir(content, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+
+  modalTitle = lv_label_create(content);
+  lv_obj_set_style_text_font(modalTitle, UI_FONT_20, 0);
+  lv_label_set_text(modalTitle, "A Settings");
+
+  modalPresence = lv_label_create(content);
   lv_obj_set_style_text_color(modalPresence, lv_color_hex(kColMuted), 0);
   lv_label_set_text(modalPresence, "not set");
-  lv_obj_align(modalPresence, LV_ALIGN_TOP_MID, 0, 40);
 
   // Speed row (B..H only).
-  speedRow = lv_obj_create(modal);
-  lv_obj_set_size(speedRow, 168, 38);
-  lv_obj_align(speedRow, LV_ALIGN_TOP_MID, 0, 66);
+  speedRow = lv_obj_create(content);
+  lv_obj_set_size(speedRow, 176, 44);
   lv_obj_set_style_bg_opa(speedRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(speedRow, 0, 0);
   lv_obj_set_style_pad_all(speedRow, 0, 0);
@@ -466,7 +504,7 @@ void buildModal() {
   lv_obj_align(speedValue, LV_ALIGN_TOP_RIGHT, 0, 0);
 
   speedSlider = lv_slider_create(speedRow);
-  lv_obj_set_size(speedSlider, 168, 10);
+  lv_obj_set_size(speedSlider, 176, 12);
   lv_obj_align(speedSlider, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_slider_set_range(speedSlider, 0, 100);
   lv_obj_set_style_bg_color(speedSlider, lv_color_hex(kColAbsent), LV_PART_MAIN);
@@ -476,9 +514,8 @@ void buildModal() {
   lv_obj_add_event_cb(speedSlider, onSpeedReleased, LV_EVENT_RELEASED, nullptr);
 
   // Hold row (B..H only).
-  holdRow = lv_obj_create(modal);
-  lv_obj_set_size(holdRow, 168, 32);
-  lv_obj_align(holdRow, LV_ALIGN_TOP_MID, 0, 112);
+  holdRow = lv_obj_create(content);
+  lv_obj_set_size(holdRow, 176, 34);
   lv_obj_set_style_bg_opa(holdRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(holdRow, 0, 0);
   lv_obj_set_style_pad_all(holdRow, 0, 0);
@@ -489,25 +526,19 @@ void buildModal() {
   lv_obj_set_style_text_color(holdCaption, lv_color_hex(kColMuted), 0);
   lv_obj_align(holdCaption, LV_ALIGN_LEFT_MID, 0, 0);
 
-  lv_obj_t* minusBtn = makeButton(holdRow, "-", onHoldMinus, nullptr, kColAccentDim);
-  lv_obj_set_size(minusBtn, 30, 28);
-  lv_obj_align(minusBtn, LV_ALIGN_CENTER, 18, 0);
-
-  holdValue = lv_label_create(holdRow);
-  lv_label_set_text(holdValue, "0 s");
-  lv_obj_align(holdValue, LV_ALIGN_CENTER, 70, 0);
-
   lv_obj_t* plusBtn = makeButton(holdRow, "+", onHoldPlus, nullptr, kColAccentDim);
   lv_obj_set_size(plusBtn, 30, 28);
   lv_obj_align(plusBtn, LV_ALIGN_RIGHT_MID, 0, 0);
 
-  lv_obj_t* delBtn = makeButton(modal, "Delete", onModalDelete, nullptr, kColDanger);
-  lv_obj_set_size(delBtn, 76, 30);
-  lv_obj_align(delBtn, LV_ALIGN_BOTTOM_MID, -42, -8);
+  holdValue = lv_label_create(holdRow);
+  lv_obj_set_width(holdValue, 44);
+  lv_obj_set_style_text_align(holdValue, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(holdValue, "0 s");
+  lv_obj_align(holdValue, LV_ALIGN_RIGHT_MID, -46, 0);
 
-  lv_obj_t* closeBtn = makeButton(modal, "Close", onModalClose, nullptr, kColPanel);
-  lv_obj_set_size(closeBtn, 76, 30);
-  lv_obj_align(closeBtn, LV_ALIGN_BOTTOM_MID, 42, -8);
+  lv_obj_t* minusBtn = makeButton(holdRow, "-", onHoldMinus, nullptr, kColAccentDim);
+  lv_obj_set_size(minusBtn, 30, 28);
+  lv_obj_align(minusBtn, LV_ALIGN_RIGHT_MID, -92, 0);
 }
 
 void openModal(int slot) {

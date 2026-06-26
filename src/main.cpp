@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
@@ -383,6 +384,11 @@ void setupLvgl() {
 void setup() {
   DEBUG_PORT.begin(115200);
   delay(100);
+
+  // Reset reason helps diagnose battery issues: ESP_RST_BROWNOUT (==9) indicates
+  // the supply sagged below the brownout threshold (typical of a weak battery
+  // under BLE/display current spikes), as opposed to a normal power-on/wake.
+  DEBUG_PORT.printf("boot: reset reason=%d\n", static_cast<int>(esp_reset_reason()));
 
   // Release any pad-hold latched before deep sleep so the button reads normally
   // again after a wake-from-deep-sleep reset.
