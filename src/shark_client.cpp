@@ -57,10 +57,6 @@ void SharkClient::begin() {
   notifyStream_ = xStreamBufferCreate(1024, 1);
 
   NimBLEDevice::init("");
-  // Moderate TX power instead of the +9 dBm maximum: the radio's peak current
-  // draw scales with TX power, and the spikes at full power can brown out a
-  // weak/low battery (works fine on USB). +3 dBm keeps ample range for a remote.
-  NimBLEDevice::setPower(3);
   NimBLEDevice::setMTU(247);
 
   loadSavedDevice();

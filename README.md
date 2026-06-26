@@ -32,7 +32,6 @@ BLE protocol.
 - **Button (GPIO 1):**
   - Short press: switch between the Keypoints and Run screens (closes an open
     modal first).
-  - Long press: enter ESP32-C3 deep sleep; press again to wake.
 
 ## Architecture
 
@@ -41,7 +40,7 @@ BLE protocol.
 | `src/shark_protocol.*` | Frame envelope (`AA BB <body> <crc32> BB AA`), IEEE CRC32, streaming frame scanner, command builders, and the run-progress parser. |
 | `src/shark_client.*` | NimBLE central: scan/connect/auto-reconnect state machine, notification stream buffer, decoded device state, and high-level operator actions. |
 | `src/ui.*` | LVGL screens for the 240x240 round panel. |
-| `src/main.cpp` | Display/touch/IO bring-up, deep sleep, button, and the main loop. |
+| `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
 
 NimBLE callbacks run on the host task and only push raw bytes into a FreeRTOS
 stream buffer or flip flags; all frame parsing, state mutation, GATT writes, and

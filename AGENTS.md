@@ -16,7 +16,7 @@ LVGL 8.x, LovyanGFX. See `README.md` for the full feature and protocol overview.
 | `src/shark_protocol.*` | Frame envelope, CRC32, frame scanner, command builders, run-progress parser. Pure logic, no Arduino/BLE deps. |
 | `src/shark_client.*` | NimBLE central: scan/connect/auto-reconnect, notification parsing, decoded state, operator actions. |
 | `src/ui.*` | LVGL screens for the 240x240 round panel (connect / keypoints / run + per-keypoint modal). |
-| `src/main.cpp` | Display/touch/IO bring-up, deep sleep, button, main loop. |
+| `src/main.cpp` | Display/touch/IO bring-up, button, main loop. |
 | `include/lv_conf.h` | LVGL build configuration (fonts, widgets, theme). |
 | `platformio.ini` | Single build env: `crowpanel_128`. |
 
@@ -60,9 +60,8 @@ Flashing notes:
 
 - The upload/monitor port is set in `platformio.ini`
   (`/dev/cu.usbserial-211240`). If upload fails because the port is missing,
-  the board is likely unplugged or asleep — report this instead of guessing a
-  different port. The board enters deep sleep on a long button press; press the
-  button to wake it before flashing if needed.
+  the board is likely unplugged or unavailable — report this instead of guessing
+  a different port.
 - If `-t upload` fails for a reason unrelated to your change (no port, busy
   monitor, permissions), still report that the **build succeeded** and clearly
   state that the flash could not complete and why.

@@ -2,9 +2,6 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <driver/gpio.h>
-#include <esp_sleep.h>
-#include <esp_system.h>
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
@@ -68,7 +65,6 @@ constexpr uint16_t screenHeight = 240;
 // Smaller partial-render buffers leave SRAM headroom for the BLE host stack.
 constexpr uint16_t drawBufferRows = 40;
 constexpr uint32_t buttonDebounceMs = 35;
-constexpr uint32_t longPressMs = 1200;
 }  // namespace board
 
 class CrowPanelDisplay : public lgfx::LGFX_Device {
@@ -124,7 +120,6 @@ static lv_color_t lvBuf2[board::screenWidth * board::drawBufferRows];
 static lv_disp_drv_t dispDrv;
 static lv_indev_drv_t touchDrv;
 
-static bool screenOn = true;
 static bool touchPresent = false;
 static uint8_t activeTouchAddr = board::touchAddr;
 static uint8_t touchChipId = 0;
@@ -281,7 +276,7 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   uint16_t x = 0;
   uint16_t y = 0;
 
-  if (screenOn && touchPresent && readTouchPoint(x, y)) {
+  if (touchPresent && readTouchPoint(x, y)) {
     lastX = x;
     lastY = y;
     data->state = LV_INDEV_STATE_PR;
@@ -292,50 +287,14 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   data->point.y = lastY;
 }
 
-void enterDeepSleep() {
-  screenOn = false;
-  lv_timer_handler();
-  delay(120);
-
-  ioSetPin(board::ioBacklight, false);
-  display.sleep();
-  ioSetPin(board::ioPanelPower, false);
-  ioSetPin(board::ioTouchPower, false);
-
-  while (digitalRead(board::button) == LOW) {
-    delay(10);
-  }
-  delay(50);
-
-  // On the ESP32-C3, latch an internal pull-up on the wake pin across deep
-  // sleep so the active-low button press reliably wakes the chip.
-  const gpio_num_t wakePin = static_cast<gpio_num_t>(board::button);
-  gpio_set_direction(wakePin, GPIO_MODE_INPUT);
-  gpio_pullup_en(wakePin);
-  gpio_pulldown_dis(wakePin);
-  gpio_hold_en(wakePin);
-  gpio_deep_sleep_hold_en();
-
-  const esp_err_t wakeErr =
-      esp_deep_sleep_enable_gpio_wakeup(1ULL << board::button, ESP_GPIO_WAKEUP_GPIO_LOW);
-  DEBUG_PORT.printf("deep sleep: arm wake err=%d\n", static_cast<int>(wakeErr));
-  delay(20);
-  esp_deep_sleep_start();
-}
-
 void handleShortPress() {
-  if (!screenOn) {
-    return;
-  }
   ui::toggleMainScreen();
 }
 
 void pollButton() {
   static bool lastRawPressed = false;
   static bool stablePressed = false;
-  static bool longPressHandled = false;
   static uint32_t lastChangeMs = 0;
-  static uint32_t pressStartMs = 0;
 
   const bool rawPressed = digitalRead(board::button) == LOW;
   const uint32_t now = millis();
@@ -346,18 +305,11 @@ void pollButton() {
   }
 
   if ((now - lastChangeMs) < board::buttonDebounceMs || rawPressed == stablePressed) {
-    if (stablePressed && !longPressHandled && (now - pressStartMs) >= board::longPressMs) {
-      longPressHandled = true;
-      enterDeepSleep();
-    }
     return;
   }
 
   stablePressed = rawPressed;
-  if (stablePressed) {
-    pressStartMs = now;
-    longPressHandled = false;
-  } else if (!longPressHandled && (now - pressStartMs) >= board::buttonDebounceMs) {
+  if (!stablePressed) {
     handleShortPress();
   }
 }
@@ -384,16 +336,6 @@ void setupLvgl() {
 void setup() {
   DEBUG_PORT.begin(115200);
   delay(100);
-
-  // Reset reason helps diagnose battery issues: ESP_RST_BROWNOUT (==9) indicates
-  // the supply sagged below the brownout threshold (typical of a weak battery
-  // under BLE/display current spikes), as opposed to a normal power-on/wake.
-  DEBUG_PORT.printf("boot: reset reason=%d\n", static_cast<int>(esp_reset_reason()));
-
-  // Release any pad-hold latched before deep sleep so the button reads normally
-  // again after a wake-from-deep-sleep reset.
-  gpio_deep_sleep_hold_dis();
-  gpio_hold_dis(static_cast<gpio_num_t>(board::button));
 
   pinMode(board::button, INPUT_PULLUP);
   Wire.begin(board::i2cSda, board::i2cScl, board::i2cFreq);
@@ -424,8 +366,6 @@ void loop() {
   pollButton();
   ui::tick();
 
-  if (screenOn) {
-    lv_timer_handler();
-  }
+  lv_timer_handler();
   delay(5);
 }
