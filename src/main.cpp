@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <esp_sleep.h>
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
@@ -65,6 +66,7 @@ constexpr uint16_t screenHeight = 240;
 // Smaller partial-render buffers leave SRAM headroom for the BLE host stack.
 constexpr uint16_t drawBufferRows = 40;
 constexpr uint32_t buttonDebounceMs = 35;
+constexpr uint32_t buttonLongPressMs = 1600;
 }  // namespace board
 
 class CrowPanelDisplay : public lgfx::LGFX_Device {
@@ -291,10 +293,66 @@ void handleShortPress() {
   ui::toggleMainScreen();
 }
 
+void configureButtonWake() {
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << board::button, ESP_GPIO_WAKEUP_GPIO_LOW);
+}
+
+[[noreturn]] void enterDeepSleep() {
+  configureButtonWake();
+  DEBUG_PORT.flush();
+  esp_deep_sleep_start();
+  while (true) {
+    delay(1000);
+  }
+}
+
+void waitForButtonRelease() {
+  while (digitalRead(board::button) == LOW) {
+    delay(10);
+  }
+  delay(board::buttonDebounceMs);
+}
+
+bool wakeButtonHeldLongEnough() {
+  const uint32_t startedMs = millis();
+  while (digitalRead(board::button) == LOW) {
+    if ((millis() - startedMs) >= board::buttonLongPressMs) {
+      return true;
+    }
+    delay(10);
+  }
+  return false;
+}
+
+void enforceLongPressWake() {
+  if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_GPIO) {
+    return;
+  }
+  if (!wakeButtonHeldLongEnough()) {
+    enterDeepSleep();
+  }
+  waitForButtonRelease();
+}
+
+[[noreturn]] void handleLongPress() {
+  DEBUG_PORT.println("Button long press: power off");
+  shark::gShark.disconnectLink();
+
+  ioSetPin(board::ioBacklight, false);
+  delay(40);
+  ioSetPin(board::ioPanelPower, false);
+  ioSetPin(board::ioTouchPower, false);
+
+  waitForButtonRelease();
+  enterDeepSleep();
+}
+
 void pollButton() {
   static bool lastRawPressed = false;
   static bool stablePressed = false;
+  static bool longPressHandled = false;
   static uint32_t lastChangeMs = 0;
+  static uint32_t pressStartedMs = 0;
 
   const bool rawPressed = digitalRead(board::button) == LOW;
   const uint32_t now = millis();
@@ -304,12 +362,22 @@ void pollButton() {
     lastChangeMs = now;
   }
 
+  if (stablePressed && !longPressHandled &&
+      (now - pressStartedMs) >= board::buttonLongPressMs) {
+    longPressHandled = true;
+    handleLongPress();
+  }
+
   if ((now - lastChangeMs) < board::buttonDebounceMs || rawPressed == stablePressed) {
     return;
   }
 
   stablePressed = rawPressed;
-  if (!stablePressed) {
+  if (stablePressed) {
+    pressStartedMs = now;
+    longPressHandled = false;
+  } else {
+    pressStartedMs = 0;
     handleShortPress();
   }
 }
@@ -338,6 +406,7 @@ void setup() {
   delay(100);
 
   pinMode(board::button, INPUT_PULLUP);
+  enforceLongPressWake();
   Wire.begin(board::i2cSda, board::i2cScl, board::i2cFreq);
   initIoExpander();
   scanI2cBus();

@@ -32,6 +32,8 @@ BLE protocol.
 - **Button (GPIO 1):**
   - Short press: switch between the Keypoints and Run screens (closes an open
     modal first).
+  - Long press: power off the remote. When off, hold the button again to wake it;
+    a short tap wakes briefly and goes back to sleep.
 
 ## Architecture
 
