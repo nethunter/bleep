@@ -126,6 +126,7 @@ static bool touchPresent = false;
 static uint8_t activeTouchAddr = board::touchAddr;
 static uint8_t touchChipId = 0;
 static uint8_t ioOutputState = 0;
+static bool ignoreWakeButtonUntilRelease = false;
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -331,7 +332,7 @@ void enforceLongPressWake() {
   if (!wakeButtonHeldLongEnough()) {
     enterDeepSleep();
   }
-  waitForButtonRelease();
+  ignoreWakeButtonUntilRelease = true;
 }
 
 [[noreturn]] void handleLongPress() {
@@ -356,6 +357,18 @@ void pollButton() {
 
   const bool rawPressed = digitalRead(board::button) == LOW;
   const uint32_t now = millis();
+
+  if (ignoreWakeButtonUntilRelease) {
+    lastRawPressed = rawPressed;
+    stablePressed = false;
+    longPressHandled = false;
+    pressStartedMs = 0;
+    lastChangeMs = now;
+    if (!rawPressed) {
+      ignoreWakeButtonUntilRelease = false;
+    }
+    return;
+  }
 
   if (rawPressed != lastRawPressed) {
     lastRawPressed = rawPressed;
@@ -422,6 +435,8 @@ void setup() {
   setupLvgl();
 
   ui::init();
+  // Paint the splash before BLE direct reconnect can block for a few seconds.
+  lv_timer_handler();
   shark::gShark.begin();
 }
 

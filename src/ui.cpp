@@ -35,8 +35,10 @@ lv_obj_t* scrConnect = nullptr;
 lv_obj_t* scrKeys = nullptr;
 lv_obj_t* scrRun = nullptr;
 
-// Connect screen widgets.
+// Splash / connect screen widgets.
 lv_obj_t* connTitle = nullptr;
+lv_obj_t* connArc = nullptr;
+lv_obj_t* connMark = nullptr;
 lv_obj_t* connStatus = nullptr;
 lv_obj_t* connDevice = nullptr;
 
@@ -271,13 +273,32 @@ void buildConnectScreen() {
   connTitle = lv_label_create(scrConnect);
   lv_label_set_text(connTitle, "Shark Remote");
   lv_obj_set_style_text_font(connTitle, UI_FONT_20, 0);
-  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 0, 48);
+  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 0, 42);
+
+  connArc = lv_arc_create(scrConnect);
+  lv_obj_set_size(connArc, 74, 74);
+  lv_obj_align(connArc, LV_ALIGN_CENTER, 0, -16);
+  lv_arc_set_range(connArc, 0, 100);
+  lv_arc_set_bg_angles(connArc, 0, 360);
+  lv_arc_set_value(connArc, 72);
+  lv_obj_clear_flag(connArc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_color(connArc, lv_color_hex(kColAccentDim), LV_PART_MAIN);
+  lv_obj_set_style_arc_width(connArc, 7, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(connArc, lv_color_hex(kColAccent), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(connArc, 7, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(connArc, LV_OPA_TRANSP, LV_PART_KNOB);
+
+  connMark = lv_label_create(scrConnect);
+  lv_label_set_text(connMark, "BLE");
+  lv_obj_set_style_text_font(connMark, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(connMark, lv_color_hex(kColText), 0);
+  lv_obj_align_to(connMark, connArc, LV_ALIGN_CENTER, 0, 0);
 
   connStatus = lv_label_create(scrConnect);
-  lv_label_set_text(connStatus, "Scanning...");
+  lv_label_set_text(connStatus, "Starting Bluetooth...");
   lv_obj_set_style_text_font(connStatus, UI_FONT_16, 0);
   lv_obj_set_style_text_color(connStatus, lv_color_hex(kColAccent), 0);
-  lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, -6);
+  lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, 40);
 
   connDevice = lv_label_create(scrConnect);
   lv_label_set_long_mode(connDevice, LV_LABEL_LONG_WRAP);
@@ -285,11 +306,11 @@ void buildConnectScreen() {
   lv_obj_set_style_text_align(connDevice, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(connDevice, lv_color_hex(kColMuted), 0);
   lv_label_set_text(connDevice, "iFootage Shark Nano II");
-  lv_obj_align(connDevice, LV_ALIGN_CENTER, 0, 24);
+  lv_obj_align(connDevice, LV_ALIGN_CENTER, 0, 66);
 
   lv_obj_t* repair = makeButton(scrConnect, "Re-pair", onRepair, nullptr, kColPanel);
   lv_obj_set_size(repair, 120, 36);
-  lv_obj_align(repair, LV_ALIGN_BOTTOM_MID, 0, -34);
+  lv_obj_align(repair, LV_ALIGN_BOTTOM_MID, 0, -18);
 }
 
 void buildKeysScreen() {
@@ -589,22 +610,30 @@ void formatHeader(char* out, size_t cap, const shark::SharkClient::State& s, con
 }
 
 void refreshConnect(const shark::SharkClient::State& s) {
-  const char* status = "Scanning...";
+  const char* status = "Scanning";
   switch (s.link) {
     case Link::Scanning:
-      status = s.hasSavedDevice ? "Looking for slider..." : "Scanning...";
+      status = s.hasSavedDevice ? "Looking for slider" : "Scanning";
       break;
     case Link::Connecting:
-      status = s.hasSavedDevice ? "Reconnecting..." : "Connecting...";
+      status = s.hasSavedDevice ? "Reconnecting" : "Connecting";
       break;
     case Link::Disconnected:
-      status = s.hasSavedDevice ? "Reconnecting..." : "Scanning...";
+      status = s.hasSavedDevice ? "Reconnecting" : "Scanning";
       break;
     case Link::Connected:
       status = "Connected";
       break;
   }
-  lv_label_set_text(connStatus, status);
+
+  char statusText[32];
+  if (s.link == Link::Connected) {
+    snprintf(statusText, sizeof(statusText), "%s", status);
+  } else {
+    const int dots = static_cast<int>((millis() / 450) % 4);
+    snprintf(statusText, sizeof(statusText), "%s%.*s", status, dots, "...");
+  }
+  lv_label_set_text(connStatus, statusText);
   lv_label_set_text(connDevice,
                     (s.hasSavedDevice && s.deviceName[0] != '\0') ? s.deviceName
                                                                   : "iFootage Shark Nano II");
