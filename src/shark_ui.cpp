@@ -717,16 +717,16 @@ void buildRunScreen() {
   // state machine (stopped -> Standby -> Start -> Stop); only one shows at a
   // time so it stays big and unambiguous.
   runActionBtn = makeButton(scrRun, "Standby", onRunAction, nullptr, kColPanel, UI_FONT_20);
-  lv_obj_set_size(runActionBtn, 132, 60);
-  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, -6);
+  lv_obj_set_size(runActionBtn, 132, 56);
+  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, 12);
   lv_obj_set_style_radius(runActionBtn, 12, 0);
   runActionLabel = lv_obj_get_child(runActionBtn, 0);
 
-  // Loop / reverse toggles: icon-only checkable buttons in one bottom row.
+  // Loop / reverse toggles: keep the pair centered and above the round bezel.
   loopBtn = lv_btn_create(scrRun);
   lv_obj_add_flag(loopBtn, LV_OBJ_FLAG_CHECKABLE);
-  lv_obj_set_size(loopBtn, 46, 34);
-  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -28, -14);
+  lv_obj_set_size(loopBtn, 42, 32);
+  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -24, -30);
   lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
   lv_obj_set_style_radius(loopBtn, 8, 0);
@@ -739,8 +739,8 @@ void buildRunScreen() {
 
   dirBtn = lv_btn_create(scrRun);
   lv_obj_add_flag(dirBtn, LV_OBJ_FLAG_CHECKABLE);
-  lv_obj_set_size(dirBtn, 46, 34);
-  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 28, -14);
+  lv_obj_set_size(dirBtn, 42, 32);
+  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 24, -30);
   lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
   lv_obj_set_style_radius(dirBtn, 8, 0);

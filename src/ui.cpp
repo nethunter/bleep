@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "assets/ui_icons.h"
 #include "core/device_manager.h"
 #include "fonts/ui_fonts.h"
 #include "shark_ui.h"
@@ -67,6 +68,39 @@ lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t callback,
     lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
   }
   return button;
+}
+
+lv_obj_t* makeModeTile(lv_obj_t* parent, const lv_img_dsc_t* icon, const char* caption,
+                       bool enabled, lv_event_cb_t callback) {
+  lv_obj_t* tile = lv_obj_create(parent);
+  lv_obj_set_size(tile, 74, 74);
+  lv_obj_set_style_bg_color(tile, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_radius(tile, 16, 0);
+  lv_obj_set_style_border_width(tile, 0, 0);
+  lv_obj_set_style_pad_all(tile, 0, 0);
+  lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+  if (enabled) {
+    lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+  } else {
+    lv_obj_clear_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(tile, LV_OPA_70, 0);
+  }
+  if (callback != nullptr) {
+    lv_obj_add_event_cb(tile, callback, LV_EVENT_CLICKED, nullptr);
+  }
+
+  lv_obj_t* image = lv_img_create(tile);
+  lv_img_set_src(image, icon);
+  // Keep Nano Banana Pro colors; dim unavailable modes instead of recoloring.
+  lv_obj_set_style_img_opa(image, enabled ? LV_OPA_COVER : LV_OPA_50, 0);
+  lv_obj_align(image, LV_ALIGN_TOP_MID, 0, 4);
+
+  lv_obj_t* label = lv_label_create(tile);
+  lv_label_set_text(label, caption);
+  lv_obj_set_style_text_font(label, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(enabled ? kColText : kColMuted), 0);
+  lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -5);
+  return tile;
 }
 
 studio::InstanceId eventInstance(lv_event_t* event) {
@@ -149,7 +183,7 @@ void refreshDevices() {
     void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(record->instanceId));
 
     lv_obj_t* row = lv_obj_create(deviceList);
-    lv_obj_set_size(row, lv_pct(100), 48);
+    lv_obj_set_size(row, lv_pct(100), 52);
     lv_obj_set_style_bg_color(row, lv_color_hex(kColPanel), 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_radius(row, 7, 0);
@@ -157,10 +191,11 @@ void refreshDevices() {
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* open = lv_btn_create(row);
-    lv_obj_set_size(open, 142, 40);
+    lv_obj_set_size(open, 142, 44);
     lv_obj_align(open, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_style_bg_opa(open, LV_OPA_TRANSP, 0);
     lv_obj_set_style_shadow_width(open, 0, 0);
+    lv_obj_set_style_pad_all(open, 0, 0);
     lv_obj_add_event_cb(open, onOpenDevice, LV_EVENT_CLICKED, userData);
 
     lv_obj_t* name = lv_label_create(open);
@@ -170,7 +205,7 @@ void refreshDevices() {
     lv_obj_set_style_text_font(name, UI_FONT_14, 0);
     lv_obj_set_style_text_color(
         name, lv_color_hex(record->enabled ? kColText : kColMuted), 0);
-    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 0, 1);
+    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 4, 4);
 
     lv_obj_t* detail = lv_label_create(open);
     const studio::DeviceRuntimeState runtime =
@@ -178,7 +213,7 @@ void refreshDevices() {
     lv_label_set_text(detail, record->enabled ? linkText(runtime.link) : "disabled");
     lv_obj_set_style_text_font(detail, UI_FONT_14, 0);
     lv_obj_set_style_text_color(detail, lv_color_hex(kColMuted), 0);
-    lv_obj_align(detail, LV_ALIGN_BOTTOM_LEFT, 0, -1);
+    lv_obj_align(detail, LV_ALIGN_TOP_LEFT, 4, 24);
 
     lv_obj_t* manage = makeButton(row, LV_SYMBOL_SETTINGS, nullptr);
     lv_obj_set_size(manage, 34, 34);
@@ -262,27 +297,32 @@ void buildHome() {
   styleScreen(scrHome);
 
   lv_obj_t* title = lv_label_create(scrHome);
-  lv_label_set_text(title, "Studio Remote");
+  lv_label_set_text(title, "Studio");
   lv_obj_set_style_text_font(title, UI_FONT_20, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 
-  lv_obj_t* devicesButton = makeButton(scrHome, "Devices", onShowDevices, kColAccent);
-  lv_obj_set_size(devicesButton, 170, 42);
-  lv_obj_align(devicesButton, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_t* grid = lv_obj_create(scrHome);
+  lv_obj_set_size(grid, 164, 158);
+  lv_obj_align(grid, LV_ALIGN_TOP_MID, 0, 50);
+  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(grid, 0, 0);
+  lv_obj_set_style_pad_all(grid, 0, 0);
+  lv_obj_set_style_pad_row(grid, 8, 0);
+  lv_obj_set_style_pad_column(grid, 8, 0);
+  lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
 
-  const char* pending[] = {"Groups  ·  Soon", "Scenes  ·  Soon", "Portal  ·  Soon"};
-  for (int i = 0; i < 3; ++i) {
-    lv_obj_t* label = lv_label_create(scrHome);
-    lv_label_set_text(label, pending[i]);
-    lv_obj_set_style_text_font(label, UI_FONT_14, 0);
-    lv_obj_set_style_text_color(label, lv_color_hex(kColMuted), 0);
-    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 120 + i * 24);
-  }
+  makeModeTile(grid, &ui_icon_devices, "Devices", true, onShowDevices);
+  makeModeTile(grid, &ui_icon_groups, "Groups", false, nullptr);
+  makeModeTile(grid, &ui_icon_scenes, "Scenes", false, nullptr);
+  makeModeTile(grid, &ui_icon_portal, "Portal", false, nullptr);
 
   homeStatus = lv_label_create(scrHome);
   lv_obj_set_style_text_font(homeStatus, UI_FONT_14, 0);
   lv_obj_set_style_text_color(homeStatus, lv_color_hex(kColMuted), 0);
-  lv_obj_align(homeStatus, LV_ALIGN_BOTTOM_MID, 0, -18);
+  lv_obj_align(homeStatus, LV_ALIGN_BOTTOM_MID, 0, -16);
 }
 
 void buildDevices() {
@@ -322,6 +362,7 @@ void buildDeviceModal() {
   lv_obj_set_style_bg_color(deviceModal, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_color(deviceModal, lv_color_hex(kColAccent), 0);
   lv_obj_set_style_text_color(deviceModal, lv_color_hex(kColText), 0);
+  lv_obj_set_style_pad_all(deviceModal, 0, 0);
   lv_obj_clear_flag(deviceModal, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
 
@@ -330,31 +371,32 @@ void buildDeviceModal() {
   lv_label_set_long_mode(deviceModalTitle, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(deviceModalTitle, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(deviceModalTitle, UI_FONT_16, 0);
-  lv_obj_align(deviceModalTitle, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_align(deviceModalTitle, LV_ALIGN_TOP_MID, 0, 22);
 
   lv_obj_t* rename = makeButton(deviceModal, "Rename", onOpenRename);
-  lv_obj_set_size(rename, 130, 34);
-  lv_obj_align(rename, LV_ALIGN_TOP_MID, 0, 54);
+  lv_obj_set_size(rename, 124, 32);
+  lv_obj_align(rename, LV_ALIGN_TOP_MID, 0, 50);
 
   lv_obj_t* enabledLabel = lv_label_create(deviceModal);
   lv_label_set_text(enabledLabel, "Enabled");
   lv_obj_set_style_text_font(enabledLabel, UI_FONT_14, 0);
-  lv_obj_align(enabledLabel, LV_ALIGN_LEFT_MID, 34, -2);
+  lv_obj_align(enabledLabel, LV_ALIGN_TOP_LEFT, 42, 96);
   enabledSwitch = lv_switch_create(deviceModal);
   lv_obj_set_size(enabledSwitch, 44, 24);
-  lv_obj_align(enabledSwitch, LV_ALIGN_RIGHT_MID, -34, -2);
+  lv_obj_align(enabledSwitch, LV_ALIGN_TOP_RIGHT, -42, 96);
   lv_obj_add_event_cb(enabledSwitch, onEnabledChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t* repair = makeButton(deviceModal, "Forget pairing", onRepair);
-  lv_obj_set_size(repair, 130, 32);
-  lv_obj_align(repair, LV_ALIGN_CENTER, 0, 42);
+  lv_obj_set_size(repair, 124, 30);
+  lv_obj_align(repair, LV_ALIGN_TOP_MID, 0, 132);
 
   removeButton = makeButton(deviceModal, "Remove", onRemove, kColDanger);
-  lv_obj_set_size(removeButton, 82, 32);
-  lv_obj_align(removeButton, LV_ALIGN_BOTTOM_LEFT, 24, -16);
+  lv_obj_set_size(removeButton, 66, 30);
+  // Tighter pair, raised so outer corners clear the round bezel.
+  lv_obj_align(removeButton, LV_ALIGN_BOTTOM_MID, -37, -42);
   lv_obj_t* close = makeButton(deviceModal, "Close", onCloseModal, kColAccent);
-  lv_obj_set_size(close, 82, 32);
-  lv_obj_align(close, LV_ALIGN_BOTTOM_RIGHT, -24, -16);
+  lv_obj_set_size(close, 66, 30);
+  lv_obj_align(close, LV_ALIGN_BOTTOM_MID, 37, -42);
 }
 
 void buildRenameOverlay() {
@@ -364,25 +406,29 @@ void buildRenameOverlay() {
   lv_obj_set_style_radius(renameOverlay, 118, 0);
   lv_obj_set_style_bg_color(renameOverlay, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_color(renameOverlay, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_pad_all(renameOverlay, 0, 0);
   lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
 
   renameText = lv_textarea_create(renameOverlay);
-  lv_obj_set_size(renameText, 176, 38);
-  lv_obj_align(renameText, LV_ALIGN_TOP_MID, 0, 14);
+  lv_obj_set_size(renameText, 156, 32);
+  lv_obj_align(renameText, LV_ALIGN_TOP_MID, 0, 22);
   lv_textarea_set_max_length(renameText, studio::kDeviceNameCapacity - 1);
   lv_textarea_set_one_line(renameText, true);
 
   lv_obj_t* save = makeButton(renameOverlay, "Save", onSaveRename, kColAccent);
-  lv_obj_set_size(save, 72, 30);
-  lv_obj_align(save, LV_ALIGN_TOP_LEFT, 36, 57);
+  lv_obj_set_size(save, 64, 26);
+  lv_obj_align(save, LV_ALIGN_TOP_MID, -36, 60);
   lv_obj_t* cancel = makeButton(renameOverlay, "Cancel", onCancelRename);
-  lv_obj_set_size(cancel, 72, 30);
-  lv_obj_align(cancel, LV_ALIGN_TOP_RIGHT, -36, 57);
+  lv_obj_set_size(cancel, 64, 26);
+  lv_obj_align(cancel, LV_ALIGN_TOP_MID, 36, 60);
 
+  // Sized for the inscribed circle: wide keyboards clip corner keys on a round panel.
   renameKeyboard = lv_keyboard_create(renameOverlay);
-  lv_obj_set_size(renameKeyboard, 220, 130);
-  lv_obj_align(renameKeyboard, LV_ALIGN_BOTTOM_MID, 0, -2);
+  lv_obj_set_size(renameKeyboard, 152, 104);
+  lv_obj_align(renameKeyboard, LV_ALIGN_BOTTOM_MID, 0, -28);
+  lv_obj_set_style_pad_all(renameKeyboard, 3, 0);
+  lv_obj_set_style_pad_gap(renameKeyboard, 2, 0);
 }
 
 }  // namespace

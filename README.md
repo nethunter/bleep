@@ -7,8 +7,10 @@ the reverse-engineered Shark Nano BLE protocol.
 
 ## What it does
 
-- **Home + persistent devices.** Boot opens a neutral Home screen without
-  initializing Bluetooth. Devices are stored in a versioned registry and can be
+- **Home + persistent devices.** Boot opens a neutral icon Home (Devices,
+  Groups, Scenes, Portal) without initializing Bluetooth. Only Devices is
+  active today; the others are reserved. Devices are stored in a versioned
+  registry and can be
   added, renamed, enabled, disabled, re-paired, and removed. The current build
   permits one Shark instance.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts

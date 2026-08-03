@@ -185,3 +185,21 @@ Record values with the exact build environment and commit/worktree state.
 - Simulator uses `LV_COLOR_16_SWAP=0` and a 128 KiB LVGL heap (firmware keeps
   48 KiB). Build and capture succeeded locally.
 
+### 2026-08-03: Icon Home screen
+
+- Generated Devices/Groups/Scenes/Portal glyphs with Gemini 2.5 Flash Image
+  (Nano Banana) via Vertex AI after the AI Studio key used by the nano-banana
+  MCP was blocked (`API_KEY_SERVICE_BLOCKED`).
+- Embedded 48x48 `ALPHA_8BIT` icons (`tools/gen_icons.py`) and rebuilt Home as
+  a 2x2 mode tile grid; Devices is active, other modes are disabled placeholders.
+- Enabled `LV_USE_IMG`. Sim capture and `crowpanel_128` flash used for verify.
+
+### 2026-08-03: Colorful Nano Banana Pro Home icons
+
+- Regenerated fun colorful mode icons with `gemini-3-pro-image-preview`
+  (Nano Banana Pro). The nano-banana MCP still calls retired
+  `gemini-2.5-flash-image-preview`, so generation used the Gemini API directly.
+- Switched embeds to `LV_IMG_CF_TRUE_COLOR_ALPHA` with swap0/swap1 branches so
+  colors survive on both `ui_sim` and the panel. Disabled modes dim via opacity.
+- Sim capture + `crowpanel_128` flash succeeded.
+
