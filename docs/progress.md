@@ -213,8 +213,10 @@ Record values with the exact build environment and commit/worktree state.
 - Amaran Pano 120c: Not tested.
 - Amaran Ace 25c: Not tested.
 - Canon EOS R6: Not tested.
-- Canon EOS R6 Mark II: Not tested.
-- Canon EOS R6 Mark III: Not tested.
+- Canon EOS R6 Mark II: Pairing, movie record trigger, and bonded reconnect
+  passed; extended stability checks remain open.
+- Canon EOS R6 Mark III: Pairing, movie record trigger, and bonded reconnect
+  passed; extended stability checks remain open.
 - Tascam Portacapture X8 Bluetooth: Future research.
 - Deity PR4: Future research.
 
@@ -407,4 +409,24 @@ Record values with the exact build environment and commit/worktree state.
   Roboto, Canon-only, and default firmware builds passed; the default profile
   flashed successfully.
 - Physical touch selection remains operator-pending.
+
+### 2026-08-03: Canon EOS R6 Mark II verification
+
+- Operator verified pairing, the BR-E1 movie record trigger, and bonded
+  reconnect on the EOS R6 Mark II with the existing Canon Trigger driver.
+- No model-specific protocol or firmware change was required.
+- EOS R6 remains unverified; extended cycle, forget/re-pair, latency, heap, and
+  coexistence checks remain open for the verified models.
+- Documentation only; no build or flash was required.
+
+### 2026-08-03: Canon device-name title
+
+- Replaced the Canon control screen's hardcoded brand title with the runtime
+  device instance name; long names remain bounded to one line.
+- Simulator capture verified `EOS R6 Mark III` fits the round-screen header
+  without overlapping connection status.
+- Native tests passed 15/15; `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, and `canon_ble` built successfully.
+- Default firmware used 862,760 bytes flash and 167,196 bytes static RAM; the
+  default profile flashed successfully to `/dev/cu.usbserial-211240`.
 

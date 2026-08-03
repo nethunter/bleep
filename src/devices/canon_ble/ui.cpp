@@ -21,6 +21,7 @@ constexpr uint32_t kText = 0xF3F4F6;
 constexpr uint32_t kMuted = 0x8A94A6;
 
 lv_obj_t* screen = nullptr;
+lv_obj_t* titleLabel = nullptr;
 lv_obj_t* statusLabel = nullptr;
 lv_obj_t* triggerRing = nullptr;
 lv_obj_t* triggerButton = nullptr;
@@ -108,10 +109,13 @@ void init() {
   lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
   lv_obj_center(backLabel);
 
-  lv_obj_t* title = lv_label_create(screen);
-  lv_label_set_text(title, "CANON");
-  lv_obj_set_style_text_font(title, UI_FONT_20, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 15, 27);
+  titleLabel = lv_label_create(screen);
+  lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(titleLabel, 132);
+  lv_obj_set_height(titleLabel, 20);
+  lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
+  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 15, 29);
 
   statusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(statusLabel, UI_FONT_14, 0);
@@ -152,6 +156,8 @@ void init() {
 
 void show(studio::InstanceId id) {
   instanceId = id;
+  const studio::DeviceRecord* record = studio::devices().find(id);
+  lv_label_set_text(titleLabel, record != nullptr ? record->displayName : "");
   visible = studio::devices().activate(id);
   lastRefreshMs = 0;
   refresh();

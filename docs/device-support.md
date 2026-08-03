@@ -49,8 +49,8 @@ Reference research:
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
 
-- `Canon (Trigger)` status: EOS R6 Mark III implemented and under extended
-  hardware verification; other models `Planned`.
+- `Canon (Trigger)` status: EOS R6 Mark II and Mark III implemented and under
+  extended hardware verification; EOS R6 remains `Planned`.
 - `Canon (Trigger)` transport: BR-E1-compatible BLE with a stateless movie
   record trigger.
 - `Canon (Smart)` status: `Blocked` pending an EOS R6 Mark III Camera Connect
@@ -65,13 +65,15 @@ CCAPI can confirm recording state. BR-E1-style Bluetooth uses the same trigger
 for start and stop and does not provide equivalent state readback, so the panel
 leaves Bluetooth-only recording state unknown rather than inferring it.
 
-The first bounded hardware tranche targets the EOS R6 Mark III. Public
+The first bounded hardware tranche targeted the EOS R6 Mark III. Public
 reverse-engineering supplied the pairing UUIDs and candidate command bytes.
-EOS R6 and R6 Mark II support is not claimed by this tranche.
+The same implementation has since passed pairing, movie record triggering, and
+bonded reconnect on the EOS R6 Mark II. EOS R6 support is not yet claimed.
 
-EOS R6 Mark III pairing, bonded reconnect, and the BR-E1 movie-mode
-`0x88`/`0x08` press/release trigger have been functionally verified. Extended
-cycle, forget/re-pair, latency, heap, and coexistence checks remain open.
+EOS R6 Mark II and Mark III pairing, bonded reconnect, and the BR-E1
+movie-mode `0x88`/`0x08` press/release trigger have been functionally verified.
+Extended cycle, forget/re-pair, latency, heap, and coexistence checks remain
+open.
 
 ### Camera Connect handoff capture
 

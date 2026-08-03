@@ -25,10 +25,12 @@ BR-E1 BLE** driver.
   active; Back releases the connection and returns to Devices.
 - **Canon BR-E1 record trigger (research).** Opening a Canon device scans for
   the BR-E1-compatible service, bonds as a remote, remembers the camera, and
-  exposes one movie record trigger. The camera must be in movie mode with
-  remote control enabled. BLE cannot distinguish start from stop or read
-  recording state, so the panel deliberately shows neither. The protocol is
-  not claimed verified until the EOS R6 Mark III hardware checklist passes.
+  exposes one movie record trigger. The control screen uses the configured
+  device name as its title. The camera must be in movie mode with remote
+  control enabled. BLE cannot distinguish start from stop or read recording
+  state, so the panel deliberately shows neither. Pairing, bonded reconnect,
+  and the movie trigger are verified on the EOS R6 Mark II and Mark III;
+  extended stability checks remain open.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:
