@@ -6,6 +6,7 @@
 
 #include "Arduino.h"
 #include "core/device_manager.h"
+#include "devices/canon_ble/ui.h"
 #include "devices/shark_nano_ii/ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
@@ -76,7 +77,6 @@ void pump(uint32_t ms) {
   simAdvanceMillis(ms);
   lv_tick_inc(ms);
   ui::tick();
-  shark_ui::tick();
   studio::devices().loop();
   lv_timer_handler();
 }
@@ -125,6 +125,9 @@ int main() {
       studio::devices().rename(record->instanceId, "Slider A");
     }
   }
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonBle, "EOS R6 Mark III",
+                        canonId);
 
   ui::init();
 
@@ -195,6 +198,18 @@ int main() {
   shark_ui::simShowPositionChoice(1);
   shark_ui::simShowJoystickPositioning();
   if (!capture("11_shark_position_joystick")) {
+    return 1;
+  }
+
+  if (canonId == studio::kInvalidInstanceId) {
+    std::fprintf(stderr, "No Canon instance for screenshots\n");
+    return 1;
+  }
+  shark_ui::hide();
+  canon_ble_ui::show(canonId);
+  studio::simSetCanonConnectedState();
+  pump(250);
+  if (!capture("12_canon_record_trigger")) {
     return 1;
   }
 

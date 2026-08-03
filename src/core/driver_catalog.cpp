@@ -6,8 +6,8 @@ namespace studio {
 
 namespace {
 
-#if CONFIG_DRIVER_SHARK_NANO_II
 constexpr DriverDescriptor kDrivers[] = {
+#if CONFIG_DRIVER_SHARK_NANO_II
     {
         DriverId::SharkNanoII,
         "ifootage.shark_nano_ii",
@@ -22,12 +22,21 @@ constexpr DriverDescriptor kDrivers[] = {
             capabilityBit(Capability::Direction),
         1,
     },
-};
-constexpr size_t kDriverCount = sizeof(kDrivers) / sizeof(kDrivers[0]);
-#else
-constexpr DriverDescriptor kDrivers[1] = {};
-constexpr size_t kDriverCount = 0;
 #endif
+#if CONFIG_DRIVER_CANON_BLE
+    {
+        DriverId::CanonBle,
+        "canon.eos_r6.ble",
+        "Canon",
+        "EOS R6 Camera",
+        DeviceType::Camera,
+        capabilityBit(Capability::Link) | capabilityBit(Capability::RecordTrigger),
+        3,
+    },
+#endif
+    {},
+};
+constexpr size_t kDriverCount = (sizeof(kDrivers) / sizeof(kDrivers[0])) - 1;
 
 }  // namespace
 

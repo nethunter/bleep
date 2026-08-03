@@ -49,17 +49,29 @@ Reference research:
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
 
-- Status: `Planned`.
-- Bluetooth transport: emulate Canon BR-E1 behavior for record start/stop.
+- Status: EOS R6 Mark III Bluetooth `Research`; other transports/models
+  `Planned`.
+- Bluetooth transport: emulate Canon BR-E1 behavior for a stateless movie
+  record trigger.
 - HTTP transport: Canon Camera Control API (CCAPI) over the studio Wi-Fi.
 - Runtime transport choices:
   - Bluetooth;
   - HTTP;
   - HTTP with Bluetooth fallback.
-- Initial capabilities: record start, record stop, and recording state.
+- Initial BLE capability: record trigger.
+- Planned CCAPI capabilities: record start, record stop, and recording state.
 
-CCAPI can confirm recording state. BR-E1-style Bluetooth does not provide
-equivalent state readback, so Bluetooth-only state remains optimistic.
+CCAPI can confirm recording state. BR-E1-style Bluetooth uses the same trigger
+for start and stop and does not provide equivalent state readback, so the panel
+leaves Bluetooth-only recording state unknown rather than inferring it.
+
+The first bounded hardware tranche targets the EOS R6 Mark III. Public
+reverse-engineering supplied the pairing UUIDs and candidate command bytes.
+EOS R6 and R6 Mark II support is not claimed by this tranche.
+
+EOS R6 Mark III pairing, bonded reconnect, and the BR-E1 movie-mode
+`0x88`/`0x08` press/release trigger have been functionally verified. Extended
+cycle, forget/re-pair, latency, heap, and coexistence checks remain open.
 
 Reference research:
 

@@ -13,6 +13,12 @@ lifecycle. It does not complete Phase 2, Phase 3, or Phase 7: Kconfig validation
 the GATT facade, groups, Portal mode, scenes, generic device modules, and the
 physical Shark regression gate remain outstanding.
 
+ADR-014 additionally authorizes a bounded Canon BR-E1 BLE sub-spike against the
+EOS R6 Mark III. It adds on-demand pairing and a stateless movie record trigger
+to the existing one-active-instance framework. It does not claim recording
+state, concurrent Shark/Canon links, CCAPI support, or completion of Phase 1 or
+Phase 5.
+
 ## Phase 0: Preserve and baseline the Shark remote
 
 Work:
@@ -136,11 +142,11 @@ Initial models:
 
 Work:
 
-- implement BR-E1-compatible Bluetooth pairing and record start/stop;
+- implement BR-E1-compatible Bluetooth pairing and an honest record trigger;
 - implement bounded, non-blocking CCAPI discovery/configuration, record
   start/stop, state polling, and reconnect;
 - allow per-camera BLE, HTTP, or HTTP-with-BLE-fallback selection;
-- report BLE-only recording state as optimistic and CCAPI state as confirmed.
+- leave BLE-only recording state unknown and report CCAPI state as confirmed.
 
 Completion gate:
 

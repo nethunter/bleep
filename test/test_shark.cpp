@@ -7,6 +7,8 @@
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
+#include "devices/canon_ble/protocol.h"
+#include "devices/canon_ble/state.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "devices/shark_nano_ii/state.h"
 
@@ -75,7 +77,10 @@ class LegacyBackend : public studio::ILegacySharkBackend {
 
 class FakeDriver : public studio::DeviceDriver {
  public:
-  studio::DriverId driverId() const override { return studio::DriverId::SharkNanoII; }
+  explicit FakeDriver(
+      studio::DriverId id = studio::DriverId::SharkNanoII)
+      : id_(id) {}
+  studio::DriverId driverId() const override { return id_; }
   void activate(const studio::DeviceRecord& record) override {
     active = true;
     activeInstance = record.instanceId;
@@ -98,6 +103,9 @@ class FakeDriver : public studio::DeviceDriver {
     return state;
   }
   const void* specializedState() const override { return nullptr; }
+  void forgetPairing(const studio::DeviceRecord&) override {
+    ++forgetPairingCount;
+  }
   bool consumePairingUpdate(studio::DeviceRecord&) override { return false; }
 
   bool active = false;
@@ -106,7 +114,11 @@ class FakeDriver : public studio::DeviceDriver {
   int deactivationCount = 0;
   int loopCount = 0;
   int dispatchCount = 0;
+  int forgetPairingCount = 0;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
+
+ private:
+  studio::DriverId id_;
 };
 
 void test_crc_and_known_frame_fixture() {
@@ -262,13 +274,44 @@ void test_reset_preserves_link_identity_and_preferences() {
   TEST_ASSERT_FALSE(state.present[0]);
 }
 
-void test_driver_catalog_exposes_only_shark() {
-  TEST_ASSERT_EQUAL_UINT32(1, studio::DriverCatalog::count());
+void test_canon_pairing_and_record_trigger_protocol() {
+  const canon_ble::PairingName identity =
+      canon_ble::buildPairingName("StudioRemote");
+  TEST_ASSERT_EQUAL_UINT32(13, identity.len);
+  TEST_ASSERT_EQUAL_HEX8(0x03, identity.bytes[0]);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY("StudioRemote", &identity.bytes[1], 12);
+  TEST_ASSERT_EQUAL_HEX8(0x88, canon_ble::kRecordTriggerPress);
+  TEST_ASSERT_EQUAL_HEX8(0x08, canon_ble::kRecordTriggerRelease);
+  TEST_ASSERT_EQUAL_UINT32(200, canon_ble::kTriggerHoldMs);
+}
+
+void test_canon_state_never_infers_recording() {
+  canon_ble::CanonBleState state;
+  canon_ble::markTriggerQueued(state);
+  TEST_ASSERT_TRUE(state.triggerPending);
+  canon_ble::markTriggerComplete(state, true);
+  TEST_ASSERT_FALSE(state.triggerPending);
+  TEST_ASSERT_TRUE(state.lastTriggerSucceeded);
+  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
+  canon_ble::resetTransientState(state);
+  TEST_ASSERT_FALSE(state.lastTriggerSucceeded);
+  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
+}
+
+void test_driver_catalog_exposes_shark_and_canon() {
+  TEST_ASSERT_EQUAL_UINT32(2, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
   TEST_ASSERT_EQUAL_STRING("ifootage.shark_nano_ii", descriptor->stableId);
   TEST_ASSERT_EQUAL_UINT8(1, descriptor->maxInstances);
+  const studio::DriverDescriptor* canon =
+      studio::DriverCatalog::find(studio::DriverId::CanonBle);
+  TEST_ASSERT_NOT_NULL(canon);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Camera),
+                        static_cast<int>(canon->type));
+  TEST_ASSERT_BITS_HIGH(studio::capabilityBit(studio::Capability::RecordTrigger),
+                        canon->capabilities);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -336,7 +379,8 @@ void test_manager_migrates_legacy_without_boot_activation() {
   legacy.value.addressType = 1;
   std::strcpy(legacy.value.advertisedName, "Nano Legacy");
   FakeDriver driver;
-  studio::DeviceManager manager(backend, legacy, driver);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
 
   TEST_ASSERT_TRUE(manager.begin());
   TEST_ASSERT_EQUAL_UINT32(1, manager.count());
@@ -351,7 +395,8 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
   MemoryBackend backend;
   LegacyBackend legacy;
   FakeDriver driver;
-  studio::DeviceManager manager(backend, legacy, driver);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   const studio::InstanceId instanceId = manager.at(0)->instanceId;
   TEST_ASSERT_TRUE(manager.activate(instanceId));
@@ -382,11 +427,49 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
                         static_cast<int>(result.status));
 }
 
+void test_manager_routes_to_canon_driver() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver sharkDriver;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(manager.begin());
+
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::CanonBle, "R6 Mark III", canonId)));
+  TEST_ASSERT_TRUE(manager.activate(canonId));
+  TEST_ASSERT_EQUAL_INT(0, sharkDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, canonDriver.activationCount);
+
+  studio::DeviceCommand command;
+  command.instanceId = canonId;
+  command.type = studio::CommandType::RecordTrigger;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  studio::CommandResult result;
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
+                        static_cast<int>(result.status));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordTrigger),
+      static_cast<int>(canonDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.clearPairing(canonId)));
+  TEST_ASSERT_EQUAL_INT(1, canonDriver.forgetPairingCount);
+  TEST_ASSERT_EQUAL_INT(0, sharkDriver.forgetPairingCount);
+}
+
 void test_removed_registry_stays_empty_after_restart() {
   MemoryBackend backend;
   LegacyBackend legacy;
   FakeDriver firstDriver;
-  studio::DeviceManager first(backend, legacy, firstDriver);
+  studio::DeviceDriver* firstDrivers[] = {&firstDriver};
+  studio::DeviceManager first(backend, legacy, firstDrivers, 1);
   TEST_ASSERT_TRUE(first.begin());
   TEST_ASSERT_EQUAL_UINT32(1, first.count());
   TEST_ASSERT_EQUAL_INT(
@@ -394,7 +477,8 @@ void test_removed_registry_stays_empty_after_restart() {
       static_cast<int>(first.remove(first.at(0)->instanceId)));
 
   FakeDriver secondDriver;
-  studio::DeviceManager second(backend, legacy, secondDriver);
+  studio::DeviceDriver* secondDrivers[] = {&secondDriver};
+  studio::DeviceManager second(backend, legacy, secondDrivers, 1);
   TEST_ASSERT_TRUE(second.begin());
   TEST_ASSERT_EQUAL_UINT32(0, second.count());
   TEST_ASSERT_EQUAL_INT(0, secondDriver.activationCount);
@@ -410,11 +494,14 @@ int main(int, char**) {
   RUN_TEST(test_command_builders_and_timing_patch);
   RUN_TEST(test_state_reducer_decodes_snapshots_and_progress);
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
-  RUN_TEST(test_driver_catalog_exposes_only_shark);
+  RUN_TEST(test_canon_pairing_and_record_trigger_protocol);
+  RUN_TEST(test_canon_state_never_infers_recording);
+  RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
+  RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
   return UNITY_END();
 }

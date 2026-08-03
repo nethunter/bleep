@@ -16,6 +16,9 @@ class DeviceDriver {
   virtual DeviceRuntimeState runtimeState() const = 0;
   virtual const void* specializedState() const = 0;
 
+  // Explicit user action; transports may remove controller-side bond data.
+  virtual void forgetPairing(const DeviceRecord&) {}
+
   // Returns true when pairing identity changed and should be persisted.
   virtual bool consumePairingUpdate(DeviceRecord& record) = 0;
 };

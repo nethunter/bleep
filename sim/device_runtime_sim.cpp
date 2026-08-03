@@ -5,6 +5,7 @@
 
 #include "core/config_store.h"
 #include "core/device_driver.h"
+#include "devices/canon_ble/state.h"
 #include "devices/shark_nano_ii/state.h"
 
 namespace studio {
@@ -113,16 +114,68 @@ class SimSharkDriver : public DeviceDriver {
   shark::SharkState state_;
 };
 
+class SimCanonDriver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::CanonBle; }
+  void activate(const DeviceRecord& record) override {
+    state_.hasSavedDevice = record.paired;
+    state_.link = canon_ble::CanonBleState::Link::Scanning;
+    std::strncpy(state_.deviceName, record.displayName,
+                 sizeof(state_.deviceName) - 1);
+  }
+  void deactivate() override {
+    state_.link = canon_ble::CanonBleState::Link::Disconnected;
+  }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    if (command.type == CommandType::RecordTrigger &&
+        state_.link == canon_ble::CanonBleState::Link::Connected) {
+      canon_ble::markTriggerQueued(state_);
+      canon_ble::markTriggerComplete(state_, true);
+      return CommandStatus::Succeeded;
+    }
+    return CommandStatus::Succeeded;
+  }
+  DeviceRuntimeState runtimeState() const override {
+    DeviceRuntimeState runtime;
+    switch (state_.link) {
+      case canon_ble::CanonBleState::Link::Scanning:
+        runtime.link = LinkState::Scanning;
+        break;
+      case canon_ble::CanonBleState::Link::Connecting:
+        runtime.link = LinkState::Connecting;
+        break;
+      case canon_ble::CanonBleState::Link::Connected:
+        runtime.link = LinkState::Connected;
+        break;
+      case canon_ble::CanonBleState::Link::Disconnected:
+        runtime.link = LinkState::Disconnected;
+        break;
+    }
+    runtime.quality = StateQuality::Unknown;
+    return runtime;
+  }
+  const void* specializedState() const override { return &state_; }
+  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  canon_ble::CanonBleState& state() { return state_; }
+
+ private:
+  canon_ble::CanonBleState state_;
+};
+
 MemoryConfigBackend gBackend;
 SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
-DeviceManager gManager(gBackend, gLegacy, gSharkDriver);
+SimCanonDriver gCanonDriver;
+DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonDriver};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 2);
 
 }  // namespace
 
 DeviceManager& devices() { return gManager; }
 
 shark::SharkState& simSharkState() { return gSharkDriver.state(); }
+canon_ble::CanonBleState& simCanonState() { return gCanonDriver.state(); }
 
 void simSetConnectedDemoState() {
   shark::SharkState& state = gSharkDriver.state();
@@ -156,6 +209,16 @@ void simSetScanningState() {
   state.battery = -1;
   std::strncpy(state.deviceName, "Shark Nano II", sizeof(state.deviceName) - 1);
   state.deviceName[sizeof(state.deviceName) - 1] = '\0';
+}
+
+void simSetCanonConnectedState() {
+  canon_ble::CanonBleState& state = gCanonDriver.state();
+  state.link = canon_ble::CanonBleState::Link::Connected;
+  state.hasSavedDevice = true;
+  state.triggerPending = false;
+  state.lastTriggerSucceeded = false;
+  std::strncpy(state.deviceName, "EOS R6 Mark III",
+               sizeof(state.deviceName) - 1);
 }
 
 }  // namespace studio

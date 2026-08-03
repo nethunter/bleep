@@ -1,9 +1,9 @@
 # Studio Remote (CrowPanel 1.28)
 
 A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
-round display (240x240 GC9A01 + CST816D touch). The current build includes only
-the **iFootage Shark Nano II** driver; its protocol remains a C++/NimBLE port of
-the reverse-engineered Shark Nano BLE protocol.
+round display (240x240 GC9A01 + CST816D touch). The current build includes the
+**iFootage Shark Nano II** driver and a research-stage **Canon EOS R6 family
+BR-E1 BLE** driver.
 
 ## What it does
 
@@ -12,13 +12,20 @@ the reverse-engineered Shark Nano BLE protocol.
   active today; the others are reserved. Devices are stored in a versioned
   registry and can be
   added, renamed, enabled, disabled, re-paired, and removed. The current build
-  permits one Shark instance. Rename uses a round-native paged keypad with
+  permits one Shark and up to three Canon BLE instances. Rename uses a
+  round-native paged keypad with
   large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
   case controls.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
   active; Back releases the connection and returns to Devices.
+- **Canon BR-E1 record trigger (research).** Opening a Canon device scans for
+  the BR-E1-compatible service, bonds as a remote, remembers the camera, and
+  exposes one movie record trigger. The camera must be in movie mode with
+  remote control enabled. BLE cannot distinguish start from stop or read
+  recording state, so the panel deliberately shows neither. The protocol is
+  not claimed verified until the EOS R6 Mark III hardware checklist passes.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:
@@ -52,6 +59,7 @@ the reverse-engineered Shark Nano BLE protocol.
 | `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
+| `src/devices/canon_ble/*` | Research-stage BR-E1 pairing/trigger protocol, on-demand NimBLE client, driver adapter, and camera screen. |
 | `src/ui.*` | Home, Devices, and application navigation. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
 
@@ -105,6 +113,7 @@ This workspace also has PlatformIO in `.venv`, with a local core directory:
 ```sh
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e canon_ble
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
 

@@ -9,8 +9,10 @@ namespace studio {
 
 class DeviceManager {
  public:
+  static constexpr size_t kMaxCompiledDrivers = 8;
+
   DeviceManager(IConfigBackend& backend, ILegacySharkBackend& legacyBackend,
-                DeviceDriver& sharkDriver);
+                DeviceDriver* const* drivers, size_t driverCount);
 
   bool begin();
   void loop();
@@ -41,7 +43,8 @@ class DeviceManager {
   CommandStatus dispatch(const DeviceCommand& command);
 
   ILegacySharkBackend& legacyBackend_;
-  DeviceDriver& sharkDriver_;
+  DeviceDriver* drivers_[kMaxCompiledDrivers] = {};
+  size_t driverCount_ = 0;
   ConfigStore store_;
   DeviceRegistry registry_;
   DeviceCommandQueue commands_;

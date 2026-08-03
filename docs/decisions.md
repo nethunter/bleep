@@ -122,6 +122,23 @@ the replacement.
   Opening the enabled Shark record activates scan/connect/reconnect; leaving its
   screens stops motion, scanning, retries, and the connection.
 
+## ADR-014: Canon BLE exposes an honest record trigger
+
+- Status: Accepted
+- Decision: Advance a bounded Canon BR-E1 BLE tranche for EOS R6 Mark III
+  hardware research before the full Phase 1 coexistence gate. The BLE
+  capability is a stateless record trigger, not separate record-start and
+  record-stop commands.
+- Consequence: The panel does not infer or display recording state from BLE.
+  BR-E1 sends the same movie trigger for both transitions and provides no
+  equivalent state readback. Distinct start/stop commands and confirmed state
+  remain CCAPI work. The tranche may use the existing one-active-instance
+  manager and does not prove concurrent Shark/Canon links or complete Phase 1.
+- Protocol status: Pairing, bonded reconnect, and the movie-mode `0x88`/`0x08`
+  press/release sequence from public reverse-engineering are functionally
+  verified on the EOS R6 Mark III. Captures and extended stability measurements
+  remain `Research`.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

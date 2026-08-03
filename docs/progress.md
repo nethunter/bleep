@@ -5,12 +5,12 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-013 multi-device foundation tranche; physical Shark
-  regression gate pending.
-- Firmware state: Home-first, persistent device registry, and on-demand Shark
-  firmware built, host-tested, and flashed.
-- Universal driver framework: Bounded core implemented for one compiled Shark
-  driver and one active Shark instance; broader transports/drivers not started.
+- Current phase: ADR-014 bounded Canon BR-E1 BLE sub-spike; physical Canon and
+  Shark regression gates pending.
+- Firmware state: Home-first, persistent device registry, on-demand Shark, and
+  research-stage on-demand Canon BLE firmware built, host-tested, and flashed.
+- Universal driver framework: Bounded routing supports compiled Shark and Canon
+  BLE drivers while preserving one active device instance at a time.
 - Last updated: 2026-08-03.
 
 ## Completed planning
@@ -33,14 +33,15 @@ short, factual, and reproducible.
 
 ## Next task
 
-Complete the combined Phase 0/foundation hardware gate:
+Complete the Canon BLE and combined Phase 0/foundation hardware gates:
 
-1. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+1. Pair an EOS R6 Mark III in Wireless Remote mode and verify the movie record
+   trigger, bonded reconnect, forget/re-pair, and repeated screen entry/exit.
+2. Record Canon connection/command latency and free/minimum heap.
+3. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
-2. Verify that boot and Home perform no BLE scan or connection.
-3. Exercise on-demand Shark pairing and reconnect while its screen is active.
-4. Exercise keypoints, timing, manual movement, run controls, and safe Back.
-5. Exercise long-press sleep/wake and record the connected minimum heap.
+4. Verify that boot and Home perform no BLE scan or connection.
+5. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
 
 ## Measurements
 
@@ -124,6 +125,31 @@ Record values with the exact build environment and commit/worktree state.
 - Free/minimum heap: Not measured.
 - Stability duration: Not measured.
 - Result: Not started.
+
+### Canon BR-E1 BLE sub-spike
+
+- Date: 2026-08-03.
+- PlatformIO environments: `native`, `ui_sim`, `canon_ble`,
+  `crowpanel_128`, and `crowpanel_128_roboto`.
+- Combined firmware flash usage: 861,590 / 3,145,728 bytes (27.4%).
+- Combined static RAM usage: 118,036 / 327,680 bytes (36.0%).
+- Canon-only firmware flash usage: 865,212 / 3,145,728 bytes (27.5%).
+- Canon-only static RAM usage: 117,140 / 327,680 bytes (35.7%).
+- Build result: all affected environments succeeded with espressif32 7.0.1.
+- Flash result: combined `crowpanel_128` succeeded on
+  `/dev/cu.usbserial-211240`.
+- Host tests: 15/15 passed in the PlatformIO `native` environment.
+- Simulator result: twelve 240x240 captures completed, including the Canon
+  record-trigger screen.
+- Hardware result: EOS R6 Mark III pairing, movie record start/stop, and bonded
+  reconnect passed. The first `0x8c`/`0x0c` immediate-mode sequence took a
+  still image in photo mode but did not record in movie mode; changing to the
+  BR-E1 movie-mode `0x88`/`0x08` press/release sequence passed.
+- Remaining hardware checks: forget/re-pair, five-cycle stability, connection
+  and command latency, connected free/minimum heap, and Shark regression were
+  not completed.
+- Scope: This does not verify EOS R6/R6 II, concurrent links, CCAPI, fallback,
+  or the full Phase 1 gate.
 
 ### Dedicated Portal mode spike
 
@@ -274,4 +300,23 @@ Record values with the exact build environment and commit/worktree state.
   default profile flashed successfully.
 - Physical touch and slider behavior remain operator-pending, so the existing
   combined Phase 0/foundation hardware gate remains open.
+
+### 2026-08-03: Canon BR-E1 BLE sub-spike
+
+- Recorded ADR-014: BLE exposes one honest record trigger and no inferred
+  recording state.
+- Added a compile-time Canon camera driver, asynchronous NimBLE connect/security
+  progression, BR-E1 pairing identity, bonded reconnect/forget, and loop-owned
+  press/release writes.
+- Generalized `DeviceManager` to a bounded compiled-driver table and made
+  Devices add/open behavior catalog-driven while preserving one active instance.
+- Added the round Canon screen, native protocol/routing tests, simulator fake
+  and screenshot, and a `canon_ble` firmware profile.
+- Native tests, simulator capture, all affected firmware builds, and the
+  combined firmware flash succeeded.
+- Physical EOS R6 Mark III pairing and bonded reconnect passed. Hardware
+  testing exposed an immediate-mode/photo command mismatch; the corrected
+  `0x88`/`0x08` movie sequence then started and stopped recording successfully.
+- Canon forget/re-pair, repeated-cycle measurements, and Shark regression
+  remain operator-pending, so no roadmap phase gate is marked complete.
 

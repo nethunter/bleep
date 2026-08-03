@@ -5,8 +5,14 @@
 namespace studio {
 
 DeviceManager::DeviceManager(IConfigBackend& backend, ILegacySharkBackend& legacyBackend,
-                             DeviceDriver& sharkDriver)
-    : legacyBackend_(legacyBackend), sharkDriver_(sharkDriver), store_(backend) {}
+                             DeviceDriver* const* drivers, size_t driverCount)
+    : legacyBackend_(legacyBackend), store_(backend) {
+  driverCount_ =
+      driverCount < kMaxCompiledDrivers ? driverCount : kMaxCompiledDrivers;
+  for (size_t i = 0; i < driverCount_; ++i) {
+    drivers_[i] = drivers[i];
+  }
+}
 
 bool DeviceManager::begin() {
   const ConfigLoadStatus status = store_.load(registry_);
@@ -120,6 +126,14 @@ RegistryStatus DeviceManager::setEnabled(InstanceId instanceId, bool enabled) {
 }
 
 RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
+  DeviceRecord* record = registry_.find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  DeviceDriver* driver = driverFor(record->driverId);
+  if (driver != nullptr) {
+    driver->forgetPairing(*record);
+  }
   if (instanceId == activeInstance_) {
     deactivate();
   }
@@ -187,13 +201,11 @@ const void* DeviceManager::specializedState(InstanceId instanceId) const {
 }
 
 DeviceDriver* DeviceManager::driverFor(DriverId driverId) const {
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (driverId == DriverId::SharkNanoII) {
-    return &sharkDriver_;
+  for (size_t i = 0; i < driverCount_; ++i) {
+    if (drivers_[i] != nullptr && drivers_[i]->driverId() == driverId) {
+      return drivers_[i];
+    }
   }
-#else
-  (void)driverId;
-#endif
   return nullptr;
 }
 

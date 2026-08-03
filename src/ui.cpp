@@ -8,8 +8,15 @@
 
 #include "assets/ui_icons.h"
 #include "core/device_manager.h"
+#include "core/driver_catalog.h"
+#include "driver_config.h"
+#if CONFIG_DRIVER_CANON_BLE
+#include "devices/canon_ble/ui.h"
+#endif
 #include "fonts/ui_fonts.h"
+#if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/ui.h"
+#endif
 
 namespace ui {
 
@@ -165,11 +172,23 @@ const char* linkText(studio::LinkState link) {
 void onOpenDevice(lv_event_t* event) {
   const studio::InstanceId instanceId = eventInstance(event);
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  if (record == nullptr || !record->enabled ||
-      record->driverId != studio::DriverId::SharkNanoII) {
+  if (record == nullptr || !record->enabled) {
     return;
   }
-  shark_ui::show(instanceId);
+  switch (record->driverId) {
+#if CONFIG_DRIVER_SHARK_NANO_II
+    case studio::DriverId::SharkNanoII:
+      shark_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+    case studio::DriverId::CanonBle:
+      canon_ble_ui::show(instanceId);
+      break;
+#endif
+    default:
+      break;
+  }
 }
 
 void onOpenManage(lv_event_t* event) {
@@ -192,13 +211,11 @@ void onOpenManage(lv_event_t* event) {
 
 void refreshDevices() {
   lv_obj_clean(deviceList);
-  bool hasShark = false;
   for (size_t i = 0; i < studio::devices().count(); ++i) {
     const studio::DeviceRecord* record = studio::devices().at(i);
     if (record == nullptr) {
       continue;
     }
-    hasShark |= record->driverId == studio::DriverId::SharkNanoII;
     void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(record->instanceId));
 
     lv_obj_t* row = lv_obj_create(deviceList);
@@ -239,7 +256,20 @@ void refreshDevices() {
     lv_obj_align(manage, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_add_event_cb(manage, onOpenManage, LV_EVENT_CLICKED, userData);
   }
-  if (hasShark) {
+  bool canAdd = false;
+  for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
+    const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
+    size_t instances = 0;
+    for (size_t j = 0; descriptor != nullptr && j < studio::devices().count(); ++j) {
+      const studio::DeviceRecord* record = studio::devices().at(j);
+      instances += record != nullptr && record->driverId == descriptor->id ? 1 : 0;
+    }
+    if (descriptor != nullptr && instances < descriptor->maxInstances) {
+      canAdd = true;
+      break;
+    }
+  }
+  if (!canAdd) {
     lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_clear_flag(addButton, LV_OBJ_FLAG_HIDDEN);
@@ -251,8 +281,19 @@ void onShowHome(lv_event_t*) { showHome(); }
 void onCloseModal(lv_event_t*) { closeDeviceModal(); }
 
 void onAddDevice(lv_event_t*) {
-  studio::InstanceId instanceId = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::SharkNanoII, "Shark Nano II", instanceId);
+  for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
+    const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
+    size_t instances = 0;
+    for (size_t j = 0; descriptor != nullptr && j < studio::devices().count(); ++j) {
+      const studio::DeviceRecord* record = studio::devices().at(j);
+      instances += record != nullptr && record->driverId == descriptor->id ? 1 : 0;
+    }
+    if (descriptor != nullptr && instances < descriptor->maxInstances) {
+      studio::InstanceId instanceId = studio::kInvalidInstanceId;
+      studio::devices().add(descriptor->id, descriptor->model, instanceId);
+      break;
+    }
+  }
   refreshDevices();
   refreshHome();
 }
@@ -565,17 +606,30 @@ void init() {
   buildDevices();
   buildDeviceModal();
   buildRenameOverlay();
+#if CONFIG_DRIVER_SHARK_NANO_II
   shark_ui::init();
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  canon_ble_ui::init();
+#endif
   refreshHome();
   refreshDevices();
   lv_scr_load(scrHome);
 }
 
 void tick() {
+#if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::tick();
     return;
   }
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  if (canon_ble_ui::active()) {
+    canon_ble_ui::tick();
+    return;
+  }
+#endif
   const uint32_t now = millis();
   if (now - lastRefreshMs < 500) {
     return;
@@ -587,9 +641,19 @@ void tick() {
 }
 
 void handleShortPress() {
+#if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleShortPress();
-  } else if (!lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN)) {
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  if (canon_ble_ui::active()) {
+    canon_ble_ui::handleShortPress();
+    return;
+  }
+#endif
+  if (!lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN)) {
     closeRename();
   } else if (!lv_obj_has_flag(deviceModal, LV_OBJ_FLAG_HIDDEN)) {
     closeDeviceModal();
@@ -599,9 +663,16 @@ void handleShortPress() {
 }
 
 void showHome() {
+#if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::hide();
   }
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  if (canon_ble_ui::active()) {
+    canon_ble_ui::hide();
+  }
+#endif
   closeDeviceModal();
   closeRename();
   screen = Screen::Home;
@@ -610,9 +681,16 @@ void showHome() {
 }
 
 void showDevices() {
+#if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::hide();
   }
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  if (canon_ble_ui::active()) {
+    canon_ble_ui::hide();
+  }
+#endif
   closeDeviceModal();
   closeRename();
   screen = Screen::Devices;
