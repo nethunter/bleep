@@ -20,7 +20,7 @@ FrameBytes encodeFrame(uint8_t family, uint8_t code, const uint8_t* data, size_t
   FrameBytes frame;
   // 2 prefix + 4 body header + data + 4 crc + 2 suffix.
   const size_t total = 12 + dataLen;
-  if (total > kMaxFrame) {
+  if (total > kMaxFrame || (dataLen > 0 && data == nullptr)) {
     frame.len = 0;
     return frame;
   }
@@ -76,6 +76,9 @@ bool tryParse(const uint8_t* buf, size_t available, size_t& totalLen, ParsedFram
   }
   const uint16_t dataLen = (static_cast<uint16_t>(buf[4]) << 8) | buf[5];
   totalLen = 12 + dataLen;
+  if (totalLen > kMaxFrame) {
+    return false;
+  }
   if (totalLen > available) {
     return false;
   }
@@ -113,6 +116,10 @@ int findPrefix(const uint8_t* buf, size_t len, size_t from) {
 }  // namespace
 
 void FrameScanner::feed(const uint8_t* data, size_t len, const Handler& handler) {
+  if (data == nullptr || len == 0) {
+    return;
+  }
+
   // Append new bytes, dropping the oldest data if we somehow overflow (the
   // device never legitimately sends a fragment this large).
   if (len_ + len > kBufCap) {
@@ -135,8 +142,11 @@ void FrameScanner::feed(const uint8_t* data, size_t len, const Handler& handler)
   while (offset < len_) {
     const int start = findPrefix(buf_, len_, offset);
     if (start < 0) {
-      // No prefix left; discard everything (keep nothing, no partial prefix).
-      len_ = 0;
+      // Retain a trailing 0xAA because it may be the first prefix byte of a
+      // frame split exactly between notifications.
+      const bool partialPrefix = len_ > 0 && buf_[len_ - 1] == kFramePrefix0;
+      buf_[0] = partialPrefix ? kFramePrefix0 : 0;
+      len_ = partialPrefix ? 1 : 0;
       return;
     }
     const size_t available = len_ - static_cast<size_t>(start);
@@ -157,7 +167,7 @@ void FrameScanner::feed(const uint8_t* data, size_t len, const Handler& handler)
     // declared length still fits in the buffer capacity, wait for more bytes.
     const uint16_t declaredLen = (static_cast<uint16_t>(buf_[start + 4]) << 8) | buf_[start + 5];
     const size_t declaredTotal = 12 + declaredLen;
-    if (declaredTotal > available && declaredTotal <= kBufCap) {
+    if (declaredTotal > available && declaredTotal <= kMaxFrame) {
       memmove(buf_, buf_ + start, available);
       len_ = available;
       return;
@@ -174,6 +184,9 @@ FrameBytes buildControlPing(uint8_t code, uint8_t tx) {
 }
 
 FrameBytes buildKeypointSlots(uint8_t tx, const uint8_t slots[kKeypointCount]) {
+  if (slots == nullptr) {
+    return FrameBytes{};
+  }
   uint8_t data[1 + kKeypointCount];
   data[0] = tx;
   memcpy(data + 1, slots, kKeypointCount);
@@ -216,6 +229,9 @@ FrameBytes buildRunState(uint8_t state, uint8_t tx) {
 
 FrameBytes buildRouteConfig(uint8_t tx, const int* slotIndexes, const uint8_t* slotValues,
                             int count) {
+  if (count > 0 && (slotIndexes == nullptr || slotValues == nullptr)) {
+    return FrameBytes{};
+  }
   uint8_t data[1 + kRouteConfigSlots];
   data[0] = tx;
   for (int i = 0; i < kRouteConfigSlots; ++i) {

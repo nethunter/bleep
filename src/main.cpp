@@ -128,6 +128,28 @@ static uint8_t touchChipId = 0;
 static uint8_t ioOutputState = 0;
 static bool ignoreWakeButtonUntilRelease = false;
 
+const char* linkLabel(shark::SharkClient::Link link) {
+  switch (link) {
+    case shark::SharkClient::Link::Disconnected:
+      return "disconnected";
+    case shark::SharkClient::Link::Scanning:
+      return "scanning";
+    case shark::SharkClient::Link::Connecting:
+      return "connecting";
+    case shark::SharkClient::Link::Connected:
+      return "connected";
+  }
+  return "unknown";
+}
+
+void logRuntimeStats(const char* event) {
+  DEBUG_PORT.printf("runtime event=%s uptime_ms=%lu link=%s free_heap=%lu min_free_heap=%lu\n",
+                    event, static_cast<unsigned long>(millis()),
+                    linkLabel(shark::gShark.state().link),
+                    static_cast<unsigned long>(ESP.getFreeHeap()),
+                    static_cast<unsigned long>(ESP.getMinFreeHeap()));
+}
+
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
@@ -438,15 +460,27 @@ void setup() {
   // Paint the splash before BLE direct reconnect can block for a few seconds.
   lv_timer_handler();
   shark::gShark.begin();
+  logRuntimeStats("boot");
 }
 
 void loop() {
   static uint32_t lastTickMs = millis();
+  static uint32_t lastStatsMs = millis();
+  static shark::SharkClient::Link lastLink = shark::gShark.state().link;
   const uint32_t now = millis();
   lv_tick_inc(now - lastTickMs);
   lastTickMs = now;
 
   shark::gShark.loop();
+  const shark::SharkClient::Link link = shark::gShark.state().link;
+  if (link != lastLink) {
+    lastLink = link;
+    logRuntimeStats("link_change");
+  }
+  if (now - lastStatsMs >= 30000) {
+    lastStatsMs = now;
+    logRuntimeStats("periodic");
+  }
   pollButton();
   ui::tick();
 

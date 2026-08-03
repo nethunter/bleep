@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "shark_protocol.h"
+#include "shark_state.h"
 
 // Forward declarations to keep NimBLE headers out of this interface.
 class NimBLEClient;
@@ -22,41 +23,8 @@ namespace shark {
 // writes happen from loop() via poll(). The UI reads state() from loop() too.
 class SharkClient {
  public:
-  enum class Link : uint8_t { Disconnected, Scanning, Connecting, Connected };
-
-  struct State {
-    Link link = Link::Disconnected;
-    char deviceName[40] = "";
-    bool hasSavedDevice = false;
-
-    int battery = -1;  // percent, -1 = unknown
-
-    bool presenceKnown = false;
-    bool present[kKeypointCount] = {false};
-
-    bool timingKnown = false;
-    int speed[kKeypointCount];  // valid for index 1..7 (B..H), -1 = unknown
-    int hold[kKeypointCount];   // seconds, -1 = unknown
-
-    bool trackingKnown = false;
-    bool tracking = false;
-
-    // Loop / direction have no device readback; tracked optimistically.
-    bool loopOn = false;
-    bool reverse = false;
-
-    char runText[16] = "idle";
-    uint8_t runStateCode = kRunStop;  // drives the single run button
-    bool runProgressKnown = false;
-    float runPercent = 0.0f;  // whole-route estimate, 0..100
-
-    State() {
-      for (int i = 0; i < kKeypointCount; ++i) {
-        speed[i] = -1;
-        hold[i] = -1;
-      }
-    }
-  };
+  using Link = SharkState::Link;
+  using State = SharkState;
 
   void begin();
   void loop();
