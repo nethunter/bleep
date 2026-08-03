@@ -1,0 +1,218 @@
+# Implementation Roadmap
+
+Each phase has an explicit completion gate. Do not begin a dependent phase
+until its gate passes or the deviation is recorded in
+[Decisions](decisions.md).
+
+## Phase 0: Preserve and baseline the Shark remote
+
+Work:
+
+- review and preserve existing uncommitted Shark changes;
+- build and flash the current firmware;
+- capture firmware size, free heap, minimum free heap, and connection behavior;
+- add host tests for the pure Shark protocol and extracted state reduction.
+
+Completion gate:
+
+- existing Shark pairing, keypoints, movement, run control, reconnect, and deep
+  sleep still work on hardware;
+- baseline measurements are recorded in [Progress](progress.md).
+
+## Phase 1: Runtime feasibility spikes
+
+### Bluetooth, Mesh, and Wi-Fi spike
+
+Prove concurrent:
+
+- Shark GATT;
+- Canon BR-E1-compatible GATT;
+- Amaran BLE Mesh traffic and PB-ADV provisioning;
+- Canon HTTP over Wi-Fi;
+- responsive LVGL rendering.
+
+Measure connection latency, command latency, reconnect behavior, dropped
+events, free heap, and repeated connect/disconnect stability.
+
+### Dedicated Portal mode spike
+
+Prove:
+
+- transition from studio Wi-Fi/device control into a temporary WPA2 SoftAP;
+- a bounded HTTP page reachable only through the temporary AP;
+- per-session credentials displayed on the panel;
+- explicit Exit and inactivity-timeout teardown;
+- return to Home and later device reconnection;
+- full recovery of server tasks, sockets, buffers, and heap after repeated
+  entry/exit cycles.
+
+Completion gate:
+
+- both spikes run reliably on the target ESP32-C3 with documented memory
+  headroom;
+- the selected Bluetooth and USB-network designs are recorded as decisions;
+- a failed gate is reported as a hardware/stack constraint before refactoring.
+
+## Phase 2: Kconfig and core driver framework
+
+Work:
+
+- add `Kconfig.projbuild`, dependency validation, and size-oriented defaults;
+- provide example builds such as `shark_only`, `canon_ble`, and `full_studio`;
+- add `DriverCatalog`, `DeviceManager`, typed capabilities, commands, state
+  quality, and queued results;
+- add the GATT transport facade and selected backend;
+- adapt Shark behind the framework without changing user-visible behavior;
+- add native tests for registration, dependency checks, command routing, and
+  state reduction.
+
+Completion gate:
+
+- Shark passes Phase 0 behavior through the new interfaces;
+- disabled drivers contribute no linked symbols or runtime allocations;
+- invalid Kconfig combinations fail with actionable messages.
+
+## Phase 3: Home, runtime registry, groups, and Portal mode
+
+Work:
+
+- boot to Home without scanning, pairing, re-pairing, or reconnecting Shark;
+- request device connections only from a device screen or scene;
+- add versioned persistence and migrations;
+- create, rename, enable, disable, configure, and remove device instances;
+- create groups and validate their shared capabilities;
+- implement dedicated-mode SoftAP HTTP APIs and portal screens for device
+  settings, studio Wi-Fi, groups, scenes, backup, restore, and reset;
+- suspend normal control before Portal entry and tear down AP/server resources
+  on Exit, timeout, or reboot;
+- retain dormant records for drivers omitted by a later build.
+
+Completion gate:
+
+- configuration survives power cycles and compatible firmware rebuilds;
+- startup remains on Home until the operator selects a device or scene;
+- portal routes exist only in Portal mode and only on its temporary AP;
+- repeated mode transitions recover their memory and normal device control;
+- corrupted or old records fail safely or migrate predictably.
+
+## Phase 4: Amaran light driver
+
+Initial models:
+
+- amaran Pano 60c;
+- amaran Pano 120c;
+- amaran Ace 25c.
+
+Work:
+
+- implement Telink opcode `0x26` commands;
+- support power, brightness, CCT, and HSI with model limits;
+- provision factory-reset lights into a panel-owned mesh;
+- import an existing Sidus/amaran mesh through Portal mode;
+- implement best-available state readback and mark optimistic state explicitly.
+
+Completion gate:
+
+- both onboarding paths work on real target lights;
+- commands can target individual lights and compatible groups;
+- credentials never leak into normal logs or unprotected exports.
+
+## Phase 5: Canon camera drivers
+
+Initial models:
+
+- Canon EOS R6;
+- Canon EOS R6 Mark II;
+- Canon EOS R6 Mark III.
+
+Work:
+
+- implement BR-E1-compatible Bluetooth pairing and record start/stop;
+- implement bounded, non-blocking CCAPI discovery/configuration, record
+  start/stop, state polling, and reconnect;
+- allow per-camera BLE, HTTP, or HTTP-with-BLE-fallback selection;
+- report BLE-only recording state as optimistic and CCAPI state as confirmed.
+
+Completion gate:
+
+- both transports operate on each available test camera;
+- transport fallback is deterministic;
+- HTTP success is not presented as confirmed recording until state readback.
+
+## Phase 6: Scene engine
+
+Work:
+
+- implement ordered `Action`, `Wait`, and optional `Parallel` steps;
+- target device instances or compatible groups;
+- generate Stop by reversing and inverting Start by default;
+- support an explicitly authored Stop override;
+- journal completed actions and reverse only successful actions;
+- add non-blocking timing, cancellation, progress, timeout, retry, abort, and
+  continue policies;
+- edit, validate, import, and export scenes through Portal-mode HTTP.
+
+Completion gate:
+
+- the example start sequence works:
+  1. lights on;
+  2. wait one second;
+  3. camera record start;
+  4. wait one second;
+  5. recorder record start;
+- Stop runs the successful inverse actions in reverse order;
+- partial failures and unavailable devices are visible and recoverable.
+
+## Phase 7: Universal panel UI
+
+Work:
+
+- add home, devices, groups, and scenes navigation;
+- add shared light, camera, motion, and recorder UI modules;
+- preserve the specialized Shark keypoint/run experience;
+- show only configured, enabled instances in operational menus;
+- show pairing, connection, state quality, scene progress, and USB portal
+  status within the round-display safe area.
+
+Completion gate:
+
+- all text and controls fit the 240x240 round panel;
+- disconnected or disabled devices do not block unrelated controls;
+- all LVGL access remains on `loop()`.
+
+## Phase 8: Future recorder drivers
+
+Planned:
+
+- Tascam Portacapture X8 Bluetooth;
+- Deity PR4 remote control.
+
+Work for each driver begins with protocol documentation or capture-based
+research. Pairing, command encoding, state readback, and coexistence must be
+verified before enabling its Kconfig option by default.
+
+Completion gate:
+
+- driver satisfies the common recorder capability contract;
+- record start/stop can participate in scenes without brand-specific scene
+  logic;
+- hardware behavior and limitations are documented.
+
+## Phase 9: Release hardening
+
+Work:
+
+- power-cycle, deep-sleep, reconnect, and failure-injection tests;
+- minimal and full build size reports;
+- static and runtime memory budgets;
+- long-running Wi-Fi/Bluetooth coexistence tests;
+- safety validation for physical movement and recording state;
+- documentation and recovery procedures.
+
+Completion gate:
+
+- every published build profile compiles;
+- relevant profiles flash and pass hardware checks;
+- memory headroom and known limitations are recorded;
+- no unsupported protocol behavior is presented as confirmed.
+
