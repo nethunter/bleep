@@ -7,8 +7,9 @@ short, factual, and reproducible.
 
 - Current phase: ADR-014 Canon Trigger verification plus ADR-015 Canon Smart
   handoff research; physical regression gates pending.
-- Firmware state: Home-first, persistent device registry, on-demand Shark, and
-  research-stage on-demand Canon BLE firmware built, host-tested, and flashed.
+- Firmware state: Home-first, persistent device registry, on-demand Shark and
+  Canon BLE, and device-specific hardware-trigger CTA routing built,
+  host-tested, simulator-tested, and flashed.
 - Universal driver framework: Bounded routing supports compiled Shark and Canon
   BLE drivers while preserving one active device instance at a time.
 - Last updated: 2026-08-03.
@@ -429,4 +430,21 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128_roboto`, and `canon_ble` built successfully.
 - Default firmware used 862,760 bytes flash and 167,196 bytes static RAM; the
   default profile flashed successfully to `/dev/cu.usbserial-211240`.
+
+### 2026-08-03: Hardware trigger activates device CTA
+
+- Routed GPIO 1 short presses through each active device UI's primary action:
+  Canon sends its connected record trigger, while Shark opens Run from
+  Keypoints and then advances Standby / Start / Stop.
+- Touch and hardware activation share the same action helpers; disconnected
+  CTAs remain inactive, and Shark modal/positioning dismissal is unchanged.
+- Added simulator regressions for the full Shark run cycle and Canon trigger.
+  Native tests passed 15/15, all UI captures completed, and the simulator
+  finished with 17,728 bytes of LVGL memory free after device removal.
+- `crowpanel_128` built at 862,762 / 3,145,728 bytes flash and 167,196 /
+  327,680 bytes static RAM. `canon_ble` built at 866,478 bytes flash and
+  166,308 bytes static RAM.
+- The default profile flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical button behavior on the Shark and Canon
+  hardware remains operator-pending.
 

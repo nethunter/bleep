@@ -19,6 +19,8 @@ Status values:
 - Protocol: `protocol.*`; client: `client.*`; driver adapter: `driver.*`.
 - UI: `ui.*`, preserving the existing keypoint, run, modal, and positioning
   workflows.
+- Hardware trigger: from Keypoints, opens Run; on Run, advances the same
+  Standby / Start / Stop action as the touch CTA.
 
 Safety: movement and run commands affect physical hardware. ACKs are not proof
 of successful movement.
@@ -58,6 +60,8 @@ Reference research:
 - `Canon (Smart)` transport: smartphone-mode BLE pairing and Wi-Fi handoff,
   followed by CCAPI HTTP over the camera's direct access point.
 - Trigger capability: record trigger.
+- Hardware trigger: while connected, invokes the same stateless record trigger
+  as the touch CTA.
 - Planned Smart capabilities: record start, record stop, and confirmed
   recording state.
 

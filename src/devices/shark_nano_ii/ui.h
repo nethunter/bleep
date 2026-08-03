@@ -12,9 +12,11 @@ void show(studio::InstanceId instanceId);
 void hide();
 bool active();
 void tick();
+// Dispatches the hardware trigger to the current screen's primary action.
 void handleShortPress();
 
 #ifdef UI_SIMULATOR
+void simShowKeypoints();
 void simShowKeypointSettings(int slot);
 void simShowPositionChoice(int slot);
 void simShowManualPositioning();

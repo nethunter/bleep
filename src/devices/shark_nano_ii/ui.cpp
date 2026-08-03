@@ -406,9 +406,8 @@ void onDirToggle(lv_event_t* e) {
   gShark.setDirection(lv_obj_has_state(btn, LV_STATE_CHECKED));
 }
 
-// Single run button: advance the run state machine
-// stopped -> standby -> running -> (stop) stopped.
-void onRunAction(lv_event_t*) {
+// Advance the primary run action: stopped -> standby -> running -> stopped.
+void advanceRunState() {
   const uint8_t code = gShark.state().runStateCode;
   if (code == shark::kRunStart || code == 0x06 /* preview */) {
     gShark.setRunState(shark::kRunStop);
@@ -418,6 +417,8 @@ void onRunAction(lv_event_t*) {
     gShark.setRunState(shark::kRunStandby);
   }
 }
+
+void onRunAction(lv_event_t*) { advanceRunState(); }
 
 void onRepair(lv_event_t*) { gShark.forgetDevice(); }
 void onBack(lv_event_t*) { ui::showDevices(); }
@@ -1272,15 +1273,20 @@ void handleShortPress() {
     cancelPositioning();
     return;
   }
-  currentMain = (currentMain == 0) ? 1 : 0;
   if (currentMain == 1) {
-    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
-  } else {
-    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+    advanceRunState();
+    return;
   }
+  currentMain = 1;
+  lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
 #ifdef UI_SIMULATOR
+void simShowKeypoints() {
+  currentMain = 0;
+  lv_scr_load(scrKeys);
+}
+
 void simShowKeypointSettings(int slot) { openModal(slot); }
 
 void simShowPositionChoice(int slot) { openSetOverlay(slot); }

@@ -52,8 +52,10 @@ BR-E1 BLE** driver.
 - **Touch:** Home, Devices and device management, connect, Keypoints, joystick
   positioning, Run, and per-keypoint settings.
 - **Button (GPIO 1):**
-  - Short press: navigate back outside device control; switch between Keypoints
-    and Run inside Shark control (closing an open modal first).
+  - Short press: navigate back outside device control or activate the active
+    device's primary action. In Shark control it closes an open modal, opens Run
+    from Keypoints, then advances Standby / Start / Stop on the Run screen. In
+    connected Canon Trigger control it sends the record trigger.
   - Long press: power off the remote. When off, hold the button again to wake it;
     a short tap wakes briefly and goes back to sleep.
 

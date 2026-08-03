@@ -88,7 +88,15 @@ void onBack(lv_event_t*) {
   ui::showDevices();
 }
 
-void onTrigger(lv_event_t*) { enqueue(studio::CommandType::RecordTrigger); }
+void triggerRecord() {
+  if (studio::devices().runtimeState(instanceId).link !=
+      studio::LinkState::Connected) {
+    return;
+  }
+  enqueue(studio::CommandType::RecordTrigger);
+}
+
+void onTrigger(lv_event_t*) { triggerRecord(); }
 
 }  // namespace
 
@@ -183,8 +191,7 @@ void tick() {
 }
 
 void handleShortPress() {
-  hide();
-  ui::showDevices();
+  triggerRecord();
 }
 
 }  // namespace canon_ble_ui

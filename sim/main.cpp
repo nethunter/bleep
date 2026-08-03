@@ -208,13 +208,31 @@ int main() {
     return 1;
   }
 
-  shark_ui::handleShortPress();
+  ui::handleShortPress();
   pump(250);
   if (!capture("07_shark_run")) {
     return 1;
   }
 
-  shark_ui::handleShortPress();
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simSharkState().runStateCode != shark::kRunStandby) {
+    std::fprintf(stderr, "Hardware trigger did not put Shark in standby\n");
+    return 1;
+  }
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simSharkState().runStateCode != shark::kRunStart) {
+    std::fprintf(stderr, "Hardware trigger did not start Shark\n");
+    return 1;
+  }
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simSharkState().runStateCode != shark::kRunStop) {
+    std::fprintf(stderr, "Hardware trigger did not stop Shark\n");
+    return 1;
+  }
+  shark_ui::simShowKeypoints();
   pump(250);
   shark_ui::simShowKeypointSettings(2);
   if (!capture("08_shark_key_settings")) {
@@ -246,6 +264,15 @@ int main() {
   studio::simSetCanonConnectedState();
   pump(250);
   if (!capture("12_canon_record_trigger")) {
+    return 1;
+  }
+
+  const uint32_t triggerCount = studio::simCanonState().triggerCount;
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simCanonState().triggerCount != triggerCount + 1 ||
+      !canon_ble_ui::active()) {
+    std::fprintf(stderr, "Hardware trigger did not activate Canon record CTA\n");
     return 1;
   }
 

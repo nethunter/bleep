@@ -78,6 +78,9 @@ class SimSharkDriver : public DeviceDriver {
         state_.hasSavedDevice = false;
         state_.link = shark::SharkState::Link::Scanning;
         return CommandStatus::Succeeded;
+      case CommandType::SetRunState:
+        state_.runStateCode = static_cast<uint8_t>(command.value0);
+        return CommandStatus::Succeeded;
       default:
         return CommandStatus::Succeeded;
     }

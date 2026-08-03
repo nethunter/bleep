@@ -9,6 +9,7 @@ void show(studio::InstanceId instanceId);
 void hide();
 bool active();
 void tick();
+// Dispatches the hardware trigger to the current screen's primary action.
 void handleShortPress();
 
 }  // namespace canon_ble_ui
