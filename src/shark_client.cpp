@@ -522,6 +522,17 @@ void SharkClient::setManualTracking(bool enabled) {
   state_.trackingKnown = true;
 }
 
+void SharkClient::setMotionVector(int slideVelocity, int panVelocity) {
+  if (!connected()) {
+    return;
+  }
+  sendFrame(buildMotionVector(slideVelocity, panVelocity, nextTx()));
+}
+
+void SharkClient::stopMotion() {
+  setMotionVector(0, 0);
+}
+
 void SharkClient::onScanMatch(const NimBLEAdvertisedDevice* device) {
   if (scanHit_) {
     return;  // already captured a candidate; ignore until loop() consumes it

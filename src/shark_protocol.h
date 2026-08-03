@@ -34,6 +34,10 @@ constexpr uint8_t kMarkerSet = 0x01;
 constexpr uint8_t kMarkerIdle = 0x02;
 constexpr uint8_t kMarkerGo = 0x03;
 
+// Manual slide/pan motion uses signed int8 velocities. Keep normal UI motion
+// within the validated physical range from the reverse-engineering captures.
+constexpr int kManualMotionMaxVelocity = 100;
+
 // Run states for 03 0d 0003 <tx> 00 <state>.
 constexpr uint8_t kRunStop = 0x00;
 constexpr uint8_t kRunStandby = 0x03;
@@ -110,6 +114,7 @@ FrameBytes buildLoop(bool loopOn, uint8_t tx);
 FrameBytes buildDirection(bool reverse, uint8_t tx);
 FrameBytes buildTimingQuery(uint8_t tx);
 FrameBytes buildManualTracking(bool enabled, uint8_t tx);
+FrameBytes buildMotionVector(int slideVelocity, int panVelocity, uint8_t tx);
 
 // Read-modify-write of an 08 001d timing table. `table` is the 29-byte data
 // payload of a captured 06/03 08 001d frame. `slotIndex` is A..H (0..7); A is

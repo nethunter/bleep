@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 
+#include <cmath>
 #include <cstdio>
 
 #include "fonts/ui_fonts.h"
@@ -44,6 +45,7 @@ lv_obj_t* connDevice = nullptr;
 
 // Keypoints screen widgets.
 lv_obj_t* keysHeader = nullptr;
+lv_obj_t* keyRows[shark::kKeypointCount] = {nullptr};
 lv_obj_t* keyButtons[shark::kKeypointCount] = {nullptr};
 lv_obj_t* keyLabels[shark::kKeypointCount] = {nullptr};
 lv_obj_t* gearButtons[shark::kKeypointCount] = {nullptr};
@@ -68,20 +70,40 @@ lv_obj_t* speedValue = nullptr;
 lv_obj_t* holdRow = nullptr;
 lv_obj_t* holdValue = nullptr;
 
+// Keypoint positioning overlay.
+lv_obj_t* setOverlay = nullptr;
+lv_obj_t* setTitle = nullptr;
+lv_obj_t* setHint = nullptr;
+lv_obj_t* joystickBase = nullptr;
+lv_obj_t* joystickKnob = nullptr;
+lv_obj_t* unlockBtn = nullptr;
+lv_obj_t* joystickBtn = nullptr;
+lv_obj_t* setBtn = nullptr;
+lv_obj_t* cancelBtn = nullptr;
+
 int currentMain = 0;  // 0 = keypoints, 1 = run
 int modalSlot = -1;
 int modalHold = 0;
 bool modalOpen = false;
 
-// Slot whose "set" is being armed: manual tracking is on and the next tap on
-// the same row commits the keypoint. -1 = nothing armed.
-int armedSetSlot = -1;
+int setSlot = -1;
+bool setOverlayOpen = false;
+bool manualUnlockActive = false;
+bool joystickHeld = false;
+int joystickSlide = 0;
+int joystickPan = 0;
+int lastSentSlide = 0;
+int lastSentPan = 0;
+uint32_t lastMotionMs = 0;
 
 // Timestamp of the last handled swipe. A horizontal swipe over a full-width
 // row can still raise a button CLICKED on release, so taps that land within
 // this window are ignored.
 uint32_t lastSwipeMs = 0;
 constexpr uint32_t kSwipeClickGuardMs = 350;
+constexpr uint32_t kMotionIntervalMs = 170;
+constexpr int kJoystickRadius = 50;
+constexpr int kJoystickDeadZone = 7;
 
 uint32_t lastRefreshMs = 0;
 Link lastLinkShown = Link::Disconnected;
@@ -111,14 +133,178 @@ lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void*
   return btn;
 }
 
+int nextSettableSlot(const shark::SharkClient::State& s) {
+  if (!s.presenceKnown) {
+    return 0;
+  }
+  for (int i = 0; i < shark::kKeypointCount; ++i) {
+    if (!s.present[i]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int clampVelocity(int value) {
+  if (value < -shark::kManualMotionMaxVelocity) {
+    return -shark::kManualMotionMaxVelocity;
+  }
+  if (value > shark::kManualMotionMaxVelocity) {
+    return shark::kManualMotionMaxVelocity;
+  }
+  return value;
+}
+
+void centerJoystickKnob() {
+  if (joystickKnob != nullptr) {
+    lv_obj_center(joystickKnob);
+  }
+}
+
+void sendMotionNow(int slide, int pan, uint32_t now) {
+  joystickSlide = clampVelocity(slide);
+  joystickPan = clampVelocity(pan);
+  lastSentSlide = joystickSlide;
+  lastSentPan = joystickPan;
+  lastMotionMs = now;
+  gShark.setMotionVector(joystickSlide, joystickPan);
+}
+
+void stopActiveMotion() {
+  const bool moving = joystickHeld || joystickSlide != 0 || joystickPan != 0 ||
+                      lastSentSlide != 0 || lastSentPan != 0;
+  joystickHeld = false;
+  joystickSlide = 0;
+  joystickPan = 0;
+  lastSentSlide = 0;
+  lastSentPan = 0;
+  centerJoystickKnob();
+  if (moving) {
+    gShark.stopMotion();
+  }
+}
+
+void pumpMotion(uint32_t now) {
+  if (!setOverlayOpen || !joystickHeld) {
+    return;
+  }
+  if (now - lastMotionMs >= kMotionIntervalMs) {
+    sendMotionNow(joystickSlide, joystickPan, now);
+  }
+}
+
+void updateJoystickFromPoint(const lv_point_t& point, uint32_t now) {
+  if (joystickBase == nullptr || joystickKnob == nullptr) {
+    return;
+  }
+
+  lv_area_t base;
+  lv_obj_get_coords(joystickBase, &base);
+  const int centerX = (base.x1 + base.x2) / 2;
+  const int centerY = (base.y1 + base.y2) / 2;
+  float dx = static_cast<float>(point.x - centerX);
+  float dy = static_cast<float>(point.y - centerY);
+  const float dist = sqrtf(dx * dx + dy * dy);
+  if (dist > kJoystickRadius && dist > 0.0f) {
+    const float scale = static_cast<float>(kJoystickRadius) / dist;
+    dx *= scale;
+    dy *= scale;
+  }
+
+  lv_obj_set_pos(joystickKnob, static_cast<int>(kJoystickRadius + dx - lv_obj_get_width(joystickKnob) / 2),
+                 static_cast<int>(kJoystickRadius + dy - lv_obj_get_height(joystickKnob) / 2));
+
+  if (fabsf(dx) < kJoystickDeadZone) {
+    dx = 0.0f;
+  }
+  if (fabsf(dy) < kJoystickDeadZone) {
+    dy = 0.0f;
+  }
+
+  const int slide = static_cast<int>(dx * shark::kManualMotionMaxVelocity / kJoystickRadius);
+  const int pan = static_cast<int>(-dy * shark::kManualMotionMaxVelocity / kJoystickRadius);
+  const bool wasHeld = joystickHeld;
+  joystickHeld = true;
+  joystickSlide = clampVelocity(slide);
+  joystickPan = clampVelocity(pan);
+
+  const bool centered = joystickSlide == 0 && joystickPan == 0;
+  const bool sentMoving = lastSentSlide != 0 || lastSentPan != 0;
+  if (!wasHeld || (centered && sentMoving) || now - lastMotionMs >= kMotionIntervalMs) {
+    sendMotionNow(joystickSlide, joystickPan, now);
+  }
+}
+
+void showPositionChoice() {
+  if (unlockBtn != nullptr) {
+    lv_obj_clear_flag(unlockBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBtn != nullptr) {
+    lv_obj_clear_flag(joystickBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBase != nullptr) {
+    lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (setBtn != nullptr) {
+    lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void showSetActions() {
+  if (unlockBtn != nullptr) {
+    lv_obj_add_flag(unlockBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBtn != nullptr) {
+    lv_obj_add_flag(joystickBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (setBtn != nullptr) {
+    lv_obj_clear_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 // ---- event handlers -------------------------------------------------------
 
-// Drop any armed "set": turn manual tracking back off and clear the slot.
-void cancelArmedSet() {
-  if (armedSetSlot >= 0) {
-    gShark.setManualTracking(false);
-    armedSetSlot = -1;
+void closeModal();
+
+void closeSetOverlay(bool commit) {
+  const int slot = setSlot;
+  const bool wasUnlocked = manualUnlockActive;
+  stopActiveMotion();
+  setOverlayOpen = false;
+  setSlot = -1;
+  manualUnlockActive = false;
+  if (setOverlay != nullptr) {
+    lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
   }
+  if (commit && slot >= 0) {
+    gShark.keypointSet(slot);
+  }
+  if (wasUnlocked) {
+    gShark.setManualTracking(false);
+  }
+}
+
+void cancelPositioning() { closeSetOverlay(false); }
+
+void openSetOverlay(int slot) {
+  if (slot < 0 || slot >= shark::kKeypointCount) {
+    return;
+  }
+  if (modalOpen) {
+    closeModal();
+  }
+  stopActiveMotion();
+  manualUnlockActive = false;
+  setSlot = slot;
+  setOverlayOpen = true;
+
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Position", kSlotLetters[slot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Choose positioning method");
+  centerJoystickKnob();
+  showPositionChoice();
+  lv_obj_clear_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Horizontal swipes move between the Keypoints and Run views. Swipe right on
@@ -130,7 +316,7 @@ void onScreenGesture(lv_event_t* e) {
   const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
   lv_obj_t* scr = lv_event_get_current_target(e);
   if (scr == scrKeys && dir == LV_DIR_RIGHT) {
-    cancelArmedSet();
+    cancelPositioning();
     currentMain = 1;
     lastSwipeMs = millis();
     lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
@@ -177,7 +363,7 @@ void closeModal() {
 void openModal(int slot);
 
 // Primary row tap. Going to a set keypoint is the fast default; an unset slot
-// arms a hand-positioned "set" that commits on the next tap of the same row.
+// opens the joystick positioning overlay for the one next settable slot.
 void onKeyMain(lv_event_t* e) {
   if (millis() - lastSwipeMs < kSwipeClickGuardMs) {
     return;  // release after a swipe, not a real tap
@@ -188,17 +374,10 @@ void onKeyMain(lv_event_t* e) {
   }
   const shark::SharkClient::State& s = gShark.state();
   if (s.present[slot]) {
-    cancelArmedSet();
+    cancelPositioning();
     gShark.keypointGo(slot);
-  } else if (armedSetSlot == slot) {
-    // Commit at the current hand-tracked position, then drop tracking.
-    gShark.keypointSet(slot);
-    gShark.setManualTracking(false);
-    armedSetSlot = -1;
-  } else {
-    cancelArmedSet();
-    armedSetSlot = slot;
-    gShark.setManualTracking(true);
+  } else if (slot == nextSettableSlot(s)) {
+    openSetOverlay(slot);
   }
 }
 
@@ -207,10 +386,65 @@ void onKeyGear(lv_event_t* e) {
     return;  // release after a swipe, not a real tap
   }
   const int slot = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
-  openModal(slot);
+  if (slot >= 0 && slot < shark::kKeypointCount && gShark.state().present[slot]) {
+    cancelPositioning();
+    openModal(slot);
+  }
 }
 
 void onModalClose(lv_event_t*) { closeModal(); }
+
+void onSetCommit(lv_event_t*) { closeSetOverlay(true); }
+
+void onSetCancel(lv_event_t*) { closeSetOverlay(false); }
+
+void onSetManual(lv_event_t*) {
+  if (setSlot < 0) {
+    return;
+  }
+  manualUnlockActive = true;
+  stopActiveMotion();
+  gShark.setManualTracking(true);
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Manually", kSlotLetters[setSlot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Slider unlocked. Move it, then Set.");
+  if (joystickBase != nullptr) {
+    lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  showSetActions();
+}
+
+void onSetJoystick(lv_event_t*) {
+  if (setSlot < 0) {
+    return;
+  }
+  if (manualUnlockActive) {
+    gShark.setManualTracking(false);
+    manualUnlockActive = false;
+  }
+  stopActiveMotion();
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Joystick", kSlotLetters[setSlot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Drag joystick, then Set.");
+  centerJoystickKnob();
+  if (joystickBase != nullptr) {
+    lv_obj_clear_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  showSetActions();
+}
+
+void onJoystick(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
+    lv_point_t point;
+    lv_indev_get_point(lv_indev_get_act(), &point);
+    updateJoystickFromPoint(point, millis());
+  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    stopActiveMotion();
+  }
+}
 
 void onModalDelete(lv_event_t*) {
   if (modalSlot >= 0) {
@@ -382,6 +616,7 @@ void buildKeysScreen() {
     keyButtons[i] = btn;
     keyLabels[i] = label;
     gearButtons[i] = gear;
+    keyRows[i] = row;
   }
 }
 
@@ -562,6 +797,97 @@ void buildModal() {
   lv_obj_align(minusBtn, LV_ALIGN_RIGHT_MID, -92, 0);
 }
 
+void buildSetOverlay() {
+  setOverlay = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(setOverlay, 236, 236);
+  lv_obj_center(setOverlay);
+  lv_obj_set_style_radius(setOverlay, 118, 0);
+  lv_obj_set_style_bg_color(setOverlay, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_border_color(setOverlay, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(setOverlay, 3, 0);
+  lv_obj_set_style_pad_all(setOverlay, 0, 0);
+  lv_obj_clear_flag(setOverlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
+
+  setTitle = lv_label_create(setOverlay);
+  lv_obj_set_style_text_font(setTitle, UI_FONT_20, 0);
+  lv_label_set_text(setTitle, "Set Position");
+  lv_obj_align(setTitle, LV_ALIGN_TOP_MID, 0, 24);
+
+  setHint = lv_label_create(setOverlay);
+  lv_obj_set_width(setHint, 178);
+  lv_obj_set_style_text_font(setHint, UI_FONT_14, 0);
+  lv_obj_set_style_text_align(setHint, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(setHint, lv_color_hex(kColMuted), 0);
+  lv_label_set_text(setHint, "Choose positioning method");
+  lv_obj_align(setHint, LV_ALIGN_TOP_MID, 0, 48);
+
+  unlockBtn = makeButton(setOverlay, "Set manually", onSetManual, nullptr, kColAccent, UI_FONT_14);
+  lv_obj_set_size(unlockBtn, 132, 36);
+  lv_obj_align(unlockBtn, LV_ALIGN_CENTER, 0, -18);
+
+  joystickBtn = makeButton(setOverlay, "Joystick", onSetJoystick, nullptr, kColAccentDim, UI_FONT_16);
+  lv_obj_set_size(joystickBtn, 132, 36);
+  lv_obj_align(joystickBtn, LV_ALIGN_CENTER, 0, 28);
+
+  joystickBase = lv_obj_create(setOverlay);
+  lv_obj_set_size(joystickBase, 112, 112);
+  lv_obj_align(joystickBase, LV_ALIGN_CENTER, 0, 4);
+  lv_obj_set_style_radius(joystickBase, 56, 0);
+  lv_obj_set_style_bg_color(joystickBase, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_border_color(joystickBase, lv_color_hex(kColAccentDim), 0);
+  lv_obj_set_style_border_width(joystickBase, 2, 0);
+  lv_obj_clear_flag(joystickBase, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESSING, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESS_LOST, nullptr);
+  lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+
+  joystickKnob = lv_obj_create(joystickBase);
+  lv_obj_set_size(joystickKnob, 34, 34);
+  lv_obj_set_style_radius(joystickKnob, 17, 0);
+  lv_obj_set_style_bg_color(joystickKnob, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(joystickKnob, 0, 0);
+  lv_obj_clear_flag(joystickKnob, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(joystickKnob, LV_OBJ_FLAG_CLICKABLE);
+  centerJoystickKnob();
+
+  lv_obj_t* slideL = lv_label_create(joystickBase);
+  lv_label_set_text(slideL, "Slide L");
+  lv_obj_set_style_text_font(slideL, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(slideL, lv_color_hex(kColMuted), 0);
+  lv_obj_align(slideL, LV_ALIGN_LEFT_MID, 5, 0);
+
+  lv_obj_t* slideR = lv_label_create(joystickBase);
+  lv_label_set_text(slideR, "Slide R");
+  lv_obj_set_style_text_font(slideR, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(slideR, lv_color_hex(kColMuted), 0);
+  lv_obj_align(slideR, LV_ALIGN_RIGHT_MID, -5, 0);
+
+  lv_obj_t* panL = lv_label_create(joystickBase);
+  lv_label_set_text(panL, "Pan L");
+  lv_obj_set_style_text_font(panL, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(panL, lv_color_hex(kColMuted), 0);
+  lv_obj_align(panL, LV_ALIGN_TOP_MID, 0, 5);
+
+  lv_obj_t* panR = lv_label_create(joystickBase);
+  lv_label_set_text(panR, "Pan R");
+  lv_obj_set_style_text_font(panR, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(panR, lv_color_hex(kColMuted), 0);
+  lv_obj_align(panR, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+  setBtn = makeButton(setOverlay, "Set", onSetCommit, nullptr, kColAccent);
+  lv_obj_set_size(setBtn, 82, 34);
+  lv_obj_align(setBtn, LV_ALIGN_BOTTOM_MID, 45, -16);
+  lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+
+  cancelBtn = makeButton(setOverlay, "Cancel", onSetCancel, nullptr, kColAbsent, UI_FONT_14);
+  lv_obj_set_size(cancelBtn, 78, 32);
+  lv_obj_align(cancelBtn, LV_ALIGN_BOTTOM_MID, -45, -17);
+  lv_obj_set_style_text_color(lv_obj_get_child(cancelBtn, 0), lv_color_hex(kColMuted), 0);
+}
+
 void openModal(int slot) {
   if (slot < 0 || slot >= shark::kKeypointCount) {
     return;
@@ -644,12 +970,19 @@ void refreshKeys(const shark::SharkClient::State& s) {
   formatHeader(header, sizeof(header), s, "Keys");
   lv_label_set_text(keysHeader, header);
 
+  const int nextSlot = nextSettableSlot(s);
   for (int i = 0; i < shark::kKeypointCount; ++i) {
     const bool present = s.present[i];
-    const bool armed = (armedSetSlot == i);
+    const bool visible = present || i == nextSlot;
+    if (visible) {
+      lv_obj_clear_flag(keyRows[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(keyRows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
     char text[40];
-    if (armed) {
-      snprintf(text, sizeof(text), "%s  Setting... tap to set", kSlotLetters[i]);
+    if (!present) {
+      snprintf(text, sizeof(text), "%s +  set position", kSlotLetters[i]);
     } else if (i == 0) {
       snprintf(text, sizeof(text), "%s %s  start", kSlotLetters[i], present ? "#" : "-");
     } else if (present && s.timingKnown && s.speed[i] >= 0) {
@@ -658,14 +991,14 @@ void refreshKeys(const shark::SharkClient::State& s) {
       snprintf(text, sizeof(text), "%s %s", kSlotLetters[i], present ? "#" : "-");
     }
     lv_label_set_text(keyLabels[i], text);
-    uint32_t bg = kColPanel;
-    if (armed) {
-      bg = kColAccent;
-    } else if (present) {
-      bg = kColAccentDim;
-    }
+    uint32_t bg = present ? kColAccentDim : kColPanel;
     lv_obj_set_style_bg_color(keyButtons[i], lv_color_hex(bg), 0);
     lv_obj_set_style_bg_color(gearButtons[i], lv_color_hex(bg), 0);
+    if (present) {
+      lv_obj_clear_flag(gearButtons[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(gearButtons[i], LV_OBJ_FLAG_HIDDEN);
+    }
   }
 }
 
@@ -722,7 +1055,9 @@ void showScreenForState(const shark::SharkClient::State& s) {
     if (modalOpen) {
       closeModal();
     }
-    armedSetSlot = -1;  // link dropped; nothing to commit
+    if (setOverlayOpen) {
+      cancelPositioning();
+    }
     if (lv_scr_act() != scrConnect) {
       lv_scr_load(scrConnect);
     }
@@ -736,11 +1071,13 @@ void init() {
   buildKeysScreen();
   buildRunScreen();
   buildModal();
+  buildSetOverlay();
   lv_scr_load(scrConnect);
 }
 
 void tick() {
   const uint32_t now = millis();
+  pumpMotion(now);
   if (now - lastRefreshMs < kRefreshIntervalMs) {
     return;
   }
@@ -770,7 +1107,10 @@ void toggleMainScreen() {
     closeModal();
     return;
   }
-  cancelArmedSet();
+  if (setOverlayOpen) {
+    cancelPositioning();
+    return;
+  }
   currentMain = (currentMain == 0) ? 1 : 0;
   if (currentMain == 1) {
     lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);

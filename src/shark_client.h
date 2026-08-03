@@ -81,6 +81,8 @@ class SharkClient {
   void setLoop(bool on);
   void setDirection(bool reverse);
   void setManualTracking(bool enabled);
+  void setMotionVector(int slideVelocity, int panVelocity);
+  void stopMotion();
   void refreshAll();
 
   // Called only from NimBLE callbacks.

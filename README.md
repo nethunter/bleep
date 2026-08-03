@@ -12,13 +12,16 @@ BLE protocol.
   device in NVS. On boot and after any drop it reconnects automatically; a
   `Re-pair` button on the connect screen forgets the saved device and scans
   again.
-- **Keypoints (A-H).** Set, go-to, and delete keypoints. Positioning is done by
-  hand using **manual tracking** (toggle on the Keypoints screen), so no
-  slide/pan jog controls are needed on the small round UI. Deletes cascade
-  through later configured slots, matching the slider's own behavior.
-- **Per-keypoint speed/hold.** Tap a keypoint to open its modal and adjust
-  travel speed (0-100%) and hold time (seconds) for destinations B-H via a
-  read-modify-write of the device timing table. Keypoint A is the route start
+- **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
+  shows configured slots plus the next unset slot only, matching the slider's
+  sequential route model. Tapping the next unset slot opens a positioning overlay:
+  choose **Set manually** to unlock the slider for hand positioning, or
+  **Joystick** for slide/pan jogging; press **Set** to store the current slider
+  position. Deletes cascade through later configured slots, matching the slider's
+  own behavior.
+- **Per-keypoint speed/hold.** Use the gear button on a configured keypoint to
+  adjust travel speed (0-100%) and hold time (seconds) for destinations B-H via
+  a read-modify-write of the device timing table. Keypoint A is the route start
   and has no timing. The device may quantize speed; the applied value is read
   back and shown.
 - **Run controls.** Standby / Start / Stop, a loop toggle, and a route-direction
@@ -27,8 +30,8 @@ BLE protocol.
 
 ## Controls
 
-- **Touch:** primary UI (connect screen, Keypoints screen, Run screen, and the
-  per-keypoint modal).
+- **Touch:** primary UI (connect screen, Keypoints screen, joystick positioning
+  overlay, Run screen, and the per-keypoint modal).
 - **Button (GPIO 1):**
   - Short press: switch between the Keypoints and Run screens (closes an open
     modal first).

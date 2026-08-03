@@ -54,6 +54,16 @@ FrameBytes encodeFrame(uint8_t family, uint8_t code, const uint8_t* data, size_t
 
 namespace {
 
+int clampMotionVelocity(int value) {
+  if (value < -kManualMotionMaxVelocity) {
+    return -kManualMotionMaxVelocity;
+  }
+  if (value > kManualMotionMaxVelocity) {
+    return kManualMotionMaxVelocity;
+  }
+  return value;
+}
+
 // Attempt to validate and parse a complete candidate frame starting at `buf`.
 // Returns true and fills `out` if the candidate is a structurally valid frame
 // with a matching CRC. `totalLen` is the full frame length including envelope.
@@ -241,6 +251,21 @@ FrameBytes buildManualTracking(bool enabled, uint8_t tx) {
   // Confirmed: disable writes 0x01; enable is the inferred 0x00 counterpart.
   const uint8_t data[2] = {tx, static_cast<uint8_t>(enabled ? 0x00 : 0x01)};
   return encodeFrame(0x03, 0x02, data, sizeof(data));
+}
+
+FrameBytes buildMotionVector(int slideVelocity, int panVelocity, uint8_t tx) {
+  const int slide = clampMotionVelocity(slideVelocity);
+  const int pan = clampMotionVelocity(panVelocity);
+  const uint8_t data[7] = {
+      tx,
+      static_cast<uint8_t>(static_cast<int8_t>(slide)),
+      static_cast<uint8_t>(static_cast<int8_t>(pan)),
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+  };
+  return encodeFrame(0x03, 0x04, data, sizeof(data));
 }
 
 bool patchTimingTable(const uint8_t* table, size_t tableLen, int slotIndex, int speed,
