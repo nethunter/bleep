@@ -50,12 +50,9 @@ the reverse-engineered Shark Nano BLE protocol.
 | Module | Responsibility |
 | --- | --- |
 | `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
-| `src/drivers/shark_driver.*` | Adapter between generic device infrastructure and the Shark client. |
-| `src/shark_protocol.*` | Frame envelope (`AA BB <body> <crc32> BB AA`), IEEE CRC32, streaming frame scanner, command builders, and the run-progress parser. |
-| `src/shark_state.*` | Host-testable notification-to-state reduction. |
-| `src/shark_client.*` | On-demand NimBLE central, notification stream, and Shark actions. |
+| `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
+| `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
 | `src/ui.*` | Home, Devices, and application navigation. |
-| `src/shark_ui.*` | Specialized Shark connect, keypoint, positioning, and run screens. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
 
 NimBLE callbacks run on the host task and only push raw bytes into a FreeRTOS

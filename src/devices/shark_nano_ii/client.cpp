@@ -1,4 +1,4 @@
-#include "shark_client.h"
+#include "devices/shark_nano_ii/client.h"
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>

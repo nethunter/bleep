@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "shark_protocol.h"
+#include "devices/shark_nano_ii/protocol.h"
 
 namespace shark {
 

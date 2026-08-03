@@ -9,7 +9,7 @@
 #include "assets/ui_icons.h"
 #include "core/device_manager.h"
 #include "fonts/ui_fonts.h"
-#include "shark_ui.h"
+#include "devices/shark_nano_ii/ui.h"
 
 namespace ui {
 

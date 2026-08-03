@@ -5,7 +5,7 @@
 
 #include "core/config_store.h"
 #include "core/device_driver.h"
-#include "shark_state.h"
+#include "devices/shark_nano_ii/state.h"
 
 namespace studio {
 namespace {

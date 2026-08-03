@@ -1,6 +1,6 @@
 #pragma once
 
-#include "shark_state.h"
+#include "devices/shark_nano_ii/state.h"
 
 namespace studio {
 

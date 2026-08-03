@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/device_driver.h"
-#include "shark_client.h"
+#include "devices/shark_nano_ii/client.h"
 
 namespace studio {
 

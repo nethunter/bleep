@@ -18,12 +18,9 @@ under `docs/`.
 | Path | Responsibility |
 | --- | --- |
 | `src/core/*` | Compile-time driver metadata, persistent runtime registry, typed commands/results, and `DeviceManager`. |
-| `src/drivers/*` | Adapters from generic device infrastructure to protocol/transport implementations. |
-| `src/shark_protocol.*` | Frame envelope, CRC32, frame scanner, command builders, run-progress parser. Pure logic, no Arduino/BLE deps. |
-| `src/shark_state.*` | Pure Shark notification-to-state reduction. |
-| `src/shark_client.*` | On-demand NimBLE central, notification parsing, decoded state, and Shark actions. |
+| `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
+| `src/devices/shark_nano_ii/*` | Shark frame protocol, pure state reducer, on-demand NimBLE client, driver adapter, and connect/keypoint/run UI. |
 | `src/ui.*` | Home, Devices, device management, and application navigation. |
-| `src/shark_ui.*` | Specialized Shark connect, keypoint, positioning, and run screens. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, main loop. |
 | `test/` | PlatformIO native tests for protocol and host-testable core logic. |
 | `sim/` | Desktop LVGL harness: stubs, fake device runtime, PNG screenshot capture. |

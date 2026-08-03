@@ -1,7 +1,7 @@
 #include "core/device_manager.h"
 
 #include "core/preferences_store.h"
-#include "drivers/shark_driver.h"
+#include "devices/shark_nano_ii/driver.h"
 
 namespace studio {
 

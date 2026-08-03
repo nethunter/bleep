@@ -15,9 +15,10 @@ Status values:
 - Transport: Bluetooth LE GATT.
 - Capabilities: pairing/reconnect, battery, keypoints A-H, speed, hold,
   movement, run state/progress, loop, and direction.
-- Protocol code: `src/shark_protocol.*`.
-- Client code: `src/shark_client.*`.
-- UI: existing keypoint, run, modal, and positioning workflows.
+- Device code: `src/devices/shark_nano_ii/`.
+- Protocol: `protocol.*`; client: `client.*`; driver adapter: `driver.*`.
+- UI: `ui.*`, preserving the existing keypoint, run, modal, and positioning
+  workflows.
 
 Safety: movement and run commands affect physical hardware. ACKs are not proof
 of successful movement.

@@ -1,4 +1,4 @@
-#include "shark_ui.h"
+#include "devices/shark_nano_ii/ui.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -7,10 +7,10 @@
 #include <cstdio>
 
 #include "core/device_manager.h"
+#include "devices/shark_nano_ii/client.h"
+#include "devices/shark_nano_ii/protocol.h"
 #include "fonts/ui_fonts.h"
-#include "shark_client.h"
-#include "shark_protocol.h"
-#include "ui.h"
+#include "../../ui.h"
 
 namespace shark_ui {
 

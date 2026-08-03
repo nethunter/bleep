@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-#include "shark_protocol.h"
-#include "shark_state.h"
+#include "devices/shark_nano_ii/protocol.h"
+#include "devices/shark_nano_ii/state.h"
 
 // Forward declarations to keep NimBLE headers out of this interface.
 class NimBLEClient;

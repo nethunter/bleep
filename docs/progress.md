@@ -82,6 +82,22 @@ Record values with the exact build environment and commit/worktree state.
 - Physical device controls and persistence workflow: Operator verification
   pending.
 
+### Per-device source layout
+
+- Date: 2026-08-03.
+- PlatformIO environments: `native`, `ui_sim`, `crowpanel_128`, and
+  `crowpanel_128_roboto`.
+- Default profile flash usage: 854,674 / 3,145,728 bytes (27.2%).
+- Roboto profile flash usage: 824,202 / 3,145,728 bytes (26.2%).
+- Static RAM usage: 117,636 / 327,680 bytes (35.9%) in both firmware profiles.
+- Build result: `ui_sim`, `crowpanel_128`, and `crowpanel_128_roboto`
+  succeeded.
+- Simulator result: all seven 240x240 PNG captures completed.
+- Flash result: Success on auto-detected `/dev/cu.usbserial-211240`.
+- Host tests: 12/12 passed in the PlatformIO `native` environment.
+- Physical Shark and persistence regression: Not exercised; the existing
+  operator hardware gate remains pending.
+
 ### Full coexistence spike
 
 - Date: Not started.
@@ -214,4 +230,17 @@ Record values with the exact build environment and commit/worktree state.
   flashed successfully (854,686 bytes flash, 117,644 bytes static RAM).
 - `crowpanel_128_roboto` also built successfully (824,214 bytes flash, 117,644
   bytes static RAM). Physical keypad interaction remains operator-pending.
+
+### 2026-08-03: Per-device source layout
+
+- Consolidated the Shark protocol, state reducer, NimBLE client, driver adapter,
+  and specialized UI under `src/devices/shark_nano_ii/`.
+- Updated firmware, native-test, and simulator includes and source filters
+  without changing namespaces, public APIs, runtime wiring, or behavior.
+- Updated repository layout and device-support documentation for the
+  per-device source convention.
+- Native tests passed 12/12; `ui_sim` built and captured all seven screens;
+  both firmware profiles built; the default profile flashed successfully.
+- Physical Shark behavior was not exercised, so the existing combined
+  Phase 0/foundation operator gate remains open.
 

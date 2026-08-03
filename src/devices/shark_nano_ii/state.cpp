@@ -1,4 +1,4 @@
-#include "shark_state.h"
+#include "devices/shark_nano_ii/state.h"
 
 #include <cstring>
 

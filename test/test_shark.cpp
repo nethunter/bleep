@@ -7,8 +7,8 @@
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
-#include "shark_protocol.h"
-#include "shark_state.h"
+#include "devices/shark_nano_ii/protocol.h"
+#include "devices/shark_nano_ii/state.h"
 
 using namespace shark;
 

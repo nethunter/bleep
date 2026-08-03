@@ -6,7 +6,7 @@
 
 #include "Arduino.h"
 #include "core/device_manager.h"
-#include "shark_ui.h"
+#include "devices/shark_nano_ii/ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
 
