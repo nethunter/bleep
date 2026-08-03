@@ -13,7 +13,9 @@
 #define LV_COLOR_MIX_ROUND_OFS 128
 
 #define LV_MEM_CUSTOM 0
+#ifndef LV_MEM_SIZE
 #define LV_MEM_SIZE (48U * 1024U)
+#endif
 
 #define LV_TICK_CUSTOM 0
 #define LV_DPI_DEF 130

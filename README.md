@@ -106,6 +106,10 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e nativ
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
+
+# Desktop UI screenshots (no board; needs ImageMagick)
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e ui_sim
+.pio/build/ui_sim/program   # writes round PNGs to sim/screenshots/
 ```
 
 Built and compile-verified with espressif32 7.0.1 (arduino-esp32 3.x), LVGL

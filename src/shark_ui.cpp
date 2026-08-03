@@ -78,6 +78,11 @@ constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColPresent = 0x4ADE80;
 constexpr uint32_t kColAbsent = 0x3A3F4A;
+
+// 240 round panel: keep chrome inside the inscribed circle so corner controls
+// stay visible and touchable (square TOP_LEFT at ~18,8 is clipped by the bezel).
+constexpr lv_coord_t kRoundBackX = 40;
+constexpr lv_coord_t kRoundBackY = 36;
 constexpr uint32_t kColDanger = 0xF26D6D;
 
 // Screens.
@@ -557,12 +562,12 @@ void buildConnectScreen() {
   lv_obj_t* back = makeButton(scrConnect, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
                               UI_FONT_14);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 22);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
 
   connTitle = lv_label_create(scrConnect);
   lv_label_set_text(connTitle, "Shark Remote");
   lv_obj_set_style_text_font(connTitle, UI_FONT_20, 0);
-  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 0, 42);
+  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 12, 40);
 
   connArc = lv_arc_create(scrConnect);
   lv_obj_set_size(connArc, 74, 74);
@@ -610,19 +615,19 @@ void buildKeysScreen() {
   lv_obj_t* back = makeButton(scrKeys, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
                               UI_FONT_14);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 8);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
 
   keysHeader = lv_label_create(scrKeys);
   lv_obj_set_style_text_font(keysHeader, UI_FONT_14, 0);
   lv_label_set_text(keysHeader, "Keypoints");
-  lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 0, 18);
+  lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 12, 42);
 
   // Scrollable keypoint list. With the manual-track switch gone it can use the
   // full mid-band height; horizontal swipes bubble up to the screen gesture
   // handler so the Run view is reachable.
   keyList = lv_obj_create(scrKeys);
-  lv_obj_set_size(keyList, 200, 168);
-  lv_obj_align(keyList, LV_ALIGN_TOP_MID, 0, 40);
+  lv_obj_set_size(keyList, 200, 146);
+  lv_obj_align(keyList, LV_ALIGN_TOP_MID, 0, 62);
   lv_obj_set_style_bg_color(keyList, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_width(keyList, 0, 0);
   lv_obj_set_style_pad_all(keyList, 2, 0);
@@ -688,16 +693,16 @@ void buildRunScreen() {
   lv_obj_t* back = makeButton(scrRun, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
                               UI_FONT_14);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 8);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
 
   runHeader = lv_label_create(scrRun);
   lv_obj_set_style_text_font(runHeader, UI_FONT_14, 0);
   lv_label_set_text(runHeader, "Run");
-  lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 0, 18);
+  lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 12, 42);
 
   runBar = lv_bar_create(scrRun);
   lv_obj_set_size(runBar, 150, 10);
-  lv_obj_align(runBar, LV_ALIGN_TOP_MID, 0, 44);
+  lv_obj_align(runBar, LV_ALIGN_TOP_MID, 0, 64);
   lv_bar_set_range(runBar, 0, 100);
   lv_bar_set_value(runBar, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(runBar, lv_color_hex(kColPanel), LV_PART_MAIN);
@@ -706,7 +711,7 @@ void buildRunScreen() {
   runPercent = lv_label_create(scrRun);
   lv_obj_set_style_text_color(runPercent, lv_color_hex(kColMuted), 0);
   lv_label_set_text(runPercent, "0%");
-  lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 58);
+  lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 78);
 
   // Single large run-state button. Its label/color and action follow the run
   // state machine (stopped -> Standby -> Start -> Stop); only one shows at a

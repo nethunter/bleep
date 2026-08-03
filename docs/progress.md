@@ -175,3 +175,13 @@ Record values with the exact build environment and commit/worktree state.
 - Built both panel profiles, flashed the default profile, and captured Home boot
   heap. Physical operator verification remains open.
 
+### 2026-08-03: Desktop LVGL UI simulator
+
+- Added PlatformIO `ui_sim` host environment that compiles the real `ui` /
+  `shark_ui` sources against LVGL with Arduino/device stubs.
+- Captures round 240x240 PNGs to `sim/screenshots/` via ImageMagick (`magick`)
+  without flashing: Home, Devices, manage, rename keyboard, Shark connect,
+  keypoints, and run.
+- Simulator uses `LV_COLOR_16_SWAP=0` and a 128 KiB LVGL heap (firmware keeps
+  48 KiB). Build and capture succeeded locally.
+

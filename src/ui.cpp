@@ -21,6 +21,10 @@ constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
 
+// Keep corner chrome inside the 240 round panel's inscribed circle.
+constexpr lv_coord_t kRoundBackX = 40;
+constexpr lv_coord_t kRoundBackY = 36;
+
 enum class Screen : uint8_t { Home, Devices };
 
 Screen screen = Screen::Home;
@@ -287,16 +291,16 @@ void buildDevices() {
 
   lv_obj_t* back = makeButton(scrDevices, LV_SYMBOL_LEFT, onShowHome);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 10);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
 
   lv_obj_t* title = lv_label_create(scrDevices);
   lv_label_set_text(title, "Devices");
   lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 17);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
 
   deviceList = lv_obj_create(scrDevices);
-  lv_obj_set_size(deviceList, 200, 142);
-  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 48);
+  lv_obj_set_size(deviceList, 200, 122);
+  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 68);
   lv_obj_set_style_bg_opa(deviceList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(deviceList, 0, 0);
   lv_obj_set_style_pad_all(deviceList, 2, 0);
@@ -442,5 +446,37 @@ void showDevices() {
   refreshDevices();
   lv_scr_load(scrDevices);
 }
+
+#ifdef UI_SIMULATOR
+void simShowManage(studio::InstanceId instanceId) {
+  showDevices();
+  managedInstance = instanceId;
+  const studio::DeviceRecord* record = studio::devices().find(managedInstance);
+  if (record == nullptr) {
+    managedInstance = studio::kInvalidInstanceId;
+    return;
+  }
+  lv_label_set_text(deviceModalTitle, record->displayName);
+  removeArmed = false;
+  lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
+  if (record->enabled) {
+    lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(enabledSwitch, LV_STATE_CHECKED);
+  }
+  lv_obj_clear_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
+}
+
+void simShowRename(studio::InstanceId instanceId) {
+  simShowManage(instanceId);
+  const studio::DeviceRecord* record = studio::devices().find(managedInstance);
+  if (record == nullptr) {
+    return;
+  }
+  lv_textarea_set_text(renameText, record->displayName);
+  lv_keyboard_set_textarea(renameKeyboard, renameText);
+  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+#endif
 
 }  // namespace ui

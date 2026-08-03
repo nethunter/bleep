@@ -26,9 +26,10 @@ under `docs/`.
 | `src/shark_ui.*` | Specialized Shark connect, keypoint, positioning, and run screens. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, main loop. |
 | `test/` | PlatformIO native tests for protocol and host-testable core logic. |
+| `sim/` | Desktop LVGL harness: stubs, fake device runtime, PNG screenshot capture. |
 | `docs/` | Architecture, decisions, roadmap phases, device support, and progress handoff. |
 | `include/lv_conf.h` | LVGL build configuration (fonts, widgets, theme). |
-| `platformio.ini` | Target firmware and native-test build environments. |
+| `platformio.ini` | Target firmware, native-test, and UI simulator build environments. |
 
 ## Roadmap and documentation discipline
 
@@ -103,10 +104,20 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpa
 
 # Serial monitor (115200)
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
+
+# Desktop UI screenshots (no flash; needs ImageMagick `magick`)
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e ui_sim
+.pio/build/ui_sim/program
+# PNGs land in sim/screenshots/
 ```
 
 The global `pio` (`~/.platformio/penv/bin/pio`) also works if the local venv is
 unavailable.
+
+When changing Home, Devices, device-management, or Shark UI layouts, prefer
+`ui_sim` screenshots for review before flashing. The simulator uses
+`LV_COLOR_16_SWAP=0` and a larger LVGL heap; pixel colors should match the panel
+once the firmware swap path is unchanged.
 
 Flashing notes:
 
