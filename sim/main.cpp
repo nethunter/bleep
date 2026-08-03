@@ -112,9 +112,18 @@ void setupDisplay() {
   lv_disp_drv_register(&gDispDrv);
 }
 
+void printLvglMemory(const char* stage) {
+  lv_mem_monitor_t monitor {};
+  lv_mem_monitor(&monitor);
+  std::printf("LVGL memory %s: %u bytes free, %u%% used\n", stage,
+              static_cast<unsigned>(monitor.free_size),
+              static_cast<unsigned>(monitor.used_pct));
+}
+
 }  // namespace
 
 int main() {
+  std::setbuf(stdout, nullptr);
   ensureDir("sim/screenshots");
   setupDisplay();
 
@@ -128,8 +137,19 @@ int main() {
   studio::InstanceId canonId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonBle, "EOS R6 Mark III",
                         canonId);
+  studio::InstanceId canonId2 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonBle, "Camera B", canonId2);
+  studio::InstanceId canonId3 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
+  if (canonId == studio::kInvalidInstanceId ||
+      canonId2 == studio::kInvalidInstanceId ||
+      canonId3 == studio::kInvalidInstanceId) {
+    std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
+    return 1;
+  }
 
   ui::init();
+  printLvglMemory("after max-device init");
 
   ui::showHome();
   if (!capture("01_home")) {
@@ -212,6 +232,15 @@ int main() {
   if (!capture("12_canon_record_trigger")) {
     return 1;
   }
+
+  canon_ble_ui::hide();
+  if (studio::devices().remove(canonId3) != studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to remove a device in simulator regression\n");
+    return 1;
+  }
+  ui::showDevices();
+  pump(200);
+  printLvglMemory("after remove refresh");
 
   std::printf("UI simulator captures complete.\n");
   return 0;

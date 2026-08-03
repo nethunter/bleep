@@ -116,6 +116,26 @@ Record values with the exact build environment and commit/worktree state.
 - Physical touch interaction and Shark movement: Not exercised; the combined
   Phase 0/foundation operator gate remains pending.
 
+### Four-device LVGL capacity fix
+
+- Date: 2026-08-03.
+- Reproduction: the supported maximum of one Shark and three Canon instances
+  exhausted the previous 48 KiB LVGL heap; an 80 KiB test reached Devices but
+  failed when opening Settings.
+- Fix: firmware and simulator LVGL heaps use 96 KiB. The simulator now seeds
+  all four instances and exercises Settings, rename, Shark and Canon entry,
+  and device removal/refresh.
+- Simulator result: all twelve captures and the removal regression completed;
+  17,640 bytes remained free after maximum-device initialization and 19,752
+  bytes after removing one device.
+- Build result: `native` passed 15/15 tests; `ui_sim`, `crowpanel_128`, and
+  `crowpanel_128_roboto` succeeded.
+- Default profile flash usage: 861,596 / 3,145,728 bytes (27.4%).
+- Default and Roboto static RAM usage: 167,188 / 327,680 bytes (51.0%).
+- Roboto profile flash usage: 831,124 / 3,145,728 bytes (26.4%).
+- Flash result: Success on auto-detected `/dev/cu.usbserial-211240`.
+- Physical four-device touch regression: Operator verification pending.
+
 ### Full coexistence spike
 
 - Date: Not started.
@@ -328,4 +348,15 @@ Record values with the exact build environment and commit/worktree state.
 - Linked the icon source and prompt guide from the repository README.
 - Documentation only; firmware behavior and generated assets were unchanged,
   so no build, flash, simulator capture, or hardware check was run.
+
+### 2026-08-03: Four-device UI heap fix
+
+- Reproduced the reported freeze as LVGL allocation failure at the supported
+  maximum of one Shark and three Canon device records.
+- Increased the LVGL object heap from 48 KiB to 96 KiB and made the simulator
+  use the same limit instead of masking firmware pressure with 128 KiB.
+- Expanded simulator coverage to seed all four records and exercise management,
+  rename, both device screens, and removal/refresh.
+- Native tests, all simulator captures, both firmware builds, and the default
+  profile flash succeeded. Physical touch confirmation remains pending.
 
