@@ -203,3 +203,15 @@ Record values with the exact build environment and commit/worktree state.
   colors survive on both `ui_sim` and the panel. Disabled modes dim via opacity.
 - Sim capture + `crowpanel_128` flash succeeded.
 
+### 2026-08-03: Compact paged rename input
+
+- Replaced the rectangular LVGL QWERTY keyboard with a round-native 3x3 keypad.
+  Arrow buttons or horizontal swipes change between A-I, J-R, S-Z, and
+  number/symbol pages.
+- Character keys insert directly; Space, backspace, and case controls remain
+  available. Icon Save/Cancel controls sit beside the name field.
+- `ui_sim` rebuilt and captured `04_rename.png`; `crowpanel_128` built and
+  flashed successfully (854,686 bytes flash, 117,644 bytes static RAM).
+- `crowpanel_128_roboto` also built successfully (824,214 bytes flash, 117,644
+  bytes static RAM). Physical keypad interaction remains operator-pending.
+

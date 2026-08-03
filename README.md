@@ -12,7 +12,9 @@ the reverse-engineered Shark Nano BLE protocol.
   active today; the others are reserved. Devices are stored in a versioned
   registry and can be
   added, renamed, enabled, disabled, re-paired, and removed. The current build
-  permits one Shark instance.
+  permits one Shark instance. Rename uses a round-native paged keypad with
+  large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
+  case controls.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
