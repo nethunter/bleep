@@ -62,6 +62,8 @@ BR-E1 BLE** driver.
 | `src/devices/canon_ble/*` | Research-stage BR-E1 pairing/trigger protocol, on-demand NimBLE client, driver adapter, and camera screen. |
 | `src/ui.*` | Home, Devices, and application navigation. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
+| [`assets/icons/`](assets/icons/README.md) | Home mode source artwork and the prompt recipe for generating matching icons. |
+| `src/assets/*` | Generated LVGL image arrays; rebuild them with `tools/gen_icons.py`. |
 
 NimBLE callbacks run on the host task and only push raw bytes into a FreeRTOS
 stream buffer or flip flags; all frame parsing, state mutation, GATT writes, and

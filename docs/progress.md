@@ -320,3 +320,12 @@ Record values with the exact build environment and commit/worktree state.
 - Canon forget/re-pair, repeated-cycle measurements, and Shark regression
   remain operator-pending, so no roadmap phase gate is marked complete.
 
+### 2026-08-03: Home icon prompt documentation
+
+- Preserved the exact shared style prompt, per-mode subject prompts, successful
+  Nano Banana Pro model/settings, visual review criteria, and LVGL conversion
+  workflow in `assets/icons/README.md`.
+- Linked the icon source and prompt guide from the repository README.
+- Documentation only; firmware behavior and generated assets were unchanged,
+  so no build, flash, simulator capture, or hardware check was run.
+
