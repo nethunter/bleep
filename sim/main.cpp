@@ -175,6 +175,29 @@ int main() {
     return 1;
   }
 
+  shark_ui::handleShortPress();
+  pump(250);
+  shark_ui::simShowKeypointSettings(2);
+  if (!capture("08_shark_key_settings")) {
+    return 1;
+  }
+
+  shark_ui::simShowPositionChoice(1);
+  if (!capture("09_shark_position_choice")) {
+    return 1;
+  }
+
+  shark_ui::simShowManualPositioning();
+  if (!capture("10_shark_position_manual")) {
+    return 1;
+  }
+
+  shark_ui::simShowPositionChoice(1);
+  shark_ui::simShowJoystickPositioning();
+  if (!capture("11_shark_position_joystick")) {
+    return 1;
+  }
+
   std::printf("UI simulator captures complete.\n");
   return 0;
 }

@@ -14,4 +14,11 @@ bool active();
 void tick();
 void handleShortPress();
 
+#ifdef UI_SIMULATOR
+void simShowKeypointSettings(int slot);
+void simShowPositionChoice(int slot);
+void simShowManualPositioning();
+void simShowJoystickPositioning();
+#endif
+
 }  // namespace shark_ui

@@ -72,6 +72,7 @@ const char* const kSlotLetters[shark::kKeypointCount] = {"A", "B", "C", "D", "E"
 // Palette.
 constexpr uint32_t kColBg = 0x05070A;
 constexpr uint32_t kColPanel = 0x12161D;
+constexpr uint32_t kColPanelRaised = 0x1A2029;
 constexpr uint32_t kColAccent = 0x35C7F2;
 constexpr uint32_t kColAccentDim = 0x1E5A6B;
 constexpr uint32_t kColText = 0xF3F4F6;
@@ -113,8 +114,11 @@ lv_obj_t* runActionBtn = nullptr;
 lv_obj_t* runActionLabel = nullptr;
 lv_obj_t* loopBtn = nullptr;
 lv_obj_t* dirBtn = nullptr;
+lv_obj_t* loopLabel = nullptr;
+lv_obj_t* dirLabel = nullptr;
 
 // Per-keypoint modal (lives on the top layer so it overlays any screen).
+lv_obj_t* overlayScrim = nullptr;
 lv_obj_t* modal = nullptr;
 lv_obj_t* modalTitle = nullptr;
 lv_obj_t* modalPresence = nullptr;
@@ -128,6 +132,7 @@ lv_obj_t* holdValue = nullptr;
 lv_obj_t* setOverlay = nullptr;
 lv_obj_t* setTitle = nullptr;
 lv_obj_t* setHint = nullptr;
+lv_obj_t* setModeMark = nullptr;
 lv_obj_t* joystickBase = nullptr;
 lv_obj_t* joystickKnob = nullptr;
 lv_obj_t* unlockBtn = nullptr;
@@ -156,8 +161,8 @@ uint32_t lastMotionMs = 0;
 uint32_t lastSwipeMs = 0;
 constexpr uint32_t kSwipeClickGuardMs = 350;
 constexpr uint32_t kMotionIntervalMs = 170;
-constexpr int kJoystickRadius = 50;
-constexpr int kJoystickDeadZone = 7;
+constexpr int kJoystickRadius = 34;
+constexpr int kJoystickDeadZone = 6;
 
 uint32_t lastRefreshMs = 0;
 Link lastLinkShown = Link::Disconnected;
@@ -265,8 +270,11 @@ void updateJoystickFromPoint(const lv_point_t& point, uint32_t now) {
     dy *= scale;
   }
 
-  lv_obj_set_pos(joystickKnob, static_cast<int>(kJoystickRadius + dx - lv_obj_get_width(joystickKnob) / 2),
-                 static_cast<int>(kJoystickRadius + dy - lv_obj_get_height(joystickKnob) / 2));
+  const int baseCenterX = lv_obj_get_width(joystickBase) / 2;
+  const int baseCenterY = lv_obj_get_height(joystickBase) / 2;
+  lv_obj_set_pos(joystickKnob,
+                 static_cast<int>(baseCenterX + dx - lv_obj_get_width(joystickKnob) / 2),
+                 static_cast<int>(baseCenterY + dy - lv_obj_get_height(joystickKnob) / 2));
 
   if (fabsf(dx) < kJoystickDeadZone) {
     dx = 0.0f;
@@ -302,6 +310,9 @@ void showPositionChoice() {
   if (setBtn != nullptr) {
     lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
   }
+  if (setModeMark != nullptr) {
+    lv_obj_add_flag(setModeMark, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 void showSetActions() {
@@ -330,6 +341,9 @@ void closeSetOverlay(bool commit) {
   if (setOverlay != nullptr) {
     lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
   }
+  if (!modalOpen && overlayScrim != nullptr) {
+    lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
+  }
   if (commit && slot >= 0) {
     gShark.keypointSet(slot);
   }
@@ -355,9 +369,10 @@ void openSetOverlay(int slot) {
   char title[24];
   snprintf(title, sizeof(title), "Set %s Position", kSlotLetters[slot]);
   lv_label_set_text(setTitle, title);
-  lv_label_set_text(setHint, "Choose positioning method");
+  lv_label_set_text(setHint, "Choose a method");
   centerJoystickKnob();
   showPositionChoice();
+  lv_obj_clear_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -413,6 +428,9 @@ void closeModal() {
   if (modal != nullptr) {
     lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
   }
+  if (!setOverlayOpen && overlayScrim != nullptr) {
+    lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 void openModal(int slot);
@@ -463,7 +481,9 @@ void onSetManual(lv_event_t*) {
   char title[24];
   snprintf(title, sizeof(title), "Set %s Manually", kSlotLetters[setSlot]);
   lv_label_set_text(setTitle, title);
-  lv_label_set_text(setHint, "Slider unlocked. Move it, then Set.");
+  lv_label_set_text(setHint, "Move by hand, then save");
+  lv_label_set_text(setModeMark, "MANUAL POSITIONING ACTIVE");
+  lv_obj_clear_flag(setModeMark, LV_OBJ_FLAG_HIDDEN);
   if (joystickBase != nullptr) {
     lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
   }
@@ -482,7 +502,8 @@ void onSetJoystick(lv_event_t*) {
   char title[24];
   snprintf(title, sizeof(title), "Set %s Joystick", kSlotLetters[setSlot]);
   lv_label_set_text(setTitle, title);
-  lv_label_set_text(setHint, "Drag joystick, then Set.");
+  lv_label_set_text(setHint, "Drag, then save");
+  lv_obj_add_flag(setModeMark, LV_OBJ_FLAG_HIDDEN);
   centerJoystickKnob();
   if (joystickBase != nullptr) {
     lv_obj_clear_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
@@ -565,13 +586,16 @@ void buildConnectScreen() {
   lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
 
   connTitle = lv_label_create(scrConnect);
+  lv_label_set_long_mode(connTitle, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(connTitle, 132);
+  lv_obj_set_style_text_align(connTitle, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(connTitle, "Shark Remote");
   lv_obj_set_style_text_font(connTitle, UI_FONT_20, 0);
-  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 12, 40);
+  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 13, 39);
 
   connArc = lv_arc_create(scrConnect);
-  lv_obj_set_size(connArc, 74, 74);
-  lv_obj_align(connArc, LV_ALIGN_CENTER, 0, -16);
+  lv_obj_set_size(connArc, 70, 70);
+  lv_obj_align(connArc, LV_ALIGN_CENTER, 0, -24);
   lv_arc_set_range(connArc, 0, 100);
   lv_arc_set_bg_angles(connArc, 0, 360);
   lv_arc_set_value(connArc, 72);
@@ -592,19 +616,22 @@ void buildConnectScreen() {
   lv_label_set_text(connStatus, "Starting Bluetooth...");
   lv_obj_set_style_text_font(connStatus, UI_FONT_16, 0);
   lv_obj_set_style_text_color(connStatus, lv_color_hex(kColAccent), 0);
-  lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, 40);
+  lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, 27);
 
   connDevice = lv_label_create(scrConnect);
-  lv_label_set_long_mode(connDevice, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(connDevice, 180);
+  lv_label_set_long_mode(connDevice, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(connDevice, 166);
+  lv_obj_set_style_text_font(connDevice, UI_FONT_14, 0);
   lv_obj_set_style_text_align(connDevice, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(connDevice, lv_color_hex(kColMuted), 0);
   lv_label_set_text(connDevice, "iFootage Shark Nano II");
-  lv_obj_align(connDevice, LV_ALIGN_CENTER, 0, 66);
+  lv_obj_align(connDevice, LV_ALIGN_CENTER, 0, 52);
 
   lv_obj_t* repair = makeButton(scrConnect, "Re-pair", onRepair, nullptr, kColPanel);
-  lv_obj_set_size(repair, 120, 36);
-  lv_obj_align(repair, LV_ALIGN_BOTTOM_MID, 0, -18);
+  lv_obj_set_size(repair, 116, 34);
+  lv_obj_align(repair, LV_ALIGN_BOTTOM_MID, 0, -16);
+  lv_obj_set_style_border_color(repair, lv_color_hex(kColPanelRaised), 0);
+  lv_obj_set_style_border_width(repair, 1, 0);
 }
 
 void buildKeysScreen() {
@@ -620,14 +647,16 @@ void buildKeysScreen() {
   keysHeader = lv_label_create(scrKeys);
   lv_obj_set_style_text_font(keysHeader, UI_FONT_14, 0);
   lv_label_set_text(keysHeader, "Keypoints");
-  lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 12, 42);
+  lv_obj_set_width(keysHeader, 136);
+  lv_obj_set_style_text_align(keysHeader, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 14, 43);
 
   // Scrollable keypoint list. With the manual-track switch gone it can use the
   // full mid-band height; horizontal swipes bubble up to the screen gesture
   // handler so the Run view is reachable.
   keyList = lv_obj_create(scrKeys);
-  lv_obj_set_size(keyList, 200, 146);
-  lv_obj_align(keyList, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_set_size(keyList, 200, 148);
+  lv_obj_align(keyList, LV_ALIGN_TOP_MID, 0, 61);
   lv_obj_set_style_bg_color(keyList, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_width(keyList, 0, 0);
   lv_obj_set_style_pad_all(keyList, 2, 0);
@@ -642,7 +671,7 @@ void buildKeysScreen() {
 
     lv_obj_t* row = lv_obj_create(keyList);
     lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, 32);
+    lv_obj_set_height(row, 34);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_pad_all(row, 0, 0);
@@ -657,7 +686,7 @@ void buildKeysScreen() {
     lv_obj_set_height(btn, lv_pct(100));
     lv_obj_set_flex_grow(btn, 1);
     lv_obj_set_style_bg_color(btn, lv_color_hex(kColPanel), 0);
-    lv_obj_set_style_radius(btn, 6, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_pad_left(btn, 10, 0);
     lv_obj_add_event_cb(btn, onKeyMain, LV_EVENT_CLICKED, slotData);
@@ -667,9 +696,9 @@ void buildKeysScreen() {
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t* gear = lv_btn_create(row);
-    lv_obj_set_size(gear, 34, 30);
+    lv_obj_set_size(gear, 34, 32);
     lv_obj_set_style_bg_color(gear, lv_color_hex(kColPanel), 0);
-    lv_obj_set_style_radius(gear, 6, 0);
+    lv_obj_set_style_radius(gear, 8, 0);
     lv_obj_set_style_shadow_width(gear, 0, 0);
     lv_obj_set_style_pad_all(gear, 0, 0);
     lv_obj_add_event_cb(gear, onKeyGear, LV_EVENT_CLICKED, slotData);
@@ -698,68 +727,87 @@ void buildRunScreen() {
   runHeader = lv_label_create(scrRun);
   lv_obj_set_style_text_font(runHeader, UI_FONT_14, 0);
   lv_label_set_text(runHeader, "Run");
-  lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 12, 42);
+  lv_obj_set_width(runHeader, 136);
+  lv_obj_set_style_text_align(runHeader, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 14, 43);
 
   runBar = lv_bar_create(scrRun);
-  lv_obj_set_size(runBar, 150, 10);
-  lv_obj_align(runBar, LV_ALIGN_TOP_MID, 0, 64);
+  lv_obj_set_size(runBar, 150, 8);
+  lv_obj_align(runBar, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_set_style_radius(runBar, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(runBar, 4, LV_PART_INDICATOR);
   lv_bar_set_range(runBar, 0, 100);
   lv_bar_set_value(runBar, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(runBar, lv_color_hex(kColPanel), LV_PART_MAIN);
   lv_obj_set_style_bg_color(runBar, lv_color_hex(kColAccent), LV_PART_INDICATOR);
 
   runPercent = lv_label_create(scrRun);
+  lv_obj_set_style_text_font(runPercent, UI_FONT_14, 0);
   lv_obj_set_style_text_color(runPercent, lv_color_hex(kColMuted), 0);
   lv_label_set_text(runPercent, "0%");
-  lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 78);
+  lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 80);
 
   // Single large run-state button. Its label/color and action follow the run
   // state machine (stopped -> Standby -> Start -> Stop); only one shows at a
   // time so it stays big and unambiguous.
   runActionBtn = makeButton(scrRun, "Standby", onRunAction, nullptr, kColPanel, UI_FONT_20);
-  lv_obj_set_size(runActionBtn, 132, 56);
-  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, 12);
-  lv_obj_set_style_radius(runActionBtn, 12, 0);
+  lv_obj_set_size(runActionBtn, 136, 58);
+  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, 11);
+  lv_obj_set_style_radius(runActionBtn, 14, 0);
   runActionLabel = lv_obj_get_child(runActionBtn, 0);
 
-  // Loop / reverse toggles: keep the pair centered and above the round bezel.
+  // Text labels keep the toggles understandable without relying on icon lore.
   loopBtn = lv_btn_create(scrRun);
   lv_obj_add_flag(loopBtn, LV_OBJ_FLAG_CHECKABLE);
-  lv_obj_set_size(loopBtn, 42, 32);
-  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -24, -30);
+  lv_obj_set_size(loopBtn, 72, 34);
+  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -39, -25);
   lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
   lv_obj_set_style_radius(loopBtn, 8, 0);
   lv_obj_set_style_shadow_width(loopBtn, 0, 0);
   lv_obj_add_event_cb(loopBtn, onLoopToggle, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* loopIcon = lv_label_create(loopBtn);
-  lv_label_set_text(loopIcon, LV_SYMBOL_LOOP);
-  lv_obj_set_style_text_color(loopIcon, lv_color_hex(kColText), 0);
-  lv_obj_center(loopIcon);
+  loopLabel = lv_label_create(loopBtn);
+  lv_label_set_text(loopLabel, "Loop on");
+  lv_obj_set_style_text_font(loopLabel, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(loopLabel, lv_color_hex(kColText), 0);
+  lv_obj_center(loopLabel);
 
   dirBtn = lv_btn_create(scrRun);
   lv_obj_add_flag(dirBtn, LV_OBJ_FLAG_CHECKABLE);
-  lv_obj_set_size(dirBtn, 42, 32);
-  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 24, -30);
+  lv_obj_set_size(dirBtn, 72, 34);
+  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 39, -25);
   lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
   lv_obj_set_style_radius(dirBtn, 8, 0);
   lv_obj_set_style_shadow_width(dirBtn, 0, 0);
   lv_obj_add_event_cb(dirBtn, onDirToggle, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* dirIcon = lv_label_create(dirBtn);
-  lv_label_set_text(dirIcon, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_color(dirIcon, lv_color_hex(kColText), 0);
-  lv_obj_center(dirIcon);
+  dirLabel = lv_label_create(dirBtn);
+  lv_label_set_text(dirLabel, "Forward");
+  lv_obj_set_style_text_font(dirLabel, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(dirLabel, lv_color_hex(kColText), 0);
+  lv_obj_center(dirLabel);
 }
 
 void buildModal() {
-  // Full-screen settings panel. It fills the round display (inset a few pixels
-  // so the accent border reads as a ring just inside the bezel) and overlays
-  // whatever screen is active.
+  // Opaque backing prevents the active screen from showing around the rounded
+  // panel near the physical display edge.
+  overlayScrim = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(overlayScrim, 240, 240);
+  lv_obj_center(overlayScrim);
+  lv_obj_set_style_radius(overlayScrim, 0, 0);
+  lv_obj_set_style_bg_color(overlayScrim, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_opa(overlayScrim, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(overlayScrim, 0, 0);
+  lv_obj_set_style_pad_all(overlayScrim, 0, 0);
+  lv_obj_clear_flag(overlayScrim, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
+
+  // Full-screen settings panel. The accent border reads as a ring at the bezel
+  // and overlays whatever screen is active.
   modal = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(modal, 236, 236);
+  lv_obj_set_size(modal, 240, 240);
   lv_obj_center(modal);
-  lv_obj_set_style_radius(modal, 118, 0);
+  lv_obj_set_style_radius(modal, 120, 0);
   lv_obj_set_style_bg_color(modal, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_border_color(modal, lv_color_hex(kColAccent), 0);
   lv_obj_set_style_border_width(modal, 3, 0);
@@ -770,7 +818,7 @@ void buildModal() {
   // Fixed footer: Delete / Close stay pinned at the bottom of the panel.
   lv_obj_t* btnRow = lv_obj_create(modal);
   lv_obj_set_size(btnRow, 176, 40);
-  lv_obj_align(btnRow, LV_ALIGN_BOTTOM_MID, 0, -16);
+  lv_obj_align(btnRow, LV_ALIGN_BOTTOM_MID, 0, -14);
   lv_obj_set_style_bg_opa(btnRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btnRow, 0, 0);
   lv_obj_set_style_pad_all(btnRow, 0, 0);
@@ -778,31 +826,30 @@ void buildModal() {
 
   // Close is the primary action (accent). Delete is intentionally subdued so it
   // doesn't read as the default CTA.
-  lv_obj_t* closeBtn = makeButton(btnRow, "Close", onModalClose, nullptr, kColAccent);
+  lv_obj_t* closeBtn = makeButton(btnRow, "Done", onModalClose, nullptr, kColAccent);
   lv_obj_set_size(closeBtn, 104, 36);
   lv_obj_align(closeBtn, LV_ALIGN_RIGHT_MID, -2, 0);
 
   lv_obj_t* delBtn = makeButton(btnRow, "Delete", onModalDelete, nullptr, kColAbsent, UI_FONT_14);
   lv_obj_set_size(delBtn, 58, 32);
   lv_obj_align(delBtn, LV_ALIGN_LEFT_MID, 2, 0);
-  lv_obj_set_style_text_color(lv_obj_get_child(delBtn, 0), lv_color_hex(kColMuted), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(delBtn, 0), lv_color_hex(kColDanger), 0);
 
-  // Scrollable content above the fixed footer. Title, presence, speed, and hold
-  // flow vertically and can be scrolled into the wide center of the round panel.
+  // Fixed content above the footer keeps every control in the round safe area.
   lv_obj_t* content = lv_obj_create(modal);
-  lv_obj_set_size(content, 232, 178);
-  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_set_size(content, 190, 158);
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 17);
   lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(content, 0, 0);
   lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_top(content, 52, 0);
-  lv_obj_set_style_pad_bottom(content, 20, 0);
+  lv_obj_set_style_pad_top(content, 8, 0);
+  lv_obj_set_style_pad_bottom(content, 8, 0);
   lv_obj_set_style_pad_left(content, 0, 0);
   lv_obj_set_style_pad_right(content, 0, 0);
-  lv_obj_set_style_pad_row(content, 12, 0);
+  lv_obj_set_style_pad_row(content, 9, 0);
   lv_obj_set_scroll_dir(content, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_OFF);
 
   modalTitle = lv_label_create(content);
   lv_obj_set_style_text_font(modalTitle, UI_FONT_20, 0);
@@ -814,7 +861,7 @@ void buildModal() {
 
   // Speed row (B..H only).
   speedRow = lv_obj_create(content);
-  lv_obj_set_size(speedRow, 176, 44);
+  lv_obj_set_size(speedRow, 176, 46);
   lv_obj_set_style_bg_opa(speedRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(speedRow, 0, 0);
   lv_obj_set_style_pad_all(speedRow, 0, 0);
@@ -841,7 +888,7 @@ void buildModal() {
 
   // Hold row (B..H only).
   holdRow = lv_obj_create(content);
-  lv_obj_set_size(holdRow, 176, 34);
+  lv_obj_set_size(holdRow, 176, 36);
   lv_obj_set_style_bg_opa(holdRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(holdRow, 0, 0);
   lv_obj_set_style_pad_all(holdRow, 0, 0);
@@ -869,9 +916,9 @@ void buildModal() {
 
 void buildSetOverlay() {
   setOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(setOverlay, 236, 236);
+  lv_obj_set_size(setOverlay, 240, 240);
   lv_obj_center(setOverlay);
-  lv_obj_set_style_radius(setOverlay, 118, 0);
+  lv_obj_set_style_radius(setOverlay, 120, 0);
   lv_obj_set_style_bg_color(setOverlay, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_border_color(setOverlay, lv_color_hex(kColAccent), 0);
   lv_obj_set_style_border_width(setOverlay, 3, 0);
@@ -889,21 +936,30 @@ void buildSetOverlay() {
   lv_obj_set_style_text_font(setHint, UI_FONT_14, 0);
   lv_obj_set_style_text_align(setHint, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(setHint, lv_color_hex(kColMuted), 0);
-  lv_label_set_text(setHint, "Choose positioning method");
-  lv_obj_align(setHint, LV_ALIGN_TOP_MID, 0, 48);
+  lv_label_set_text(setHint, "Choose a method");
+  lv_obj_align(setHint, LV_ALIGN_TOP_MID, 0, 50);
 
-  unlockBtn = makeButton(setOverlay, "Set manually", onSetManual, nullptr, kColAccent, UI_FONT_14);
-  lv_obj_set_size(unlockBtn, 132, 36);
-  lv_obj_align(unlockBtn, LV_ALIGN_CENTER, 0, -18);
+  setModeMark = lv_label_create(setOverlay);
+  lv_obj_set_width(setModeMark, 174);
+  lv_obj_set_style_text_font(setModeMark, UI_FONT_14, 0);
+  lv_obj_set_style_text_align(setModeMark, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(setModeMark, lv_color_hex(kColAccent), 0);
+  lv_label_set_text(setModeMark, "MANUAL POSITIONING ACTIVE");
+  lv_obj_align(setModeMark, LV_ALIGN_CENTER, 0, 2);
+  lv_obj_add_flag(setModeMark, LV_OBJ_FLAG_HIDDEN);
+
+  unlockBtn = makeButton(setOverlay, "Move by hand", onSetManual, nullptr, kColAccent, UI_FONT_14);
+  lv_obj_set_size(unlockBtn, 136, 38);
+  lv_obj_align(unlockBtn, LV_ALIGN_CENTER, 0, -16);
 
   joystickBtn = makeButton(setOverlay, "Joystick", onSetJoystick, nullptr, kColAccentDim, UI_FONT_16);
-  lv_obj_set_size(joystickBtn, 132, 36);
-  lv_obj_align(joystickBtn, LV_ALIGN_CENTER, 0, 28);
+  lv_obj_set_size(joystickBtn, 136, 38);
+  lv_obj_align(joystickBtn, LV_ALIGN_CENTER, 0, 30);
 
   joystickBase = lv_obj_create(setOverlay);
-  lv_obj_set_size(joystickBase, 112, 112);
-  lv_obj_align(joystickBase, LV_ALIGN_CENTER, 0, 4);
-  lv_obj_set_style_radius(joystickBase, 56, 0);
+  lv_obj_set_size(joystickBase, 108, 108);
+  lv_obj_align(joystickBase, LV_ALIGN_CENTER, 0, 5);
+  lv_obj_set_style_radius(joystickBase, 54, 0);
   lv_obj_set_style_bg_color(joystickBase, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_color(joystickBase, lv_color_hex(kColAccentDim), 0);
   lv_obj_set_style_border_width(joystickBase, 2, 0);
@@ -924,30 +980,30 @@ void buildSetOverlay() {
   centerJoystickKnob();
 
   lv_obj_t* slideL = lv_label_create(joystickBase);
-  lv_label_set_text(slideL, "Slide L");
+  lv_label_set_text(slideL, LV_SYMBOL_LEFT);
   lv_obj_set_style_text_font(slideL, UI_FONT_14, 0);
   lv_obj_set_style_text_color(slideL, lv_color_hex(kColMuted), 0);
-  lv_obj_align(slideL, LV_ALIGN_LEFT_MID, 5, 0);
+  lv_obj_align(slideL, LV_ALIGN_LEFT_MID, 7, 0);
 
   lv_obj_t* slideR = lv_label_create(joystickBase);
-  lv_label_set_text(slideR, "Slide R");
+  lv_label_set_text(slideR, LV_SYMBOL_RIGHT);
   lv_obj_set_style_text_font(slideR, UI_FONT_14, 0);
   lv_obj_set_style_text_color(slideR, lv_color_hex(kColMuted), 0);
-  lv_obj_align(slideR, LV_ALIGN_RIGHT_MID, -5, 0);
+  lv_obj_align(slideR, LV_ALIGN_RIGHT_MID, -7, 0);
 
   lv_obj_t* panL = lv_label_create(joystickBase);
-  lv_label_set_text(panL, "Pan L");
+  lv_label_set_text(panL, LV_SYMBOL_UP);
   lv_obj_set_style_text_font(panL, UI_FONT_14, 0);
   lv_obj_set_style_text_color(panL, lv_color_hex(kColMuted), 0);
-  lv_obj_align(panL, LV_ALIGN_TOP_MID, 0, 5);
+  lv_obj_align(panL, LV_ALIGN_TOP_MID, 0, 7);
 
   lv_obj_t* panR = lv_label_create(joystickBase);
-  lv_label_set_text(panR, "Pan R");
+  lv_label_set_text(panR, LV_SYMBOL_DOWN);
   lv_obj_set_style_text_font(panR, UI_FONT_14, 0);
   lv_obj_set_style_text_color(panR, lv_color_hex(kColMuted), 0);
-  lv_obj_align(panR, LV_ALIGN_BOTTOM_MID, 0, -5);
+  lv_obj_align(panR, LV_ALIGN_BOTTOM_MID, 0, -7);
 
-  setBtn = makeButton(setOverlay, "Set", onSetCommit, nullptr, kColAccent);
+  setBtn = makeButton(setOverlay, "Save", onSetCommit, nullptr, kColAccent);
   lv_obj_set_size(setBtn, 82, 34);
   lv_obj_align(setBtn, LV_ALIGN_BOTTOM_MID, 45, -16);
   lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
@@ -991,6 +1047,8 @@ void openModal(int slot) {
   }
 
   lv_obj_clear_flag(modal, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(modal);
 }
 
 // ---- refresh --------------------------------------------------------------
@@ -1002,7 +1060,7 @@ void formatHeader(char* out, size_t cap, const shark::SharkClient::State& s, con
   } else {
     snprintf(battery, sizeof(battery), "--");
   }
-  snprintf(out, cap, "%s  %s  %s", title, battery, s.runText);
+  snprintf(out, cap, "%s  %s", title, battery);
 }
 
 void refreshConnect(const shark::SharkClient::State& s) {
@@ -1052,13 +1110,13 @@ void refreshKeys(const shark::SharkClient::State& s) {
 
     char text[40];
     if (!present) {
-      snprintf(text, sizeof(text), "%s +  set position", kSlotLetters[i]);
+      snprintf(text, sizeof(text), "%s   + Add position", kSlotLetters[i]);
     } else if (i == 0) {
-      snprintf(text, sizeof(text), "%s %s  start", kSlotLetters[i], present ? "#" : "-");
+      snprintf(text, sizeof(text), "%s   Start point", kSlotLetters[i]);
     } else if (present && s.timingKnown && s.speed[i] >= 0) {
-      snprintf(text, sizeof(text), "%s #  %d%%  %ds", kSlotLetters[i], s.speed[i], s.hold[i]);
+      snprintf(text, sizeof(text), "%s   %d%%  |  %ds", kSlotLetters[i], s.speed[i], s.hold[i]);
     } else {
-      snprintf(text, sizeof(text), "%s %s", kSlotLetters[i], present ? "#" : "-");
+      snprintf(text, sizeof(text), "%s   Configured", kSlotLetters[i]);
     }
     lv_label_set_text(keyLabels[i], text);
     uint32_t bg = present ? kColAccentDim : kColPanel;
@@ -1098,13 +1156,17 @@ void refreshRun(const shark::SharkClient::State& s) {
 
   if (s.loopOn) {
     lv_obj_add_state(loopBtn, LV_STATE_CHECKED);
+    lv_label_set_text(loopLabel, "Loop on");
   } else {
     lv_obj_clear_state(loopBtn, LV_STATE_CHECKED);
+    lv_label_set_text(loopLabel, "Loop off");
   }
   if (s.reverse) {
     lv_obj_add_state(dirBtn, LV_STATE_CHECKED);
+    lv_label_set_text(dirLabel, "Reverse");
   } else {
     lv_obj_clear_state(dirBtn, LV_STATE_CHECKED);
+    lv_label_set_text(dirLabel, "Forward");
   }
 }
 
@@ -1217,5 +1279,15 @@ void handleShortPress() {
     lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
   }
 }
+
+#ifdef UI_SIMULATOR
+void simShowKeypointSettings(int slot) { openModal(slot); }
+
+void simShowPositionChoice(int slot) { openSetOverlay(slot); }
+
+void simShowManualPositioning() { onSetManual(nullptr); }
+
+void simShowJoystickPositioning() { onSetJoystick(nullptr); }
+#endif
 
 }  // namespace shark_ui

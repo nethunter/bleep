@@ -22,8 +22,8 @@ the reverse-engineered Shark Nano BLE protocol.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:
-  choose **Set manually** to unlock the slider for hand positioning, or
-  **Joystick** for slide/pan jogging; press **Set** to store the current slider
+  choose **Move by hand** to unlock the slider for hand positioning, or
+  **Joystick** for slide/pan jogging; press **Save** to store the current slider
   position. Deletes cascade through later configured slots, matching the slider's
   own behavior.
 - **Per-keypoint speed/hold.** Use the gear button on a configured keypoint to
@@ -31,8 +31,8 @@ the reverse-engineered Shark Nano BLE protocol.
   a read-modify-write of the device timing table. Keypoint A is the route start
   and has no timing. The device may quantize speed; the applied value is read
   back and shown.
-- **Run controls.** Standby / Start / Stop, a loop toggle, and a route-direction
-  (reverse) toggle, with a live run-progress bar driven by the slider's
+- **Run controls.** Standby / Start / Stop, labeled Loop on/off and
+  Forward/Reverse toggles, and a live run-progress bar driven by the slider's
   progress notifications.
 
 ## Controls

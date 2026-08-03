@@ -98,6 +98,23 @@ Record values with the exact build environment and commit/worktree state.
 - Physical Shark and persistence regression: Not exercised; the existing
   operator hardware gate remains pending.
 
+### Nano II UI polish
+
+- Date: 2026-08-03.
+- PlatformIO environments: `native`, `ui_sim`, `crowpanel_128`, and
+  `crowpanel_128_roboto`.
+- Default profile flash usage: 855,594 / 3,145,728 bytes (27.2%).
+- Roboto profile flash usage: 825,122 / 3,145,728 bytes (26.2%).
+- Static RAM usage: 117,652 / 327,680 bytes (35.9%) in both firmware profiles.
+- Build result: `ui_sim`, `crowpanel_128`, and `crowpanel_128_roboto`
+  succeeded.
+- Simulator result: eleven 240x240 PNG captures completed, including keypoint
+  settings and all three positioning states.
+- Flash result: Success on auto-detected `/dev/cu.usbserial-211240`.
+- Host tests: 12/12 passed in the PlatformIO `native` environment.
+- Physical touch interaction and Shark movement: Not exercised; the combined
+  Phase 0/foundation operator gate remains pending.
+
 ### Full coexistence spike
 
 - Date: Not started.
@@ -243,4 +260,18 @@ Record values with the exact build environment and commit/worktree state.
   both firmware profiles built; the default profile flashed successfully.
 - Physical Shark behavior was not exercised, so the existing combined
   Phase 0/foundation operator gate remains open.
+
+### 2026-08-03: Nano II UI polish
+
+- Polished Connect, Keypoints, Run, keypoint settings, and positioning views
+  while preserving command routing, swipe navigation, and movement safeguards.
+- Replaced cryptic keypoint markers and icon-only run toggles with readable
+  labels, clarified action hierarchy, and prevented active-screen content from
+  showing around modal edges.
+- Expanded the simulator from seven to eleven captures with deterministic
+  settings, positioning-choice, manual-positioning, and joystick states.
+- Native tests passed 12/12; `ui_sim` and both firmware profiles built; the
+  default profile flashed successfully.
+- Physical touch and slider behavior remain operator-pending, so the existing
+  combined Phase 0/foundation hardware gate remains open.
 
