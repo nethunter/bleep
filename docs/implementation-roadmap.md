@@ -19,6 +19,11 @@ to the existing one-active-instance framework. It does not claim recording
 state, concurrent Shark/Canon links, CCAPI support, or completion of Phase 1 or
 Phase 5.
 
+ADR-015 names the production-facing choices `Canon (Trigger)` and
+`Canon (Smart)`. Smart is blocked until an EOS R6 Mark III capture identifies
+the smartphone BLE command and responses used to start and join the camera
+Wi-Fi access point.
+
 ## Phase 0: Preserve and baseline the Shark remote
 
 Work:
@@ -143,9 +148,13 @@ Initial models:
 Work:
 
 - implement BR-E1-compatible Bluetooth pairing and an honest record trigger;
+- capture and implement smartphone-mode BLE pairing plus the Camera Connect
+  Wi-Fi handoff as `Canon (Smart)`;
 - implement bounded, non-blocking CCAPI discovery/configuration, record
-  start/stop, state polling, and reconnect;
-- allow per-camera BLE, HTTP, or HTTP-with-BLE-fallback selection;
+  start/stop, state polling, and reconnect over the camera's direct access
+  point;
+- expose `Canon (Trigger)`, `Canon (Smart)`, and explicit Smart-to-Trigger
+  fallback selection;
 - leave BLE-only recording state unknown and report CCAPI state as confirmed.
 
 Completion gate:

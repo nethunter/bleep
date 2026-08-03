@@ -20,13 +20,14 @@ flowchart TB
   Groups --> DeviceManager
   DeviceManager --> SharkDriver
   DeviceManager --> AmaranDriver
-  DeviceManager --> CanonBleDriver
-  DeviceManager --> CanonHttpDriver
+  DeviceManager --> CanonTriggerDriver
+  DeviceManager --> CanonSmartDriver
   DeviceManager --> FutureRecorderDrivers
   SharkDriver --> BluetoothRuntime
   AmaranDriver --> BluetoothRuntime
-  CanonBleDriver --> BluetoothRuntime
-  CanonHttpDriver --> WifiHttpRuntime
+  CanonTriggerDriver --> BluetoothRuntime
+  CanonSmartDriver --> BluetoothRuntime
+  CanonSmartDriver --> WifiHttpRuntime
   ConfigStore --> DeviceManager
   ConfigStore --> SceneRunner
 ```

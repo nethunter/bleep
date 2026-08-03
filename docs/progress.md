@@ -5,8 +5,8 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-014 bounded Canon BR-E1 BLE sub-spike; physical Canon and
-  Shark regression gates pending.
+- Current phase: ADR-014 Canon Trigger verification plus ADR-015 Canon Smart
+  handoff research; physical regression gates pending.
 - Firmware state: Home-first, persistent device registry, on-demand Shark, and
   research-stage on-demand Canon BLE firmware built, host-tested, and flashed.
 - Universal driver framework: Bounded routing supports compiled Shark and Canon
@@ -22,6 +22,8 @@ short, factual, and reproducible.
 - Selected direct control on the ESP32-C3 rather than an external gateway.
 - Selected both panel-owned and imported Amaran mesh onboarding.
 - Selected Canon BR-E1-compatible Bluetooth plus CCAPI HTTP.
+- Split Canon UX into `Canon (Trigger)` and `Canon (Smart)`; Smart requires a
+  captured smartphone BLE-to-Wi-Fi handoff before implementation.
 - Defined ordered scenes with non-blocking waits, generated inverse Stop, and
   explicit Stop override.
 - Reserved future recorder drivers for Tascam Portacapture X8 Bluetooth and
@@ -35,13 +37,16 @@ short, factual, and reproducible.
 
 Complete the Canon BLE and combined Phase 0/foundation hardware gates:
 
-1. Pair an EOS R6 Mark III in Wireless Remote mode and verify the movie record
-   trigger, bonded reconnect, forget/re-pair, and repeated screen entry/exit.
-2. Record Canon connection/command latency and free/minimum heap.
-3. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+1. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
+   pairing through Wi-Fi AP startup and the first network request.
+2. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
+   data, camera prompts, and reconnect behavior.
+3. Verify Trigger forget/re-pair and repeated screen entry/exit; record
+   connection/command latency and free/minimum heap.
+4. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
-4. Verify that boot and Home perform no BLE scan or connection.
-5. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
+5. Verify that boot and Home perform no BLE scan or connection.
+6. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
 
 ## Measurements
 
@@ -359,4 +364,16 @@ Record values with the exact build environment and commit/worktree state.
   rename, both device screens, and removal/refresh.
 - Native tests, all simulator captures, both firmware builds, and the default
   profile flash succeeded. Physical touch confirmation remains pending.
+
+### 2026-08-03: Canon Trigger/Smart split
+
+- Recorded ADR-015 and the user-facing names `Canon (Trigger)` and
+  `Canon (Smart)`.
+- Defined Smart as smartphone-mode BLE pairing and automatic Wi-Fi handoff
+  followed by direct-access-point CCAPI control; Trigger remains the verified
+  BR-E1 fallback.
+- Marked Smart blocked on an EOS R6 Mark III Camera Connect handoff capture and
+  documented the required capture contents and research boundaries.
+- Documentation only; firmware behavior was unchanged, so no build, flash,
+  simulator capture, or hardware check was run.
 

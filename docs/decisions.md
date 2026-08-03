@@ -139,6 +139,27 @@ the replacement.
   verified on the EOS R6 Mark III. Captures and extended stability measurements
   remain `Research`.
 
+## ADR-015: Canon exposes Trigger and Smart drivers
+
+- Status: Accepted
+- Decision: Present the two Canon workflows as separate compiled drivers and
+  device choices: `Canon (Trigger)` for BR-E1-compatible BLE, and
+  `Canon (Smart)` for smartphone-mode BLE handoff followed by direct Wi-Fi
+  CCAPI.
+- Consequence: Trigger remains the fast stateless fallback. Smart owns
+  smartphone-mode pairing, requests the camera Wi-Fi access point, obtains the
+  handoff connection data, joins that network, and uses CCAPI for distinct
+  record start/stop and confirmed state. A Smart failure may fall back to a
+  separately configured Trigger instance only when the user selects that
+  policy.
+- Research status: The EOS R6 Mark III smartphone-mode pairing flow is
+  partially described by public reverse-engineering, but the Camera Connect
+  command that starts Wi-Fi and returns SSID/security data is not documented in
+  the available implementations. `Canon (Smart)` is blocked until that handoff
+  is captured and labeled with request/response bytes, characteristic UUIDs,
+  ordering, timing, and camera UI state. Do not infer the missing protocol from
+  successful Smart pairing alone.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

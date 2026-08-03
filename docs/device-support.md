@@ -49,17 +49,17 @@ Reference research:
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
 
-- Status: EOS R6 Mark III Bluetooth `Research`; other transports/models
-  `Planned`.
-- Bluetooth transport: emulate Canon BR-E1 behavior for a stateless movie
+- `Canon (Trigger)` status: EOS R6 Mark III implemented and under extended
+  hardware verification; other models `Planned`.
+- `Canon (Trigger)` transport: BR-E1-compatible BLE with a stateless movie
   record trigger.
-- HTTP transport: Canon Camera Control API (CCAPI) over the studio Wi-Fi.
-- Runtime transport choices:
-  - Bluetooth;
-  - HTTP;
-  - HTTP with Bluetooth fallback.
-- Initial BLE capability: record trigger.
-- Planned CCAPI capabilities: record start, record stop, and recording state.
+- `Canon (Smart)` status: `Blocked` pending an EOS R6 Mark III Camera Connect
+  BLE-to-Wi-Fi handoff capture.
+- `Canon (Smart)` transport: smartphone-mode BLE pairing and Wi-Fi handoff,
+  followed by CCAPI HTTP over the camera's direct access point.
+- Trigger capability: record trigger.
+- Planned Smart capabilities: record start, record stop, and confirmed
+  recording state.
 
 CCAPI can confirm recording state. BR-E1-style Bluetooth uses the same trigger
 for start and stop and does not provide equivalent state readback, so the panel
@@ -72,6 +72,24 @@ EOS R6 and R6 Mark II support is not claimed by this tranche.
 EOS R6 Mark III pairing, bonded reconnect, and the BR-E1 movie-mode
 `0x88`/`0x08` press/release trigger have been functionally verified. Extended
 cycle, forget/re-pair, latency, heap, and coexistence checks remain open.
+
+### Camera Connect handoff capture
+
+The public Canon Smart implementations found during research cover
+smartphone-mode pairing and BLE shutter control, but not the command that asks
+the camera to start its Wi-Fi access point and returns the connection data.
+Implementation of `Canon (Smart)` requires a capture containing:
+
+1. advertisement and pairing mode used by the EOS R6 Mark III;
+2. ordered GATT reads, writes, indications, and notifications after pairing;
+3. the exact request that starts Wi-Fi;
+4. SSID, BSSID, security mode, credential, IP, and port responses;
+5. timing, reconnect behavior, and camera-screen prompts;
+6. the transition from BLE handoff to the first successful CCAPI request.
+
+Until that capture exists, direct Camera Access Point setup plus CCAPI Auto
+Connect is a valid manual research path, but it is not equivalent to the
+automatic `Canon (Smart)` workflow.
 
 Reference research:
 
