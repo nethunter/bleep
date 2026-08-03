@@ -141,6 +141,24 @@ Record values with the exact build environment and commit/worktree state.
 - Flash result: Success on auto-detected `/dev/cu.usbserial-211240`.
 - Physical four-device touch regression: Operator verification pending.
 
+### Category-grouped add-device picker
+
+- Date: 2026-08-03.
+- PlatformIO environments: `native`, `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, and `canon_ble`.
+- Default profile flash usage: 862,696 / 3,145,728 bytes (27.4%).
+- Default and Roboto static RAM usage: 167,196 / 327,680 bytes (51.0%).
+- Roboto profile flash usage: 832,224 / 3,145,728 bytes (26.5%).
+- Canon-only profile flash usage: 866,412 / 3,145,728 bytes (27.5%);
+  static RAM usage: 166,308 / 327,680 bytes (50.8%).
+- Simulator result: all thirteen captures completed, including the categorized
+  picker; 15,648 bytes remained free after maximum-device initialization and
+  17,760 bytes after the removal/refresh regression.
+- Host tests: 15/15 passed.
+- Build result: all affected environments succeeded.
+- Flash result: Success on `/dev/cu.usbserial-211240`.
+- Physical picker touch selection: Operator verification pending.
+
 ### Full coexistence spike
 
 - Date: Not started.
@@ -376,4 +394,17 @@ Record values with the exact build environment and commit/worktree state.
   documented the required capture contents and research boundaries.
 - Documentation only; firmware behavior was unchanged, so no build, flash,
   simulator capture, or hardware check was run.
+
+### 2026-08-03: Category-grouped add-device picker
+
+- Replaced automatic first-available-driver creation with an explicit,
+  scrollable model picker grouped by Motion, Lights, Cameras, and Recorders.
+- Kept compiled drivers visible when their instance limit is reached and
+  disabled those choices with a clear status.
+- Released picker rows when the overlay closes to preserve the bounded LVGL
+  heap at the four-device maximum.
+- Added a simulator capture for the picker. Native tests, simulator captures,
+  Roboto, Canon-only, and default firmware builds passed; the default profile
+  flashed successfully.
+- Physical touch selection remains operator-pending.
 

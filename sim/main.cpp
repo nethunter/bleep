@@ -161,6 +161,22 @@ int main() {
     return 1;
   }
 
+  if (studio::devices().remove(canonId3) != studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to prepare add-device picker screenshot\n");
+    return 1;
+  }
+  ui::simShowAddDevice();
+  if (!capture("03_add_device")) {
+    return 1;
+  }
+  ui::showDevices();
+  canonId3 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
+  if (canonId3 == studio::kInvalidInstanceId) {
+    std::fprintf(stderr, "Failed to restore maximum device configuration\n");
+    return 1;
+  }
+
   const studio::InstanceId id =
       studio::devices().count() > 0 ? studio::devices().at(0)->instanceId
                                     : studio::kInvalidInstanceId;

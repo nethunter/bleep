@@ -12,6 +12,7 @@ void showHome();
 void showDevices();
 
 #ifdef UI_SIMULATOR
+void simShowAddDevice();
 void simShowManage(studio::InstanceId instanceId);
 void simShowRename(studio::InstanceId instanceId);
 #endif

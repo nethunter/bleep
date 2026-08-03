@@ -11,8 +11,11 @@ BR-E1 BLE** driver.
   Groups, Scenes, Portal) without initializing Bluetooth. Only Devices is
   active today; the others are reserved. Devices are stored in a versioned
   registry and can be
-  added, renamed, enabled, disabled, re-paired, and removed. The current build
-  permits one Shark and up to three Canon BLE instances. Rename uses a
+  added, renamed, enabled, disabled, re-paired, and removed. Add device opens a
+  category-grouped list of compiled Motion, Light, Camera, and Recorder drivers
+  so the operator chooses the model; choices at their instance limit remain
+  visible but unavailable. The current build permits one Shark and up to three
+  Canon BLE instances. Rename uses a
   round-native paged keypad with
   large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
   case controls.
