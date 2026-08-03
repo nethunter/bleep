@@ -17,6 +17,9 @@
 #if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/ui.h"
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+#include "devices/tascam_x8/ui.h"
+#endif
 
 namespace ui {
 
@@ -222,6 +225,11 @@ void onOpenDevice(lv_event_t* event) {
 #if CONFIG_DRIVER_CANON_BLE
     case studio::DriverId::CanonBle:
       canon_ble_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+    case studio::DriverId::TascamX8:
+      tascam_x8_ui::show(instanceId);
       break;
 #endif
     default:
@@ -748,6 +756,9 @@ void init() {
 #if CONFIG_DRIVER_CANON_BLE
   canon_ble_ui::init();
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+  tascam_x8_ui::init();
+#endif
   refreshHome();
   refreshDevices();
   lv_scr_load(scrHome);
@@ -763,6 +774,12 @@ void tick() {
 #if CONFIG_DRIVER_CANON_BLE
   if (canon_ble_ui::active()) {
     canon_ble_ui::tick();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+  if (tascam_x8_ui::active()) {
+    tascam_x8_ui::tick();
     return;
   }
 #endif
@@ -789,6 +806,12 @@ void handleShortPress() {
     return;
   }
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+  if (tascam_x8_ui::active()) {
+    tascam_x8_ui::handleShortPress();
+    return;
+  }
+#endif
   if (!lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN)) {
     closeRename();
   } else if (!lv_obj_has_flag(addOverlay, LV_OBJ_FLAG_HIDDEN)) {
@@ -811,6 +834,11 @@ void showHome() {
     canon_ble_ui::hide();
   }
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+  if (tascam_x8_ui::active()) {
+    tascam_x8_ui::hide();
+  }
+#endif
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -828,6 +856,11 @@ void showDevices() {
 #if CONFIG_DRIVER_CANON_BLE
   if (canon_ble_ui::active()) {
     canon_ble_ui::hide();
+  }
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+  if (tascam_x8_ui::active()) {
+    tascam_x8_ui::hide();
   }
 #endif
   closeDeviceModal();

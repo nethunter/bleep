@@ -14,6 +14,7 @@ enum class DriverId : uint16_t {
   Unknown = 0,
   SharkNanoII = 1,
   CanonBle = 2,
+  TascamX8 = 3,
 };
 
 enum class DeviceType : uint8_t {
@@ -49,6 +50,9 @@ enum class Capability : uint32_t {
   Loop = 1u << 7,
   Direction = 1u << 8,
   RecordTrigger = 1u << 9,
+  RecordStart = 1u << 10,
+  RecordStop = 1u << 11,
+  RecordingState = 1u << 12,
 };
 
 constexpr uint32_t capabilityBit(Capability capability) {
@@ -72,6 +76,8 @@ enum class CommandType : uint8_t {
   SetMotionVector,
   StopMotion,
   RecordTrigger,
+  RecordStart,
+  RecordStop,
 };
 
 struct DeviceCommand {

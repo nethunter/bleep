@@ -11,6 +11,8 @@
 #include "devices/canon_ble/state.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "devices/shark_nano_ii/state.h"
+#include "devices/tascam_x8/protocol.h"
+#include "devices/tascam_x8/state.h"
 
 using namespace shark;
 
@@ -298,8 +300,77 @@ void test_canon_state_never_infers_recording() {
   TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
 }
 
+void test_tascam_cobs_commands_match_capture() {
+  const uint8_t expectedStart[] = {
+      0x00, 0x05, 0x44, 0x52, 0x10, 0x41, 0x02, 0x0B, 0x01,
+      0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00,
+  };
+  const uint8_t expectedStop[] = {
+      0x00, 0x05, 0x44, 0x52, 0x10, 0x41, 0x02, 0x08, 0x01,
+      0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00,
+  };
+  const tascam_x8::FrameBytes start = tascam_x8::buildRecordStart();
+  const tascam_x8::FrameBytes stop = tascam_x8::buildRecordStop();
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedStart), start.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStart, start.data(), start.len);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedStop), stop.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.data(), stop.len);
+  TEST_ASSERT_EQUAL_UINT32(221, tascam_x8::buildInitialization().len);
+  TEST_ASSERT_EQUAL_STRING("2456e1b9-26e2-8f83-e744-f34f01e9d701",
+                           tascam_x8::kPrimaryServiceUuid);
+}
+
+void test_tascam_scanner_and_confirmed_state() {
+  tascam_x8::FrameScanner scanner;
+  tascam_x8::TascamX8State state;
+  uint8_t payload[18] = {'D', 'R', 0x20, 0x20, 0x24, 0x00};
+  tascam_x8::FrameBytes release =
+      tascam_x8::encodeFrame(payload, sizeof(payload));
+  scanner.feed(release.data(), 4, [&](const tascam_x8::ParsedFrame&) {
+    TEST_FAIL_MESSAGE("partial COBS frame");
+  });
+  scanner.feed(release.data() + 4, release.len - 4,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_FALSE(state.recordingConfirmed);
+
+  payload[5] = 0x01;
+  const tascam_x8::FrameBytes started =
+      tascam_x8::encodeFrame(payload, sizeof(payload));
+  uint8_t combined[tascam_x8::kMaxEncodedFrame * 2] = {};
+  combined[0] = 0x72;
+  combined[1] = 0x00;
+  std::memcpy(combined + 2, started.data(), started.len);
+  scanner.feed(combined, started.len + 2,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(tascam_x8::TascamX8State::Recording::Recording),
+      static_cast<int>(state.recording));
+
+  std::memset(payload, 0, sizeof(payload));
+  payload[0] = 'D';
+  payload[1] = 'R';
+  payload[2] = 0x10;
+  payload[3] = 0x20;
+  payload[4] = 0x08;
+  const tascam_x8::FrameBytes stopped =
+      tascam_x8::encodeFrame(payload, sizeof(payload));
+  scanner.feed(stopped.data(), stopped.len,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(tascam_x8::TascamX8State::Recording::Stopped),
+      static_cast<int>(state.recording));
+}
+
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(2, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(3, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -312,6 +383,16 @@ void test_driver_catalog_exposes_shark_and_canon() {
                         static_cast<int>(canon->type));
   TEST_ASSERT_BITS_HIGH(studio::capabilityBit(studio::Capability::RecordTrigger),
                         canon->capabilities);
+  const studio::DriverDescriptor* tascam =
+      studio::DriverCatalog::find(studio::DriverId::TascamX8);
+  TEST_ASSERT_NOT_NULL(tascam);
+  TEST_ASSERT_EQUAL_STRING("tascam.portacapture_x8", tascam->stableId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Recorder),
+                        static_cast<int>(tascam->type));
+  TEST_ASSERT_BITS_HIGH(studio::capabilityBit(studio::Capability::RecordStart) |
+                            studio::capabilityBit(studio::Capability::RecordStop) |
+                            studio::capabilityBit(studio::Capability::RecordingState),
+                        tascam->capabilities);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -464,6 +545,38 @@ void test_manager_routes_to_canon_driver() {
   TEST_ASSERT_EQUAL_INT(0, sharkDriver.forgetPairingCount);
 }
 
+void test_manager_routes_explicit_tascam_record_commands() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  studio::DeviceDriver* drivers[] = {&tascamDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::TascamX8, "Recorder", id)));
+  TEST_ASSERT_TRUE(manager.activate(id));
+
+  studio::DeviceCommand command;
+  command.instanceId = id;
+  command.type = studio::CommandType::RecordStart;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(tascamDriver.lastCommand));
+
+  command.type = studio::CommandType::RecordStop;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStop),
+      static_cast<int>(tascamDriver.lastCommand));
+}
+
 void test_removed_registry_stays_empty_after_restart() {
   MemoryBackend backend;
   LegacyBackend legacy;
@@ -496,12 +609,15 @@ int main(int, char**) {
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
   RUN_TEST(test_canon_pairing_and_record_trigger_protocol);
   RUN_TEST(test_canon_state_never_infers_recording);
+  RUN_TEST(test_tascam_cobs_commands_match_capture);
+  RUN_TEST(test_tascam_scanner_and_confirmed_state);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_routes_to_canon_driver);
+  RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
   return UNITY_END();
 }

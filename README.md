@@ -3,7 +3,8 @@
 A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
 round display (240x240 GC9A01 + CST816D touch). The current build includes the
 **iFootage Shark Nano II** driver and a research-stage **Canon EOS R6 family
-BR-E1 BLE** driver.
+BR-E1 BLE** driver plus research-stage **Tascam Portacapture X8** record
+control through the AK-BT1 adapter.
 
 ## What it does
 
@@ -14,8 +15,8 @@ BR-E1 BLE** driver.
   added, renamed, enabled, disabled, re-paired, and removed. Add device opens a
   category-grouped list of compiled Motion, Light, Camera, and Recorder drivers
   so the operator chooses the model; choices at their instance limit remain
-  visible but unavailable. The current build permits one Shark and up to three
-  Canon BLE instances. Rename uses a
+  visible but unavailable. The current build permits one Shark, up to three
+  Canon BLE instances, and one Tascam X8. Rename uses a
   round-native paged keypad with
   large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
   case controls.
@@ -31,6 +32,14 @@ BR-E1 BLE** driver.
   state, so the panel deliberately shows neither. Pairing, bonded reconnect,
   and the movie trigger are verified on the EOS R6 Mark II and Mark III;
   extended stability checks remain open.
+- **Tascam X8 record control (research).** Opening a Tascam recorder scans for
+  the `Portacapture X8` advertisement and connects through the required AK-BT1
+  adapter. The control screen sends distinct record start/stop commands and
+  changes between Ready and Recording only after recorder-originated transition
+  events. The custom GATT UUIDs, COBS framing, session keepalive, commands, and
+  transition vectors are documented in
+  [`docs/protocols/tascam-x8.md`](docs/protocols/tascam-x8.md). Initial hardware
+  verification from this controller remains open.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:
@@ -55,7 +64,9 @@ BR-E1 BLE** driver.
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run
     from Keypoints, then advances Standby / Start / Stop on the Run screen. In
-    connected Canon Trigger control it sends the record trigger.
+    connected Canon Trigger control it sends the record trigger. In connected
+    Tascam control it explicitly starts from Ready/Unknown and stops from a
+    recorder-confirmed Recording state.
   - Long press: power off the remote. When off, hold the button again to wake it;
     a short tap wakes briefly and goes back to sleep.
 
@@ -67,6 +78,7 @@ BR-E1 BLE** driver.
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
 | `src/devices/canon_ble/*` | Research-stage BR-E1 pairing/trigger protocol, on-demand NimBLE client, driver adapter, and camera screen. |
+| `src/devices/tascam_x8/*` | Captured AK-BT1 protocol, COBS state parser, on-demand NimBLE client, driver adapter, and recorder screen. |
 | `src/ui.*` | Home, Devices, and application navigation. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
 | [`assets/icons/`](assets/icons/README.md) | Home mode source artwork and the prompt recipe for generating matching icons. |
@@ -123,6 +135,7 @@ This workspace also has PlatformIO in `.venv`, with a local core directory:
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e canon_ble
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e tascam_x8
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
 

@@ -8,6 +8,9 @@
 #if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/driver.h"
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+#include "devices/tascam_x8/driver.h"
+#endif
 
 namespace studio {
 
@@ -20,12 +23,18 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_CANON_BLE
   static CanonBleDriver canonBleDriver;
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+  static TascamX8Driver tascamX8Driver;
+#endif
   static DeviceDriver* drivers[] = {
 #if CONFIG_DRIVER_SHARK_NANO_II
       &sharkDriver,
 #endif
 #if CONFIG_DRIVER_CANON_BLE
       &canonBleDriver,
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+      &tascamX8Driver,
 #endif
       nullptr,
   };

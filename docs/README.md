@@ -12,6 +12,8 @@ controller.
   completion gates, and verification requirements.
 - [Device support](device-support.md) — target hardware, transports,
   capabilities, protocol status, and future drivers.
+- [Protocol research](protocols/README.md) — capture-backed protocol notes,
+  fixtures, command vectors, and confidence labels.
 - [Scenes](scenes.md) — ordered action model, waits, generated Stop behavior,
   execution journal, and failure handling.
 - [Decisions](decisions.md) — accepted architectural decisions and their

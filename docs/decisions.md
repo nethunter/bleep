@@ -160,6 +160,28 @@ the replacement.
   ordering, timing, and camera UI state. Do not infer the missing protocol from
   successful Smart pairing alone.
 
+## ADR-016: Tascam X8 record-control tranche
+
+- Status: Accepted
+- Decision: Advance the Tascam Portacapture X8 from the future recorder list as
+  a bounded AK-BT1 BLE tranche with connect, explicit record start, explicit
+  record stop, and recorder-confirmed recording state.
+- Evidence: The annotated nRF52840 capture in
+  `docs/protocols/dumps/tascam_x8.pcapng` confirms the custom GATT service, COBS stream
+  envelope, session keepalive, start/stop commands, and state events for both
+  app-originated and recorder-originated actions. Golden vectors and confidence
+  labels are recorded in `docs/protocols/tascam-x8.md`.
+- Consequence: Tascam gets typed `RecordStart` and `RecordStop` commands rather
+  than reusing Canon Trigger's stateless toggle. The UI may show recording only
+  after the recorder's confirmed `DR 20 20 24 01` start event and stopped only
+  after `DR 10 20 08`; ATT write responses are not physical success. No stable
+  recording boolean or reconnect-state query is yet confirmed. Battery, media
+  status, mixer control, and other Portacapture functions remain future
+  research.
+- Roadmap deviation: This tranche advances a future recorder driver while the
+  Phase 0/foundation and Canon verification gates remain open. It does not
+  begin dependent scene or group work and retains one active transport.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
@@ -167,6 +189,7 @@ These remain unresolved until their roadmap spikes complete:
 - ESP-IDF Bluetooth backend and exact GATT/Mesh coexistence design;
 - exact SoftAP credential, timeout, and network defaults;
 - execution-journal persistence and power-loss recovery policy;
-- exact protocols for Tascam Portacapture X8 Bluetooth and Deity PR4;
+- remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
+  protocol;
 - measured memory budgets for minimal and full firmware profiles.
 

@@ -34,6 +34,20 @@ constexpr DriverDescriptor kDrivers[] = {
         3,
     },
 #endif
+#if CONFIG_DRIVER_TASCAM_X8
+    {
+        DriverId::TascamX8,
+        "tascam.portacapture_x8",
+        "Tascam",
+        "Portacapture X8",
+        DeviceType::Recorder,
+        capabilityBit(Capability::Link) |
+            capabilityBit(Capability::RecordStart) |
+            capabilityBit(Capability::RecordStop) |
+            capabilityBit(Capability::RecordingState),
+        1,
+    },
+#endif
     {},
 };
 constexpr size_t kDriverCount = (sizeof(kDrivers) / sizeof(kDrivers[0])) - 1;

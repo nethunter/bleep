@@ -5,13 +5,16 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-014 Canon Trigger verification plus ADR-015 Canon Smart
-  handoff research; physical regression gates pending.
+- Current phase: ADR-014 Canon Trigger verification, ADR-015 Canon Smart
+  handoff research, and ADR-016 Tascam X8 record-control hardware verification;
+  physical regression gates pending.
 - Firmware state: Home-first, persistent device registry, on-demand Shark and
-  Canon BLE, and device-specific hardware-trigger CTA routing built,
-  host-tested, simulator-tested, and flashed.
+  Canon BLE, on-demand Tascam X8/AK-BT1 record control, and device-specific
+  hardware-trigger CTA routing built, host-tested, simulator-tested, and
+  flashed.
 - Universal driver framework: Bounded routing supports compiled Shark and Canon
-  BLE drivers while preserving one active device instance at a time.
+  BLE and Tascam X8 drivers while preserving one active device instance at a
+  time.
 - Last updated: 2026-08-03.
 
 ## Completed planning
@@ -38,16 +41,19 @@ short, factual, and reproducible.
 
 Complete the Canon BLE and combined Phase 0/foundation hardware gates:
 
-1. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
+1. Verify Tascam X8 first connect, persisted reconnect, start/stop, physical
+   recorder state synchronization, actual media files, and disconnect during
+   recording using the flashed ADR-016 build.
+2. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
    pairing through Wi-Fi AP startup and the first network request.
-2. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
+3. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
    data, camera prompts, and reconnect behavior.
-3. Verify Trigger forget/re-pair and repeated screen entry/exit; record
+4. Verify Trigger forget/re-pair and repeated screen entry/exit; record
    connection/command latency and free/minimum heap.
-4. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+5. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
-5. Verify that boot and Home perform no BLE scan or connection.
-6. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
+6. Verify that boot and Home perform no BLE scan or connection.
+7. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
 
 ## Measurements
 
@@ -447,4 +453,34 @@ Record values with the exact build environment and commit/worktree state.
 - The default profile flashed successfully to
   `/dev/cu.usbserial-211240`. Physical button behavior on the Shark and Canon
   hardware remains operator-pending.
+
+### 2026-08-03: Tascam X8 captured protocol and record-control driver
+
+- Analyzed annotated nRF52840 fixture
+  `docs/protocols/dumps/tascam_x8.pcapng`
+  (`115e77bcc91ca2c184439115df97ad0459ac8452018ce0e08bdde6568918fd51`)
+  and documented the AK-BT1 UUIDs, COBS stream, session open/keepalive, exact
+  record start/stop writes, and recorder-originated transition events in
+  `docs/protocols/tascam-x8.md`.
+- Recorded ADR-016 and added the compile-time `tascam.portacapture_x8` recorder
+  driver with explicit `RecordStart`/`RecordStop`, on-demand connection,
+  persisted identity, and confirmed-transition-only Ready/Recording UI.
+- A second capture pass rejected the earlier `0x81`/`0x10` steady-state
+  interpretation. State reduction now uses the confirmed `DR 20 20 24 01`
+  start and `DR 10 20 08` stop notifications, and initialization waits for the
+  session characteristic's `10` open response. A stable reconnect-state field
+  remains unproven.
+- Added fragmented COBS/golden-vector/state/catalog/routing host tests and
+  simulator fake state, hardware-button start/stop regression, and Ready plus
+  Recording screenshots.
+- Native tests passed 18/18. `ui_sim` built and completed all captures with
+  10,024 bytes LVGL memory free at the five-device maximum and 12,032 bytes
+  after removal.
+- Firmware builds passed: `crowpanel_128` used 870,784 bytes flash and 167,692
+  bytes static RAM; `crowpanel_128_roboto` used 840,312/167,692;
+  `tascam_x8` used 872,144/166,532; and `canon_ble` used 871,426/166,388.
+- The default profile flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical X8/AK-BT1 connection, command, state,
+  reconnect, and media-file checks remain operator-pending; the tranche is not
+  hardware-complete.
 

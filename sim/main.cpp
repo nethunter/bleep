@@ -8,6 +8,7 @@
 #include "core/device_manager.h"
 #include "devices/canon_ble/ui.h"
 #include "devices/shark_nano_ii/ui.h"
+#include "devices/tascam_x8/ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
 
@@ -141,9 +142,12 @@ int main() {
   studio::devices().add(studio::DriverId::CanonBle, "Camera B", canonId2);
   studio::InstanceId canonId3 = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::TascamX8, "Recorder A", tascamId);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
-      canonId3 == studio::kInvalidInstanceId) {
+      canonId3 == studio::kInvalidInstanceId ||
+      tascamId == studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
     return 1;
   }
@@ -277,6 +281,34 @@ int main() {
   }
 
   canon_ble_ui::hide();
+  tascam_x8_ui::show(tascamId);
+  studio::simSetTascamConnectedState(false);
+  pump(250);
+  if (!capture("13_tascam_ready")) {
+    return 1;
+  }
+
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simTascamState().recording !=
+          tascam_x8::TascamX8State::Recording::Recording ||
+      !tascam_x8_ui::active()) {
+    std::fprintf(stderr, "Hardware trigger did not start Tascam recording\n");
+    return 1;
+  }
+  if (!capture("14_tascam_recording")) {
+    return 1;
+  }
+
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simTascamState().recording !=
+      tascam_x8::TascamX8State::Recording::Stopped) {
+    std::fprintf(stderr, "Hardware trigger did not stop Tascam recording\n");
+    return 1;
+  }
+  tascam_x8_ui::hide();
+
   if (studio::devices().remove(canonId3) != studio::RegistryStatus::Ok) {
     std::fprintf(stderr, "Failed to remove a device in simulator regression\n");
     return 1;

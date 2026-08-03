@@ -107,13 +107,21 @@ Reference research:
 
 ### Tascam Portacapture X8 Bluetooth
 
-- Status: `Later`.
+- Status: `Research implementation`.
 - Expected device type: recorder.
 - Required initial capabilities: record start and record stop.
 - Desired state: recording, battery, and media status where the protocol
   exposes them.
-- Protocol status: unverified. Research must identify the required Bluetooth
-  adapter/model, pairing flow, services, command encoding, and readback.
+- Required adapter: Tascam AK-BT1. The captured module identifies as a u-blox
+  ANNA-B1 running `4.0.0-004T`.
+- Pairing flow: the app connects directly to the `Portacapture X8` BLE
+  advertisement; no SMP pairing or encrypted ATT exchange was observed.
+- Protocol status: record start, record stop, COBS framing, custom GATT UUIDs,
+  session keepalive, and recorder-originated start/stop transition events are
+  confirmed from the annotated capture. A stable recording boolean, reconnect
+  behavior, battery, and media fields remain unverified.
+- Evidence and golden vectors:
+  [protocols/tascam-x8.md](protocols/tascam-x8.md).
 
 ### Deity PR4 remote control
 

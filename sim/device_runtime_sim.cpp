@@ -7,6 +7,7 @@
 #include "core/device_driver.h"
 #include "devices/canon_ble/state.h"
 #include "devices/shark_nano_ii/state.h"
+#include "devices/tascam_x8/state.h"
 
 namespace studio {
 namespace {
@@ -166,12 +167,79 @@ class SimCanonDriver : public DeviceDriver {
   canon_ble::CanonBleState state_;
 };
 
+class SimTascamDriver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::TascamX8; }
+  void activate(const DeviceRecord& record) override {
+    state_.hasSavedDevice = record.paired;
+    state_.link = tascam_x8::TascamX8State::Link::Scanning;
+    std::strncpy(state_.deviceName, record.displayName,
+                 sizeof(state_.deviceName) - 1);
+    state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+  }
+  void deactivate() override {
+    state_.link = tascam_x8::TascamX8State::Link::Disconnected;
+    tascam_x8::resetTransientState(state_);
+  }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    uint8_t payload[18] = {'D', 'R'};
+    if (command.type == CommandType::RecordStart &&
+        state_.link == tascam_x8::TascamX8State::Link::Connected) {
+      tascam_x8::markCommandQueued(state_, true);
+      payload[2] = 0x20;
+      payload[3] = 0x20;
+      payload[4] = 0x24;
+      payload[5] = 0x01;
+      tascam_x8::reduceFrame(state_, {payload, sizeof(payload)});
+      return CommandStatus::Succeeded;
+    }
+    if (command.type == CommandType::RecordStop &&
+        state_.link == tascam_x8::TascamX8State::Link::Connected) {
+      tascam_x8::markCommandQueued(state_, false);
+      payload[2] = 0x10;
+      payload[3] = 0x20;
+      payload[4] = 0x08;
+      tascam_x8::reduceFrame(state_, {payload, sizeof(payload)});
+      return CommandStatus::Succeeded;
+    }
+    return CommandStatus::Succeeded;
+  }
+  DeviceRuntimeState runtimeState() const override {
+    DeviceRuntimeState runtime;
+    switch (state_.link) {
+      case tascam_x8::TascamX8State::Link::Scanning:
+        runtime.link = LinkState::Scanning;
+        break;
+      case tascam_x8::TascamX8State::Link::Connecting:
+        runtime.link = LinkState::Connecting;
+        break;
+      case tascam_x8::TascamX8State::Link::Connected:
+        runtime.link = LinkState::Connected;
+        break;
+      case tascam_x8::TascamX8State::Link::Disconnected:
+        runtime.link = LinkState::Disconnected;
+        break;
+    }
+    runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
+                                                : StateQuality::Unknown;
+    return runtime;
+  }
+  const void* specializedState() const override { return &state_; }
+  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  tascam_x8::TascamX8State& state() { return state_; }
+
+ private:
+  tascam_x8::TascamX8State state_;
+};
+
 MemoryConfigBackend gBackend;
 SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
 SimCanonDriver gCanonDriver;
-DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonDriver};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 2);
+SimTascamDriver gTascamDriver;
+DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonDriver, &gTascamDriver};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 3);
 
 }  // namespace
 
@@ -179,6 +247,9 @@ DeviceManager& devices() { return gManager; }
 
 shark::SharkState& simSharkState() { return gSharkDriver.state(); }
 canon_ble::CanonBleState& simCanonState() { return gCanonDriver.state(); }
+tascam_x8::TascamX8State& simTascamState() {
+  return gTascamDriver.state();
+}
 
 void simSetConnectedDemoState() {
   shark::SharkState& state = gSharkDriver.state();
@@ -222,6 +293,21 @@ void simSetCanonConnectedState() {
   state.lastTriggerSucceeded = false;
   std::strncpy(state.deviceName, "EOS R6 Mark III",
                sizeof(state.deviceName) - 1);
+}
+
+void simSetTascamConnectedState(bool recording) {
+  tascam_x8::TascamX8State& state = gTascamDriver.state();
+  state.link = tascam_x8::TascamX8State::Link::Connected;
+  state.hasSavedDevice = true;
+  state.commandPending = false;
+  state.lastCommandFailed = false;
+  state.recordingConfirmed = true;
+  state.recording = recording
+                        ? tascam_x8::TascamX8State::Recording::Recording
+                        : tascam_x8::TascamX8State::Recording::Stopped;
+  std::strncpy(state.deviceName, "Portacapture X8",
+               sizeof(state.deviceName) - 1);
+  state.deviceName[sizeof(state.deviceName) - 1] = '\0';
 }
 
 }  // namespace studio
