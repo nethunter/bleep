@@ -6,7 +6,7 @@
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
-#include "shark_client.h"
+#include "core/device_manager.h"
 #include "ui.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
@@ -128,15 +128,19 @@ static uint8_t touchChipId = 0;
 static uint8_t ioOutputState = 0;
 static bool ignoreWakeButtonUntilRelease = false;
 
-const char* linkLabel(shark::SharkClient::Link link) {
+studio::LinkState currentLink() {
+  return studio::devices().runtimeState(studio::devices().activeInstance()).link;
+}
+
+const char* linkLabel(studio::LinkState link) {
   switch (link) {
-    case shark::SharkClient::Link::Disconnected:
+    case studio::LinkState::Disconnected:
       return "disconnected";
-    case shark::SharkClient::Link::Scanning:
+    case studio::LinkState::Scanning:
       return "scanning";
-    case shark::SharkClient::Link::Connecting:
+    case studio::LinkState::Connecting:
       return "connecting";
-    case shark::SharkClient::Link::Connected:
+    case studio::LinkState::Connected:
       return "connected";
   }
   return "unknown";
@@ -145,7 +149,7 @@ const char* linkLabel(shark::SharkClient::Link link) {
 void logRuntimeStats(const char* event) {
   DEBUG_PORT.printf("runtime event=%s uptime_ms=%lu link=%s free_heap=%lu min_free_heap=%lu\n",
                     event, static_cast<unsigned long>(millis()),
-                    linkLabel(shark::gShark.state().link),
+                    linkLabel(currentLink()),
                     static_cast<unsigned long>(ESP.getFreeHeap()),
                     static_cast<unsigned long>(ESP.getMinFreeHeap()));
 }
@@ -313,7 +317,7 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
 }
 
 void handleShortPress() {
-  ui::toggleMainScreen();
+  ui::handleShortPress();
 }
 
 void configureButtonWake() {
@@ -359,7 +363,7 @@ void enforceLongPressWake() {
 
 [[noreturn]] void handleLongPress() {
   DEBUG_PORT.println("Button long press: power off");
-  shark::gShark.disconnectLink();
+  studio::devices().deactivate();
 
   ioSetPin(board::ioBacklight, false);
   delay(40);
@@ -456,23 +460,23 @@ void setup() {
   touchPresent = initTouch();
   setupLvgl();
 
+  studio::devices().begin();
   ui::init();
-  // Paint the splash before BLE direct reconnect can block for a few seconds.
+  // Paint Home before any operator-requested device activation.
   lv_timer_handler();
-  shark::gShark.begin();
   logRuntimeStats("boot");
 }
 
 void loop() {
   static uint32_t lastTickMs = millis();
   static uint32_t lastStatsMs = millis();
-  static shark::SharkClient::Link lastLink = shark::gShark.state().link;
+  static studio::LinkState lastLink = currentLink();
   const uint32_t now = millis();
   lv_tick_inc(now - lastTickMs);
   lastTickMs = now;
 
-  shark::gShark.loop();
-  const shark::SharkClient::Link link = shark::gShark.state().link;
+  studio::devices().loop();
+  const studio::LinkState link = currentLink();
   if (link != lastLink) {
     lastLink = link;
     logRuntimeStats("link_change");

@@ -35,6 +35,22 @@ All state mutation, command dispatch, and LVGL access remains serialized
 through the Arduino `loop()`. Transport callbacks may only queue bytes or
 events.
 
+## Current foundation implementation
+
+ADR-013 advances a bounded subset of this architecture before the transport
+feasibility spikes:
+
+- `DriverCatalog` currently contains only `ifootage.shark_nano_ii`;
+- `DeviceManager` owns a fixed-capacity registry, command/result queues, active
+  driver lifecycle, and persistence;
+- schema version 1 stores up to eight device records in the `studio` NVS
+  namespace and retains records for unavailable driver IDs;
+- the Shark descriptor permits one instance in the current build;
+- Home and Devices load without initializing NimBLE; selecting the enabled
+  Shark instance activates its transport, and leaving releases it;
+- Groups, Scenes, Portal, generic device-type UI, the GATT facade, and non-Shark
+  drivers remain unimplemented.
+
 ## Compile-time driver catalog
 
 `Kconfig.projbuild` will provide a Linux-kernel-style menu for:

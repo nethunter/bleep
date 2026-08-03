@@ -5,9 +5,12 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: Phase 0; software baseline complete, hardware behavior gate pending.
-- Firmware state: Baseline preserved, host-tested, built, and flashed.
-- Universal driver framework: Not started.
+- Current phase: ADR-013 multi-device foundation tranche; physical Shark
+  regression gate pending.
+- Firmware state: Home-first, persistent device registry, and on-demand Shark
+  firmware built, host-tested, and flashed.
+- Universal driver framework: Bounded core implemented for one compiled Shark
+  driver and one active Shark instance; broader transports/drivers not started.
 - Last updated: 2026-08-03.
 
 ## Completed planning
@@ -30,13 +33,14 @@ short, factual, and reproducible.
 
 ## Next task
 
-Complete the Phase 0 hardware gate:
+Complete the combined Phase 0/foundation hardware gate:
 
-1. Exercise Shark pairing and saved-device reconnect.
-2. Exercise keypoint set/go/delete and speed/hold readback.
-3. Exercise manual movement, standby/start/stop, loop, and direction.
-4. Exercise long-press sleep and long-press wake.
-5. Record observed behavior and any minimum-heap reduction after the test.
+1. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+   and persistence across a power cycle.
+2. Verify that boot and Home perform no BLE scan or connection.
+3. Exercise on-demand Shark pairing and reconnect while its screen is active.
+4. Exercise keypoints, timing, manual movement, run controls, and safe Back.
+5. Exercise long-press sleep/wake and record the connected minimum heap.
 
 ## Measurements
 
@@ -57,6 +61,26 @@ Record values with the exact build environment and commit/worktree state.
 - Host tests: 6/6 passed in the PlatformIO `native` environment.
 - Worktree: Firmware sources initially matched `HEAD`; Phase 0 test,
   extraction, scanner-hardening, and telemetry changes were then applied.
+
+### Multi-device foundation build
+
+- Date: 2026-08-03.
+- PlatformIO environment: `crowpanel_128`.
+- Firmware flash usage: 822,672 / 3,145,728 bytes (26.2%).
+- Static RAM usage: 117,284 / 327,680 bytes (35.8%).
+- Roboto profile flash usage: 792,200 / 3,145,728 bytes (25.2%).
+- Home boot free heap: 176,044 bytes at 915 ms.
+- Home boot minimum free heap: 173,604 bytes.
+- Boot link state: `disconnected`; NimBLE is not initialized until a device is
+  opened.
+- LVGL object heap: increased from 32 KiB to 48 KiB for Home, device management,
+  and the rename keyboard. The first 32 KiB build exhausted the UI heap before
+  boot telemetry and was rejected.
+- Build result: `crowpanel_128` and `crowpanel_128_roboto` succeeded.
+- Flash result: Success on `/dev/cu.usbserial-211240`.
+- Host tests: 12/12 passed in the PlatformIO `native` environment.
+- Physical device controls and persistence workflow: Operator verification
+  pending.
 
 ### Full coexistence spike
 
@@ -80,8 +104,9 @@ Record values with the exact build environment and commit/worktree state.
 
 ## Hardware verification
 
-- Shark Nano II: Panel boots and begins scanning; movement and control checklist
-  still requires operator verification with the slider powered and safe to move.
+- Shark Nano II: Panel firmware boots Home with link `disconnected`; on-demand
+  pairing, persistence UI, movement, control, and sleep checklist still requires
+  operator verification with the slider powered and safe to move.
 - Amaran Pano 60c: Not tested.
 - Amaran Pano 120c: Not tested.
 - Amaran Ace 25c: Not tested.
@@ -132,4 +157,21 @@ Record values with the exact build environment and commit/worktree state.
 - Added boot, link-transition, and periodic free/minimum-heap telemetry.
 - Built and flashed the instrumented firmware and captured startup heap.
 - Phase 0 remains open until the physical Shark behavior checklist passes.
+
+### 2026-08-03: Multi-device Shark foundation
+
+- Recorded ADR-013 to advance selected Phase 2/3/7 foundation work while Phase
+  0 hardware and Phase 1 feasibility gates remain open.
+- Added a compile-time Shark driver catalog, fixed-capacity runtime registry,
+  versioned checked persistence, legacy pairing migration, typed command/result
+  queues, and a loop-owned `DeviceManager`.
+- Adapted Shark behind an on-demand driver lifecycle; boot and Home do not
+  initialize, scan, pair, or reconnect BLE.
+- Added Home, Devices, add/rename/enable/disable/forget/remove workflows and
+  retained the specialized Shark connect, keypoint, positioning, and run UI.
+- Expanded native coverage from 6 to 12 tests for catalog, registry, dormant
+  records, corruption handling, migration, routing, disabled devices, and empty
+  registry persistence.
+- Built both panel profiles, flashed the default profile, and captured Home boot
+  heap. Physical operator verification remains open.
 

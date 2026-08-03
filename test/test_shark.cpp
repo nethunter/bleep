@@ -3,6 +3,10 @@
 #include <cmath>
 #include <cstring>
 
+#include "core/config_store.h"
+#include "core/device_driver.h"
+#include "core/device_manager.h"
+#include "core/driver_catalog.h"
 #include "shark_protocol.h"
 #include "shark_state.h"
 
@@ -24,6 +28,86 @@ ParsedFrame parsed(uint8_t family, uint8_t code, const uint8_t* data, size_t len
   frame.dataLen = len;
   return frame;
 }
+
+class MemoryBackend : public studio::IConfigBackend {
+ public:
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (length_ > capacity) {
+      return 0;
+    }
+    std::memcpy(destination, data_, length_);
+    return length_;
+  }
+
+  bool write(const uint8_t* data, size_t length) override {
+    if (length > sizeof(data_)) {
+      return false;
+    }
+    std::memcpy(data_, data, length);
+    length_ = length;
+    return true;
+  }
+
+  void corruptLastByte() {
+    if (length_ > 0) {
+      data_[length_ - 1] ^= 0xFF;
+    }
+  }
+
+ private:
+  uint8_t data_[studio::ConfigStore::kMaxBlobSize] = {};
+  size_t length_ = 0;
+};
+
+class LegacyBackend : public studio::ILegacySharkBackend {
+ public:
+  bool readLegacyShark(studio::LegacySharkConfig& config) override {
+    if (!available) {
+      return false;
+    }
+    config = value;
+    return true;
+  }
+
+  bool available = false;
+  studio::LegacySharkConfig value;
+};
+
+class FakeDriver : public studio::DeviceDriver {
+ public:
+  studio::DriverId driverId() const override { return studio::DriverId::SharkNanoII; }
+  void activate(const studio::DeviceRecord& record) override {
+    active = true;
+    activeInstance = record.instanceId;
+    ++activationCount;
+  }
+  void deactivate() override {
+    active = false;
+    activeInstance = studio::kInvalidInstanceId;
+    ++deactivationCount;
+  }
+  void loop() override { ++loopCount; }
+  studio::CommandStatus dispatch(const studio::DeviceCommand& command) override {
+    lastCommand = command.type;
+    ++dispatchCount;
+    return studio::CommandStatus::Succeeded;
+  }
+  studio::DeviceRuntimeState runtimeState() const override {
+    studio::DeviceRuntimeState state;
+    state.link = active ? studio::LinkState::Connected : studio::LinkState::Disconnected;
+    return state;
+  }
+  const void* specializedState() const override { return nullptr; }
+  bool consumePairingUpdate(studio::DeviceRecord&) override { return false; }
+
+  bool active = false;
+  studio::InstanceId activeInstance = studio::kInvalidInstanceId;
+  int activationCount = 0;
+  int deactivationCount = 0;
+  int loopCount = 0;
+  int dispatchCount = 0;
+  studio::CommandType lastCommand = studio::CommandType::Refresh;
+};
 
 void test_crc_and_known_frame_fixture() {
   const uint8_t standard[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
@@ -178,6 +262,144 @@ void test_reset_preserves_link_identity_and_preferences() {
   TEST_ASSERT_FALSE(state.present[0]);
 }
 
+void test_driver_catalog_exposes_only_shark() {
+  TEST_ASSERT_EQUAL_UINT32(1, studio::DriverCatalog::count());
+  const studio::DriverDescriptor* descriptor =
+      studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
+  TEST_ASSERT_NOT_NULL(descriptor);
+  TEST_ASSERT_EQUAL_STRING("ifootage.shark_nano_ii", descriptor->stableId);
+  TEST_ASSERT_EQUAL_UINT8(1, descriptor->maxInstances);
+  TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
+}
+
+void test_registry_crud_and_single_shark_limit() {
+  studio::DeviceRegistry registry;
+  studio::InstanceId first = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.add(studio::DriverId::SharkNanoII, "Main Slider", 1, first)));
+  TEST_ASSERT_NOT_EQUAL(studio::kInvalidInstanceId, first);
+
+  studio::InstanceId duplicate = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::DuplicateDriver),
+      static_cast<int>(
+          registry.add(studio::DriverId::SharkNanoII, "Second Slider", 1, duplicate)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.rename(first, "A-Cam Slider")));
+  TEST_ASSERT_EQUAL_STRING("A-Cam Slider", registry.find(first)->displayName);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.setEnabled(first, false)));
+  TEST_ASSERT_FALSE(registry.find(first)->enabled);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.remove(first)));
+  TEST_ASSERT_EQUAL_UINT32(0, registry.count());
+  TEST_ASSERT_TRUE(registry.initialized());
+}
+
+void test_config_round_trip_preserves_dormant_records_and_detects_corruption() {
+  MemoryBackend backend;
+  studio::ConfigStore store(backend);
+  studio::DeviceRegistry source;
+  studio::DeviceRecord dormant;
+  dormant.instanceId = 7;
+  dormant.driverId = static_cast<studio::DriverId>(77);
+  dormant.enabled = false;
+  std::strcpy(dormant.displayName, "Future Device");
+  TEST_ASSERT_TRUE(source.restore(&dormant, 1, 8, true));
+  TEST_ASSERT_TRUE(store.save(source));
+
+  studio::DeviceRegistry restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
+  TEST_ASSERT_EQUAL_INT(77, static_cast<int>(restored.at(0)->driverId));
+  TEST_ASSERT_EQUAL_STRING("Future Device", restored.at(0)->displayName);
+
+  backend.corruptLastByte();
+  studio::DeviceRegistry rejected;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Corrupt),
+      static_cast<int>(store.load(rejected)));
+}
+
+void test_manager_migrates_legacy_without_boot_activation() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  legacy.available = true;
+  legacy.value.paired = true;
+  std::strcpy(legacy.value.address, "11:22:33:44:55:66");
+  legacy.value.addressType = 1;
+  std::strcpy(legacy.value.advertisedName, "Nano Legacy");
+  FakeDriver driver;
+  studio::DeviceManager manager(backend, legacy, driver);
+
+  TEST_ASSERT_TRUE(manager.begin());
+  TEST_ASSERT_EQUAL_UINT32(1, manager.count());
+  TEST_ASSERT_EQUAL_INT(0, driver.activationCount);
+  TEST_ASSERT_EQUAL(studio::kInvalidInstanceId, manager.activeInstance());
+  const studio::DeviceRecord* record = manager.at(0);
+  TEST_ASSERT_TRUE(record->paired);
+  TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
+}
+
+void test_manager_routes_commands_and_blocks_disabled_device() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver;
+  studio::DeviceManager manager(backend, legacy, driver);
+  TEST_ASSERT_TRUE(manager.begin());
+  const studio::InstanceId instanceId = manager.at(0)->instanceId;
+  TEST_ASSERT_TRUE(manager.activate(instanceId));
+  TEST_ASSERT_EQUAL_INT(1, driver.activationCount);
+
+  studio::DeviceCommand command;
+  command.instanceId = instanceId;
+  command.type = studio::CommandType::Refresh;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+
+  studio::CommandResult result;
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
+                        static_cast<int>(result.status));
+  TEST_ASSERT_EQUAL_INT(1, driver.dispatchCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Refresh),
+                        static_cast<int>(driver.lastCommand));
+
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.setEnabled(instanceId, false)));
+  TEST_ASSERT_FALSE(driver.active);
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Disabled),
+                        static_cast<int>(result.status));
+}
+
+void test_removed_registry_stays_empty_after_restart() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver firstDriver;
+  studio::DeviceManager first(backend, legacy, firstDriver);
+  TEST_ASSERT_TRUE(first.begin());
+  TEST_ASSERT_EQUAL_UINT32(1, first.count());
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(first.remove(first.at(0)->instanceId)));
+
+  FakeDriver secondDriver;
+  studio::DeviceManager second(backend, legacy, secondDriver);
+  TEST_ASSERT_TRUE(second.begin());
+  TEST_ASSERT_EQUAL_UINT32(0, second.count());
+  TEST_ASSERT_EQUAL_INT(0, secondDriver.activationCount);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -188,5 +410,11 @@ int main(int, char**) {
   RUN_TEST(test_command_builders_and_timing_patch);
   RUN_TEST(test_state_reducer_decodes_snapshots_and_progress);
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
+  RUN_TEST(test_driver_catalog_exposes_only_shark);
+  RUN_TEST(test_registry_crud_and_single_shark_limit);
+  RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
+  RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
+  RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
+  RUN_TEST(test_removed_registry_stays_empty_after_restart);
   return UNITY_END();
 }

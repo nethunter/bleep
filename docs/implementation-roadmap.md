@@ -4,6 +4,15 @@ Each phase has an explicit completion gate. Do not begin a dependent phase
 until its gate passes or the deviation is recorded in
 [Decisions](decisions.md).
 
+## Active sequencing deviation
+
+ADR-013 authorizes a bounded multi-device foundation tranche ahead of the
+Phase 1 feasibility spikes. Implemented scope includes the driver catalog,
+device manager, versioned device registry, Home/Devices UI, and on-demand Shark
+lifecycle. It does not complete Phase 2, Phase 3, or Phase 7: Kconfig validation,
+the GATT facade, groups, Portal mode, scenes, generic device modules, and the
+physical Shark regression gate remain outstanding.
+
 ## Phase 0: Preserve and baseline the Shark remote
 
 Work:

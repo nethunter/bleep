@@ -1,0 +1,175 @@
+#include "core/device_registry.h"
+
+#include <cstring>
+
+namespace studio {
+
+namespace {
+
+template <size_t N>
+void copyText(char (&destination)[N], const char* source) {
+  if (source == nullptr) {
+    destination[0] = '\0';
+    return;
+  }
+  std::strncpy(destination, source, N - 1);
+  destination[N - 1] = '\0';
+}
+
+}  // namespace
+
+const DeviceRecord* DeviceRegistry::at(size_t index) const {
+  return index < count_ ? &records_[index] : nullptr;
+}
+
+DeviceRecord* DeviceRegistry::at(size_t index) {
+  return index < count_ ? &records_[index] : nullptr;
+}
+
+const DeviceRecord* DeviceRegistry::find(InstanceId instanceId) const {
+  for (size_t i = 0; i < count_; ++i) {
+    if (records_[i].instanceId == instanceId) {
+      return &records_[i];
+    }
+  }
+  return nullptr;
+}
+
+DeviceRecord* DeviceRegistry::find(InstanceId instanceId) {
+  for (size_t i = 0; i < count_; ++i) {
+    if (records_[i].instanceId == instanceId) {
+      return &records_[i];
+    }
+  }
+  return nullptr;
+}
+
+size_t DeviceRegistry::countByDriver(DriverId driverId) const {
+  size_t matches = 0;
+  for (size_t i = 0; i < count_; ++i) {
+    if (records_[i].driverId == driverId) {
+      ++matches;
+    }
+  }
+  return matches;
+}
+
+RegistryStatus DeviceRegistry::add(DriverId driverId, const char* displayName,
+                                   uint8_t maxForDriver, InstanceId& outId) {
+  outId = kInvalidInstanceId;
+  if (driverId == DriverId::Unknown || displayName == nullptr || displayName[0] == '\0' ||
+      maxForDriver == 0) {
+    return RegistryStatus::Invalid;
+  }
+  if (count_ >= capacity()) {
+    return RegistryStatus::Full;
+  }
+  if (countByDriver(driverId) >= maxForDriver) {
+    return RegistryStatus::DuplicateDriver;
+  }
+
+  DeviceRecord record;
+  record.instanceId = nextInstanceId_++;
+  record.driverId = driverId;
+  record.enabled = true;
+  copyText(record.displayName, displayName);
+  records_[count_++] = record;
+  initialized_ = true;
+  outId = record.instanceId;
+  return RegistryStatus::Ok;
+}
+
+RegistryStatus DeviceRegistry::remove(InstanceId instanceId) {
+  for (size_t i = 0; i < count_; ++i) {
+    if (records_[i].instanceId != instanceId) {
+      continue;
+    }
+    for (size_t move = i + 1; move < count_; ++move) {
+      records_[move - 1] = records_[move];
+    }
+    records_[--count_] = DeviceRecord{};
+    initialized_ = true;
+    return RegistryStatus::Ok;
+  }
+  return RegistryStatus::NotFound;
+}
+
+RegistryStatus DeviceRegistry::rename(InstanceId instanceId, const char* displayName) {
+  DeviceRecord* record = find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  if (displayName == nullptr || displayName[0] == '\0') {
+    return RegistryStatus::Invalid;
+  }
+  copyText(record->displayName, displayName);
+  return RegistryStatus::Ok;
+}
+
+RegistryStatus DeviceRegistry::setEnabled(InstanceId instanceId, bool enabled) {
+  DeviceRecord* record = find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  record->enabled = enabled;
+  return RegistryStatus::Ok;
+}
+
+RegistryStatus DeviceRegistry::updatePairing(InstanceId instanceId, const char* address,
+                                             uint8_t addressType,
+                                             const char* advertisedName) {
+  DeviceRecord* record = find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  if (address == nullptr || address[0] == '\0') {
+    return RegistryStatus::Invalid;
+  }
+  copyText(record->bleAddress, address);
+  copyText(record->bleName, advertisedName);
+  record->bleAddressType = addressType;
+  record->paired = true;
+  return RegistryStatus::Ok;
+}
+
+RegistryStatus DeviceRegistry::clearPairing(InstanceId instanceId) {
+  DeviceRecord* record = find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  record->paired = false;
+  record->bleAddress[0] = '\0';
+  record->bleName[0] = '\0';
+  record->bleAddressType = 0;
+  return RegistryStatus::Ok;
+}
+
+void DeviceRegistry::clear(bool initialized) {
+  for (size_t i = 0; i < capacity(); ++i) {
+    records_[i] = DeviceRecord{};
+  }
+  count_ = 0;
+  nextInstanceId_ = 1;
+  initialized_ = initialized;
+}
+
+bool DeviceRegistry::restore(const DeviceRecord* records, size_t count,
+                             InstanceId nextInstanceId, bool initialized) {
+  if ((count > 0 && records == nullptr) || count > capacity() ||
+      nextInstanceId == kInvalidInstanceId) {
+    return false;
+  }
+  clear(initialized);
+  for (size_t i = 0; i < count; ++i) {
+    if (records[i].instanceId == kInvalidInstanceId || find(records[i].instanceId) != nullptr) {
+      clear(false);
+      return false;
+    }
+    records_[count_++] = records[i];
+  }
+  nextInstanceId_ = nextInstanceId;
+  return true;
+}
+
+}  // namespace studio
+

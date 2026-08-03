@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Preferences.h>
-
 #include <cstdint>
 
 #include "shark_protocol.h"
@@ -27,6 +25,8 @@ class SharkClient {
   using State = SharkState;
 
   void begin();
+  void activate(const char* address, uint8_t addressType, const char* name, bool paired);
+  void deactivate();
   void loop();
 
   const State& state() const { return state_; }
@@ -36,6 +36,8 @@ class SharkClient {
   void startScan();
   void disconnectLink();
   void forgetDevice();
+  bool consumePairingUpdate(char* address, size_t addressCapacity, uint8_t& addressType,
+                            char* name, size_t nameCapacity, bool& paired);
 
   // Operator actions (ignored unless connected). `slot` is the keypoint index
   // 0..7 (A..H).
@@ -72,8 +74,6 @@ class SharkClient {
   void teardownConnection();
   void sendHandshake();
 
-  void loadSavedDevice();
-  void saveDevice();
   void resetDeviceState();
   void handleDisconnect();
   void editTiming(int slot, int speed, int holdSeconds);
@@ -82,7 +82,6 @@ class SharkClient {
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* writeChar_ = nullptr;
-  Preferences prefs_;
   FrameScanner scanner_;
   State state_;
 
@@ -112,6 +111,9 @@ class SharkClient {
   uint32_t retryAtMs_ = 0;
   int connectFails_ = 0;
   bool scanActive_ = false;
+  bool initialized_ = false;
+  bool connectRequested_ = false;
+  bool pairingChanged_ = false;
 
   // Pending manual-tracking ACK (tx-matched), mirrors the web controller.
   bool trackingPending_ = false;
@@ -125,7 +127,5 @@ class SharkClient {
   int timingPendingSpeed_ = -1;
   int timingPendingHold_ = -1;
 };
-
-extern SharkClient gShark;
 
 }  // namespace shark

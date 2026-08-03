@@ -1,0 +1,48 @@
+#pragma once
+
+#include "core/device_registry.h"
+
+namespace studio {
+
+class IConfigBackend {
+ public:
+  virtual ~IConfigBackend() = default;
+  virtual size_t read(uint8_t* destination, size_t capacity) = 0;
+  virtual bool write(const uint8_t* data, size_t length) = 0;
+};
+
+struct LegacySharkConfig {
+  bool paired = false;
+  char address[kBleAddressCapacity] = "";
+  uint8_t addressType = 0;
+  char advertisedName[kBleNameCapacity] = "";
+};
+
+class ILegacySharkBackend {
+ public:
+  virtual ~ILegacySharkBackend() = default;
+  virtual bool readLegacyShark(LegacySharkConfig& config) = 0;
+};
+
+enum class ConfigLoadStatus : uint8_t {
+  Loaded,
+  Missing,
+  Corrupt,
+};
+
+class ConfigStore {
+ public:
+  static constexpr uint16_t kSchemaVersion = 1;
+  static constexpr size_t kMaxBlobSize = 1024;
+
+  explicit ConfigStore(IConfigBackend& backend) : backend_(backend) {}
+
+  ConfigLoadStatus load(DeviceRegistry& registry);
+  bool save(const DeviceRegistry& registry);
+
+ private:
+  IConfigBackend& backend_;
+};
+
+}  // namespace studio
+

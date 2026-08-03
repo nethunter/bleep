@@ -13,7 +13,7 @@
 #define LV_COLOR_MIX_ROUND_OFS 128
 
 #define LV_MEM_CUSTOM 0
-#define LV_MEM_SIZE (32U * 1024U)
+#define LV_MEM_SIZE (48U * 1024U)
 
 #define LV_TICK_CUSTOM 0
 #define LV_DPI_DEF 130
@@ -92,7 +92,7 @@
 #define LV_USE_COLORWHEEL 0
 #define LV_USE_ANIMIMG 0
 #define LV_USE_IMGBTN 0
-#define LV_USE_KEYBOARD 0
+#define LV_USE_KEYBOARD 1
 #define LV_USE_LED 0
 #define LV_USE_MENU 0
 #define LV_USE_METER 0

@@ -103,6 +103,25 @@ the replacement.
   the required connections. Devices, Groups, Scenes, Portal, and power/status
   are available from Home.
 
+## ADR-013: Advance the multi-device foundation before feasibility spikes
+
+- Status: Accepted
+- Decision: Implement the bounded driver catalog, device manager, persistent
+  runtime registry, Home/Devices UI, and on-demand Shark lifecycle before the
+  Phase 1 coexistence and Portal spikes. The first build compiles only the Shark
+  driver and permits one Shark instance, while retaining up to eight dormant or
+  future device records.
+- Consequence: This is an explicit roadmap deviation that advances selected
+  Phase 2, Phase 3, and Phase 7 work while the Phase 0 physical behavior gate
+  and Phase 1 feasibility gates remain open. No Amaran, Canon, group, scene, or
+  Portal support is implied by the framework.
+- Persistence: Registry schema version 1 is stored as a checked NVS blob in the
+  `studio` namespace. Existing `shark` pairing keys migrate into the initial
+  record and remain available for rollback until hardware verification passes.
+- Lifecycle: Boot loads configuration and Home without initializing NimBLE.
+  Opening the enabled Shark record activates scan/connect/reconnect; leaving its
+  screens stops motion, scanning, retries, and the connection.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

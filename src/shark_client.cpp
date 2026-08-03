@@ -11,13 +11,12 @@
 
 namespace shark {
 
-SharkClient gShark;
-
 namespace {
 
 const NimBLEUUID kServiceUuid("fff0");
 const NimBLEUUID kWriteUuid("fff2");
 const NimBLEUUID kNotifyUuid("fff1");
+SharkClient* gCallbackClient = nullptr;
 
 bool nameLooksLikeShark(const std::string& name) {
   return name.find("Nano") != std::string::npos || name.find("Shark") != std::string::npos;
@@ -34,40 +33,85 @@ class ScanCallbacks : public NimBLEScanCallbacks {
       match = nameLooksLikeShark(device->getName());
     }
     if (match) {
-      gShark.onScanMatch(device);
+      if (gCallbackClient != nullptr) {
+        gCallbackClient->onScanMatch(device);
+      }
     }
   }
 };
 
 class ClientCallbacks : public NimBLEClientCallbacks {
  public:
-  void onDisconnect(NimBLEClient*, int) override { gShark.onLinkDisconnected(); }
+  void onDisconnect(NimBLEClient*, int) override {
+    if (gCallbackClient != nullptr) {
+      gCallbackClient->onLinkDisconnected();
+    }
+  }
 };
 
 ScanCallbacks gScanCallbacks;
 ClientCallbacks gClientCallbacks;
 
 void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data, size_t length, bool) {
-  gShark.onNotifyBytes(data, length);
+  if (gCallbackClient != nullptr) {
+    gCallbackClient->onNotifyBytes(data, length);
+  }
 }
 
 }  // namespace
 
 void SharkClient::begin() {
+  if (initialized_) {
+    return;
+  }
   notifyStream_ = xStreamBufferCreate(1024, 1);
 
   NimBLEDevice::init("");
   NimBLEDevice::setMTU(247);
+  gCallbackClient = this;
+  initialized_ = true;
+}
 
-  loadSavedDevice();
-
-  // If a device is remembered, go straight to reconnecting; otherwise begin a
-  // discovery scan so pairing just works.
+void SharkClient::activate(const char* address, uint8_t addressType, const char* name,
+                           bool paired) {
+  begin();
+  connectRequested_ = true;
+  haveTarget_ = paired && address != nullptr && address[0] != '\0';
+  targetAddr_[0] = '\0';
+  targetName_[0] = '\0';
+  targetAddrType_ = addressType;
+  if (haveTarget_) {
+    strncpy(targetAddr_, address, sizeof(targetAddr_) - 1);
+    targetAddr_[sizeof(targetAddr_) - 1] = '\0';
+  }
+  if (name != nullptr) {
+    strncpy(targetName_, name, sizeof(targetName_) - 1);
+    targetName_[sizeof(targetName_) - 1] = '\0';
+  }
+  state_.hasSavedDevice = haveTarget_;
+  strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
+  state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+  connectFails_ = 0;
+  retryAtMs_ = 0;
   if (haveTarget_) {
     beginConnect();
   } else {
     beginScan();
   }
+}
+
+void SharkClient::deactivate() {
+  connectRequested_ = false;
+  if (initialized_ && scanActive_) {
+    NimBLEDevice::getScan()->stop();
+    scanActive_ = false;
+  }
+  stopMotion();
+  teardownConnection();
+  disconnectedFlag_ = false;
+  scanHit_ = false;
+  resetDeviceState();
+  state_.link = Link::Disconnected;
 }
 
 void SharkClient::loop() {
@@ -77,6 +121,10 @@ void SharkClient::loop() {
   }
 
   drainNotifications();
+
+  if (!connectRequested_) {
+    return;
+  }
 
   if (scanHit_) {
     // Snapshot the matched device and stop scanning before connecting.
@@ -120,6 +168,8 @@ void SharkClient::loop() {
 
 void SharkClient::startScan() {
   // Manual (re)pairing: drop any current link and scan fresh.
+  begin();
+  connectRequested_ = true;
   teardownConnection();
   resetDeviceState();
   beginScan();
@@ -134,14 +184,32 @@ void SharkClient::disconnectLink() {
 }
 
 void SharkClient::forgetDevice() {
-  prefs_.begin("shark", false);
-  prefs_.clear();
-  prefs_.end();
   haveTarget_ = false;
   targetAddr_[0] = '\0';
   targetName_[0] = '\0';
   state_.hasSavedDevice = false;
+  pairingChanged_ = true;
   startScan();
+}
+
+bool SharkClient::consumePairingUpdate(char* address, size_t addressCapacity,
+                                       uint8_t& addressType, char* name,
+                                       size_t nameCapacity, bool& paired) {
+  if (!pairingChanged_) {
+    return false;
+  }
+  pairingChanged_ = false;
+  paired = haveTarget_;
+  addressType = targetAddrType_;
+  if (address != nullptr && addressCapacity > 0) {
+    strncpy(address, targetAddr_, addressCapacity - 1);
+    address[addressCapacity - 1] = '\0';
+  }
+  if (name != nullptr && nameCapacity > 0) {
+    strncpy(name, targetName_, nameCapacity - 1);
+    name[nameCapacity - 1] = '\0';
+  }
+  return true;
 }
 
 void SharkClient::beginScan() {
@@ -214,8 +282,8 @@ void SharkClient::completeConnect() {
   state_.link = Link::Connected;
   connectFails_ = 0;
 
-  saveDevice();
   state_.hasSavedDevice = true;
+  pairingChanged_ = true;
 
   sendHandshake();
 }
@@ -491,34 +559,6 @@ void SharkClient::resetDeviceState() {
   haveTable_ = false;
   timingPending_ = false;
   trackingPending_ = false;
-}
-
-void SharkClient::loadSavedDevice() {
-  prefs_.begin("shark", true);
-  String addr = prefs_.getString("addr", "");
-  uint8_t type = prefs_.getUChar("atype", 0);
-  String name = prefs_.getString("name", "");
-  prefs_.end();
-
-  if (addr.length() > 0) {
-    strncpy(targetAddr_, addr.c_str(), sizeof(targetAddr_) - 1);
-    targetAddr_[sizeof(targetAddr_) - 1] = '\0';
-    targetAddrType_ = type;
-    strncpy(targetName_, name.c_str(), sizeof(targetName_) - 1);
-    targetName_[sizeof(targetName_) - 1] = '\0';
-    haveTarget_ = true;
-    state_.hasSavedDevice = true;
-    strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
-    state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
-  }
-}
-
-void SharkClient::saveDevice() {
-  prefs_.begin("shark", false);
-  prefs_.putString("addr", targetAddr_);
-  prefs_.putUChar("atype", targetAddrType_);
-  prefs_.putString("name", targetName_);
-  prefs_.end();
 }
 
 void SharkClient::scheduleRetry(uint32_t& whenMs, uint32_t delayMs) { whenMs = millis() + delayMs; }

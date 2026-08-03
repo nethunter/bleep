@@ -4,21 +4,62 @@ Guidance for AI coding agents working in this repository.
 
 ## What this is
 
-Firmware for a physical BLE remote that controls the **iFootage Shark Nano II**
-camera slider. It runs on an **ESP32-C3 CrowPanel 1.28"** round display
-(240x240 GC9A01 LCD + CST816D touch). Stack: Arduino-ESP32, NimBLE-Arduino,
-LVGL 8.x, LovyanGFX. See `README.md` for the full feature and protocol overview.
+Firmware evolving from a physical **iFootage Shark Nano II** BLE remote into a
+compile-time configurable studio controller. It runs on an **ESP32-C3 CrowPanel
+1.28"** round display (240x240 GC9A01 LCD + CST816D touch). The current stack is
+Arduino-ESP32, NimBLE-Arduino, LVGL 8.x, and LovyanGFX.
+
+`README.md` describes current user-visible behavior. The versioned design,
+accepted decisions, ordered implementation phases, and current handoff live
+under `docs/`.
 
 ## Layout
 
 | Path | Responsibility |
 | --- | --- |
+| `src/core/*` | Compile-time driver metadata, persistent runtime registry, typed commands/results, and `DeviceManager`. |
+| `src/drivers/*` | Adapters from generic device infrastructure to protocol/transport implementations. |
 | `src/shark_protocol.*` | Frame envelope, CRC32, frame scanner, command builders, run-progress parser. Pure logic, no Arduino/BLE deps. |
-| `src/shark_client.*` | NimBLE central: scan/connect/auto-reconnect, notification parsing, decoded state, operator actions. |
-| `src/ui.*` | LVGL screens for the 240x240 round panel (connect / keypoints / run + per-keypoint modal). |
+| `src/shark_state.*` | Pure Shark notification-to-state reduction. |
+| `src/shark_client.*` | On-demand NimBLE central, notification parsing, decoded state, and Shark actions. |
+| `src/ui.*` | Home, Devices, device management, and application navigation. |
+| `src/shark_ui.*` | Specialized Shark connect, keypoint, positioning, and run screens. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, main loop. |
+| `test/` | PlatformIO native tests for protocol and host-testable core logic. |
+| `docs/` | Architecture, decisions, roadmap phases, device support, and progress handoff. |
 | `include/lv_conf.h` | LVGL build configuration (fonts, widgets, theme). |
-| `platformio.ini` | Single build env: `crowpanel_128`. |
+| `platformio.ini` | Target firmware and native-test build environments. |
+
+## Roadmap and documentation discipline
+
+Before planning or implementing a change:
+
+1. Read `docs/README.md`, `docs/decisions.md`, and `docs/progress.md`.
+2. Read the relevant sections of `docs/architecture.md`,
+   `docs/implementation-roadmap.md`, and `docs/device-support.md`.
+3. Identify the roadmap phase or explicitly documented spike/tranche that owns
+   the work.
+
+Follow these rules while building:
+
+- Work within one phase or explicitly recorded tranche at a time. Do not begin
+  dependent roadmap work until the prior completion gate passes, unless the
+  deviation is recorded in `docs/decisions.md` and reflected in the roadmap.
+- Treat completion gates as requirements, not suggestions. Do not mark a phase
+  complete when hardware checks, measurements, or target-device behavior remain
+  unverified.
+- Preserve dormant configuration records for drivers omitted by a build. Keep
+  compiled drivers separate from persistent runtime device instances.
+- Follow accepted architecture decisions, especially main-loop ownership,
+  neutral Home boot, on-demand device connections, compile-time driver
+  selection, and dedicated Portal mode. Add a new ADR instead of silently
+  changing an accepted decision.
+- Label protocol assumptions as `Research`, `Hypothesis`, or `Blocked`.
+  Captured ACKs are not proof of device state or physical success.
+- Update `docs/progress.md` at the end of every implementation session with the
+  exact build environment, results, measurements, hardware checks, blockers,
+  and next safe task. Update `README.md` when current user-visible behavior
+  changes.
 
 ## Conventions
 
@@ -39,6 +80,17 @@ LVGL 8.x, LovyanGFX. See `README.md` for the full feature and protocol overview.
 After completing any code change, **always try to compile and flash to the
 connected board**, then report the result. Treat a clean build as the minimum
 bar; a successful flash is the goal whenever a board is attached.
+
+Run host tests whenever host-testable protocol, state, registry, persistence,
+driver-catalog, command-routing, or scene logic changes:
+
+```sh
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
+```
+
+Build every affected firmware profile. At minimum, verify `crowpanel_128`; also
+verify alternate profiles when shared configuration, fonts, drivers, or
+transports change.
 
 Use the workspace-local PlatformIO (preferred, matches `README.md`):
 

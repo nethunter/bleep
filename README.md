@@ -1,17 +1,20 @@
-# Shark Nano II Remote (CrowPanel 1.28)
+# Studio Remote (CrowPanel 1.28)
 
-A physical BLE remote control for the **iFootage Shark Nano II** camera slider,
-running on the ESP32-C3 CrowPanel 1.28" round display (240x240 GC9A01 + CST816D
-touch). The firmware is a C++/NimBLE port of the reverse-engineered Shark Nano
-BLE protocol.
+A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
+round display (240x240 GC9A01 + CST816D touch). The current build includes only
+the **iFootage Shark Nano II** driver; its protocol remains a C++/NimBLE port of
+the reverse-engineered Shark Nano BLE protocol.
 
 ## What it does
 
-- **Pairing + auto-reconnect.** Scans for the slider (custom GATT service
-  `0xFFF0` or a `Nano`/`Shark` advertised name), connects, and remembers the
-  device in NVS. On boot and after any drop it reconnects automatically; a
-  `Re-pair` button on the connect screen forgets the saved device and scans
-  again.
+- **Home + persistent devices.** Boot opens a neutral Home screen without
+  initializing Bluetooth. Devices are stored in a versioned registry and can be
+  added, renamed, enabled, disabled, re-paired, and removed. The current build
+  permits one Shark instance.
+- **On-demand pairing + reconnect.** Opening the enabled Shark device starts
+  scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
+  remembers the pairing in NVS. Reconnect continues while the Shark screen is
+  active; Back releases the connection and returns to Devices.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:
@@ -30,11 +33,11 @@ BLE protocol.
 
 ## Controls
 
-- **Touch:** primary UI (connect screen, Keypoints screen, joystick positioning
-  overlay, Run screen, and the per-keypoint modal).
+- **Touch:** Home, Devices and device management, connect, Keypoints, joystick
+  positioning, Run, and per-keypoint settings.
 - **Button (GPIO 1):**
-  - Short press: switch between the Keypoints and Run screens (closes an open
-    modal first).
+  - Short press: navigate back outside device control; switch between Keypoints
+    and Run inside Shark control (closing an open modal first).
   - Long press: power off the remote. When off, hold the button again to wake it;
     a short tap wakes briefly and goes back to sleep.
 
@@ -42,9 +45,13 @@ BLE protocol.
 
 | Module | Responsibility |
 | --- | --- |
+| `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
+| `src/drivers/shark_driver.*` | Adapter between generic device infrastructure and the Shark client. |
 | `src/shark_protocol.*` | Frame envelope (`AA BB <body> <crc32> BB AA`), IEEE CRC32, streaming frame scanner, command builders, and the run-progress parser. |
-| `src/shark_client.*` | NimBLE central: scan/connect/auto-reconnect state machine, notification stream buffer, decoded device state, and high-level operator actions. |
-| `src/ui.*` | LVGL screens for the 240x240 round panel. |
+| `src/shark_state.*` | Host-testable notification-to-state reduction. |
+| `src/shark_client.*` | On-demand NimBLE central, notification stream, and Shark actions. |
+| `src/ui.*` | Home, Devices, and application navigation. |
+| `src/shark_ui.*` | Specialized Shark connect, keypoint, positioning, and run screens. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |
 
 NimBLE callbacks run on the host task and only push raw bytes into a FreeRTOS
@@ -95,6 +102,7 @@ pio device monitor
 This workspace also has PlatformIO in `.venv`, with a local core directory:
 
 ```sh
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor

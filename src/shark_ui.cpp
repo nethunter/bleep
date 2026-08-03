@@ -1,0 +1,1216 @@
+#include "shark_ui.h"
+
+#include <Arduino.h>
+#include <lvgl.h>
+
+#include <cmath>
+#include <cstdio>
+
+#include "core/device_manager.h"
+#include "fonts/ui_fonts.h"
+#include "shark_client.h"
+#include "shark_protocol.h"
+#include "ui.h"
+
+namespace shark_ui {
+
+namespace {
+
+using Link = shark::SharkClient::Link;
+
+studio::InstanceId activeInstance = studio::kInvalidInstanceId;
+
+class SharkUiClient {
+ public:
+  const shark::SharkClient::State& state() const {
+    const void* state = studio::devices().specializedState(activeInstance);
+    return state != nullptr ? *static_cast<const shark::SharkClient::State*>(state)
+                            : disconnectedState_;
+  }
+
+  bool connected() const { return state().link == Link::Connected; }
+  void startScan() { send(studio::CommandType::Connect); }
+  void forgetDevice() { send(studio::CommandType::ForgetPairing); }
+  void refreshAll() { send(studio::CommandType::Refresh); }
+  void requestTiming() { refreshAll(); }
+  void keypointSet(int slot) { send(studio::CommandType::KeypointSet, slot); }
+  void keypointGo(int slot) { send(studio::CommandType::KeypointGo, slot); }
+  void keypointDelete(int slot) { send(studio::CommandType::KeypointDelete, slot); }
+  void setSpeed(int slot, int value) { send(studio::CommandType::SetSpeed, slot, value); }
+  void setHold(int slot, int value) { send(studio::CommandType::SetHold, slot, value); }
+  void setRunState(uint8_t state) { send(studio::CommandType::SetRunState, state); }
+  void setLoop(bool on) { send(studio::CommandType::SetLoop, on ? 1 : 0); }
+  void setDirection(bool reverse) {
+    send(studio::CommandType::SetDirection, reverse ? 1 : 0);
+  }
+  void setManualTracking(bool enabled) {
+    send(studio::CommandType::SetManualTracking, enabled ? 1 : 0);
+  }
+  void setMotionVector(int slide, int pan) {
+    send(studio::CommandType::SetMotionVector, slide, pan);
+  }
+  void stopMotion() { send(studio::CommandType::StopMotion); }
+
+ private:
+  void send(studio::CommandType type, int value0 = 0, int value1 = 0) {
+    studio::DeviceCommand command;
+    command.instanceId = activeInstance;
+    command.type = type;
+    command.value0 = value0;
+    command.value1 = value1;
+    studio::devices().enqueue(command);
+  }
+
+  shark::SharkClient::State disconnectedState_;
+};
+
+SharkUiClient gShark;
+
+constexpr uint32_t kRefreshIntervalMs = 150;
+const char* const kSlotLetters[shark::kKeypointCount] = {"A", "B", "C", "D", "E", "F", "G", "H"};
+
+// Palette.
+constexpr uint32_t kColBg = 0x05070A;
+constexpr uint32_t kColPanel = 0x12161D;
+constexpr uint32_t kColAccent = 0x35C7F2;
+constexpr uint32_t kColAccentDim = 0x1E5A6B;
+constexpr uint32_t kColText = 0xF3F4F6;
+constexpr uint32_t kColMuted = 0x8A94A6;
+constexpr uint32_t kColPresent = 0x4ADE80;
+constexpr uint32_t kColAbsent = 0x3A3F4A;
+constexpr uint32_t kColDanger = 0xF26D6D;
+
+// Screens.
+lv_obj_t* scrConnect = nullptr;
+lv_obj_t* scrKeys = nullptr;
+lv_obj_t* scrRun = nullptr;
+
+// Splash / connect screen widgets.
+lv_obj_t* connTitle = nullptr;
+lv_obj_t* connArc = nullptr;
+lv_obj_t* connMark = nullptr;
+lv_obj_t* connStatus = nullptr;
+lv_obj_t* connDevice = nullptr;
+
+// Keypoints screen widgets.
+lv_obj_t* keysHeader = nullptr;
+lv_obj_t* keyRows[shark::kKeypointCount] = {nullptr};
+lv_obj_t* keyButtons[shark::kKeypointCount] = {nullptr};
+lv_obj_t* keyLabels[shark::kKeypointCount] = {nullptr};
+lv_obj_t* gearButtons[shark::kKeypointCount] = {nullptr};
+lv_obj_t* keyList = nullptr;
+
+// Run screen widgets.
+lv_obj_t* runHeader = nullptr;
+lv_obj_t* runBar = nullptr;
+lv_obj_t* runPercent = nullptr;
+lv_obj_t* runActionBtn = nullptr;
+lv_obj_t* runActionLabel = nullptr;
+lv_obj_t* loopBtn = nullptr;
+lv_obj_t* dirBtn = nullptr;
+
+// Per-keypoint modal (lives on the top layer so it overlays any screen).
+lv_obj_t* modal = nullptr;
+lv_obj_t* modalTitle = nullptr;
+lv_obj_t* modalPresence = nullptr;
+lv_obj_t* speedRow = nullptr;
+lv_obj_t* speedSlider = nullptr;
+lv_obj_t* speedValue = nullptr;
+lv_obj_t* holdRow = nullptr;
+lv_obj_t* holdValue = nullptr;
+
+// Keypoint positioning overlay.
+lv_obj_t* setOverlay = nullptr;
+lv_obj_t* setTitle = nullptr;
+lv_obj_t* setHint = nullptr;
+lv_obj_t* joystickBase = nullptr;
+lv_obj_t* joystickKnob = nullptr;
+lv_obj_t* unlockBtn = nullptr;
+lv_obj_t* joystickBtn = nullptr;
+lv_obj_t* setBtn = nullptr;
+lv_obj_t* cancelBtn = nullptr;
+
+int currentMain = 0;  // 0 = keypoints, 1 = run
+int modalSlot = -1;
+int modalHold = 0;
+bool modalOpen = false;
+
+int setSlot = -1;
+bool setOverlayOpen = false;
+bool manualUnlockActive = false;
+bool joystickHeld = false;
+int joystickSlide = 0;
+int joystickPan = 0;
+int lastSentSlide = 0;
+int lastSentPan = 0;
+uint32_t lastMotionMs = 0;
+
+// Timestamp of the last handled swipe. A horizontal swipe over a full-width
+// row can still raise a button CLICKED on release, so taps that land within
+// this window are ignored.
+uint32_t lastSwipeMs = 0;
+constexpr uint32_t kSwipeClickGuardMs = 350;
+constexpr uint32_t kMotionIntervalMs = 170;
+constexpr int kJoystickRadius = 50;
+constexpr int kJoystickDeadZone = 7;
+
+uint32_t lastRefreshMs = 0;
+Link lastLinkShown = Link::Disconnected;
+
+void styleScreen(lv_obj_t* scr) {
+  lv_obj_set_style_bg_color(scr, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_text_color(scr, lv_color_hex(kColText), 0);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void* userData,
+                     uint32_t color, const lv_font_t* font = UI_FONT_16) {
+  lv_obj_t* btn = lv_btn_create(parent);
+  lv_obj_set_style_bg_color(btn, lv_color_hex(color), 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(btn, 8, 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+  lv_obj_set_style_pad_hor(btn, 6, 0);
+  lv_obj_t* label = lv_label_create(btn);
+  lv_label_set_text(label, text);
+  lv_obj_set_style_text_font(label, font, 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(kColText), 0);
+  lv_obj_center(label);
+  if (cb != nullptr) {
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, userData);
+  }
+  return btn;
+}
+
+int nextSettableSlot(const shark::SharkClient::State& s) {
+  if (!s.presenceKnown) {
+    return 0;
+  }
+  for (int i = 0; i < shark::kKeypointCount; ++i) {
+    if (!s.present[i]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int clampVelocity(int value) {
+  if (value < -shark::kManualMotionMaxVelocity) {
+    return -shark::kManualMotionMaxVelocity;
+  }
+  if (value > shark::kManualMotionMaxVelocity) {
+    return shark::kManualMotionMaxVelocity;
+  }
+  return value;
+}
+
+void centerJoystickKnob() {
+  if (joystickKnob != nullptr) {
+    lv_obj_center(joystickKnob);
+  }
+}
+
+void sendMotionNow(int slide, int pan, uint32_t now) {
+  joystickSlide = clampVelocity(slide);
+  joystickPan = clampVelocity(pan);
+  lastSentSlide = joystickSlide;
+  lastSentPan = joystickPan;
+  lastMotionMs = now;
+  gShark.setMotionVector(joystickSlide, joystickPan);
+}
+
+void stopActiveMotion() {
+  const bool moving = joystickHeld || joystickSlide != 0 || joystickPan != 0 ||
+                      lastSentSlide != 0 || lastSentPan != 0;
+  joystickHeld = false;
+  joystickSlide = 0;
+  joystickPan = 0;
+  lastSentSlide = 0;
+  lastSentPan = 0;
+  centerJoystickKnob();
+  if (moving) {
+    gShark.stopMotion();
+  }
+}
+
+void pumpMotion(uint32_t now) {
+  if (!setOverlayOpen || !joystickHeld) {
+    return;
+  }
+  if (now - lastMotionMs >= kMotionIntervalMs) {
+    sendMotionNow(joystickSlide, joystickPan, now);
+  }
+}
+
+void updateJoystickFromPoint(const lv_point_t& point, uint32_t now) {
+  if (joystickBase == nullptr || joystickKnob == nullptr) {
+    return;
+  }
+
+  lv_area_t base;
+  lv_obj_get_coords(joystickBase, &base);
+  const int centerX = (base.x1 + base.x2) / 2;
+  const int centerY = (base.y1 + base.y2) / 2;
+  float dx = static_cast<float>(point.x - centerX);
+  float dy = static_cast<float>(point.y - centerY);
+  const float dist = sqrtf(dx * dx + dy * dy);
+  if (dist > kJoystickRadius && dist > 0.0f) {
+    const float scale = static_cast<float>(kJoystickRadius) / dist;
+    dx *= scale;
+    dy *= scale;
+  }
+
+  lv_obj_set_pos(joystickKnob, static_cast<int>(kJoystickRadius + dx - lv_obj_get_width(joystickKnob) / 2),
+                 static_cast<int>(kJoystickRadius + dy - lv_obj_get_height(joystickKnob) / 2));
+
+  if (fabsf(dx) < kJoystickDeadZone) {
+    dx = 0.0f;
+  }
+  if (fabsf(dy) < kJoystickDeadZone) {
+    dy = 0.0f;
+  }
+
+  const int slide = static_cast<int>(dx * shark::kManualMotionMaxVelocity / kJoystickRadius);
+  const int pan = static_cast<int>(-dy * shark::kManualMotionMaxVelocity / kJoystickRadius);
+  const bool wasHeld = joystickHeld;
+  joystickHeld = true;
+  joystickSlide = clampVelocity(slide);
+  joystickPan = clampVelocity(pan);
+
+  const bool centered = joystickSlide == 0 && joystickPan == 0;
+  const bool sentMoving = lastSentSlide != 0 || lastSentPan != 0;
+  if (!wasHeld || (centered && sentMoving) || now - lastMotionMs >= kMotionIntervalMs) {
+    sendMotionNow(joystickSlide, joystickPan, now);
+  }
+}
+
+void showPositionChoice() {
+  if (unlockBtn != nullptr) {
+    lv_obj_clear_flag(unlockBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBtn != nullptr) {
+    lv_obj_clear_flag(joystickBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBase != nullptr) {
+    lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (setBtn != nullptr) {
+    lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void showSetActions() {
+  if (unlockBtn != nullptr) {
+    lv_obj_add_flag(unlockBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (joystickBtn != nullptr) {
+    lv_obj_add_flag(joystickBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (setBtn != nullptr) {
+    lv_obj_clear_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+// ---- event handlers -------------------------------------------------------
+
+void closeModal();
+
+void closeSetOverlay(bool commit) {
+  const int slot = setSlot;
+  const bool wasUnlocked = manualUnlockActive;
+  stopActiveMotion();
+  setOverlayOpen = false;
+  setSlot = -1;
+  manualUnlockActive = false;
+  if (setOverlay != nullptr) {
+    lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (commit && slot >= 0) {
+    gShark.keypointSet(slot);
+  }
+  if (wasUnlocked) {
+    gShark.setManualTracking(false);
+  }
+}
+
+void cancelPositioning() { closeSetOverlay(false); }
+
+void openSetOverlay(int slot) {
+  if (slot < 0 || slot >= shark::kKeypointCount) {
+    return;
+  }
+  if (modalOpen) {
+    closeModal();
+  }
+  stopActiveMotion();
+  manualUnlockActive = false;
+  setSlot = slot;
+  setOverlayOpen = true;
+
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Position", kSlotLetters[slot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Choose positioning method");
+  centerJoystickKnob();
+  showPositionChoice();
+  lv_obj_clear_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Horizontal swipes move between the Keypoints and Run views. Swipe right on
+// the keypoint list reveals the large run controls; swipe left returns.
+void onScreenGesture(lv_event_t* e) {
+  if (!gShark.connected()) {
+    return;
+  }
+  const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+  lv_obj_t* scr = lv_event_get_current_target(e);
+  if (scr == scrKeys && dir == LV_DIR_RIGHT) {
+    cancelPositioning();
+    currentMain = 1;
+    lastSwipeMs = millis();
+    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+  } else if (scr == scrRun && dir == LV_DIR_LEFT) {
+    currentMain = 0;
+    lastSwipeMs = millis();
+    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+  }
+}
+
+void onLoopToggle(lv_event_t* e) {
+  lv_obj_t* btn = lv_event_get_target(e);
+  gShark.setLoop(lv_obj_has_state(btn, LV_STATE_CHECKED));
+}
+
+void onDirToggle(lv_event_t* e) {
+  lv_obj_t* btn = lv_event_get_target(e);
+  gShark.setDirection(lv_obj_has_state(btn, LV_STATE_CHECKED));
+}
+
+// Single run button: advance the run state machine
+// stopped -> standby -> running -> (stop) stopped.
+void onRunAction(lv_event_t*) {
+  const uint8_t code = gShark.state().runStateCode;
+  if (code == shark::kRunStart || code == 0x06 /* preview */) {
+    gShark.setRunState(shark::kRunStop);
+  } else if (code == shark::kRunStandby) {
+    gShark.setRunState(shark::kRunStart);
+  } else {
+    gShark.setRunState(shark::kRunStandby);
+  }
+}
+
+void onRepair(lv_event_t*) { gShark.forgetDevice(); }
+void onBack(lv_event_t*) { ui::showDevices(); }
+
+void closeModal() {
+  modalOpen = false;
+  modalSlot = -1;
+  if (modal != nullptr) {
+    lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void openModal(int slot);
+
+// Primary row tap. Going to a set keypoint is the fast default; an unset slot
+// opens the joystick positioning overlay for the one next settable slot.
+void onKeyMain(lv_event_t* e) {
+  if (millis() - lastSwipeMs < kSwipeClickGuardMs) {
+    return;  // release after a swipe, not a real tap
+  }
+  const int slot = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  if (slot < 0 || slot >= shark::kKeypointCount) {
+    return;
+  }
+  const shark::SharkClient::State& s = gShark.state();
+  if (s.present[slot]) {
+    cancelPositioning();
+    gShark.keypointGo(slot);
+  } else if (slot == nextSettableSlot(s)) {
+    openSetOverlay(slot);
+  }
+}
+
+void onKeyGear(lv_event_t* e) {
+  if (millis() - lastSwipeMs < kSwipeClickGuardMs) {
+    return;  // release after a swipe, not a real tap
+  }
+  const int slot = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  if (slot >= 0 && slot < shark::kKeypointCount && gShark.state().present[slot]) {
+    cancelPositioning();
+    openModal(slot);
+  }
+}
+
+void onModalClose(lv_event_t*) { closeModal(); }
+
+void onSetCommit(lv_event_t*) { closeSetOverlay(true); }
+
+void onSetCancel(lv_event_t*) { closeSetOverlay(false); }
+
+void onSetManual(lv_event_t*) {
+  if (setSlot < 0) {
+    return;
+  }
+  manualUnlockActive = true;
+  stopActiveMotion();
+  gShark.setManualTracking(true);
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Manually", kSlotLetters[setSlot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Slider unlocked. Move it, then Set.");
+  if (joystickBase != nullptr) {
+    lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  showSetActions();
+}
+
+void onSetJoystick(lv_event_t*) {
+  if (setSlot < 0) {
+    return;
+  }
+  if (manualUnlockActive) {
+    gShark.setManualTracking(false);
+    manualUnlockActive = false;
+  }
+  stopActiveMotion();
+  char title[24];
+  snprintf(title, sizeof(title), "Set %s Joystick", kSlotLetters[setSlot]);
+  lv_label_set_text(setTitle, title);
+  lv_label_set_text(setHint, "Drag joystick, then Set.");
+  centerJoystickKnob();
+  if (joystickBase != nullptr) {
+    lv_obj_clear_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+  }
+  showSetActions();
+}
+
+void onJoystick(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
+    lv_point_t point;
+    lv_indev_get_point(lv_indev_get_act(), &point);
+    updateJoystickFromPoint(point, millis());
+  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    stopActiveMotion();
+  }
+}
+
+void onModalDelete(lv_event_t*) {
+  if (modalSlot >= 0) {
+    gShark.keypointDelete(modalSlot);
+  }
+  closeModal();
+}
+
+void onSpeedChanged(lv_event_t* e) {
+  lv_obj_t* slider = lv_event_get_target(e);
+  const int value = lv_slider_get_value(slider);
+  if (speedValue != nullptr) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", value);
+    lv_label_set_text(speedValue, buf);
+  }
+}
+
+void onSpeedReleased(lv_event_t* e) {
+  lv_obj_t* slider = lv_event_get_target(e);
+  if (modalSlot > 0) {
+    gShark.setSpeed(modalSlot, lv_slider_get_value(slider));
+  }
+}
+
+void updateHoldLabel() {
+  if (holdValue != nullptr) {
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%d s", modalHold);
+    lv_label_set_text(holdValue, buf);
+  }
+}
+
+void onHoldMinus(lv_event_t*) {
+  if (modalHold > 0) {
+    modalHold--;
+  }
+  updateHoldLabel();
+  if (modalSlot > 0) {
+    gShark.setHold(modalSlot, modalHold);
+  }
+}
+
+void onHoldPlus(lv_event_t*) {
+  if (modalHold < 60) {
+    modalHold++;
+  }
+  updateHoldLabel();
+  if (modalSlot > 0) {
+    gShark.setHold(modalSlot, modalHold);
+  }
+}
+
+// ---- screen construction --------------------------------------------------
+
+void buildConnectScreen() {
+  scrConnect = lv_obj_create(nullptr);
+  styleScreen(scrConnect);
+
+  lv_obj_t* back = makeButton(scrConnect, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
+                              UI_FONT_14);
+  lv_obj_set_size(back, 34, 30);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 22);
+
+  connTitle = lv_label_create(scrConnect);
+  lv_label_set_text(connTitle, "Shark Remote");
+  lv_obj_set_style_text_font(connTitle, UI_FONT_20, 0);
+  lv_obj_align(connTitle, LV_ALIGN_TOP_MID, 0, 42);
+
+  connArc = lv_arc_create(scrConnect);
+  lv_obj_set_size(connArc, 74, 74);
+  lv_obj_align(connArc, LV_ALIGN_CENTER, 0, -16);
+  lv_arc_set_range(connArc, 0, 100);
+  lv_arc_set_bg_angles(connArc, 0, 360);
+  lv_arc_set_value(connArc, 72);
+  lv_obj_clear_flag(connArc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_color(connArc, lv_color_hex(kColAccentDim), LV_PART_MAIN);
+  lv_obj_set_style_arc_width(connArc, 7, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(connArc, lv_color_hex(kColAccent), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(connArc, 7, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(connArc, LV_OPA_TRANSP, LV_PART_KNOB);
+
+  connMark = lv_label_create(scrConnect);
+  lv_label_set_text(connMark, "BLE");
+  lv_obj_set_style_text_font(connMark, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(connMark, lv_color_hex(kColText), 0);
+  lv_obj_align_to(connMark, connArc, LV_ALIGN_CENTER, 0, 0);
+
+  connStatus = lv_label_create(scrConnect);
+  lv_label_set_text(connStatus, "Starting Bluetooth...");
+  lv_obj_set_style_text_font(connStatus, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(connStatus, lv_color_hex(kColAccent), 0);
+  lv_obj_align(connStatus, LV_ALIGN_CENTER, 0, 40);
+
+  connDevice = lv_label_create(scrConnect);
+  lv_label_set_long_mode(connDevice, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(connDevice, 180);
+  lv_obj_set_style_text_align(connDevice, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(connDevice, lv_color_hex(kColMuted), 0);
+  lv_label_set_text(connDevice, "iFootage Shark Nano II");
+  lv_obj_align(connDevice, LV_ALIGN_CENTER, 0, 66);
+
+  lv_obj_t* repair = makeButton(scrConnect, "Re-pair", onRepair, nullptr, kColPanel);
+  lv_obj_set_size(repair, 120, 36);
+  lv_obj_align(repair, LV_ALIGN_BOTTOM_MID, 0, -18);
+}
+
+void buildKeysScreen() {
+  scrKeys = lv_obj_create(nullptr);
+  styleScreen(scrKeys);
+  lv_obj_add_event_cb(scrKeys, onScreenGesture, LV_EVENT_GESTURE, nullptr);
+
+  lv_obj_t* back = makeButton(scrKeys, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
+                              UI_FONT_14);
+  lv_obj_set_size(back, 34, 30);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 8);
+
+  keysHeader = lv_label_create(scrKeys);
+  lv_obj_set_style_text_font(keysHeader, UI_FONT_14, 0);
+  lv_label_set_text(keysHeader, "Keypoints");
+  lv_obj_align(keysHeader, LV_ALIGN_TOP_MID, 0, 18);
+
+  // Scrollable keypoint list. With the manual-track switch gone it can use the
+  // full mid-band height; horizontal swipes bubble up to the screen gesture
+  // handler so the Run view is reachable.
+  keyList = lv_obj_create(scrKeys);
+  lv_obj_set_size(keyList, 200, 168);
+  lv_obj_align(keyList, LV_ALIGN_TOP_MID, 0, 40);
+  lv_obj_set_style_bg_color(keyList, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_border_width(keyList, 0, 0);
+  lv_obj_set_style_pad_all(keyList, 2, 0);
+  lv_obj_set_style_pad_row(keyList, 4, 0);
+  lv_obj_set_flex_flow(keyList, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(keyList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(keyList, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_flag(keyList, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+  for (int i = 0; i < shark::kKeypointCount; ++i) {
+    void* slotData = reinterpret_cast<void*>(static_cast<intptr_t>(i));
+
+    lv_obj_t* row = lv_obj_create(keyList);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 32);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 4, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+    lv_obj_t* btn = lv_btn_create(row);
+    lv_obj_set_height(btn, lv_pct(100));
+    lv_obj_set_flex_grow(btn, 1);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(kColPanel), 0);
+    lv_obj_set_style_radius(btn, 6, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_style_pad_left(btn, 10, 0);
+    lv_obj_add_event_cb(btn, onKeyMain, LV_EVENT_CLICKED, slotData);
+    lv_obj_t* label = lv_label_create(btn);
+    lv_obj_set_style_text_font(label, UI_FONT_14, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(kColText), 0);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t* gear = lv_btn_create(row);
+    lv_obj_set_size(gear, 34, 30);
+    lv_obj_set_style_bg_color(gear, lv_color_hex(kColPanel), 0);
+    lv_obj_set_style_radius(gear, 6, 0);
+    lv_obj_set_style_shadow_width(gear, 0, 0);
+    lv_obj_set_style_pad_all(gear, 0, 0);
+    lv_obj_add_event_cb(gear, onKeyGear, LV_EVENT_CLICKED, slotData);
+    lv_obj_t* gearLabel = lv_label_create(gear);
+    lv_label_set_text(gearLabel, LV_SYMBOL_SETTINGS);
+    lv_obj_set_style_text_color(gearLabel, lv_color_hex(kColMuted), 0);
+    lv_obj_center(gearLabel);
+
+    keyButtons[i] = btn;
+    keyLabels[i] = label;
+    gearButtons[i] = gear;
+    keyRows[i] = row;
+  }
+}
+
+void buildRunScreen() {
+  scrRun = lv_obj_create(nullptr);
+  styleScreen(scrRun);
+  lv_obj_add_event_cb(scrRun, onScreenGesture, LV_EVENT_GESTURE, nullptr);
+
+  lv_obj_t* back = makeButton(scrRun, LV_SYMBOL_LEFT, onBack, nullptr, kColPanel,
+                              UI_FONT_14);
+  lv_obj_set_size(back, 34, 30);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 18, 8);
+
+  runHeader = lv_label_create(scrRun);
+  lv_obj_set_style_text_font(runHeader, UI_FONT_14, 0);
+  lv_label_set_text(runHeader, "Run");
+  lv_obj_align(runHeader, LV_ALIGN_TOP_MID, 0, 18);
+
+  runBar = lv_bar_create(scrRun);
+  lv_obj_set_size(runBar, 150, 10);
+  lv_obj_align(runBar, LV_ALIGN_TOP_MID, 0, 44);
+  lv_bar_set_range(runBar, 0, 100);
+  lv_bar_set_value(runBar, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(runBar, lv_color_hex(kColPanel), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(runBar, lv_color_hex(kColAccent), LV_PART_INDICATOR);
+
+  runPercent = lv_label_create(scrRun);
+  lv_obj_set_style_text_color(runPercent, lv_color_hex(kColMuted), 0);
+  lv_label_set_text(runPercent, "0%");
+  lv_obj_align(runPercent, LV_ALIGN_TOP_MID, 0, 58);
+
+  // Single large run-state button. Its label/color and action follow the run
+  // state machine (stopped -> Standby -> Start -> Stop); only one shows at a
+  // time so it stays big and unambiguous.
+  runActionBtn = makeButton(scrRun, "Standby", onRunAction, nullptr, kColPanel, UI_FONT_20);
+  lv_obj_set_size(runActionBtn, 132, 60);
+  lv_obj_align(runActionBtn, LV_ALIGN_CENTER, 0, -6);
+  lv_obj_set_style_radius(runActionBtn, 12, 0);
+  runActionLabel = lv_obj_get_child(runActionBtn, 0);
+
+  // Loop / reverse toggles: icon-only checkable buttons in one bottom row.
+  loopBtn = lv_btn_create(scrRun);
+  lv_obj_add_flag(loopBtn, LV_OBJ_FLAG_CHECKABLE);
+  lv_obj_set_size(loopBtn, 46, 34);
+  lv_obj_align(loopBtn, LV_ALIGN_BOTTOM_MID, -28, -14);
+  lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_color(loopBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
+  lv_obj_set_style_radius(loopBtn, 8, 0);
+  lv_obj_set_style_shadow_width(loopBtn, 0, 0);
+  lv_obj_add_event_cb(loopBtn, onLoopToggle, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* loopIcon = lv_label_create(loopBtn);
+  lv_label_set_text(loopIcon, LV_SYMBOL_LOOP);
+  lv_obj_set_style_text_color(loopIcon, lv_color_hex(kColText), 0);
+  lv_obj_center(loopIcon);
+
+  dirBtn = lv_btn_create(scrRun);
+  lv_obj_add_flag(dirBtn, LV_OBJ_FLAG_CHECKABLE);
+  lv_obj_set_size(dirBtn, 46, 34);
+  lv_obj_align(dirBtn, LV_ALIGN_BOTTOM_MID, 28, -14);
+  lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_color(dirBtn, lv_color_hex(kColAccentDim), LV_STATE_CHECKED);
+  lv_obj_set_style_radius(dirBtn, 8, 0);
+  lv_obj_set_style_shadow_width(dirBtn, 0, 0);
+  lv_obj_add_event_cb(dirBtn, onDirToggle, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* dirIcon = lv_label_create(dirBtn);
+  lv_label_set_text(dirIcon, LV_SYMBOL_LEFT);
+  lv_obj_set_style_text_color(dirIcon, lv_color_hex(kColText), 0);
+  lv_obj_center(dirIcon);
+}
+
+void buildModal() {
+  // Full-screen settings panel. It fills the round display (inset a few pixels
+  // so the accent border reads as a ring just inside the bezel) and overlays
+  // whatever screen is active.
+  modal = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(modal, 236, 236);
+  lv_obj_center(modal);
+  lv_obj_set_style_radius(modal, 118, 0);
+  lv_obj_set_style_bg_color(modal, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_border_color(modal, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(modal, 3, 0);
+  lv_obj_set_style_pad_all(modal, 0, 0);
+  lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
+
+  // Fixed footer: Delete / Close stay pinned at the bottom of the panel.
+  lv_obj_t* btnRow = lv_obj_create(modal);
+  lv_obj_set_size(btnRow, 176, 40);
+  lv_obj_align(btnRow, LV_ALIGN_BOTTOM_MID, 0, -16);
+  lv_obj_set_style_bg_opa(btnRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(btnRow, 0, 0);
+  lv_obj_set_style_pad_all(btnRow, 0, 0);
+  lv_obj_clear_flag(btnRow, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Close is the primary action (accent). Delete is intentionally subdued so it
+  // doesn't read as the default CTA.
+  lv_obj_t* closeBtn = makeButton(btnRow, "Close", onModalClose, nullptr, kColAccent);
+  lv_obj_set_size(closeBtn, 104, 36);
+  lv_obj_align(closeBtn, LV_ALIGN_RIGHT_MID, -2, 0);
+
+  lv_obj_t* delBtn = makeButton(btnRow, "Delete", onModalDelete, nullptr, kColAbsent, UI_FONT_14);
+  lv_obj_set_size(delBtn, 58, 32);
+  lv_obj_align(delBtn, LV_ALIGN_LEFT_MID, 2, 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(delBtn, 0), lv_color_hex(kColMuted), 0);
+
+  // Scrollable content above the fixed footer. Title, presence, speed, and hold
+  // flow vertically and can be scrolled into the wide center of the round panel.
+  lv_obj_t* content = lv_obj_create(modal);
+  lv_obj_set_size(content, 232, 178);
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(content, 0, 0);
+  lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(content, 52, 0);
+  lv_obj_set_style_pad_bottom(content, 20, 0);
+  lv_obj_set_style_pad_left(content, 0, 0);
+  lv_obj_set_style_pad_right(content, 0, 0);
+  lv_obj_set_style_pad_row(content, 12, 0);
+  lv_obj_set_scroll_dir(content, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+
+  modalTitle = lv_label_create(content);
+  lv_obj_set_style_text_font(modalTitle, UI_FONT_20, 0);
+  lv_label_set_text(modalTitle, "A Settings");
+
+  modalPresence = lv_label_create(content);
+  lv_obj_set_style_text_color(modalPresence, lv_color_hex(kColMuted), 0);
+  lv_label_set_text(modalPresence, "not set");
+
+  // Speed row (B..H only).
+  speedRow = lv_obj_create(content);
+  lv_obj_set_size(speedRow, 176, 44);
+  lv_obj_set_style_bg_opa(speedRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(speedRow, 0, 0);
+  lv_obj_set_style_pad_all(speedRow, 0, 0);
+  lv_obj_clear_flag(speedRow, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* speedCaption = lv_label_create(speedRow);
+  lv_label_set_text(speedCaption, "Speed");
+  lv_obj_set_style_text_color(speedCaption, lv_color_hex(kColMuted), 0);
+  lv_obj_align(speedCaption, LV_ALIGN_TOP_LEFT, 0, 0);
+
+  speedValue = lv_label_create(speedRow);
+  lv_label_set_text(speedValue, "--");
+  lv_obj_align(speedValue, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+  speedSlider = lv_slider_create(speedRow);
+  lv_obj_set_size(speedSlider, 176, 12);
+  lv_obj_align(speedSlider, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_slider_set_range(speedSlider, 0, 100);
+  lv_obj_set_style_bg_color(speedSlider, lv_color_hex(kColAbsent), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(speedSlider, lv_color_hex(kColAccent), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(speedSlider, lv_color_hex(kColAccent), LV_PART_KNOB);
+  lv_obj_add_event_cb(speedSlider, onSpeedChanged, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(speedSlider, onSpeedReleased, LV_EVENT_RELEASED, nullptr);
+
+  // Hold row (B..H only).
+  holdRow = lv_obj_create(content);
+  lv_obj_set_size(holdRow, 176, 34);
+  lv_obj_set_style_bg_opa(holdRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(holdRow, 0, 0);
+  lv_obj_set_style_pad_all(holdRow, 0, 0);
+  lv_obj_clear_flag(holdRow, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* holdCaption = lv_label_create(holdRow);
+  lv_label_set_text(holdCaption, "Hold");
+  lv_obj_set_style_text_color(holdCaption, lv_color_hex(kColMuted), 0);
+  lv_obj_align(holdCaption, LV_ALIGN_LEFT_MID, 0, 0);
+
+  lv_obj_t* plusBtn = makeButton(holdRow, "+", onHoldPlus, nullptr, kColAccentDim);
+  lv_obj_set_size(plusBtn, 30, 28);
+  lv_obj_align(plusBtn, LV_ALIGN_RIGHT_MID, 0, 0);
+
+  holdValue = lv_label_create(holdRow);
+  lv_obj_set_width(holdValue, 44);
+  lv_obj_set_style_text_align(holdValue, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(holdValue, "0 s");
+  lv_obj_align(holdValue, LV_ALIGN_RIGHT_MID, -46, 0);
+
+  lv_obj_t* minusBtn = makeButton(holdRow, "-", onHoldMinus, nullptr, kColAccentDim);
+  lv_obj_set_size(minusBtn, 30, 28);
+  lv_obj_align(minusBtn, LV_ALIGN_RIGHT_MID, -92, 0);
+}
+
+void buildSetOverlay() {
+  setOverlay = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(setOverlay, 236, 236);
+  lv_obj_center(setOverlay);
+  lv_obj_set_style_radius(setOverlay, 118, 0);
+  lv_obj_set_style_bg_color(setOverlay, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_border_color(setOverlay, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(setOverlay, 3, 0);
+  lv_obj_set_style_pad_all(setOverlay, 0, 0);
+  lv_obj_clear_flag(setOverlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
+
+  setTitle = lv_label_create(setOverlay);
+  lv_obj_set_style_text_font(setTitle, UI_FONT_20, 0);
+  lv_label_set_text(setTitle, "Set Position");
+  lv_obj_align(setTitle, LV_ALIGN_TOP_MID, 0, 24);
+
+  setHint = lv_label_create(setOverlay);
+  lv_obj_set_width(setHint, 178);
+  lv_obj_set_style_text_font(setHint, UI_FONT_14, 0);
+  lv_obj_set_style_text_align(setHint, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(setHint, lv_color_hex(kColMuted), 0);
+  lv_label_set_text(setHint, "Choose positioning method");
+  lv_obj_align(setHint, LV_ALIGN_TOP_MID, 0, 48);
+
+  unlockBtn = makeButton(setOverlay, "Set manually", onSetManual, nullptr, kColAccent, UI_FONT_14);
+  lv_obj_set_size(unlockBtn, 132, 36);
+  lv_obj_align(unlockBtn, LV_ALIGN_CENTER, 0, -18);
+
+  joystickBtn = makeButton(setOverlay, "Joystick", onSetJoystick, nullptr, kColAccentDim, UI_FONT_16);
+  lv_obj_set_size(joystickBtn, 132, 36);
+  lv_obj_align(joystickBtn, LV_ALIGN_CENTER, 0, 28);
+
+  joystickBase = lv_obj_create(setOverlay);
+  lv_obj_set_size(joystickBase, 112, 112);
+  lv_obj_align(joystickBase, LV_ALIGN_CENTER, 0, 4);
+  lv_obj_set_style_radius(joystickBase, 56, 0);
+  lv_obj_set_style_bg_color(joystickBase, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_border_color(joystickBase, lv_color_hex(kColAccentDim), 0);
+  lv_obj_set_style_border_width(joystickBase, 2, 0);
+  lv_obj_clear_flag(joystickBase, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESSING, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(joystickBase, onJoystick, LV_EVENT_PRESS_LOST, nullptr);
+  lv_obj_add_flag(joystickBase, LV_OBJ_FLAG_HIDDEN);
+
+  joystickKnob = lv_obj_create(joystickBase);
+  lv_obj_set_size(joystickKnob, 34, 34);
+  lv_obj_set_style_radius(joystickKnob, 17, 0);
+  lv_obj_set_style_bg_color(joystickKnob, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(joystickKnob, 0, 0);
+  lv_obj_clear_flag(joystickKnob, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(joystickKnob, LV_OBJ_FLAG_CLICKABLE);
+  centerJoystickKnob();
+
+  lv_obj_t* slideL = lv_label_create(joystickBase);
+  lv_label_set_text(slideL, "Slide L");
+  lv_obj_set_style_text_font(slideL, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(slideL, lv_color_hex(kColMuted), 0);
+  lv_obj_align(slideL, LV_ALIGN_LEFT_MID, 5, 0);
+
+  lv_obj_t* slideR = lv_label_create(joystickBase);
+  lv_label_set_text(slideR, "Slide R");
+  lv_obj_set_style_text_font(slideR, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(slideR, lv_color_hex(kColMuted), 0);
+  lv_obj_align(slideR, LV_ALIGN_RIGHT_MID, -5, 0);
+
+  lv_obj_t* panL = lv_label_create(joystickBase);
+  lv_label_set_text(panL, "Pan L");
+  lv_obj_set_style_text_font(panL, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(panL, lv_color_hex(kColMuted), 0);
+  lv_obj_align(panL, LV_ALIGN_TOP_MID, 0, 5);
+
+  lv_obj_t* panR = lv_label_create(joystickBase);
+  lv_label_set_text(panR, "Pan R");
+  lv_obj_set_style_text_font(panR, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(panR, lv_color_hex(kColMuted), 0);
+  lv_obj_align(panR, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+  setBtn = makeButton(setOverlay, "Set", onSetCommit, nullptr, kColAccent);
+  lv_obj_set_size(setBtn, 82, 34);
+  lv_obj_align(setBtn, LV_ALIGN_BOTTOM_MID, 45, -16);
+  lv_obj_add_flag(setBtn, LV_OBJ_FLAG_HIDDEN);
+
+  cancelBtn = makeButton(setOverlay, "Cancel", onSetCancel, nullptr, kColAbsent, UI_FONT_14);
+  lv_obj_set_size(cancelBtn, 78, 32);
+  lv_obj_align(cancelBtn, LV_ALIGN_BOTTOM_MID, -45, -17);
+  lv_obj_set_style_text_color(lv_obj_get_child(cancelBtn, 0), lv_color_hex(kColMuted), 0);
+}
+
+void openModal(int slot) {
+  if (slot < 0 || slot >= shark::kKeypointCount) {
+    return;
+  }
+  modalSlot = slot;
+  modalOpen = true;
+
+  char title[16];
+  snprintf(title, sizeof(title), "%s Settings", kSlotLetters[slot]);
+  lv_label_set_text(modalTitle, title);
+
+  const shark::SharkClient::State& s = gShark.state();
+  lv_label_set_text(modalPresence, s.present[slot] ? "configured" : "not set");
+
+  const bool hasTiming = slot > 0;  // A has no travel segment
+  if (hasTiming) {
+    lv_obj_clear_flag(speedRow, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(holdRow, LV_OBJ_FLAG_HIDDEN);
+    const int speed = (s.speed[slot] >= 0) ? s.speed[slot] : 0;
+    lv_slider_set_value(speedSlider, speed, LV_ANIM_OFF);
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", speed);
+    lv_label_set_text(speedValue, buf);
+    modalHold = (s.hold[slot] >= 0) ? s.hold[slot] : 0;
+    updateHoldLabel();
+    // Make sure we have a current timing table for read-modify-write edits.
+    gShark.requestTiming();
+  } else {
+    lv_obj_add_flag(speedRow, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(holdRow, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  lv_obj_clear_flag(modal, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ---- refresh --------------------------------------------------------------
+
+void formatHeader(char* out, size_t cap, const shark::SharkClient::State& s, const char* title) {
+  char battery[12];
+  if (s.battery >= 0) {
+    snprintf(battery, sizeof(battery), "%d%%", s.battery);
+  } else {
+    snprintf(battery, sizeof(battery), "--");
+  }
+  snprintf(out, cap, "%s  %s  %s", title, battery, s.runText);
+}
+
+void refreshConnect(const shark::SharkClient::State& s) {
+  const char* status = "Scanning";
+  switch (s.link) {
+    case Link::Scanning:
+      status = s.hasSavedDevice ? "Looking for slider" : "Scanning";
+      break;
+    case Link::Connecting:
+      status = s.hasSavedDevice ? "Reconnecting" : "Connecting";
+      break;
+    case Link::Disconnected:
+      status = s.hasSavedDevice ? "Reconnecting" : "Scanning";
+      break;
+    case Link::Connected:
+      status = "Connected";
+      break;
+  }
+
+  char statusText[32];
+  if (s.link == Link::Connected) {
+    snprintf(statusText, sizeof(statusText), "%s", status);
+  } else {
+    const int dots = static_cast<int>((millis() / 450) % 4);
+    snprintf(statusText, sizeof(statusText), "%s%.*s", status, dots, "...");
+  }
+  lv_label_set_text(connStatus, statusText);
+  lv_label_set_text(connDevice,
+                    (s.hasSavedDevice && s.deviceName[0] != '\0') ? s.deviceName
+                                                                  : "iFootage Shark Nano II");
+}
+
+void refreshKeys(const shark::SharkClient::State& s) {
+  char header[40];
+  formatHeader(header, sizeof(header), s, "Keys");
+  lv_label_set_text(keysHeader, header);
+
+  const int nextSlot = nextSettableSlot(s);
+  for (int i = 0; i < shark::kKeypointCount; ++i) {
+    const bool present = s.present[i];
+    const bool visible = present || i == nextSlot;
+    if (visible) {
+      lv_obj_clear_flag(keyRows[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(keyRows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    char text[40];
+    if (!present) {
+      snprintf(text, sizeof(text), "%s +  set position", kSlotLetters[i]);
+    } else if (i == 0) {
+      snprintf(text, sizeof(text), "%s %s  start", kSlotLetters[i], present ? "#" : "-");
+    } else if (present && s.timingKnown && s.speed[i] >= 0) {
+      snprintf(text, sizeof(text), "%s #  %d%%  %ds", kSlotLetters[i], s.speed[i], s.hold[i]);
+    } else {
+      snprintf(text, sizeof(text), "%s %s", kSlotLetters[i], present ? "#" : "-");
+    }
+    lv_label_set_text(keyLabels[i], text);
+    uint32_t bg = present ? kColAccentDim : kColPanel;
+    lv_obj_set_style_bg_color(keyButtons[i], lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_color(gearButtons[i], lv_color_hex(bg), 0);
+    if (present) {
+      lv_obj_clear_flag(gearButtons[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(gearButtons[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
+void refreshRun(const shark::SharkClient::State& s) {
+  char header[40];
+  formatHeader(header, sizeof(header), s, "Run");
+  lv_label_set_text(runHeader, header);
+
+  const int pct = s.runProgressKnown ? static_cast<int>(s.runPercent + 0.5f) : 0;
+  lv_bar_set_value(runBar, pct, LV_ANIM_OFF);
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%s  %d%%", s.runText, pct);
+  lv_label_set_text(runPercent, buf);
+
+  // Single button: show the action that the next tap will take.
+  const char* action = "Standby";
+  uint32_t actionColor = kColPanel;
+  if (s.runStateCode == shark::kRunStart || s.runStateCode == 0x06) {
+    action = "Stop";
+    actionColor = kColDanger;
+  } else if (s.runStateCode == shark::kRunStandby) {
+    action = "Start";
+    actionColor = kColAccent;
+  }
+  lv_label_set_text(runActionLabel, action);
+  lv_obj_set_style_bg_color(runActionBtn, lv_color_hex(actionColor), 0);
+
+  if (s.loopOn) {
+    lv_obj_add_state(loopBtn, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(loopBtn, LV_STATE_CHECKED);
+  }
+  if (s.reverse) {
+    lv_obj_add_state(dirBtn, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(dirBtn, LV_STATE_CHECKED);
+  }
+}
+
+void refreshModal(const shark::SharkClient::State& s) {
+  if (!modalOpen || modalSlot < 0) {
+    return;
+  }
+  lv_label_set_text(modalPresence, s.present[modalSlot] ? "configured" : "not set");
+}
+
+void showScreenForState(const shark::SharkClient::State& s) {
+  if (s.link == Link::Connected) {
+    lv_obj_t* target = (currentMain == 1) ? scrRun : scrKeys;
+    if (lv_scr_act() != target) {
+      lv_scr_load(target);
+    }
+  } else {
+    if (modalOpen) {
+      closeModal();
+    }
+    if (setOverlayOpen) {
+      cancelPositioning();
+    }
+    if (lv_scr_act() != scrConnect) {
+      lv_scr_load(scrConnect);
+    }
+  }
+}
+
+}  // namespace
+
+void init() {
+  buildConnectScreen();
+  buildKeysScreen();
+  buildRunScreen();
+  buildModal();
+  buildSetOverlay();
+}
+
+void show(studio::InstanceId instanceId) {
+  if (!studio::devices().activate(instanceId)) {
+    return;
+  }
+  activeInstance = instanceId;
+  currentMain = 0;
+  const studio::DeviceRecord* record = studio::devices().find(instanceId);
+  if (record != nullptr) {
+    lv_label_set_text(connTitle, record->displayName);
+  }
+  lv_scr_load(scrConnect);
+}
+
+void hide() {
+  if (setOverlayOpen) {
+    cancelPositioning();
+  }
+  if (modalOpen) {
+    closeModal();
+  }
+  stopActiveMotion();
+  studio::devices().deactivate();
+  activeInstance = studio::kInvalidInstanceId;
+}
+
+bool active() { return activeInstance != studio::kInvalidInstanceId; }
+
+void tick() {
+  if (!active()) {
+    return;
+  }
+  const uint32_t now = millis();
+  pumpMotion(now);
+  if (now - lastRefreshMs < kRefreshIntervalMs) {
+    return;
+  }
+  lastRefreshMs = now;
+
+  const shark::SharkClient::State& s = gShark.state();
+  showScreenForState(s);
+
+  if (s.link == Link::Connected) {
+    if (currentMain == 1) {
+      refreshRun(s);
+    } else {
+      refreshKeys(s);
+    }
+    refreshModal(s);
+  } else {
+    refreshConnect(s);
+  }
+  lastLinkShown = s.link;
+}
+
+void handleShortPress() {
+  if (!gShark.connected()) {
+    return;
+  }
+  if (modalOpen) {
+    closeModal();
+    return;
+  }
+  if (setOverlayOpen) {
+    cancelPositioning();
+    return;
+  }
+  currentMain = (currentMain == 0) ? 1 : 0;
+  if (currentMain == 1) {
+    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+  } else {
+    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+  }
+}
+
+}  // namespace shark_ui
