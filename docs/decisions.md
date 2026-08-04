@@ -212,6 +212,24 @@ the replacement.
   gates remain open. It retains one active transport and does not begin scene
   or group work.
 
+## ADR-018: Canon BLE power is explicit and non-destructive
+
+- Status: Experimental
+- Decision: Opening the Canon smartphone screen automatically sends captured
+  wake mode `03` after setup. Camera power-down is available only through an
+  explicit on-screen power control using mode `05`; Back only releases the
+  panel's BLE connection.
+- Safety: Power-down is unavailable while recording is camera-confirmed or a
+  record command is pending. Result `01` is only protocol acknowledgement; the
+  expected camera-side disconnect is required before the panel reports
+  `Powered off`.
+- Evidence: The sanitized host-HCI handoff fixture contains repeated
+  `03`/`05` wake sequences and `05`/`01` power-down followed by camera-side
+  disconnects approximately 147-154 ms later.
+- Consequence: A failed or missing power-down disconnect leaves the session
+  connected and reports failure instead of assuming physical success. The
+  workflow remains hardware-unverified until the ADR-017 gate is exercised.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

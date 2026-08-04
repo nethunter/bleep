@@ -26,9 +26,34 @@ for Wi-Fi handoff. Smart remains blocked on network-side DHCP/endpoint evidence
 and the first successful CCAPI request.
 
 ADR-017 authorizes `spike/canon-smartphone-ble` to replace Trigger on that
-branch with a BLE-only Camera Connect experiment. It tests public explicit
-movie commands and shooting-state notifications without claiming the Smart
-Wi-Fi/CCAPI workflow or changing the main-branch BR-E1 fallback.
+branch with a BLE-only Camera Connect experiment. It tests captured pairing,
+setup, explicit movie commands, shooting-state notifications, and lifecycle
+controls without claiming the Smart Wi-Fi/CCAPI workflow or changing the
+main-branch BR-E1 fallback. ADR-018 makes wake automatic on screen activation,
+keeps power-down explicit, and preserves non-destructive Back behavior.
+
+## Planned UI memory optimization
+
+Status: `Backlog`; this does not supersede an open hardware gate.
+
+Work:
+
+- keep only Home and Devices resident;
+- lazily create and delete device screens, management overlays, and keyboards;
+- share one recording-control view between Canon and Tascam through
+  device-specific state/command adapters;
+- lazily allocate Shark screens and overlays while preserving its specialized
+  workflows;
+- measure LVGL peak use and fragmentation across repeated navigation, then
+  reduce the 96 KiB LVGL pool only when the measured peak permits it.
+
+Completion gate:
+
+- maximum configured devices can repeatedly traverse every screen without
+  allocation failure or growing fragmentation;
+- simulator screenshots and physical navigation remain visually unchanged;
+- connected free/minimum heap and LVGL peak/free memory are recorded;
+- all device transport and command hardware regressions pass.
 
 ## Phase 0: Preserve and baseline the Shark remote
 

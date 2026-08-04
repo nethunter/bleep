@@ -23,6 +23,7 @@ lv_obj_t* screen = nullptr;
 lv_obj_t* titleLabel = nullptr;
 lv_obj_t* statusLabel = nullptr;
 lv_obj_t* qualityLabel = nullptr;
+lv_obj_t* powerButton = nullptr;
 lv_obj_t* actionRing = nullptr;
 lv_obj_t* actionButton = nullptr;
 lv_obj_t* actionLabel = nullptr;
@@ -66,6 +67,14 @@ void setAction(const char* label, uint32_t color, bool enabled) {
   }
 }
 
+void setPowerEnabled(bool enabled) {
+  if (enabled) {
+    lv_obj_clear_state(powerButton, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(powerButton, LV_STATE_DISABLED);
+  }
+}
+
 void refresh() {
   const studio::DeviceRuntimeState runtime =
       studio::devices().runtimeState(instanceId);
@@ -75,7 +84,11 @@ void refresh() {
   if (runtime.link != studio::LinkState::Connected || state == nullptr) {
     const char* status = "DISCONNECTED";
     const char* detail = "SMARTPHONE BLE";
-    if (runtime.link == studio::LinkState::Scanning) {
+    if (state != nullptr &&
+        state->phase == canon_ble::CanonBleState::Phase::PoweredOff) {
+      status = "CAMERA OFF";
+      detail = "PRESS POWER TO WAKE";
+    } else if (runtime.link == studio::LinkState::Scanning) {
       status = "PAIRING...";
       detail = "SELECT OK ON CAMERA";
     } else if (runtime.link == studio::LinkState::Connecting) {
@@ -87,18 +100,33 @@ void refresh() {
     }
     lv_label_set_text(statusLabel, status);
     lv_label_set_text(qualityLabel, detail);
+    setPowerEnabled(
+        state != nullptr &&
+        state->phase == canon_ble::CanonBleState::Phase::PoweredOff);
     setAction("WAITING", kAccent, false);
+    return;
+  }
+
+  if (state->phase == canon_ble::CanonBleState::Phase::PoweringOff) {
+    lv_label_set_text(statusLabel, "POWERING OFF...");
+    lv_label_set_text(qualityLabel, "WAITING FOR CAMERA");
+    setPowerEnabled(false);
+    setAction("WAIT", kAccent, false);
     return;
   }
 
   if (state->phase != canon_ble::CanonBleState::Phase::Ready) {
     lv_label_set_text(statusLabel, "OPENING...");
     lv_label_set_text(qualityLabel, "REQUESTING CAMERA STATE");
+    setPowerEnabled(false);
     setAction("WAIT", kAccent, false);
     return;
   }
 
   using Recording = canon_ble::CanonBleState::Recording;
+  const bool recording =
+      state->recordingConfirmed && state->recording == Recording::Recording;
+  setPowerEnabled(!state->commandPending && !recording);
   if (state->recording == Recording::Starting) {
     lv_label_set_text(statusLabel, "STARTING...");
     lv_label_set_text(qualityLabel, "WAITING FOR CAMERA");
@@ -109,19 +137,29 @@ void refresh() {
     setAction("WAIT", kAccent, false);
   } else if (state->recordingConfirmed &&
              state->recording == Recording::Recording) {
-    lv_label_set_text(statusLabel, "RECORDING");
+    lv_label_set_text(statusLabel,
+                      state->lastCommandFailed ? "STOP FAILED" : "RECORDING");
     lv_label_set_text(qualityLabel, "CAMERA CONFIRMED");
     setAction("STOP", kAccent, true);
   } else if (state->recordingConfirmed &&
              state->recording == Recording::Stopped) {
-    lv_label_set_text(statusLabel, "READY");
-    lv_label_set_text(qualityLabel, "CAMERA CONFIRMED");
+    lv_label_set_text(
+        statusLabel, state->powerOffFailed
+                         ? "POWER OFF FAILED"
+                         : (state->lastCommandFailed ? "START FAILED" : "READY"));
+    lv_label_set_text(qualityLabel, state->powerOffFailed
+                                       ? "CAMERA STILL CONNECTED"
+                                       : "CAMERA CONFIRMED");
     setAction("START", kReady, true);
   } else {
     lv_label_set_text(statusLabel,
-                      state->lastCommandFailed ? "NO CONFIRMATION"
-                                               : "CONNECTED");
-    lv_label_set_text(qualityLabel, "STATE UNKNOWN");
+                      state->powerOffFailed
+                          ? "POWER OFF FAILED"
+                          : (state->lastCommandFailed ? "NO CONFIRMATION"
+                                                      : "CONNECTED"));
+    lv_label_set_text(qualityLabel, state->powerOffFailed
+                                       ? "CAMERA STILL CONNECTED"
+                                       : "STATE UNKNOWN");
     showUnknownControls(true);
   }
 }
@@ -161,6 +199,15 @@ void onUnknownStop(lv_event_t*) {
   enqueue(studio::CommandType::RecordStop);
 }
 
+void onPower(lv_event_t*) {
+  const auto* state = static_cast<const canon_ble::CanonBleState*>(
+      studio::devices().specializedState(instanceId));
+  enqueue(state != nullptr &&
+                  state->phase == canon_ble::CanonBleState::Phase::PoweredOff
+              ? studio::CommandType::CameraPowerOn
+              : studio::CommandType::CameraPowerOff);
+}
+
 lv_obj_t* createUnknownButton(lv_obj_t* parent, const char* label,
                               uint32_t color, lv_event_cb_t callback) {
   lv_obj_t* button = lv_btn_create(parent);
@@ -196,13 +243,26 @@ void init() {
   lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
   lv_obj_center(backLabel);
 
+  powerButton = lv_btn_create(screen);
+  lv_obj_set_size(powerButton, 34, 30);
+  lv_obj_align(powerButton, LV_ALIGN_TOP_RIGHT, -40, 22);
+  lv_obj_set_style_bg_color(powerButton, lv_color_hex(kPanel), 0);
+  lv_obj_set_style_opa(powerButton, LV_OPA_40,
+                       LV_PART_MAIN | LV_STATE_DISABLED);
+  lv_obj_set_style_shadow_width(powerButton, 0, 0);
+  lv_obj_add_event_cb(powerButton, onPower, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* powerLabel = lv_label_create(powerButton);
+  lv_label_set_text(powerLabel, LV_SYMBOL_POWER);
+  lv_obj_set_style_text_font(powerLabel, UI_FONT_16, 0);
+  lv_obj_center(powerLabel);
+
   titleLabel = lv_label_create(screen);
   lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(titleLabel, 132);
+  lv_obj_set_width(titleLabel, 92);
   lv_obj_set_height(titleLabel, 20);
   lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
-  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 15, 29);
+  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 0, 29);
 
   statusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(statusLabel, UI_FONT_16, 0);

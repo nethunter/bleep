@@ -44,6 +44,12 @@ CommandStatus CanonBleDriver::dispatch(const DeviceCommand& command) {
     case CommandType::RecordStop:
       return client_.stopRecording() ? CommandStatus::Succeeded
                                      : CommandStatus::Unavailable;
+    case CommandType::CameraPowerOn:
+      return client_.powerOn() ? CommandStatus::Succeeded
+                               : CommandStatus::Unavailable;
+    case CommandType::CameraPowerOff:
+      return client_.powerOff() ? CommandStatus::Succeeded
+                                : CommandStatus::Unavailable;
     default:
       return CommandStatus::Unsupported;
   }

@@ -26,11 +26,14 @@ X8** record control through the AK-BT1 adapter.
   active; Back releases the connection and returns to Devices.
 - **Canon smartphone BLE record control (experimental branch).** Opening a
   Canon device scans for the Camera Connect pairing service, completes bonded
-  smartphone handshaking, subscribes to shooting state, and sends explicit
-  movie Start/Stop commands. Use the camera's **Connect to smartphone** menu,
-  not BR-E1 Remote mode, and clear the previous BR-E1 bond before testing.
+  confirmation-first smartphone handshaking, runs the captured setup queries,
+  wakes the camera from Bluetooth standby, subscribes to shooting state, and
+  sends explicit movie Start/Stop commands. The camera screen has a separate
+  power button that requests camera power-down; Back only releases the panel's
+  BLE connection. Use the camera's **Connect to smartphone** menu, not BR-E1
+  Remote mode, and clear the previous BR-E1 bond before testing.
   Camera-originated notifications are the only source of confirmed Ready or
-  Recording state. Unknown state exposes both Start and Stop. Public vectors
+  Recording state. Unknown state exposes both Start and Stop. Captured vectors
   are documented in
   [`docs/protocols/canon-smartphone-ble.md`](docs/protocols/canon-smartphone-ble.md);
   EOS R6-family behavior remains hardware-unverified.
@@ -63,7 +66,8 @@ X8** record control through the AK-BT1 adapter.
 ## Controls
 
 - **Touch:** Home, Devices and device management, connect, Keypoints, joystick
-  positioning, Run, and per-keypoint settings.
+  positioning, Run, per-keypoint settings, and explicit Canon camera
+  power-down.
 - **Button (GPIO 1):**
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run

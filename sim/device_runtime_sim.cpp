@@ -148,6 +148,24 @@ class SimCanonDriver : public DeviceDriver {
       canon_ble::reduceRecordNotification(state_, stopped, sizeof(stopped));
       return CommandStatus::Succeeded;
     }
+    if (command.type == CommandType::CameraPowerOff &&
+        state_.link == canon_ble::CanonBleState::Link::Connected &&
+        state_.phase == canon_ble::CanonBleState::Phase::Ready) {
+      canon_ble::resetTransientState(state_);
+      state_.link = canon_ble::CanonBleState::Link::Disconnected;
+      state_.phase = canon_ble::CanonBleState::Phase::PoweredOff;
+      return CommandStatus::Succeeded;
+    }
+    if (command.type == CommandType::CameraPowerOn &&
+        state_.link == canon_ble::CanonBleState::Link::Disconnected &&
+        state_.phase == canon_ble::CanonBleState::Phase::PoweredOff) {
+      canon_ble::resetTransientState(state_);
+      state_.link = canon_ble::CanonBleState::Link::Connected;
+      state_.phase = canon_ble::CanonBleState::Phase::Ready;
+      const uint8_t stopped[] = {0x01, 0x01, 0x01};
+      canon_ble::reduceRecordNotification(state_, stopped, sizeof(stopped));
+      return CommandStatus::Succeeded;
+    }
     return CommandStatus::Succeeded;
   }
   DeviceRuntimeState runtimeState() const override {
@@ -303,6 +321,7 @@ void simSetCanonConnectedState(bool recording, bool confirmed) {
   state.hasSavedDevice = true;
   state.commandPending = false;
   state.lastCommandFailed = false;
+  state.powerOffFailed = false;
   state.recordingConfirmed = confirmed;
   state.recording =
       confirmed ? (recording ? canon_ble::CanonBleState::Recording::Recording

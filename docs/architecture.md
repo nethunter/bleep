@@ -123,6 +123,25 @@ Drivers publish limits and availability. For example, a CCT-only light does
 not expose HSI controls. Specialized workflows such as Shark keypoints may
 extend the common motion UI without leaking into other drivers.
 
+### Planned UI allocation optimization
+
+Home and Devices should remain resident, but device screens, modals, and
+keyboards should be created on entry and deleted after navigation leaves them.
+Device and transport state remains owned outside LVGL so destroying a view
+never discards protocol state.
+
+Canon and Tascam should share a recording-control view driven by a small view
+model and typed command callbacks. The shared shell provides connection,
+recording, transition, confirmation, and failure states; driver adapters add
+optional controls such as Canon's explicit power button or dual Start/Stop
+controls for unknown state. Shark retains specialized keypoint and motion
+views, but creates only the active screen and overlay.
+
+This optimization first recovers space inside LVGL's fixed allocator. After
+simulator and hardware measurements establish the new peak and fragmentation,
+the configured LVGL pool may be reduced to return static RAM to the general
+heap.
+
 State fields carry a quality:
 
 - `unknown`: no usable value;

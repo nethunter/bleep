@@ -20,8 +20,11 @@ struct CanonBleState {
     Bonding,
     AwaitingConfirmation,
     Handshaking,
+    PostPairSetup,
     OpeningSession,
     Ready,
+    PoweringOff,
+    PoweredOff,
   };
 
   enum class Recording : uint8_t {
@@ -39,6 +42,7 @@ struct CanonBleState {
   bool hasSavedDevice = false;
   bool commandPending = false;
   bool lastCommandFailed = false;
+  bool powerOffFailed = false;
   bool pairingRejected = false;
   char deviceName[40] = "";
 };

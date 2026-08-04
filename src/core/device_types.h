@@ -78,6 +78,8 @@ enum class CommandType : uint8_t {
   RecordTrigger,
   RecordStart,
   RecordStop,
+  CameraPowerOn,
+  CameraPowerOff,
 };
 
 struct DeviceCommand {

@@ -32,6 +32,8 @@ class CanonBleClient {
   void forgetBond(const char* address, uint8_t addressType);
   bool startRecording();
   bool stopRecording();
+  bool powerOn();
+  bool powerOff();
   bool consumePairingUpdate(char* address, size_t addressCapacity,
                             uint8_t& addressType, char* name,
                             size_t nameCapacity, bool& paired);
@@ -43,6 +45,7 @@ class CanonBleClient {
   void onLinkDisconnected();
   void onSecurityComplete(bool succeeded);
   void onPairingNotification(const uint8_t* data, size_t len);
+  void onPairingInfoNotification(const uint8_t* data, size_t len);
   void onModeNotification(const uint8_t* data, size_t len);
   void onShootingNotification(const uint8_t* data, size_t len);
 
@@ -53,9 +56,14 @@ class CanonBleClient {
   bool completeConnect();
   bool sendNewHandshakeIdentity();
   bool finishAcceptedHandshake();
+  bool subscribePairingInfo();
+  bool beginPostPairSetup();
+  bool sendPostPairCommand();
   bool openCoreSession();
   void teardownConnection();
   void handleDisconnect();
+  void handleSecurityFailure();
+  void readInitialRecordingState();
   void drainNotifications();
   void queueNotification(uint8_t kind, const uint8_t* data, size_t len);
   bool writeCommand(NimBLERemoteCharacteristic* characteristic,
@@ -66,6 +74,7 @@ class CanonBleClient {
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* pairingCommandChar_ = nullptr;
   NimBLERemoteCharacteristic* pairingDataChar_ = nullptr;
+  NimBLERemoteCharacteristic* pairingInfoChar_ = nullptr;
   NimBLERemoteCharacteristic* modeCommandChar_ = nullptr;
   NimBLERemoteCharacteristic* modeResultChar_ = nullptr;
   NimBLERemoteCharacteristic* shootingCommandChar_ = nullptr;
@@ -81,8 +90,9 @@ class CanonBleClient {
   bool pairingChanged_ = false;
   bool startRequested_ = false;
   bool stopRequested_ = false;
+  bool powerOffRequested_ = false;
   bool setupPending_ = false;
-  bool sessionFallbackSent_ = false;
+  bool bondRecoveryPending_ = false;
   volatile bool scanHit_ = false;
   volatile bool connectedFlag_ = false;
   volatile bool connectFailedFlag_ = false;
@@ -101,7 +111,9 @@ class CanonBleClient {
   uint32_t setupAtMs_ = 0;
   uint32_t phaseDeadlineMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
+  uint8_t postPairStep_ = 0;
   int connectFails_ = 0;
+  int securityFails_ = 0;
 };
 
 }  // namespace canon_ble

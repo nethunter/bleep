@@ -296,11 +296,25 @@ int main() {
     return 1;
   }
 
+  studio::DeviceCommand powerOff;
+  powerOff.instanceId = canonId;
+  powerOff.type = studio::CommandType::CameraPowerOff;
+  studio::devices().enqueue(powerOff);
+  pump(20);
+  if (studio::simCanonState().phase !=
+      canon_ble::CanonBleState::Phase::PoweredOff) {
+    std::fprintf(stderr, "Canon power-off command was not routed\n");
+    return 1;
+  }
+  if (!capture("15_canon_powered_off")) {
+    return 1;
+  }
+
   canon_ble_ui::hide();
   tascam_x8_ui::show(tascamId);
   studio::simSetTascamConnectedState(false);
   pump(250);
-  if (!capture("15_tascam_ready")) {
+  if (!capture("16_tascam_ready")) {
     return 1;
   }
 
@@ -312,7 +326,7 @@ int main() {
     std::fprintf(stderr, "Hardware trigger did not start Tascam recording\n");
     return 1;
   }
-  if (!capture("16_tascam_recording")) {
+  if (!capture("17_tascam_recording")) {
     return 1;
   }
 

@@ -304,16 +304,38 @@ void test_canon_smartphone_handshake_and_record_protocol() {
       static_cast<int>(canon_ble::PairingResponse::Confirmed),
       static_cast<int>(
           canon_ble::parsePairingResponse(confirmed, sizeof(confirmed))));
-  const uint8_t shootingMode[] = {0x04};
+
+  const uint8_t postPairCommands[] = {0x06, 0x07, 0x08, 0x0c};
+  const uint8_t postPairResponses[] = {0x01, 0x02, 0x03, 0x07};
+  for (size_t i = 0; i < sizeof(postPairCommands); ++i) {
+    const canon_ble::CommandBytes command =
+        canon_ble::buildPostPairCommand(postPairCommands[i]);
+    TEST_ASSERT_EQUAL_UINT32(1, command.len);
+    TEST_ASSERT_EQUAL_HEX8(postPairCommands[i], command.bytes[0]);
+    TEST_ASSERT_TRUE(canon_ble::isPostPairResponse(
+        postPairCommands[i], &postPairResponses[i], 1));
+  }
+
+  const canon_ble::CommandBytes wake =
+      canon_ble::buildModeCommand(canon_ble::kWakeMode);
+  const canon_ble::CommandBytes leave =
+      canon_ble::buildModeCommand(canon_ble::kLeaveShootingMode);
+  const canon_ble::CommandBytes powerOff =
+      canon_ble::buildModeCommand(canon_ble::kPowerOffMode);
+  TEST_ASSERT_EQUAL_HEX8(0x03, wake.bytes[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x04, leave.bytes[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x05, powerOff.bytes[0]);
+
+  const uint8_t acknowledged[] = {0x01};
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(canon_ble::ModeEvent::Shooting),
+      static_cast<int>(canon_ble::ModeEvent::Acknowledged),
       static_cast<int>(
-          canon_ble::parseModeEvent(shootingMode, sizeof(shootingMode))));
-  const uint8_t recordingMode[] = {0x05};
+          canon_ble::parseModeEvent(acknowledged, sizeof(acknowledged))));
+  const uint8_t sessionReady[] = {0x05};
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(canon_ble::ModeEvent::RecordingSession),
+      static_cast<int>(canon_ble::ModeEvent::SessionReady),
       static_cast<int>(
-          canon_ble::parseModeEvent(recordingMode, sizeof(recordingMode))));
+          canon_ble::parseModeEvent(sessionReady, sizeof(sessionReady))));
 
   const uint8_t expectedStart[] = {0x00, 0x10};
   const uint8_t expectedStop[] = {0x00, 0x11};
@@ -348,6 +370,24 @@ void test_canon_state_requires_camera_notifications() {
   TEST_ASSERT_TRUE(state.recordingConfirmed);
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(canon_ble::CanonBleState::Recording::Stopped),
+      static_cast<int>(state.recording));
+
+  canon_ble::markCommandQueued(state, true);
+  canon_ble::reduceRecordNotification(state, stopped, sizeof(stopped));
+  TEST_ASSERT_FALSE(state.commandPending);
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_TRUE(state.lastCommandFailed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::CanonBleState::Recording::Stopped),
+      static_cast<int>(state.recording));
+
+  canon_ble::markCommandQueued(state, false);
+  canon_ble::reduceRecordNotification(state, recording, sizeof(recording));
+  TEST_ASSERT_FALSE(state.commandPending);
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_TRUE(state.lastCommandFailed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::CanonBleState::Recording::Recording),
       static_cast<int>(state.recording));
 }
 
@@ -634,6 +674,13 @@ void test_manager_routes_to_canon_driver() {
   TEST_ASSERT_TRUE(manager.popResult(result));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::CommandType::RecordStop),
+      static_cast<int>(canonDriver.lastCommand));
+  command.type = studio::CommandType::CameraPowerOff;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::CameraPowerOff),
       static_cast<int>(canonDriver.lastCommand));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),

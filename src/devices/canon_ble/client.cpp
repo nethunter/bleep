@@ -15,8 +15,9 @@ namespace canon_ble {
 namespace {
 
 constexpr uint8_t kPairingNotification = 1;
-constexpr uint8_t kModeNotification = 2;
-constexpr uint8_t kShootingNotification = 3;
+constexpr uint8_t kPairingInfoNotification = 2;
+constexpr uint8_t kModeNotification = 3;
+constexpr uint8_t kShootingNotification = 4;
 
 struct Notification {
   uint8_t kind = 0;
@@ -36,6 +37,7 @@ const NimBLEUUID kHandshakeService(kHandshakeServiceUuid);
 const NimBLEUUID kPairingCommandCharacteristic(
     kPairingCommandCharacteristicUuid);
 const NimBLEUUID kPairingDataCharacteristic(kPairingDataCharacteristicUuid);
+const NimBLEUUID kPairingInfoCharacteristic(kPairingInfoCharacteristicUuid);
 const NimBLEUUID kCoreService(kCoreServiceUuid);
 const NimBLEUUID kModeCommandCharacteristic(kModeCommandCharacteristicUuid);
 const NimBLEUUID kModeResultCharacteristic(kModeResultCharacteristicUuid);
@@ -48,8 +50,13 @@ CanonBleClient* gCallbackClient = nullptr;
 class ScanCallbacks : public NimBLEScanCallbacks {
  public:
   void onResult(const NimBLEAdvertisedDevice* device) override {
-    if (device != nullptr && device->isAdvertisingService(kHandshakeService) &&
-        gCallbackClient != nullptr) {
+    if (device == nullptr || gCallbackClient == nullptr) {
+      return;
+    }
+    const std::string name = device->getName();
+    const bool canonCameraName =
+        name.rfind("EOS", 0) == 0 || name.rfind("PowerShot", 0) == 0;
+    if (device->isAdvertisingService(kHandshakeService) || canonCameraName) {
       gCallbackClient->onScanMatch(device);
     }
   }
@@ -86,6 +93,13 @@ void pairingNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
   }
 }
 
+void pairingInfoNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
+                                 size_t length, bool) {
+  if (gCallbackClient != nullptr) {
+    gCallbackClient->onPairingInfoNotification(data, length);
+  }
+}
+
 void modeNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
                           size_t length, bool) {
   if (gCallbackClient != nullptr) {
@@ -112,7 +126,7 @@ void CanonBleClient::begin() {
   notifyQueue_ = xQueueCreate(8, sizeof(Notification));
   NimBLEDevice::init("StudioRemote");
   NimBLEDevice::setMTU(247);
-  NimBLEDevice::setSecurityAuth(true, true, true);
+  NimBLEDevice::setSecurityAuth(true, false, false);
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   gCallbackClient = this;
   initialized_ = true;
@@ -140,6 +154,8 @@ void CanonBleClient::activate(const char* address, uint8_t addressType,
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   connectFails_ = 0;
+  securityFails_ = 0;
+  bondRecoveryPending_ = false;
   retryAtMs_ = 0;
   if (haveTarget_) {
     beginConnect();
@@ -162,8 +178,10 @@ void CanonBleClient::deactivate() {
   securityCompleteFlag_ = false;
   startRequested_ = false;
   stopRequested_ = false;
+  powerOffRequested_ = false;
   setupPending_ = false;
-  sessionFallbackSent_ = false;
+  bondRecoveryPending_ = false;
+  postPairStep_ = 0;
   if (notifyQueue_ != nullptr) {
     xQueueReset(static_cast<QueueHandle_t>(notifyQueue_));
   }
@@ -186,21 +204,19 @@ void CanonBleClient::loop() {
   if (connectedFlag_) {
     connectedFlag_ = false;
     if (client_ != nullptr && client_->getConnInfo().isEncrypted()) {
+      securityFails_ = 0;
       setupPending_ = true;
       setupAtMs_ = millis() + 100;
     } else if (client_ == nullptr || !client_->secureConnection(true)) {
-      if (client_ != nullptr) {
-        client_->disconnect();
-      }
+      handleSecurityFailure();
     }
   }
   if (securityCompleteFlag_) {
     securityCompleteFlag_ = false;
     if (!securitySucceeded_) {
-      if (client_ != nullptr) {
-        client_->disconnect();
-      }
+      handleSecurityFailure();
     } else {
+      securityFails_ = 0;
       setupPending_ = true;
       setupAtMs_ = millis() + 100;
     }
@@ -208,11 +224,7 @@ void CanonBleClient::loop() {
 
   drainNotifications();
 
-  if (!connectRequested_) {
-    return;
-  }
-
-  if (scanHit_) {
+  if (connectRequested_ && scanHit_) {
     NimBLEDevice::getScan()->stop();
     scanActive_ = false;
     std::strncpy(targetAddr_, scanHitAddr_, sizeof(targetAddr_) - 1);
@@ -227,7 +239,8 @@ void CanonBleClient::loop() {
   }
 
   const uint32_t now = millis();
-  if (setupPending_ && static_cast<int32_t>(now - setupAtMs_) >= 0) {
+  if (connectRequested_ && setupPending_ &&
+      static_cast<int32_t>(now - setupAtMs_) >= 0) {
     setupPending_ = false;
     if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
       if (client_ != nullptr && client_->isConnected()) {
@@ -237,28 +250,33 @@ void CanonBleClient::loop() {
     }
   }
 
-  if (state_.phase == State::Phase::AwaitingConfirmation &&
+  if (connectRequested_ &&
+      (state_.phase == State::Phase::AwaitingConfirmation ||
+       state_.phase == State::Phase::PostPairSetup ||
+       state_.phase == State::Phase::OpeningSession) &&
       static_cast<int32_t>(now - phaseDeadlineMs_) >= 0) {
     if (client_ != nullptr) {
       client_->disconnect();
     }
     return;
   }
-  if (state_.phase == State::Phase::OpeningSession &&
-      static_cast<int32_t>(now - phaseDeadlineMs_) >= 0) {
-    if (!sessionFallbackSent_) {
-      sessionFallbackSent_ = true;
-      if (!writeCommand(modeCommandChar_,
-                        buildModeCommand(kRecordingSessionMode))) {
-        if (client_ != nullptr) {
-          client_->disconnect();
-        }
-        return;
-      }
-      phaseDeadlineMs_ = now + 1500;
+
+  if (powerOffRequested_ && state_.link == Link::Connected &&
+      state_.phase == State::Phase::PoweringOff) {
+    powerOffRequested_ = false;
+    if (!writeCommand(modeCommandChar_, buildModeCommand(kPowerOffMode))) {
+      state_.phase = State::Phase::Ready;
+      state_.powerOffFailed = true;
     } else {
-      markReady();
+      connectRequested_ = false;
+      phaseDeadlineMs_ = now + 1500;
     }
+  }
+  if (state_.phase == State::Phase::PoweringOff &&
+      static_cast<int32_t>(now - phaseDeadlineMs_) >= 0) {
+    connectRequested_ = true;
+    state_.phase = State::Phase::Ready;
+    state_.powerOffFailed = true;
   }
 
   if (connected() && startRequested_) {
@@ -282,6 +300,9 @@ void CanonBleClient::loop() {
     markCommandWriteFailed(state_);
   }
 
+  if (!connectRequested_) {
+    return;
+  }
   if (state_.link != Link::Disconnected) {
     return;
   }
@@ -346,6 +367,36 @@ bool CanonBleClient::stopRecording() {
   return true;
 }
 
+bool CanonBleClient::powerOn() {
+  if (state_.link != Link::Disconnected ||
+      state_.phase != State::Phase::PoweredOff) {
+    return false;
+  }
+  connectRequested_ = true;
+  connectFails_ = 0;
+  securityFails_ = 0;
+  resetTransientState(state_);
+  state_.hasSavedDevice = haveTarget_;
+  if (haveTarget_) {
+    beginConnect();
+  } else {
+    beginScan();
+  }
+  return true;
+}
+
+bool CanonBleClient::powerOff() {
+  if (!connected() || state_.commandPending ||
+      (state_.recordingConfirmed &&
+       state_.recording == State::Recording::Recording)) {
+    return false;
+  }
+  state_.phase = State::Phase::PoweringOff;
+  state_.powerOffFailed = false;
+  powerOffRequested_ = true;
+  return true;
+}
+
 bool CanonBleClient::consumePairingUpdate(
     char* address, size_t addressCapacity, uint8_t& addressType, char* name,
     size_t nameCapacity, bool& paired) {
@@ -397,7 +448,8 @@ void CanonBleClient::beginConnect() {
   connectFailedFlag_ = false;
   securityCompleteFlag_ = false;
   setupPending_ = false;
-  sessionFallbackSent_ = false;
+  powerOffRequested_ = false;
+  postPairStep_ = 0;
   if (client_->connect(address, true, true, true)) {
     return;
   }
@@ -415,25 +467,29 @@ bool CanonBleClient::completeConnect() {
   pairingCommandChar_ =
       handshake->getCharacteristic(kPairingCommandCharacteristic);
   pairingDataChar_ = handshake->getCharacteristic(kPairingDataCharacteristic);
-  if (pairingCommandChar_ == nullptr || pairingDataChar_ == nullptr) {
+  pairingInfoChar_ = handshake->getCharacteristic(kPairingInfoCharacteristic);
+  if (pairingCommandChar_ == nullptr || pairingDataChar_ == nullptr ||
+      pairingInfoChar_ == nullptr) {
     return false;
   }
 
   if (!newHandshake_) {
-    if (!writeCommand(pairingDataChar_, buildHandshakeFinish())) {
+    if (!subscribePairingInfo() ||
+        !writeCommand(pairingDataChar_, buildHandshakeFinish())) {
       return false;
     }
-    return openCoreSession();
+    return beginPostPairSetup();
   }
 
+  if (!writeCommand(pairingCommandChar_,
+                    buildHandshakeRequest("StudioRemote"))) {
+    return false;
+  }
   const bool pairingSubscribed =
       pairingCommandChar_->canIndicate()
           ? pairingCommandChar_->subscribe(false, pairingNotifyTrampoline, true)
           : pairingCommandChar_->subscribe(true, pairingNotifyTrampoline, true);
-  if (!pairingSubscribed ||
-      !writeCommand(pairingCommandChar_,
-                    buildHandshakeRequest("StudioRemote")) ||
-      !sendNewHandshakeIdentity()) {
+  if (!pairingSubscribed) {
     return false;
   }
   state_.phase = State::Phase::AwaitingConfirmation;
@@ -450,11 +506,41 @@ bool CanonBleClient::sendNewHandshakeIdentity() {
 }
 
 bool CanonBleClient::finishAcceptedHandshake() {
-  if (!writeCommand(pairingDataChar_, buildHandshakeFinish())) {
+  if (!subscribePairingInfo() || !sendNewHandshakeIdentity() ||
+      !writeCommand(pairingDataChar_, buildHandshakeFinish())) {
     return false;
   }
   newHandshake_ = false;
-  return openCoreSession();
+  return beginPostPairSetup();
+}
+
+bool CanonBleClient::subscribePairingInfo() {
+  if (pairingInfoChar_ == nullptr) {
+    return false;
+  }
+  return pairingInfoChar_->canIndicate()
+             ? pairingInfoChar_->subscribe(false, pairingInfoNotifyTrampoline,
+                                           true)
+             : pairingInfoChar_->subscribe(true, pairingInfoNotifyTrampoline,
+                                           true);
+}
+
+bool CanonBleClient::beginPostPairSetup() {
+  state_.phase = State::Phase::PostPairSetup;
+  postPairStep_ = 0;
+  return sendPostPairCommand();
+}
+
+bool CanonBleClient::sendPostPairCommand() {
+  if (postPairStep_ >= sizeof(kPostPairCommands)) {
+    return openCoreSession();
+  }
+  if (!writeCommand(pairingDataChar_,
+                    buildPostPairCommand(kPostPairCommands[postPairStep_]))) {
+    return false;
+  }
+  phaseDeadlineMs_ = millis() + 1500;
+  return true;
 }
 
 bool CanonBleClient::openCoreSession() {
@@ -485,9 +571,8 @@ bool CanonBleClient::openCoreSession() {
   haveTarget_ = true;
   pairingChanged_ = true;
   connectFails_ = 0;
-  sessionFallbackSent_ = false;
-  phaseDeadlineMs_ = millis() + 1500;
-  if (!writeCommand(modeCommandChar_, buildModeCommand(kShootingMode))) {
+  phaseDeadlineMs_ = millis() + 3000;
+  if (!writeCommand(modeCommandChar_, buildModeCommand(kWakeMode))) {
     return false;
   }
   return true;
@@ -502,6 +587,7 @@ void CanonBleClient::teardownConnection() {
   setupPending_ = false;
   pairingCommandChar_ = nullptr;
   pairingDataChar_ = nullptr;
+  pairingInfoChar_ = nullptr;
   modeCommandChar_ = nullptr;
   modeResultChar_ = nullptr;
   shootingCommandChar_ = nullptr;
@@ -510,22 +596,54 @@ void CanonBleClient::teardownConnection() {
 
 void CanonBleClient::handleDisconnect() {
   const bool pairingRejected = state_.pairingRejected;
+  const bool poweredOff =
+      state_.phase == State::Phase::PoweringOff && !connectRequested_;
+  const bool recoverPairing = bondRecoveryPending_;
+  bondRecoveryPending_ = false;
+  if (recoverPairing) {
+    forgetBond(targetAddr_, targetAddrType_);
+    haveTarget_ = false;
+    newHandshake_ = true;
+    pairingChanged_ = true;
+  }
   pairingCommandChar_ = nullptr;
   pairingDataChar_ = nullptr;
+  pairingInfoChar_ = nullptr;
   modeCommandChar_ = nullptr;
   modeResultChar_ = nullptr;
   shootingCommandChar_ = nullptr;
   shootingStateChar_ = nullptr;
   startRequested_ = false;
   stopRequested_ = false;
+  powerOffRequested_ = false;
   setupPending_ = false;
-  sessionFallbackSent_ = false;
+  postPairStep_ = 0;
   resetTransientState(state_);
   state_.pairingRejected = pairingRejected;
+  state_.hasSavedDevice = haveTarget_;
   state_.link = Link::Disconnected;
+  if (poweredOff) {
+    state_.phase = State::Phase::PoweredOff;
+  }
   if (connectRequested_) {
     scheduleRetry(1500);
   }
+}
+
+void CanonBleClient::handleSecurityFailure() {
+  ++securityFails_;
+  bondRecoveryPending_ = haveTarget_ && securityFails_ >= 2;
+  if (client_ != nullptr) {
+    client_->disconnect();
+  }
+}
+
+void CanonBleClient::readInitialRecordingState() {
+  if (shootingStateChar_ == nullptr || !shootingStateChar_->canRead()) {
+    return;
+  }
+  const NimBLEAttValue value = shootingStateChar_->readValue();
+  reduceRecordNotification(state_, value.data(), value.size());
 }
 
 void CanonBleClient::drainNotifications() {
@@ -551,18 +669,29 @@ void CanonBleClient::drainNotifications() {
           client_->disconnect();
         }
       }
+    } else if (notification.kind == kPairingInfoNotification &&
+               state_.phase == State::Phase::PostPairSetup) {
+      if (postPairStep_ < sizeof(kPostPairCommands) &&
+          isPostPairResponse(kPostPairCommands[postPairStep_],
+                             notification.data, notification.len)) {
+        ++postPairStep_;
+        if (!sendPostPairCommand() && client_ != nullptr) {
+          client_->disconnect();
+        }
+      }
     } else if (notification.kind == kModeNotification) {
-      if (parseModeEvent(notification.data, notification.len) !=
-          ModeEvent::None) {
+      const ModeEvent event =
+          parseModeEvent(notification.data, notification.len);
+      if (state_.phase == State::Phase::OpeningSession &&
+          event == ModeEvent::SessionReady) {
+        readInitialRecordingState();
         markReady();
+      } else if (state_.phase == State::Phase::PoweringOff &&
+                 event == ModeEvent::Acknowledged) {
+        phaseDeadlineMs_ = millis() + 1000;
       }
     } else if (notification.kind == kShootingNotification) {
-      const RecordEvent event =
-          parseRecordEvent(notification.data, notification.len);
       reduceRecordNotification(state_, notification.data, notification.len);
-      if (event != RecordEvent::None) {
-        markReady();
-      }
     }
   }
 }
@@ -626,6 +755,11 @@ void CanonBleClient::onSecurityComplete(bool succeeded) {
 
 void CanonBleClient::onPairingNotification(const uint8_t* data, size_t len) {
   queueNotification(kPairingNotification, data, len);
+}
+
+void CanonBleClient::onPairingInfoNotification(const uint8_t* data,
+                                               size_t len) {
+  queueNotification(kPairingInfoNotification, data, len);
 }
 
 void CanonBleClient::onModeNotification(const uint8_t* data, size_t len) {

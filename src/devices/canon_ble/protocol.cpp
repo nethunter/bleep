@@ -58,6 +58,13 @@ CommandBytes buildHandshakeFinish() {
   return result;
 }
 
+CommandBytes buildPostPairCommand(uint8_t command) {
+  CommandBytes result;
+  result.bytes[0] = command;
+  result.len = 1;
+  return result;
+}
+
 CommandBytes buildModeCommand(uint8_t mode) {
   CommandBytes result;
   result.bytes[0] = mode;
@@ -86,15 +93,33 @@ PairingResponse parsePairingResponse(const uint8_t* data, size_t len) {
   return PairingResponse::None;
 }
 
+bool isPostPairResponse(uint8_t command, const uint8_t* data, size_t len) {
+  if (data == nullptr || len == 0) {
+    return false;
+  }
+  switch (command) {
+    case 0x06:
+      return data[0] == 0x01;
+    case 0x07:
+      return data[0] == 0x02;
+    case 0x08:
+      return data[0] == 0x03;
+    case 0x0c:
+      return data[0] == 0x07;
+    default:
+      return false;
+  }
+}
+
 ModeEvent parseModeEvent(const uint8_t* data, size_t len) {
   if (data == nullptr || len != 1) {
     return ModeEvent::None;
   }
-  if (data[0] == 0x04) {
-    return ModeEvent::Shooting;
+  if (data[0] == kModeAcknowledged) {
+    return ModeEvent::Acknowledged;
   }
-  if (data[0] == 0x05) {
-    return ModeEvent::RecordingSession;
+  if (data[0] == kSessionReady) {
+    return ModeEvent::SessionReady;
   }
   return ModeEvent::None;
 }

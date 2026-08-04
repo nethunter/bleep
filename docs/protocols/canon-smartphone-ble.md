@@ -81,6 +81,14 @@ SHA-256:
 The capture identifies camera `7c:b8:da:2a:c8:75` advertising as
 `EOSR6m3_2AC874`. Unencrypted discovery confirms the smartphone pairing service
 and characteristics `00010005`, `00010006`, `0001000a`, and `0001000b`.
+The primary advertisement carries `00010000-...`; its separate scan response
+carries the `EOSR6m3_...` name. Panel discovery accepts either the pairing
+service or an `EOS`/`PowerShot` name so host-stack handling of split advertising
+reports cannot hide a discoverable Canon camera.
+If a saved camera fails encryption twice, the panel treats its local bond as
+stale, removes it, and returns to pairing discovery instead of retrying the
+invalid bonded connection indefinitely. The operator must still put the camera
+in **Connect to smartphone** pairing mode.
 Secure Connections with MITM protection and bonding begins before the command
 exchange. The capture does not contain the keys required to decrypt the
 remaining ATT traffic.
@@ -156,13 +164,19 @@ after shooting:
 Two captured `05` sequences disconnect approximately 147 ms and 154 ms after
 the result notification. A later bonded connection followed by `03` wakes the
 camera again. These are camera power/session controls, not recording-state
-notifications, and are not implemented by the ADR-017 panel experiment.
+notifications. The ADR-017 panel experiment now wakes automatically on screen
+activation and exposes `05` only through an explicit power button; hardware
+behavior remains unverified.
 
 ## State and safety rules
 
 - A successful GATT write is not proof that recording started or stopped.
 - Recording state becomes confirmed only after `00030031-...` reports one of
   the documented steady values.
+- `Research`: GATT discovery confirms `00030031-...` is both readable and
+  notifiable. After wake result `05`, the panel reads it once to seed the
+  initial recording state, but only a documented `01 01 01` or `01 01 02`
+  value is accepted.
 - Unknown and transitional notifications do not overwrite the last confirmed
   state.
 - When reconnect state is unknown, the UI must offer both Start and Stop.
@@ -178,4 +192,6 @@ The experiment remains incomplete until the EOS R6 Mark III verifies:
 3. explicit start and stop with matching physical behavior;
 4. state changes initiated from the camera;
 5. reconnect while recording and while stopped;
-6. Back during pairing and explicit forget/re-pair.
+6. automatic wake and explicit power-off;
+7. Back leaves the camera powered on;
+8. Back during pairing and explicit forget/re-pair.

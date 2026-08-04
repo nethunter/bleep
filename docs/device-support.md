@@ -64,9 +64,9 @@ Reference research:
   followed by CCAPI HTTP over the camera's direct access point.
 - Experimental capabilities: explicit record start, record stop, and
   camera-notification recording state.
-- Capture-backed future capabilities: wake from Bluetooth standby with mode
-  `03` and power down after shooting with mode `05`. These are not implemented
-  by the current experiment.
+- Capture-backed experimental capabilities: automatic wake from Bluetooth
+  standby with mode `03` and explicit power down after shooting with mode `05`.
+  Back only releases the panel connection and does not power down the camera.
 - Hardware trigger: starts from Ready/Unknown and stops from a
   camera-confirmed Recording state. Touch exposes both commands while state is
   unknown.

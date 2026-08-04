@@ -627,3 +627,77 @@ Record values with the exact build environment and commit/worktree state.
   align the experimental BLE client with the captured confirmation-first
   handshake and `03` session command before another hardware retry.
 
+### 2026-08-03: Canon captured BLE behavior implemented
+
+- Aligned the ADR-017 client with the Pixel 9 Pro XL host-HCI fixtures:
+  bonding-only Just Works negotiation, request-before-subscribe pairing,
+  confirmation-first identity, captured `06`/`07`/`08`/`0c` post-pair queries,
+  and automatic `03` wake with required `05` session result. Bonded reconnect
+  follows the same finish/query/wake path; the uncaptured `02`/`06` fallback
+  was removed.
+- Added ADR-018 and an explicit camera power command. The Canon screen disables
+  power-down while recording or a record command is pending, sends mode `05`,
+  waits for acknowledgement and the camera-side disconnect, and does not infer
+  physical success from the acknowledgement alone. Back remains a local,
+  non-destructive disconnect.
+- Contradictory camera state now reports the requested record transition as
+  failed while retaining the camera-confirmed steady state. Renamed the
+  multi-device Unity runner from `test/test_shark.cpp` to
+  `test/test_main.cpp`.
+- Native tests passed 18/18. The UI simulator passed and generated
+  `12_canon_ready.png` through `15_canon_powered_off.png`; LVGL memory had
+  7,208 bytes free at the five-device maximum and 9,096 bytes after removal.
+- Firmware builds passed: `crowpanel_128` used 876,724 bytes flash and 167,868
+  bytes static RAM; `crowpanel_128_roboto` used 846,252/167,868; `canon_ble`
+  used 877,528/166,548; and `tascam_x8` used 876,496/166,652.
+- The final default firmware flashed successfully to
+  `/dev/cu.usbserial-211240`. First pairing, bonded reconnect, automatic
+  physical wake, record start/stop state, explicit physical power-down, and
+  non-destructive Back remain operator-pending hardware checks; ADR-017 and
+  ADR-018 are not hardware-complete.
+
+### 2026-08-03: Canon discovery and stale-bond recovery
+
+- Investigated an operator report that the camera no longer found the panel
+  after the Pixel Camera Connect capture. The host-HCI log confirms that the
+  camera sends `00010000-...` in its primary advertisement and
+  `EOSR6m3_...` in a separate scan response.
+- Canon discovery now accepts either the pairing service or an
+  `EOS`/`PowerShot` advertised name, avoiding dependence on whether NimBLE
+  merges the two reports before invoking the scan callback.
+- A saved camera that fails encryption twice is now treated as a stale bond:
+  the panel removes its local key, marks the record unpaired, and returns to
+  discovery instead of retrying the invalid direct connection indefinitely.
+  This is expected after the camera's smartphone registration is replaced or
+  reset; the camera must still be in **Connect to smartphone** pairing mode.
+- Documented a planned UI-memory optimization: retain only Home/Devices, lazily
+  allocate other screens and overlays, share Canon/Tascam recording controls,
+  and reduce the 96 KiB LVGL pool only after measured peak/fragmentation tests.
+- Native tests passed 18/18. Builds passed: `crowpanel_128` used 877,114 bytes
+  flash and 167,868 bytes static RAM; `crowpanel_128_roboto` used
+  846,642/167,868; `canon_ble` used 877,922/166,556; and `tascam_x8` used
+  876,882/166,652.
+- The final default firmware flashed successfully to
+  `/dev/cu.usbserial-211240`. Boot telemetry from the preceding discovery build
+  reported 125,180 bytes free heap and 122,740 minimum. The serial port was
+  disconnected after the final flash, so physical rediscovery and pairing
+  remain operator-pending rather than verified.
+
+### 2026-08-03: Canon initial recording-state read
+
+- Hardware verification confirmed smartphone-mode discovery, pairing,
+  start/stop commands, and correct notification-driven state after each
+  command. Initial state remained unknown until the first transition.
+- The captured GATT declaration marks shooting-state characteristic
+  `00030031-...` as Read + Notify. After wake result `05`, the client now reads
+  that characteristic once and applies only the existing documented stopped
+  or recording vectors; an empty, failed, or unfamiliar read leaves state
+  unknown.
+- Native tests passed 18/18. Builds passed: `crowpanel_128` used 877,240 bytes
+  flash and 167,868 bytes static RAM; `crowpanel_128_roboto` used
+  846,768/167,868; `canon_ble` used 878,048/166,556; and `tascam_x8` used
+  877,008/166,652.
+- The final default firmware flashed successfully to
+  `/dev/cu.usbserial-211240`. Correct Ready/Recording display immediately after
+  connection remains operator-pending and is not yet marked verified.
+
