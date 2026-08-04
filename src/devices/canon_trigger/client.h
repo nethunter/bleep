@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "core/ble/ble_central.h"
 #include "devices/canon_trigger/state.h"
 
 class NimBLEAdvertisedDevice;
@@ -11,7 +12,7 @@ class NimBLERemoteCharacteristic;
 
 namespace canon_trigger {
 
-class CanonTriggerClient {
+class CanonTriggerClient : public studio::ble::BleCentralDelegate {
  public:
   using Link = CanonTriggerState::Link;
   using State = CanonTriggerState;
@@ -23,6 +24,7 @@ class CanonTriggerClient {
 
   const State& state() const { return state_; }
   bool connected() const { return state_.link == Link::Connected; }
+  bool protocolReady() const;
 
   void startScan();
   void forgetDevice();
@@ -32,12 +34,11 @@ class CanonTriggerClient {
                             uint8_t& addressType, char* name,
                             size_t nameCapacity, bool& paired);
 
-  // NimBLE host-task callbacks only set flags or copy advertisement identity.
-  void onScanMatch(const NimBLEAdvertisedDevice* device);
-  void onLinkConnected();
-  void onConnectFailed();
-  void onLinkDisconnected();
-  void onSecurityComplete(bool succeeded);
+  void onBleAdvertisement(
+      studio::ble::LinkHandle link,
+      const studio::ble::Advertisement& advertisement) override;
+  void onBleEvent(studio::ble::LinkHandle link,
+                  const studio::ble::Event& event) override;
 
  private:
   void begin();
@@ -46,7 +47,6 @@ class CanonTriggerClient {
   bool completeConnect();
   void teardownConnection();
   void handleDisconnect();
-  void scheduleRetry(uint32_t delayMs);
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* pairingChar_ = nullptr;
@@ -56,27 +56,17 @@ class CanonTriggerClient {
   bool initialized_ = false;
   bool connectRequested_ = false;
   bool haveTarget_ = false;
-  bool scanActive_ = false;
   bool pairingChanged_ = false;
   bool triggerRequested_ = false;
   bool triggerReleasePending_ = false;
-  volatile bool scanHit_ = false;
-  volatile bool connectedFlag_ = false;
-  volatile bool connectFailedFlag_ = false;
-  volatile bool disconnectedFlag_ = false;
-  volatile bool securityCompleteFlag_ = false;
-  volatile bool securitySucceeded_ = false;
+  bool setupPending_ = false;
 
   char targetAddr_[20] = "";
   uint8_t targetAddrType_ = 0;
   char targetName_[40] = "";
-  char scanHitAddr_[20] = "";
-  uint8_t scanHitType_ = 0;
-  char scanHitName_[40] = "";
-
-  uint32_t retryAtMs_ = 0;
   uint32_t triggerReleaseAtMs_ = 0;
-  int connectFails_ = 0;
+  studio::ble::LinkHandle linkHandle_ =
+      studio::ble::kInvalidLinkHandle;
 };
 
 }  // namespace canon_trigger

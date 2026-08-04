@@ -507,7 +507,7 @@ void buildHome() {
   styleScreen(scrHome);
 
   lv_obj_t* title = lv_label_create(scrHome);
-  lv_label_set_text(title, "Studio");
+  lv_label_set_text(title, "Ble(e)p");
   lv_obj_set_style_text_font(title, UI_FONT_20, 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 

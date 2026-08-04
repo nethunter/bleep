@@ -434,8 +434,9 @@ int main() {
   if (!capture("24_scenes_run_ready")) {
     return 1;
   }
-  if (studio::scenes().start(sceneId) != studio::SceneRunStatus::Ok) {
-    std::fprintf(stderr, "Failed to start Press Record sequence\n");
+  ui::handleShortPress();
+  if (studio::scenes().progress().phase != studio::ScenePhase::RunningStart) {
+    std::fprintf(stderr, "Hardware trigger did not start Press Record sequence\n");
     return 1;
   }
   for (int i = 0; i < 40; ++i) {
@@ -458,8 +459,9 @@ int main() {
   if (!capture("26_scenes_armed")) {
     return 1;
   }
-  if (studio::scenes().stop() != studio::SceneRunStatus::Ok) {
-    std::fprintf(stderr, "Failed to stop Press Record sequence\n");
+  ui::handleShortPress();
+  if (studio::scenes().progress().phase != studio::ScenePhase::RunningStop) {
+    std::fprintf(stderr, "Hardware trigger did not stop Press Record sequence\n");
     return 1;
   }
   studio::simSetSequenceConnectedState();
@@ -469,6 +471,12 @@ int main() {
     pump(20);
   }
   if (!capture("27_scenes_stop_progress")) {
+    return 1;
+  }
+  scene_ui::simShowSettings(sceneId);
+  pump(200);
+  printLvglMemory("after sequence stop settings");
+  if (!capture("27b_scenes_settings_after_stop")) {
     return 1;
   }
   scene_ui::hide();

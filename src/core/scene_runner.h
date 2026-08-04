@@ -14,6 +14,8 @@ class SceneRunner {
 
   // Connect and hold all Start/Stop targets; phase becomes Ready when linked.
   SceneRunStatus prepare(SceneId sceneId);
+  // Reconcile an edited prepared scene without dropping unchanged links.
+  SceneRunStatus refreshPrepared(SceneId sceneId);
   SceneRunStatus start(SceneId sceneId);
   SceneRunStatus stop();
   void cancel();

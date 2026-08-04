@@ -97,6 +97,7 @@ DeviceRuntimeState SharkDriver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
+  state.protocolReady = client_.protocolReady();
   state.quality = state.link == LinkState::Connected ? StateQuality::Confirmed
                                                      : StateQuality::Unknown;
   return state;
@@ -119,4 +120,3 @@ bool SharkDriver::consumePairingUpdate(DeviceRecord& record) {
 }
 
 }  // namespace studio
-

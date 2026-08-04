@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "core/ble/ble_central.h"
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
 
@@ -12,7 +13,7 @@ class NimBLERemoteCharacteristic;
 
 namespace tascam_x8 {
 
-class TascamX8Client {
+class TascamX8Client : public studio::ble::BleCentralDelegate {
  public:
   using Link = TascamX8State::Link;
   using State = TascamX8State;
@@ -24,6 +25,7 @@ class TascamX8Client {
 
   const State& state() const { return state_; }
   bool connected() const { return state_.link == Link::Connected; }
+  bool protocolReady() const;
 
   void startScan();
   void forgetDevice();
@@ -33,11 +35,11 @@ class TascamX8Client {
                             uint8_t& addressType, char* name,
                             size_t nameCapacity, bool& paired);
 
-  // NimBLE host-task callbacks only copy identity, bytes, or flags.
-  void onScanMatch(const NimBLEAdvertisedDevice* device);
-  void onLinkConnected();
-  void onConnectFailed();
-  void onLinkDisconnected();
+  void onBleAdvertisement(
+      studio::ble::LinkHandle link,
+      const studio::ble::Advertisement& advertisement) override;
+  void onBleEvent(studio::ble::LinkHandle link,
+                  const studio::ble::Event& event) override;
   void onDataBytes(const uint8_t* data, size_t len);
   void onSessionByte(uint8_t value);
 
@@ -50,7 +52,6 @@ class TascamX8Client {
   void handleDisconnect();
   void drainNotifications();
   bool sendData(const FrameBytes& frame);
-  void scheduleRetry(uint32_t delayMs);
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* dataChar_ = nullptr;
@@ -62,31 +63,22 @@ class TascamX8Client {
   bool initialized_ = false;
   bool connectRequested_ = false;
   bool haveTarget_ = false;
-  bool scanActive_ = false;
   bool pairingChanged_ = false;
   bool startRequested_ = false;
   bool stopRequested_ = false;
   bool setupPending_ = false;
   bool sessionOpening_ = false;
-  volatile bool scanHit_ = false;
-  volatile bool connectedFlag_ = false;
-  volatile bool connectFailedFlag_ = false;
-  volatile bool disconnectedFlag_ = false;
   volatile uint8_t sessionByte_ = 0;
 
   char targetAddr_[20] = "";
   uint8_t targetAddrType_ = 0;
   char targetName_[40] = "";
-  char scanHitAddr_[20] = "";
-  uint8_t scanHitType_ = 0;
-  char scanHitName_[40] = "";
-
-  uint32_t retryAtMs_ = 0;
   uint32_t setupAtMs_ = 0;
   uint32_t sessionDeadlineMs_ = 0;
   uint32_t keepaliveAtMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
-  int connectFails_ = 0;
+  studio::ble::LinkHandle linkHandle_ =
+      studio::ble::kInvalidLinkHandle;
 };
 
 }  // namespace tascam_x8

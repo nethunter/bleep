@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "core/ble/ble_central.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "devices/shark_nano_ii/state.h"
 
@@ -19,7 +20,7 @@ namespace shark {
 // Threading: NimBLE callbacks run on the host task and only ever push raw bytes
 // into a stream buffer or flip flags. All parsing, state mutation, and GATT
 // writes happen from loop() via poll(). The UI reads state() from loop() too.
-class SharkClient {
+class SharkClient : public studio::ble::BleCentralDelegate {
  public:
   using Link = SharkState::Link;
   using State = SharkState;
@@ -31,6 +32,7 @@ class SharkClient {
 
   const State& state() const { return state_; }
   bool connected() const { return state_.link == Link::Connected; }
+  bool protocolReady() const;
 
   // Connection management.
   void startScan();
@@ -55,9 +57,11 @@ class SharkClient {
   void stopMotion();
   void refreshAll();
 
-  // Called only from NimBLE callbacks.
-  void onScanMatch(const NimBLEAdvertisedDevice* device);
-  void onLinkDisconnected();
+  void onBleAdvertisement(
+      studio::ble::LinkHandle link,
+      const studio::ble::Advertisement& advertisement) override;
+  void onBleEvent(studio::ble::LinkHandle link,
+                  const studio::ble::Event& event) override;
   void onNotifyBytes(const uint8_t* data, size_t len);
 
  private:
@@ -72,13 +76,12 @@ class SharkClient {
   void beginConnect();
   void completeConnect();
   void teardownConnection();
-  void sendHandshake();
+  bool sendHandshake();
+  bool writeFrameRaw(const FrameBytes& frame, bool response = true);
 
   void resetDeviceState();
   void handleDisconnect();
   void editTiming(int slot, int speed, int holdSeconds);
-
-  static void scheduleRetry(uint32_t& whenMs, uint32_t delayMs);
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* writeChar_ = nullptr;
@@ -101,19 +104,12 @@ class SharkClient {
   uint8_t targetAddrType_ = 0;
   char targetName_[40] = "";
 
-  // Flags/handshake set from the host task, consumed in loop().
-  volatile bool scanHit_ = false;
-  volatile bool disconnectedFlag_ = false;
-  char scanHitAddr_[20] = "";
-  uint8_t scanHitType_ = 0;
-  char scanHitName_[40] = "";
-
-  uint32_t retryAtMs_ = 0;
-  int connectFails_ = 0;
-  bool scanActive_ = false;
   bool initialized_ = false;
   bool connectRequested_ = false;
   bool pairingChanged_ = false;
+  bool setupPending_ = false;
+  studio::ble::LinkHandle linkHandle_ =
+      studio::ble::kInvalidLinkHandle;
 
   // Pending manual-tracking ACK (tx-matched), mirrors the web controller.
   bool trackingPending_ = false;

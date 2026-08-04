@@ -6,6 +6,7 @@
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
+#include "core/ble/ble_runtime.h"
 #include "core/device_manager.h"
 #include "core/scene_service.h"
 #include "ui.h"
@@ -477,6 +478,7 @@ void loop() {
   lv_tick_inc(now - lastTickMs);
   lastTickMs = now;
 
+  studio::ble::loopBleRuntime(now);
   studio::devices().loop();
   studio::scenes().loop(now);
   const studio::LinkState link = currentLink();

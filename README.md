@@ -1,7 +1,7 @@
-# Studio Remote (CrowPanel 1.28)
+# Ble(e)p
 
-A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
-round display (240x240 GC9A01 + CST816D touch). The current build includes the
+Ble(e)p is a multi-device studio controller running on the ESP32-C3 CrowPanel
+1.28" round display (240x240 GC9A01 + CST816D touch). The current build includes the
 **iFootage Shark Nano II** driver, two Canon choices — verified **Canon
 (Trigger)** BR-E1 BLE and experimental **Canon (Smart)** smartphone BLE — plus
 research-stage **Tascam Portacapture X8** record control through the AK-BT1
@@ -24,10 +24,28 @@ adapter.
 - **Scenes (sequences).** Create, edit, and run ordered Start/Stop sequences
   from the panel. New sequences default to `Sequence n`. Opening a sequence
   connects every Start/Stop target concurrently and holds those links until
-  Back, Cancel, or Stop finishes; Start then runs the authored steps. A
+  Back or Unlink. A successful Stop leaves the prepared links available for
+  editing or another run. `Ready` means every target has both a BLE
+  link and a completed protocol initialization; Start then runs the authored
+  steps without changing their order or waits. Editing a prepared sequence
+  preserves unchanged target links and reconciles only added or removed
+  targets. A
   top-right settings cog offers Rename, Edit Start, Edit Stop, and Delete.
+  The hardware action button starts a ready sequence and stops an armed or
+  starting sequence while its run screen is open.
   Device screens are blocked while a sequence holds links. Scenes persist in a
   separate NVS blob from the device registry.
+- **Shared BLE central.** Shark, Canon Trigger, Canon Smart, and Tascam share
+  one lazy NimBLE runtime, one scanner, and bounded asynchronous connection
+  slots. Sequence preparation can discover and connect different devices
+  without one client replacing another's scan callbacks. Physical connection
+  initiation and Canon security are controller-serialized to avoid radio
+  contention; once linked, different devices can initialize concurrently.
+  Setup is deferred to
+  the next main-loop pass after connection events drain, protocol setup uses
+  targeted GATT discovery, and connection-parameter tuning is best effort.
+  The runtime remains off on Home and tears down after the last device link is
+  released.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
@@ -85,8 +103,10 @@ adapter.
   explicit Canon camera power-down / wake.
 - **Button (GPIO 1):**
   - Short press: navigate back outside device control or activate the active
-    device's primary action. In Shark control it closes an open modal, opens Run
-    from Keypoints, then advances Standby / Start / Stop on the Run screen. In
+    device or sequence's primary action. On an open sequence run screen it
+    starts when ready and stops when armed or starting. In Shark control it
+    closes an open modal, opens Run from Keypoints, then advances Standby /
+    Start / Stop on the Run screen. In
     connected Canon (Smart) control it starts from Ready/Unknown and stops from
     camera-confirmed Recording. In connected Canon (Trigger) control it fires
     the BR-E1 record toggle. In connected Tascam control it explicitly starts
@@ -98,7 +118,7 @@ adapter.
 
 | Module | Responsibility |
 | --- | --- |
-| `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
+| `src/core/*` | Driver catalog, typed commands/results, persistent device registry, loop-owned device manager, and shared BLE central. |
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
 | `src/devices/canon_trigger/*` | Verified BR-E1-compatible pairing and movie trigger, on-demand NimBLE client, driver adapter, and Trigger screen. |
@@ -109,9 +129,10 @@ adapter.
 | [`assets/icons/`](assets/icons/README.md) | Home mode source artwork and the prompt recipe for generating matching icons. |
 | `src/assets/*` | Generated LVGL image arrays; rebuild them with `tools/gen_icons.py`. |
 
-NimBLE callbacks run on the host task and only push raw bytes into a FreeRTOS
-stream buffer or flip flags; all frame parsing, state mutation, GATT writes, and
-LVGL access happen from `loop()`.
+NimBLE scan/link/security callbacks run on the host task and only enqueue
+fixed-size transport events. Characteristic callbacks queue raw notification
+bytes. The main loop drains both before advertisement matching, frame parsing,
+state mutation, GATT writes, or LVGL access.
 
 The protocol model is documented in the companion reverse-engineering project
 (`docs/protocol.md`). See it for command formats, confidence levels, and
@@ -157,15 +178,15 @@ pio device monitor
 This workspace also has PlatformIO in `.venv`, with a local core directory:
 
 ```sh
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e canon_ble
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e tascam_x8
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e canon_ble
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e tascam_x8
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128 -t upload
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio device monitor
 
 # Desktop UI screenshots (no board; needs ImageMagick)
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e ui_sim
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e ui_sim
 .pio/build/ui_sim/program   # writes round PNGs to sim/screenshots/
 ```
 

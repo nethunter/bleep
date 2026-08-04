@@ -65,6 +65,7 @@ DeviceRuntimeState TascamX8Driver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
+  state.protocolReady = client_.protocolReady();
   state.quality = client_.state().recordingConfirmed
                       ? StateQuality::Confirmed
                       : StateQuality::Unknown;

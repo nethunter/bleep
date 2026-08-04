@@ -1,7 +1,7 @@
-# Universal Studio Remote Documentation
+# Ble(e)p Documentation
 
-This directory is the durable source of truth for evolving the firmware from
-an iFootage Shark Nano II remote into a compile-time configurable studio
+This directory is the durable source of truth for Ble(e)p as it evolves from an
+iFootage Shark Nano II remote into a compile-time configurable studio
 controller.
 
 ## Documents
@@ -35,4 +35,3 @@ Every implementation session should:
 Protocol guesses must not be recorded as facts. Label unverified behavior as
 `Research`, `Hypothesis`, or `Blocked`, and link captures or authoritative
 documentation when available.
-

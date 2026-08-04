@@ -6,6 +6,9 @@
 #include <cstring>
 #include <string>
 
+#include "core/ble/ble_runtime.h"
+#include "core/ble/ble_timing.h"
+#include "devices/canon_trigger/ble_match.h"
 #include "devices/canon_trigger/protocol.h"
 
 namespace canon_trigger {
@@ -15,56 +18,18 @@ namespace {
 const NimBLEUUID kPrimaryService(kPrimaryServiceUuid);
 const NimBLEUUID kPairingCharacteristic(kPairingCharacteristicUuid);
 const NimBLEUUID kControlCharacteristic(kControlCharacteristicUuid);
-CanonTriggerClient* gCallbackClient = nullptr;
-
-class ScanCallbacks : public NimBLEScanCallbacks {
- public:
-  void onResult(const NimBLEAdvertisedDevice* device) override {
-    if (device != nullptr && device->isAdvertisingService(kPrimaryService) &&
-        gCallbackClient != nullptr) {
-      gCallbackClient->onScanMatch(device);
-    }
-  }
-};
-
-class ClientCallbacks : public NimBLEClientCallbacks {
- public:
-  void onConnect(NimBLEClient*) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onLinkConnected();
-    }
-  }
-  void onConnectFail(NimBLEClient*, int) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onConnectFailed();
-    }
-  }
-  void onDisconnect(NimBLEClient*, int) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onLinkDisconnected();
-    }
-  }
-  void onAuthenticationComplete(NimBLEConnInfo& info) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onSecurityComplete(info.isEncrypted());
-    }
-  }
-};
-
-ScanCallbacks gScanCallbacks;
-ClientCallbacks gClientCallbacks;
-
 }  // namespace
 
 void CanonTriggerClient::begin() {
   if (initialized_) {
     return;
   }
-  NimBLEDevice::init("StudioRemote");
-  NimBLEDevice::setSecurityAuth(true, true, true);
-  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
-  gCallbackClient = this;
-  initialized_ = true;
+  studio::ble::ConnectPolicy policy;
+  policy.security = studio::ble::SecurityPolicy::BondSecure;
+  policy.connectTimeoutMs = 4000;
+  policy.diagnosticTag = "canon_trigger";
+  linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
+  initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
 }
 
 void CanonTriggerClient::activate(const char* address, uint8_t addressType,
@@ -83,8 +48,6 @@ void CanonTriggerClient::activate(const char* address, uint8_t addressType,
   }
   state_.hasSavedDevice = haveTarget_;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
-  connectFails_ = 0;
-  retryAtMs_ = 0;
   if (haveTarget_) {
     beginConnect();
   } else {
@@ -94,65 +57,25 @@ void CanonTriggerClient::activate(const char* address, uint8_t addressType,
 
 void CanonTriggerClient::deactivate() {
   connectRequested_ = false;
-  if (initialized_ && scanActive_) {
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-  }
-  teardownConnection();
-  scanHit_ = false;
-  disconnectedFlag_ = false;
-  connectedFlag_ = false;
-  connectFailedFlag_ = false;
-  securityCompleteFlag_ = false;
+  studio::ble::bleCentral().release(linkHandle_);
+  linkHandle_ = studio::ble::kInvalidLinkHandle;
+  initialized_ = false;
+  client_ = nullptr;
   triggerRequested_ = false;
   triggerReleasePending_ = false;
+  setupPending_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
 }
 
 void CanonTriggerClient::loop() {
-  if (connectFailedFlag_) {
-    connectFailedFlag_ = false;
-    ++connectFails_;
-    state_.link = Link::Disconnected;
-    scheduleRetry(1500u * (connectFails_ < 4 ? connectFails_ : 4));
-  }
-  if (disconnectedFlag_) {
-    disconnectedFlag_ = false;
-    handleDisconnect();
-  }
-  if (connectedFlag_) {
-    connectedFlag_ = false;
-    if (client_ != nullptr && client_->getConnInfo().isEncrypted()) {
-      if (!completeConnect()) {
-        client_->disconnect();
-      }
-    } else if (client_ == nullptr || !client_->secureConnection(true)) {
-      if (client_ != nullptr) {
-        client_->disconnect();
-      }
+  if (setupPending_) {
+    setupPending_ = false;
+    if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      return;
     }
   }
-  if (securityCompleteFlag_) {
-    securityCompleteFlag_ = false;
-    if (!securitySucceeded_ || !completeConnect()) {
-      if (client_ != nullptr) {
-        client_->disconnect();
-      }
-    }
-  }
-
-  if (scanHit_) {
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-    std::strncpy(targetAddr_, scanHitAddr_, sizeof(targetAddr_) - 1);
-    targetAddrType_ = scanHitType_;
-    std::strncpy(targetName_, scanHitName_, sizeof(targetName_) - 1);
-    haveTarget_ = true;
-    scanHit_ = false;
-    beginConnect();
-  }
-
   const uint32_t now = millis();
   if (connected() && triggerRequested_) {
     triggerRequested_ = false;
@@ -175,17 +98,6 @@ void CanonTriggerClient::loop() {
                       controlChar_->writeValue(
                           &value, 1, !controlChar_->canWriteNoResponse());
     markTriggerComplete(state_, sent);
-  }
-
-  if (!connectRequested_ || state_.link != Link::Disconnected) {
-    return;
-  }
-  if (static_cast<int32_t>(now - retryAtMs_) >= 0) {
-    if (haveTarget_ && connectFails_ < 2) {
-      beginConnect();
-    } else {
-      beginScan();
-    }
   }
 }
 
@@ -213,8 +125,10 @@ void CanonTriggerClient::forgetBond(const char* address, uint8_t addressType) {
     return;
   }
   begin();
-  NimBLEAddress peer(std::string(address), addressType);
-  NimBLEDevice::deleteBond(peer);
+  studio::ble::Address peer;
+  std::strncpy(peer.value, address, sizeof(peer.value) - 1);
+  peer.type = addressType;
+  studio::ble::bleCentral().deleteBond(peer);
 }
 
 bool CanonTriggerClient::triggerRecord() {
@@ -247,44 +161,27 @@ bool CanonTriggerClient::consumePairingUpdate(
 }
 
 void CanonTriggerClient::beginScan() {
-  if (scanActive_) {
-    state_.link = Link::Scanning;
-    return;
-  }
-  NimBLEScan* scan = NimBLEDevice::getScan();
-  scan->setScanCallbacks(&gScanCallbacks, false);
-  scan->setActiveScan(true);
-  scan->setInterval(100);
-  scan->setWindow(80);
-  scan->clearResults();
-  scanHit_ = false;
-  scan->start(0, false, true);
-  scanActive_ = true;
+  studio::ble::bleCentral().requestScan(linkHandle_, !haveTarget_);
   state_.link = Link::Scanning;
 }
 
 void CanonTriggerClient::beginConnect() {
-  if (client_ == nullptr) {
-    client_ = NimBLEDevice::createClient();
-    client_->setClientCallbacks(&gClientCallbacks, false);
-    client_->setConnectTimeout(4000);
-  }
   state_.link = Link::Connecting;
-  NimBLEAddress address(std::string(targetAddr_), targetAddrType_);
-  connectedFlag_ = false;
-  connectFailedFlag_ = false;
-  securityCompleteFlag_ = false;
-  if (client_->connect(address, true, true, true)) {
-    return;
-  }
-  ++connectFails_;
-  state_.link = Link::Disconnected;
-  scheduleRetry(1500u * (connectFails_ < 4 ? connectFails_ : 4));
+  studio::ble::Address address;
+  std::strncpy(address.value, targetAddr_, sizeof(address.value) - 1);
+  address.type = targetAddrType_;
+  studio::ble::bleCentral().requestConnect(linkHandle_, address);
 }
 
 bool CanonTriggerClient::completeConnect() {
+  const uint32_t discoveryStartedMs = millis();
   NimBLERemoteService* service = client_->getService(kPrimaryService);
   if (service == nullptr) {
+    studio::ble::logTiming(
+        "canon_trigger", linkHandle_, "gatt_setup",
+        millis() - discoveryStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "failed");
     return false;
   }
   pairingChar_ = service->getCharacteristic(kPairingCharacteristic);
@@ -293,26 +190,28 @@ bool CanonTriggerClient::completeConnect() {
     return false;
   }
 
-  const PairingName identity = buildPairingName("StudioRemote");
+  const PairingName identity = buildPairingName("Ble(e)p");
   const bool pairingResponse = !pairingChar_->canWriteNoResponse();
   if (!pairingChar_->writeValue(identity.bytes, identity.len,
                                 pairingResponse)) {
     return false;
   }
+  studio::ble::logTiming(
+      "canon_trigger", linkHandle_, "gatt_setup",
+      millis() - discoveryStartedMs,
+      millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
 
   state_.link = Link::Connected;
   state_.hasSavedDevice = true;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   haveTarget_ = true;
   pairingChanged_ = true;
-  connectFails_ = 0;
+  studio::ble::bleCentral().markProtocolReady(linkHandle_);
   return true;
 }
 
 void CanonTriggerClient::teardownConnection() {
-  if (client_ != nullptr && client_->isConnected()) {
-    client_->disconnect();
-  }
+  studio::ble::bleCentral().disconnect(linkHandle_);
   pairingChar_ = nullptr;
   controlChar_ = nullptr;
 }
@@ -322,36 +221,57 @@ void CanonTriggerClient::handleDisconnect() {
   controlChar_ = nullptr;
   triggerRequested_ = false;
   triggerReleasePending_ = false;
+  setupPending_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
-  scheduleRetry(1500);
 }
 
-void CanonTriggerClient::scheduleRetry(uint32_t delayMs) {
-  retryAtMs_ = millis() + delayMs;
-}
-
-void CanonTriggerClient::onScanMatch(const NimBLEAdvertisedDevice* device) {
-  if (device == nullptr || scanHit_) {
+void CanonTriggerClient::onBleAdvertisement(
+    studio::ble::LinkHandle link,
+    const studio::ble::Advertisement& advertisement) {
+  if (link != linkHandle_ ||
+      !matchesAdvertisement(advertisement)) {
     return;
   }
-  const std::string address = device->getAddress().toString();
-  const std::string name = device->getName();
-  std::strncpy(scanHitAddr_, address.c_str(), sizeof(scanHitAddr_) - 1);
-  scanHitType_ = device->getAddress().getType();
-  std::strncpy(scanHitName_, name.c_str(), sizeof(scanHitName_) - 1);
-  scanHit_ = true;
+  std::strncpy(targetAddr_, advertisement.address.value,
+               sizeof(targetAddr_) - 1);
+  targetAddrType_ = advertisement.address.type;
+  studio::ble::advertisementName(advertisement, targetName_,
+                                 sizeof(targetName_));
+  haveTarget_ = true;
+  state_.link = Link::Connecting;
+  studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
 }
 
-void CanonTriggerClient::onLinkConnected() { connectedFlag_ = true; }
+void CanonTriggerClient::onBleEvent(studio::ble::LinkHandle link,
+                                    const studio::ble::Event& event) {
+  if (link != linkHandle_) {
+    return;
+  }
+  if (event.type == studio::ble::EventType::Connected) {
+    client_ = static_cast<NimBLEClient*>(
+        studio::ble::bleCentral().nativeClient(linkHandle_));
+    if (client_ != nullptr && client_->getConnInfo().isEncrypted()) {
+      setupPending_ = true;
+    } else if (!studio::ble::bleCentral().requestSecurity(linkHandle_)) {
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    }
+  } else if (event.type == studio::ble::EventType::SecurityComplete) {
+    if (!event.succeeded) {
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    } else {
+      setupPending_ = true;
+    }
+  } else if (event.type == studio::ble::EventType::ConnectFailed) {
+    state_.link = Link::Disconnected;
+  } else if (event.type == studio::ble::EventType::Disconnected) {
+    client_ = nullptr;
+    handleDisconnect();
+  }
+}
 
-void CanonTriggerClient::onConnectFailed() { connectFailedFlag_ = true; }
-
-void CanonTriggerClient::onLinkDisconnected() { disconnectedFlag_ = true; }
-
-void CanonTriggerClient::onSecurityComplete(bool succeeded) {
-  securitySucceeded_ = succeeded;
-  securityCompleteFlag_ = true;
+bool CanonTriggerClient::protocolReady() const {
+  return studio::ble::bleCentral().protocolReady(linkHandle_);
 }
 
 }  // namespace canon_trigger

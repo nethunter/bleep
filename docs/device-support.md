@@ -7,6 +7,17 @@ Status values:
 - `Research`: protocol or stack feasibility must be established;
 - `Later`: architecture must allow it, but it is outside the first release.
 
+All current GATT devices use the ADR-021 shared BLE central. They share one
+active scanner and bounded asynchronous connection slots while retaining the
+matching, pairing, GATT setup, and protocol rules documented below. This is
+compile- and host-test-verified. Physical connection and protocol readiness are
+tracked separately; Shark, Canon Trigger, Canon Smart, and Tascam publish ready
+only after their required setup succeeds. Controller-level connection/security
+procedures are queued one at a time, while established links may initialize as
+the next target connects. Concurrent Canon Smart + Tascam scene
+preparation, ten-cycle timing distributions, and post-teardown heap recovery
+remain hardware gates.
+
 ## iFootage
 
 ### Shark Nano II
@@ -175,4 +186,3 @@ Every driver must define:
 
 A new brand must not add conditional behavior to `SceneRunner`. It integrates
 through capabilities and typed commands.
-

@@ -254,9 +254,12 @@ the replacement.
 
 - Status: Accepted (amended 2026-08-04)
 - Decision: Opening a sequence run screen prepares every distinct Start/Stop
-  target concurrently (`Connecting` → `Ready`). Links stay held while the run
-  screen is open, during Start/Stop execution, and while armed after Start.
-  Leaving the run screen (Back/Cancel/hide) releases links. Manual device
+  target concurrently (`Connecting` → `Ready`). `Ready` requires both a
+  physical link and driver-confirmed protocol readiness after required
+  discovery/subscriptions/initialization. Links stay held while the run
+  screen is open, during Start/Stop execution, while armed after Start, and
+  after a successful Stop so editing/restart does not reconnect unchanged
+  targets. Leaving the run screen (Back/Unlink/hide) releases links. Manual device
   screens retain exclusive single-active activation outside sequence holds.
 - Consequence: `DeviceManager` supports a bounded multi-active set across
   different compiled drivers (Canon Smart + Tascam in the first tranche). Start
@@ -265,6 +268,43 @@ the replacement.
   blocked. Shark motion remains outside sequences.
 - Roadmap deviation: This advances a bounded Phase 6/7 panel-scene tranche
   ahead of groups, Portal HTTP editing, lights, and generated reverse-Stop.
+
+## ADR-021: One shared BLE central owns transport mechanics
+
+- Status: Accepted
+- Decision: One lazily initialized BLE central runtime owns NimBLE
+  initialization, the physical scanner, bounded client slots, asynchronous
+  connect/disconnect callback routing, reconnect timing, address claims,
+  controller bond operations, and teardown. Device clients keep advertisement
+  acceptance, pairing policy, GATT discovery/subscription, protocol
+  handshakes, commands, and notification parsing.
+- Threading: NimBLE callbacks copy fixed-size scan, link, and security events
+  into a bounded queue. The central and device clients consume those events
+  from the Arduino main loop; callbacks do not mutate device state, perform
+  GATT writes, or access LVGL.
+- Lifetime: Home boot remains BLE-free. The runtime initializes on the first
+  acquired link and shuts down after the last owner releases it. Because
+  NimBLE client deletion completes asynchronously, shutdown continues pumping
+  teardown until the global client slots are actually free. An immediate
+  reacquire may reserve logical links while those clients retire; replacement
+  clients are provisioned without failing scene activation, and callbacks from
+  retired client pointers are ignored. `DeviceRecord` remains the persistent
+  identity source; controller bonds are transport state, not a second pairing
+  registry.
+- Consequence: Concurrent sequence preparation shares one scanner and separate
+  async connection slots. Physical connection initiation and security
+  procedures are controller-serialized after hardware produced repeated HCI
+  `0x3e` establishment timeouts under simultaneous attempts. Discovery remains
+  shared, and a queued target may connect while an established target performs
+  protocol initialization. Protocol-specific candidate dwell, ignored-peer,
+  and direct-versus-scan policy remains in each client.
+- Measurement boundary (2026-08-04): targeted discovery, next-loop setup,
+  readiness telemetry, and best-effort connection parameters are implemented
+  without changing ownership. A shared asynchronous GATT executor is deferred
+  unless hardware timing shows blocking GATT work is at least 25% of median
+  readiness for a driver or the Canon Smart + Tascam sequence pair. If that
+  gate triggers, amend this ADR before moving generic GATT mechanics into the
+  shared layer; drivers retain UUID profiles and protocol semantics.
 
 ## Open decisions
 
@@ -276,4 +316,3 @@ These remain unresolved until their roadmap spikes complete:
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;
 - measured memory budgets for minimal and full firmware profiles.
-

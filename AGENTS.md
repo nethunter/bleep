@@ -4,8 +4,8 @@ Guidance for AI coding agents working in this repository.
 
 ## What this is
 
-Firmware evolving from a physical **iFootage Shark Nano II** BLE remote into a
-compile-time configurable studio controller. It runs on an **ESP32-C3 CrowPanel
+**Ble(e)p** is firmware evolving from a physical **iFootage Shark Nano II** BLE
+remote into a compile-time configurable studio controller. It runs on an **ESP32-C3 CrowPanel
 1.28"** round display (240x240 GC9A01 LCD + CST816D touch). The current stack is
 Arduino-ESP32, NimBLE-Arduino, LVGL 8.x, and LovyanGFX.
 
@@ -17,7 +17,7 @@ under `docs/`.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/core/*` | Compile-time driver metadata, persistent runtime registry, typed commands/results, and `DeviceManager`. |
+| `src/core/*` | Compile-time driver metadata, persistent runtime registry, typed commands/results, `DeviceManager`, and shared BLE central. |
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, pure state reducer, on-demand NimBLE client, driver adapter, and connect/keypoint/run UI. |
 | `src/ui.*` | Home, Devices, device management, and application navigation. |
@@ -85,7 +85,7 @@ Run host tests whenever host-testable protocol, state, registry, persistence,
 driver-catalog, command-routing, or scene logic changes:
 
 ```sh
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio test -e native
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
 ```
 
 Build every affected firmware profile. At minimum, verify `crowpanel_128`; also
@@ -96,16 +96,16 @@ Use the workspace-local PlatformIO (preferred, matches `README.md`):
 
 ```sh
 # Compile
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128
 
 # Compile + upload to the board
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e crowpanel_128 -t upload
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128 -t upload
 
 # Serial monitor (115200)
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio device monitor
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio device monitor
 
 # Desktop UI screenshots (no flash; needs ImageMagick `magick`)
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/platformio run -e ui_sim
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e ui_sim
 .pio/build/ui_sim/program
 # PNGs land in sim/screenshots/
 ```

@@ -67,6 +67,7 @@ SceneRegistryStatus SceneService::replace(const SceneRecord& record) {
   const SceneRegistryStatus status = registry_.replace(record);
   if (status == SceneRegistryStatus::Ok) {
     save();
+    runner_.refreshPrepared(record.sceneId);
   }
   return status;
 }

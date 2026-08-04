@@ -105,6 +105,7 @@ class SimSharkDriver : public DeviceDriver {
         runtime.link = LinkState::Disconnected;
         break;
     }
+    runtime.protocolReady = runtime.link == LinkState::Connected;
     runtime.quality = StateQuality::Confirmed;
     return runtime;
   }
@@ -186,6 +187,9 @@ class SimCanonDriver : public DeviceDriver {
         runtime.link = LinkState::Disconnected;
         break;
     }
+    runtime.protocolReady =
+        runtime.link == LinkState::Connected &&
+        state_.phase == canon_ble::CanonBleState::Phase::Ready;
     runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
                                                 : StateQuality::Unknown;
     return runtime;
@@ -238,6 +242,7 @@ class SimCanonTriggerDriver : public DeviceDriver {
         runtime.link = LinkState::Disconnected;
         break;
     }
+    runtime.protocolReady = runtime.link == LinkState::Connected;
     runtime.quality = StateQuality::Unknown;
     return runtime;
   }
@@ -303,6 +308,7 @@ class SimTascamDriver : public DeviceDriver {
         runtime.link = LinkState::Disconnected;
         break;
     }
+    runtime.protocolReady = runtime.link == LinkState::Connected;
     runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
                                                 : StateQuality::Unknown;
     return runtime;

@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "core/command_traits.h"
+#include "core/ble/ble_timing.h"
 
 namespace studio {
 namespace {
@@ -140,7 +141,7 @@ bool SceneRunner::allTargetsConnected(const TargetSet& targets,
   waiting = kInvalidInstanceId;
   for (uint8_t i = 0; i < targets.count; ++i) {
     const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
-    if (runtime.link != LinkState::Connected) {
+    if (runtime.link != LinkState::Connected || !runtime.protocolReady) {
       waiting = targets.ids[i];
       return false;
     }
@@ -174,8 +175,12 @@ void SceneRunner::finishStop(SceneRunStatus status) {
   direction_ = Direction::None;
   waitingForResult_ = false;
   pendingRequestId_ = 0;
-  devices_.deactivateAll();
-  targets_ = TargetSet{};
+  if (status == SceneRunStatus::Ok && devices_.activeCount() > 0) {
+    devices_.setLinksHeld(true);
+  } else {
+    devices_.deactivateAll();
+    targets_ = TargetSet{};
+  }
 }
 
 bool SceneRunner::busy() const {
@@ -253,6 +258,72 @@ SceneRunStatus SceneRunner::prepare(SceneId sceneId) {
   return SceneRunStatus::Ok;
 }
 
+SceneRunStatus SceneRunner::refreshPrepared(SceneId sceneId) {
+  if (busy()) {
+    return SceneRunStatus::Busy;
+  }
+  const SceneRecord* record = registry_.find(sceneId);
+  if (record == nullptr) {
+    return SceneRunStatus::InvalidScene;
+  }
+  if (progress_.sceneId != sceneId || !devices_.linksHeld()) {
+    return SceneRunStatus::Ok;
+  }
+
+  TargetSet nextTargets;
+  if (validate(*record) != SceneValidationStatus::Ok ||
+      !collectTargets(*record, nextTargets)) {
+    return SceneRunStatus::ValidationFailed;
+  }
+  const auto contains = [](const TargetSet& targets, InstanceId id) {
+    for (uint8_t i = 0; i < targets.count; ++i) {
+      if (targets.ids[i] == id) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (uint8_t i = 0; i < targets_.count; ++i) {
+    if (!contains(nextTargets, targets_.ids[i])) {
+      devices_.deactivate(targets_.ids[i]);
+    }
+  }
+  for (uint8_t i = 0; i < nextTargets.count; ++i) {
+    if (!devices_.isActive(nextTargets.ids[i]) &&
+        !devices_.activateHeld(nextTargets.ids[i])) {
+      fail(SceneRunStatus::ActionFailed, "Activate failed");
+      return SceneRunStatus::ActionFailed;
+    }
+  }
+
+  targets_ = nextTargets;
+  activeScene_ = *record;
+  devices_.setLinksHeld(targets_.count > 0);
+  progress_.stepCount = activeScene_.startCount;
+  progress_.stepIndex = 0;
+  progress_.lastStatus = SceneRunStatus::Ok;
+  InstanceId waiting = kInvalidInstanceId;
+  if (allTargetsConnected(targets_, waiting)) {
+    progress_.phase = ScenePhase::Ready;
+    progress_.connectTarget = kInvalidInstanceId;
+    progress_.stepResult = SceneStepResult::Succeeded;
+    setDetail("Ready");
+    direction_ = Direction::None;
+  } else {
+    progress_.phase = ScenePhase::Connecting;
+    progress_.connectTarget = waiting;
+    progress_.stepResult = SceneStepResult::Pending;
+    setDetail("Connecting");
+    direction_ = Direction::Prepare;
+  }
+  phaseStartedMs_ = 0;
+  waitUntilMs_ = 0;
+  waitingForResult_ = false;
+  pendingRequestId_ = 0;
+  return SceneRunStatus::Ok;
+}
+
 SceneRunStatus SceneRunner::start(SceneId sceneId) {
   if (busy()) {
     return SceneRunStatus::Busy;
@@ -271,9 +342,13 @@ SceneRunStatus SceneRunner::start(SceneId sceneId) {
     return SceneRunStatus::ValidationFailed;
   }
 
-  const bool alreadyPrepared = progress_.phase == ScenePhase::Ready &&
+  const bool reusablePhase = progress_.phase == ScenePhase::Ready ||
+                             progress_.phase == ScenePhase::Completed;
+  InstanceId waiting = kInvalidInstanceId;
+  const bool alreadyPrepared = reusablePhase &&
                                progress_.sceneId == sceneId &&
-                               devices_.linksHeld();
+                               devices_.linksHeld() &&
+                               allTargetsConnected(targets_, waiting);
   if (!alreadyPrepared) {
     if (!collectTargets(*record, targets_)) {
       return SceneRunStatus::ValidationFailed;
@@ -480,6 +555,10 @@ void SceneRunner::tick(uint32_t nowMs) {
         progress_.stepResult = SceneStepResult::Succeeded;
         progress_.lastStatus = SceneRunStatus::Ok;
         setDetail("Ready");
+        studio::ble::logTiming("sequence", studio::ble::kInvalidLinkHandle,
+                               "all_targets_ready",
+                               nowMs - phaseStartedMs_,
+                               nowMs - phaseStartedMs_, "ok");
         direction_ = Direction::None;
         phaseStartedMs_ = nowMs;
       } else {

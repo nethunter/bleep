@@ -164,6 +164,26 @@ void onStop(lv_event_t*) {
   refreshRun();
 }
 
+bool canStartSequence(const studio::SceneRecord& record,
+                      const studio::SceneProgress& progress) {
+  const bool forScene = progress.sceneId == currentScene;
+  const bool ready = forScene && progress.phase == studio::ScenePhase::Ready;
+  return !studio::scenes().busy() && record.startCount > 0 &&
+         (ready || progress.phase == studio::ScenePhase::Idle ||
+          progress.phase == studio::ScenePhase::Completed || !forScene);
+}
+
+bool canStopSequence(const studio::SceneProgress& progress) {
+  if (progress.sceneId != currentScene) {
+    return false;
+  }
+  const bool armed = progress.phase == studio::ScenePhase::IdleArmed ||
+                     progress.phase == studio::ScenePhase::Failed;
+  return armed || progress.phase == studio::ScenePhase::RunningStart ||
+         (progress.phase == studio::ScenePhase::Connecting &&
+          progress.runningStart);
+}
+
 bool sequenceHoldsOrBusy() {
   const studio::SceneProgress& progress = studio::scenes().progress();
   if (progress.sceneId != currentScene) {
@@ -450,26 +470,14 @@ void refreshRun() {
   lv_label_set_text(runDetail, forScene ? progress.detail : "Open to prepare");
 
   const bool busy = studio::scenes().busy();
-  const bool ready =
-      forScene && progress.phase == studio::ScenePhase::Ready;
-  const bool armed =
-      forScene && (progress.phase == studio::ScenePhase::IdleArmed ||
-                   progress.phase == studio::ScenePhase::Failed);
-  const bool canStart =
-      !busy && record->startCount > 0 &&
-      (ready || progress.phase == studio::ScenePhase::Idle ||
-       progress.phase == studio::ScenePhase::Completed || !forScene);
+  const bool canStart = canStartSequence(*record, progress);
   if (canStart) {
     lv_obj_clear_state(startButton, LV_STATE_DISABLED);
   } else {
     lv_obj_add_state(startButton, LV_STATE_DISABLED);
   }
 
-  const bool canStop =
-      forScene &&
-      (armed || progress.phase == studio::ScenePhase::RunningStart ||
-       (progress.phase == studio::ScenePhase::Connecting &&
-        progress.runningStart));
+  const bool canStop = canStopSequence(progress);
   if (canStop && progress.phase != studio::ScenePhase::RunningStop) {
     lv_obj_clear_state(stopButton, LV_STATE_DISABLED);
   } else {
@@ -477,12 +485,15 @@ void refreshRun() {
   }
 
   if (prepareCancelButton != nullptr) {
-    const bool showCancel = sequenceHoldsOrBusy();
-    lv_label_set_text(lv_obj_get_child(prepareCancelButton, 0),
-                      showCancel ? "Cancel" : "Prepare");
+    const bool linkedOrBusy = sequenceHoldsOrBusy();
+    const bool connecting =
+        forScene && progress.phase == studio::ScenePhase::Connecting;
+    const char* action = !linkedOrBusy ? "Prepare"
+                                      : (connecting ? "Cancel" : "Unlink");
+    lv_label_set_text(lv_obj_get_child(prepareCancelButton, 0), action);
     lv_obj_set_style_bg_color(
         prepareCancelButton,
-        lv_color_hex(showCancel ? kColPanel : kColAccent), 0);
+        lv_color_hex(linkedOrBusy ? kColPanel : kColAccent), 0);
     if (busy && progress.phase == studio::ScenePhase::RunningStop) {
       lv_obj_add_state(prepareCancelButton, LV_STATE_DISABLED);
     } else {
@@ -682,6 +693,7 @@ void showRunView(studio::SceneId sceneId) {
       (progress.phase == studio::ScenePhase::Ready ||
        progress.phase == studio::ScenePhase::IdleArmed ||
        progress.phase == studio::ScenePhase::Failed ||
+       progress.phase == studio::ScenePhase::Completed ||
        progress.phase == studio::ScenePhase::Connecting ||
        progress.phase == studio::ScenePhase::RunningStart ||
        progress.phase == studio::ScenePhase::RunningStop);
@@ -763,11 +775,16 @@ void handleShortPress() {
     return;
   }
   if (view == View::Run) {
-    if (studio::scenes().busy()) {
+    const studio::SceneRecord* record = studio::scenes().find(currentScene);
+    if (record == nullptr) {
       return;
     }
-    releaseHeldScene();
-    showListView();
+    const studio::SceneProgress& progress = studio::scenes().progress();
+    if (canStopSequence(progress)) {
+      onStop(nullptr);
+    } else if (canStartSequence(*record, progress)) {
+      onStart(nullptr);
+    }
     return;
   }
   hide();

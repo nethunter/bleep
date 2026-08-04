@@ -5,16 +5,19 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: bounded on-device Scenes tranche (ADR-019/020) beside dual Canon
-  drivers, Tascam X8, and remaining Phase 0/foundation hardware gates.
+- Current phase: bounded on-device Scenes tranche (ADR-019/020) with the
+  shared BLE central tranche (ADR-021), beside remaining Phase 0/foundation
+  hardware gates.
 - Firmware state: Home-first, persistent device registry, on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
-  lists, prepare-on-open concurrent links (`Ready`), settings cog
+  lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
   (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
   Home/Devices resident; scene UI loads on demand.
 - Universal driver framework: Bounded multi-active links while a sequence run
   screen is open / running / armed (Canon Smart + Tascam); exclusive
-  single-active activation remains for manual device screens.
+  single-active activation remains for manual device screens. All four GATT
+  clients now share one lazy NimBLE scanner/runtime and async link slots,
+  targeted discovery, explicit protocol readiness, and BLE timing telemetry.
 - Last updated: 2026-08-04.
 
 ## Completed planning
@@ -39,17 +42,22 @@ short, factual, and reproducible.
 
 ## Next task
 
-Exercise Press Record / Press Stop on hardware, then remaining Canon/foundation
-gates:
+Exercise the ADR-021 transport and Press Record / Press Stop on hardware, then
+remaining Canon/foundation gates:
 
-1. With paired Canon Smart (R6 II or III) and Tascam X8 configured, open a
-   Press Record sequence, confirm both devices connect to Ready, Start, confirm
-   both enter recording with the 500 ms gap, then Stop and confirm both stop.
+1. With paired Canon Smart (R6 II or III) and Tascam X8 configured and initially
+   disconnected, open a sequence; confirm the shared scanner discovers both,
+   both async links reach Ready without starvation, Start records with the
+   authored gap, and Stop confirms both stopped.
 2. Confirm device screens refuse open while a sequence holds links; Back/Cancel
    releases links.
 3. Confirm scene persistence across power cycle.
 4. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
-5. Keep groups, lights, Portal scene editing, and generated reverse-Stop
+5. Run ten initially disconnected cycles per driver and ten Canon Smart +
+   Tascam sequence opens; record median/p95 readiness, per-stage blocking GATT,
+   scan drops, retries, post-init heap, and post-teardown heap. Trigger the
+   asynchronous GATT executor only if blocking GATT reaches the 25% gate.
+6. Keep groups, lights, Portal scene editing, and generated reverse-Stop
    deferred.
 
 ## Measurements
@@ -851,3 +859,244 @@ Record values with the exact build environment and commit/worktree state.
 - Firmware: `crowpanel_128` build succeeded (flash 937,214 / RAM 137,444) and
   flashed to `/dev/cu.usbserial-211240`.
 
+### 2026-08-04: Shared BLE central manager
+
+- Recorded ADR-021. Added `src/core/ble/`: backend-independent bounded central,
+  fixed advertisement/link/security events, shared scan demand and main-loop
+  fan-out, address claims/skip lists, async connection slots, watchdog/backoff,
+  serialized security requests, bond deletion, fake native backend, and lazy
+  NimBLE runtime teardown.
+- Migrated Tascam, Canon Trigger, Shark, and Canon Smart away from independent
+  NimBLE initialization, scanners, clients, link callbacks, retry timers, and
+  teardown. Device-specific advertisement matching, Canon candidate dwell and
+  ignored peers, GATT setup, handshakes, commands, and notification queues
+  remain in each client.
+- Native tests: 29/29 passed in `native`, including lifetime/slot exhaustion,
+  scan fan-out and independent release, address claims, concurrent async links,
+  retry/watchdog behavior, security requests, bond deletion, queue overflow,
+  advertisement parsing, and all four device matchers.
+- UI simulator: build and all captures through
+  `27_scenes_stop_progress.png` succeeded; final LVGL report was 24,728 bytes
+  free, 17,012-byte peak use, and 35% fragmentation.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 941,882 bytes flash / 137,884 bytes RAM;
+  `canon_ble` 941,046 / 136,540;
+  `canon_trigger` 938,140 / 136,172;
+  `tascam_x8` 939,998 / 136,380.
+- `crowpanel_128` flashed successfully to
+  `/dev/cu.usbserial-211240`. Bounded restart telemetry at 835 ms reported
+  Home `disconnected`, 155,004 bytes free heap, and 152,564 minimum free heap,
+  confirming boot remains BLE-free.
+- Hardware gate remains open: no operator interaction with Shark, Canon
+  Trigger, Canon Smart, or Tascam was performed in this session. Concurrent
+  Canon Smart + Tascam Prepare, scan drops, per-link retries, prepare latency,
+  post-BLE-init heap, post-teardown heap, and physical command confirmation
+  therefore remain unmeasured and must not be inferred from the successful
+  build/flash.
+
+### 2026-08-04: Ble(e)p project rename
+
+- Renamed the user-facing project identity from Studio Remote / Universal
+  Studio Remote to **Ble(e)p** in the README, documentation index,
+  architecture goal, agent guidance, and round-panel Home title.
+- Changed the NimBLE local name and Canon Trigger/Smart pairing identity from
+  `StudioRemote` to `Ble(e)p`. Persistent registry schemas, NVS namespaces,
+  driver IDs, device names, and historical verification notes remain unchanged.
+- Updated local PlatformIO examples to invoke `./.venv/bin/python -m platformio`;
+  the generated `./.venv/bin/platformio` launcher retained an absolute shebang
+  to the pre-rename workspace path.
+- Native tests: 29/29 passed, including the updated Canon Smart handshake name
+  and length vector and Canon Trigger pairing-name coverage.
+- UI simulator: build and all captures through
+  `27_scenes_stop_progress.png` succeeded. `01_home.png` visually confirms the
+  Ble(e)p title fits the 240x240 round Home screen. Final LVGL report was 24,728
+  bytes free, 17,012-byte peak use, and 35% fragmentation.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 941,866 bytes flash / 137,884 bytes RAM;
+  `crowpanel_128_roboto` 911,402 / 137,884;
+  `canon_ble` 941,030 / 136,540;
+  `canon_trigger` 938,174 / 136,172;
+  `tascam_x8` 940,050 / 136,380.
+- `crowpanel_128` flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical BLE-name and Canon re-pair display checks
+  were not performed.
+
+### 2026-08-04: Sequence hardware action button
+
+- Changed the hardware short-press behavior on an open sequence run screen to
+  invoke the same state-aware action as the touch controls: Start when ready or
+  restartable, and Stop when armed or while Start is in flight. The button is
+  inert while preparation or Stop is already in progress; touch Back/Unlink
+  remains the way to leave and release held links.
+- Updated the UI simulator regression to start and stop Press Record through
+  `ui::handleShortPress()`. The simulator build and all captures through
+  `27_scenes_stop_progress.png` succeeded; final LVGL reporting remained 24,728
+  bytes free, 17,012-byte peak use, and 35% fragmentation.
+- Native tests: 29/29 passed. `crowpanel_128` built successfully with 942,028
+  bytes flash and 137,884 bytes static RAM, then flashed successfully to
+  `/dev/cu.usbserial-211240`.
+- Physical button operation against connected Canon Smart and Tascam targets
+  was not exercised, so the existing scene hardware gate remains open.
+- Renamed the prepared-link control from `Cancel` to `Unlink`, while retaining
+  `Cancel` only during `Connecting`; the prepared sequence status remains
+  `Ready`. Native tests remained 29/29, the simulator and all captures passed,
+  and `24_scenes_run_ready.png` visually confirmed both labels fit. The updated
+  `crowpanel_128` build used 942,078 bytes flash / 137,884 bytes static RAM and
+  flashed successfully to `/dev/cu.usbserial-211240`.
+
+### 2026-08-04: Protocol-ready sequence preparation and BLE timing
+
+- Split physical `LinkState::Connected` from `DeviceRuntimeState::protocolReady`.
+  Sequence preparation remains `Connecting` and rejects Start until every
+  target reports both. Readiness clears on failure, retry, release, and
+  reconnect.
+- Canon Smart now uses targeted handshake then shooting-core discovery and
+  becomes ready only on the camera's session-ready notification. Tascam waits
+  for session-open and its initialization write. Canon Trigger waits for
+  discovery and the pairing-identity write. Shark waits for subscription and
+  every handshake/initial-refresh write; failed final writes cannot publish
+  readiness.
+- Removed both fixed 100 ms post-connect waits. Setup begins on the next main
+  loop after queued BLE events drain. All four drivers request best-effort
+  7.5–15 ms setup and 15–30 ms steady-state connection parameters; rejection
+  is logged but non-fatal.
+- Added stable serial diagnostics in the form
+  `ble_timing driver=<id> link=<n> stage=<stage> elapsed_ms=<n> total_ms=<n> result=<status>`
+  for central connection lifecycle, security, targeted GATT stages, protocol
+  readiness, retries, teardown, and total sequence preparation.
+- Native tests: 30/30 passed, including physical-versus-protocol readiness,
+  Start rejection before readiness, connection-parameter fallback, steady-state
+  timing, and readiness reset on release/reconnect.
+- UI simulator: build and all captures succeeded; maximum-device initialization
+  reported 40,128 bytes free, 10,694-byte peak use, and 0% fragmentation;
+  remove/refresh reported 24,728 bytes free, 17,012-byte peak use, and 35%
+  fragmentation.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 945,250 bytes flash / 138,028 bytes RAM;
+  `crowpanel_128_roboto` 914,786 / 138,028;
+  `canon_ble` 944,310 / 136,668;
+  `canon_trigger` 941,428 / 136,300;
+  `tascam_x8` 943,328 / 136,508.
+- `crowpanel_128` flashed successfully to
+  `/dev/cu.usbserial-211240` after granting serial-port access.
+- Hardware benchmark remains open: no paired devices were operated, so the ten
+  initially disconnected cycles per driver, ten concurrent Canon Smart +
+  Tascam opens, median/p95 stage timing, disconnect/retry/drop rates, physical
+  Start/Stop, and heap recovery are still pending. The 25% asynchronous GATT
+  executor gate cannot be evaluated from builds and simulator results; ADR-021
+  therefore remains unamended and the executor is intentionally deferred.
+
+### 2026-08-04: Intermittent paired-sequence connection fix
+
+- Captured a live Canon Smart + Tascam sequence attempt from the flashed board.
+  Simultaneous controller connection initiations repeatedly failed with reason
+  `574` (`0x23e`, HCI `0x3e` connection-establishment timeout). Canon connected
+  when it received an uncontended attempt; Tascam later linked and completed
+  GATT setup.
+- Changed the central scheduler to keep per-link async slots and shared scan
+  discovery, but run only one controller connection or security procedure at a
+  time. After a link/security event clears the controller, the next queued
+  target begins; protocol initialization on an established link can still
+  overlap that connection.
+- Fixed a Tascam readiness regression found in the same trace. Its initialization
+  write had been moved before the client's physical `Connected` state, while
+  the write helper correctly rejects pre-link commands. The client now exposes
+  the physical state for the write but leaves `protocolReady` false until the
+  initialization succeeds, and logs `session_initialization` separately.
+- Native tests: 30/30 passed, including serialized connection initiation across
+  Canon security. Firmware builds succeeded:
+  `crowpanel_128` 945,752 bytes flash / 138,028 bytes RAM;
+  `crowpanel_128_roboto` 915,288 / 138,028;
+  `canon_ble` 944,810 / 136,668;
+  `canon_trigger` 941,928 / 136,300;
+  `tascam_x8` 943,826 / 136,508.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`. The board
+  booted cleanly, but no post-fix sequence attempt occurred during the bounded
+  serial verification window; repeated paired-device validation remains open.
+
+### 2026-08-04: Post-Stop BLE teardown crash fix
+
+- Investigated an operator-reported reset after Start, Stop, then opening scene
+  Settings. The prior exception was lost before serial attachment, but code
+  inspection found a matching use-after-free in shared BLE teardown: NimBLE
+  client deletion is asynchronous, while the backend freed its
+  `ClientCallbacks` immediately after requesting disconnect. A later GAP
+  disconnect could therefore call through a freed pointer after Stop released
+  the links.
+- Changed callback ownership to the bounded backend-slot lifetime. Client
+  teardown schedules NimBLE deletion but retains the callback until the entire
+  BLE backend has deinitialized, so late disconnect events remain safe.
+- Added a UI simulator regression that completes Start/Stop and immediately
+  opens Settings. It passed and captured
+  `27b_scenes_settings_after_stop.png`; LVGL reported 14,008 bytes free, 79%
+  used, 17,012-byte peak use, and 1% fragmentation at that point.
+- Native tests: 30/30 passed. Firmware builds succeeded:
+  `crowpanel_128` 945,728 bytes flash / 138,028 bytes RAM;
+  `crowpanel_128_roboto` 915,264 / 138,028;
+  `canon_ble` 944,786 / 136,668;
+  `canon_trigger` 941,904 / 136,300;
+  `tascam_x8` 943,802 / 136,508.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
+  Repeating the physical Start/Stop/Settings workflow remains the completion
+  check for this crash fix.
+
+### 2026-08-04: Final sequence action delivery and prepared-edit links
+
+- Fixed a sequence pipeline bug where Canon Smart and Tascam reported command
+  success when a request was only queued in the driver. If that action was the
+  last Stop step, `finishStop()` released the link before the next driver loop,
+  so the Tascam Stop write was never transmitted. Both clients now perform the
+  GATT write during main-loop command dispatch and return success only when the
+  write succeeds; notification-confirmed state remains asynchronous.
+- Added prepared-scene reconciliation. Editing waits/order keeps all existing
+  target links. Removing a target releases only that target; adding one keeps
+  unchanged links and prepares the new target before returning to `Ready`.
+  Amended ADR-020 so a successful Stop keeps prepared links while the run/edit
+  screen remains open; Back or Unlink performs teardown. This allows immediate
+  editing or restart without reconnecting unchanged targets.
+- Native tests: 30/30 passed, including editing a prepared wait without link
+  loss and removing/re-adding a target while preserving the other target.
+- UI simulator build and all captures passed, including the post-Stop Settings
+  regression. Firmware builds succeeded:
+  `crowpanel_128` 946,576 bytes flash / 138,028 bytes RAM;
+  `crowpanel_128_roboto` 916,112 / 138,028;
+  `canon_ble` 945,630 / 136,668;
+  `canon_trigger` 942,748 / 136,300;
+  `tascam_x8` 944,650 / 136,508.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
+  Physical Tascam Stop delivery and prepared-edit link retention remain the
+  final operator checks.
+
+### 2026-08-04: Sequence retry and immediate Relink lifecycle fix
+
+- Captured an operator-reported sequence failure with both devices nearby.
+  Canon Smart recovered to protocol-ready in 3.4 seconds, while Tascam's first
+  two direct attempts returned HCI `0x3e`; the previous policy then paid about
+  seven seconds to rediscover the already-saved peer and reached sequence
+  `Ready` at 18.7 seconds. Saved targets now receive a third direct attempt
+  before scan fallback. The terminal sequence preparation timeout is 30 seconds
+  rather than 20 seconds; successful readiness remains immediate.
+- Fixed immediate Unlink -> Relink activation failure. `deleteClient()` retains
+  NimBLE's global client slot until an asynchronous disconnect callback, so two
+  retiring sequence clients could exhaust capacity before Relink. The backend
+  now accepts logical link creation while old clients retire, provisions the
+  replacements from `pump()`, delays deinitialization until the client list is
+  empty, and ignores final callbacks whose client pointer no longer owns the
+  slot.
+- Hardware verification on the flashed `crowpanel_128` completed two
+  Unlink -> Relink cycles with Canon Smart + Tascam. Both reached true
+  protocol-ready: 13.7 seconds and 9.1 seconds. One Tascam session-open attempt
+  failed during the second cycle and recovered on its bounded per-link retry;
+  no stale callback canceled either reacquisition.
+- Native tests: 30/30 passed. UI simulator build and every capture through
+  `27b_scenes_settings_after_stop.png` passed; the post-Stop settings capture
+  reported 14,008 bytes free and 17,012-byte peak LVGL use.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 947,354 bytes flash / 138,028 bytes RAM;
+  `crowpanel_128_roboto` 916,890 / 138,028;
+  `canon_ble` 946,396 / 136,668;
+  `canon_trigger` 943,514 / 136,300;
+  `tascam_x8` 945,416 / 136,508.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
+  The ten-cycle median/p95 benchmark and physical Start/Stop checks remain
+  open; two successful relinks are regression evidence, not tranche completion.

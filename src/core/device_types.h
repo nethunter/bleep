@@ -110,6 +110,7 @@ struct CommandResult {
 
 struct DeviceRuntimeState {
   LinkState link = LinkState::Disconnected;
+  bool protocolReady = false;
   StateQuality quality = StateQuality::Unknown;
 };
 
@@ -154,4 +155,3 @@ struct DriverDescriptor {
 };
 
 }  // namespace studio
-

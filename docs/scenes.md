@@ -26,8 +26,27 @@ Later example with lights/groups (full Phase 6 gate):
 
 Generated reverse-Stop remains a later option (ADR-008). The first on-device
 tranche uses explicit Start and Stop lists (ADR-019) and prepares every target
-concurrently when the sequence run screen opens, holding links until leave,
-Cancel, or Stop complete (ADR-020).
+concurrently when the sequence run screen opens, holding links until Back or
+Unlink (ADR-020). ADR-021 supplies one scanner and independent
+async connection slots, so selecting one target does not stop discovery for
+the other preparing targets. A physical BLE connection alone is insufficient:
+the runner remains `Connecting` until every driver also publishes protocol
+readiness after its required discovery, subscriptions, and initialization.
+Connection preparation may overlap, but actions and waits execute exactly in
+their authored order; the seeded 500 ms wait is editable scene data, not an
+engine-level recording delay.
+
+Editing a prepared scene reconciles its target set in place. Links for targets
+that remain in the edited Start/Stop lists stay held, removed targets are
+released, and newly added targets prepare before the scene returns to `Ready`.
+Completing Stop keeps prepared links while the run/edit screen remains open so
+the sequence can be edited or restarted without reconnecting. Back and Unlink
+perform teardown.
+
+While a sequence run screen is open, the panel's hardware action button mirrors
+the enabled run action: Start when the sequence is ready (or restartable), and
+Stop when it is armed or Start is in flight. It does nothing while preparation
+or Stop is already in progress; leaving or unlinking remains a touch action.
 
 ## Data model
 
@@ -165,4 +184,3 @@ The temporary Portal-mode access point provides:
 
 Editing APIs exist only while Portal mode is active. Exiting Portal mode or
 reaching its inactivity timeout stops the HTTP server and access point.
-

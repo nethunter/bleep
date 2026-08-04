@@ -62,6 +62,7 @@ DeviceRuntimeState CanonTriggerDriver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
+  state.protocolReady = client_.protocolReady();
   state.quality = StateQuality::Unknown;
   return state;
 }

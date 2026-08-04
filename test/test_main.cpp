@@ -3,18 +3,24 @@
 #include <cmath>
 #include <cstring>
 
+#include "core/ble/ble_central.h"
+#include "core/ble/fake_ble_backend.h"
 #include "core/config_store.h"
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
 #include "core/scene_service.h"
 #include "core/scene_store.h"
+#include "devices/canon_ble/ble_match.h"
 #include "devices/canon_ble/protocol.h"
 #include "devices/canon_ble/state.h"
+#include "devices/canon_trigger/ble_match.h"
 #include "devices/canon_trigger/protocol.h"
 #include "devices/canon_trigger/state.h"
+#include "devices/shark_nano_ii/ble_match.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "devices/shark_nano_ii/state.h"
+#include "devices/tascam_x8/ble_match.h"
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
 
@@ -106,6 +112,7 @@ class FakeDriver : public studio::DeviceDriver {
   studio::DeviceRuntimeState runtimeState() const override {
     studio::DeviceRuntimeState state;
     state.link = active ? studio::LinkState::Connected : studio::LinkState::Disconnected;
+    state.protocolReady = active && ready;
     return state;
   }
   const void* specializedState() const override { return nullptr; }
@@ -115,6 +122,7 @@ class FakeDriver : public studio::DeviceDriver {
   bool consumePairingUpdate(studio::DeviceRecord&) override { return false; }
 
   bool active = false;
+  bool ready = true;
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
   int activationCount = 0;
   int deactivationCount = 0;
@@ -282,10 +290,10 @@ void test_reset_preserves_link_identity_and_preferences() {
 
 void test_canon_smartphone_handshake_and_record_protocol() {
   const canon_ble::CommandBytes request =
-      canon_ble::buildHandshakeRequest("StudioRemote");
-  TEST_ASSERT_EQUAL_UINT32(13, request.len);
+      canon_ble::buildHandshakeRequest("Ble(e)p");
+  TEST_ASSERT_EQUAL_UINT32(8, request.len);
   TEST_ASSERT_EQUAL_HEX8(0x01, request.bytes[0]);
-  TEST_ASSERT_EQUAL_UINT8_ARRAY("StudioRemote", &request.bytes[1], 12);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY("Ble(e)p", &request.bytes[1], 7);
 
   uint8_t controllerId[16];
   for (size_t i = 0; i < sizeof(controllerId); ++i) {
@@ -298,7 +306,7 @@ void test_canon_smartphone_handshake_and_record_protocol() {
                                 sizeof(controllerId));
 
   const canon_ble::CommandBytes name =
-      canon_ble::buildDeviceName("StudioRemote");
+      canon_ble::buildDeviceName("Ble(e)p");
   TEST_ASSERT_EQUAL_HEX8(0x04, name.bytes[0]);
   const canon_ble::CommandBytes type = canon_ble::buildAndroidDeviceType();
   const uint8_t expectedType[] = {0x05, 0x02};
@@ -988,6 +996,10 @@ void test_press_record_start_and_authored_stop() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::CommandType::RecordStop),
       static_cast<int>(tascamDriver.lastCommand));
+  TEST_ASSERT_TRUE(scenes.holdsLinks());
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+  scenes.cancel();
   TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
 }
 
@@ -1021,8 +1033,20 @@ void test_prepare_ready_then_start_from_held_links() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ScenePhase::Connecting),
       static_cast<int>(scenes.progress().phase));
+  tascamDriver.ready = false;
   devices.loop();
   scenes.loop(1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  // A recovering link may legitimately pass the old 20-second boundary;
+  // preparation remains active until the bounded 30-second terminal timeout.
+  scenes.loop(20001);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Busy),
+                        static_cast<int>(scenes.start(sceneId)));
+  tascamDriver.ready = true;
+  scenes.loop(20002);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
                         static_cast<int>(scenes.progress().phase));
   TEST_ASSERT_TRUE(scenes.holdsLinks());
@@ -1030,12 +1054,41 @@ void test_prepare_ready_then_start_from_held_links() {
   TEST_ASSERT_TRUE(devices.isActive(tascamId));
   TEST_ASSERT_FALSE(scenes.busy());
 
+  const studio::SceneRecord original = *scenes.find(sceneId);
+  studio::SceneRecord edited = original;
+  edited.startSteps[1] = studio::makeWaitStep(650);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(edited)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+
+  studio::SceneRecord cameraOnly = edited;
+  cameraOnly.startCount = 1;
+  cameraOnly.startSteps[0] =
+      studio::makeActionStep(canonId, studio::CommandType::RecordStart);
+  cameraOnly.stopCount = 1;
+  cameraOnly.stopSteps[0] =
+      studio::makeActionStep(canonId, studio::CommandType::RecordStop);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(cameraOnly)));
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_FALSE(devices.isActive(tascamId));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(original)));
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.start(sceneId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ScenePhase::RunningStart),
       static_cast<int>(scenes.progress().phase));
-  for (uint32_t t = 2; t < 600; ++t) {
+  for (uint32_t t = 3; t < 601; ++t) {
     devices.loop();
     scenes.loop(t);
   }
@@ -1048,6 +1101,280 @@ void test_prepare_ready_then_start_from_held_links() {
   scenes.cancel();
   TEST_ASSERT_FALSE(scenes.holdsLinks());
   TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
+}
+
+class BleTestDelegate : public studio::ble::BleCentralDelegate {
+ public:
+  void onBleAdvertisement(
+      studio::ble::LinkHandle link,
+      const studio::ble::Advertisement& advertisement) override {
+    ++advertisements;
+    lastAdvertisement = advertisement;
+    if (central != nullptr && selectAdvertisements) {
+      selected = central->selectAdvertisement(link, advertisement);
+    }
+  }
+
+  void onBleEvent(studio::ble::LinkHandle link,
+                  const studio::ble::Event& event) override {
+    ++events;
+    lastEvent = event.type;
+    if (central != nullptr && requestSecurityOnConnect &&
+        event.type == studio::ble::EventType::Connected) {
+      securityRequested = central->requestSecurity(link);
+    }
+  }
+
+  studio::ble::BleCentral* central = nullptr;
+  studio::ble::Advertisement lastAdvertisement;
+  studio::ble::EventType lastEvent = studio::ble::EventType::ScanEnded;
+  uint32_t advertisements = 0;
+  uint32_t events = 0;
+  bool selectAdvertisements = false;
+  bool requestSecurityOnConnect = false;
+  bool selected = false;
+  bool securityRequested = false;
+};
+
+studio::ble::Address bleAddress(const char* value, uint8_t type = 0) {
+  studio::ble::Address address;
+  std::strncpy(address.value, value, sizeof(address.value) - 1);
+  address.type = type;
+  return address;
+}
+
+studio::ble::Advertisement bleAdvertisement(const char* address,
+                                             const char* name,
+                                             uint16_t service) {
+  studio::ble::Advertisement advertisement;
+  advertisement.address = bleAddress(address);
+  size_t offset = 0;
+  const size_t nameLength = std::strlen(name);
+  advertisement.payload[offset++] = static_cast<uint8_t>(nameLength + 1);
+  advertisement.payload[offset++] = 0x09;
+  std::memcpy(advertisement.payload + offset, name, nameLength);
+  offset += nameLength;
+  advertisement.payload[offset++] = 3;
+  advertisement.payload[offset++] = 0x03;
+  advertisement.payload[offset++] = static_cast<uint8_t>(service & 0xff);
+  advertisement.payload[offset++] = static_cast<uint8_t>(service >> 8);
+  advertisement.payloadLength = static_cast<uint8_t>(offset);
+  return advertisement;
+}
+
+studio::ble::Advertisement bleAdvertisement128(
+    const uint8_t canonicalUuid[16]) {
+  studio::ble::Advertisement advertisement;
+  advertisement.address = bleAddress("11:22:33:44:55:66");
+  advertisement.payload[0] = 17;
+  advertisement.payload[1] = 0x07;
+  for (size_t i = 0; i < 16; ++i) {
+    advertisement.payload[2 + i] = canonicalUuid[15 - i];
+  }
+  advertisement.payloadLength = 18;
+  return advertisement;
+}
+
+void test_ble_central_lazy_lifetime_and_slot_exhaustion() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegates[CONFIG_MAX_ACTIVE_LINKS + 1];
+  studio::ble::LinkHandle handles[CONFIG_MAX_ACTIVE_LINKS] = {};
+
+  TEST_ASSERT_FALSE(backend.initialized());
+  for (size_t i = 0; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
+    handles[i] = central.acquire(delegates[i], {});
+    TEST_ASSERT_NOT_EQUAL(studio::ble::kInvalidLinkHandle, handles[i]);
+  }
+  TEST_ASSERT_TRUE(backend.initialized());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.beginCalls());
+  TEST_ASSERT_EQUAL_UINT32(
+      studio::ble::kInvalidLinkHandle,
+      central.acquire(delegates[CONFIG_MAX_ACTIVE_LINKS], {}));
+
+  for (studio::ble::LinkHandle handle : handles) {
+    central.release(handle);
+  }
+  TEST_ASSERT_FALSE(backend.initialized());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.shutdownCalls());
+}
+
+void test_ble_central_timing_and_readiness_reset_on_release() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  studio::ble::LinkHandle link = central.acquire(delegate, {});
+  central.loop(25);
+  TEST_ASSERT_TRUE(central.requestScan(link));
+  TEST_ASSERT_EQUAL_UINT32(25, central.timingStartedAt(link));
+  central.markProtocolReady(link);
+  TEST_ASSERT_TRUE(central.protocolReady(link));
+
+  central.release(link);
+  TEST_ASSERT_FALSE(central.protocolReady(link));
+  TEST_ASSERT_EQUAL_UINT32(0, central.timingStartedAt(link));
+
+  link = central.acquire(delegate, {});
+  central.loop(100);
+  TEST_ASSERT_TRUE(central.requestScan(link));
+  TEST_ASSERT_EQUAL_UINT32(100, central.timingStartedAt(link));
+  TEST_ASSERT_FALSE(central.protocolReady(link));
+  central.release(link);
+}
+
+void test_ble_central_shared_scan_claims_and_independent_release() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate first;
+  BleTestDelegate second;
+  first.central = &central;
+  first.selectAdvertisements = true;
+  const studio::ble::LinkHandle firstLink = central.acquire(first, {});
+  const studio::ble::LinkHandle secondLink = central.acquire(second, {});
+  TEST_ASSERT_TRUE(central.requestScan(firstLink));
+  TEST_ASSERT_TRUE(central.requestScan(secondLink));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.scanStarts());
+
+  const studio::ble::Advertisement advertisement =
+      bleAdvertisement("11:22:33:44:55:66", "Portacapture X8", 0xfff0);
+  backend.emitAdvertisement(advertisement);
+  central.loop(10);
+  TEST_ASSERT_EQUAL_UINT32(1, first.advertisements);
+  TEST_ASSERT_EQUAL_UINT32(1, second.advertisements);
+  TEST_ASSERT_TRUE(first.selected);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_FALSE(
+      central.selectAdvertisement(secondLink, advertisement));
+
+  central.release(secondLink);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, central.activeCount());
+  central.release(firstLink);
+}
+
+void test_ble_central_concurrent_links_retry_watchdog_and_security() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate first;
+  BleTestDelegate second;
+  studio::ble::ConnectPolicy policy;
+  policy.security = studio::ble::SecurityPolicy::BondSecure;
+  policy.connectWatchdogMs = 6000;
+  const studio::ble::LinkHandle firstLink = central.acquire(first, policy);
+  const studio::ble::LinkHandle secondLink = central.acquire(second, {});
+  first.central = &central;
+  first.requestSecurityOnConnect = true;
+  TEST_ASSERT_TRUE(
+      central.requestConnect(firstLink, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_TRUE(
+      central.requestConnect(secondLink, bleAddress("22:33:44:55:66:77")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(firstLink));
+  TEST_ASSERT_EQUAL_UINT32(0, backend.connectCalls(secondLink));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = firstLink;
+  backend.emit(connected);
+  central.loop(100);
+  TEST_ASSERT_FALSE(central.protocolReady(firstLink));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.parameterUpdateCalls(firstLink));
+  TEST_ASSERT_EQUAL_UINT16(6, backend.lastParameters(firstLink).minInterval);
+  TEST_ASSERT_TRUE(first.securityRequested);
+  TEST_ASSERT_EQUAL_UINT32(1, backend.secureCalls(firstLink));
+  TEST_ASSERT_EQUAL_UINT32(0, backend.connectCalls(secondLink));
+  studio::ble::Event secured;
+  secured.type = studio::ble::EventType::SecurityComplete;
+  secured.link = firstLink;
+  secured.succeeded = true;
+  backend.emit(secured);
+  central.loop(200);
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(secondLink));
+  backend.setParameterUpdateResult(false);
+  central.markProtocolReady(firstLink);
+  TEST_ASSERT_TRUE(central.protocolReady(firstLink));
+  TEST_ASSERT_EQUAL_UINT32(2, backend.parameterUpdateCalls(firstLink));
+  TEST_ASSERT_EQUAL_UINT16(12, backend.lastParameters(firstLink).minInterval);
+
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = secondLink;
+  backend.emit(failed);
+  central.loop(200);
+  central.loop(1699);
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(secondLink));
+  central.loop(1700);
+  TEST_ASSERT_EQUAL_UINT32(2, backend.connectCalls(secondLink));
+
+  backend.emit(failed);
+  central.loop(1701);
+  central.loop(4700);
+  TEST_ASSERT_EQUAL_UINT32(2, backend.connectCalls(secondLink));
+  central.loop(4701);
+  TEST_ASSERT_EQUAL_UINT32(3, backend.connectCalls(secondLink));
+
+  // After three failed direct attempts, rediscover the peer rather than
+  // retrying a potentially stale saved address forever.
+  backend.emit(failed);
+  central.loop(4702);
+  central.loop(9201);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(9202);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+
+  TEST_ASSERT_TRUE(central.requestConnect(
+      secondLink, bleAddress("22:33:44:55:66:77")));
+  central.loop(15203);
+  TEST_ASSERT_TRUE(backend.disconnectCalls(secondLink) > 0);
+  central.release(firstLink);
+  TEST_ASSERT_FALSE(central.protocolReady(firstLink));
+  central.release(secondLink);
+}
+
+void test_ble_central_parser_bonds_and_queue_overflow() {
+  const studio::ble::Advertisement advertisement =
+      bleAdvertisement("11:22:33:44:55:66", "Shark Nano II", 0xfff0);
+  TEST_ASSERT_TRUE(
+      studio::ble::advertisementNameEquals(advertisement, "Shark Nano II"));
+  TEST_ASSERT_TRUE(
+      studio::ble::advertisementNameContains(advertisement, "Nano"));
+  TEST_ASSERT_TRUE(studio::ble::advertisesService(advertisement, "fff0"));
+
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  TEST_ASSERT_TRUE(
+      central.deleteBond(bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.bondDeleteCalls());
+  TEST_ASSERT_FALSE(backend.initialized());
+
+  for (size_t i = 0; i < CONFIG_BLE_EVENT_QUEUE_SIZE + 2; ++i) {
+    backend.emitAdvertisement(advertisement);
+  }
+  TEST_ASSERT_EQUAL_UINT32(2, backend.droppedEvents());
+}
+
+void test_ble_device_advertisement_matchers() {
+  const studio::ble::Advertisement sharkAdvertisement =
+      bleAdvertisement("11:22:33:44:55:66", "Shark Nano II", 0xfff0);
+  TEST_ASSERT_TRUE(shark::matchesAdvertisement(sharkAdvertisement));
+  const studio::ble::Advertisement tascamAdvertisement =
+      bleAdvertisement("22:33:44:55:66:77", tascam_x8::kDeviceName, 0x1800);
+  TEST_ASSERT_TRUE(tascam_x8::matchesAdvertisement(tascamAdvertisement));
+
+  const uint8_t triggerUuid[16] = {
+      0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+      0x00, 0x00, 0xd8, 0x49, 0x2f, 0xff, 0xa8, 0x21};
+  TEST_ASSERT_TRUE(canon_trigger::matchesAdvertisement(
+      bleAdvertisement128(triggerUuid)));
+
+  studio::ble::Advertisement canonAdvertisement;
+  canonAdvertisement.address = bleAddress("33:44:55:66:77:88");
+  canonAdvertisement.payload[0] = 3;
+  canonAdvertisement.payload[1] = 0xff;
+  canonAdvertisement.payload[2] = 0xa9;
+  canonAdvertisement.payload[3] = 0x01;
+  canonAdvertisement.payloadLength = 4;
+  TEST_ASSERT_TRUE(
+      canon_ble::matchesAdvertisement(canonAdvertisement));
 }
 
 }  // namespace
@@ -1078,5 +1405,11 @@ int main(int, char**) {
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_press_record_start_and_authored_stop);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
+  RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
+  RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
+  RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
+  RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
+  RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
+  RUN_TEST(test_ble_device_advertisement_matchers);
   return UNITY_END();
 }

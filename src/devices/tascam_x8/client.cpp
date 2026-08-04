@@ -6,6 +6,9 @@
 #include <cstring>
 #include <string>
 
+#include "core/ble/ble_runtime.h"
+#include "core/ble/ble_timing.h"
+#include "devices/tascam_x8/ble_match.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
@@ -16,53 +19,21 @@ namespace {
 const NimBLEUUID kPrimaryService(kPrimaryServiceUuid);
 const NimBLEUUID kDataCharacteristic(kDataCharacteristicUuid);
 const NimBLEUUID kSessionCharacteristic(kSessionCharacteristicUuid);
-TascamX8Client* gCallbackClient = nullptr;
-
-class ScanCallbacks : public NimBLEScanCallbacks {
- public:
-  void onResult(const NimBLEAdvertisedDevice* device) override {
-    if (device != nullptr && device->getName() == kDeviceName &&
-        gCallbackClient != nullptr) {
-      gCallbackClient->onScanMatch(device);
-    }
-  }
-};
-
-class ClientCallbacks : public NimBLEClientCallbacks {
- public:
-  void onConnect(NimBLEClient*) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onLinkConnected();
-    }
-  }
-  void onConnectFail(NimBLEClient*, int) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onConnectFailed();
-    }
-  }
-  void onDisconnect(NimBLEClient*, int) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onLinkDisconnected();
-    }
-  }
-};
+TascamX8Client* gNotifyClient = nullptr;
 
 void dataNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
                           size_t length, bool) {
-  if (gCallbackClient != nullptr) {
-    gCallbackClient->onDataBytes(data, length);
+  if (gNotifyClient != nullptr) {
+    gNotifyClient->onDataBytes(data, length);
   }
 }
 
 void sessionNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
                              size_t length, bool) {
-  if (gCallbackClient != nullptr && data != nullptr && length > 0) {
-    gCallbackClient->onSessionByte(data[length - 1]);
+  if (gNotifyClient != nullptr && data != nullptr && length > 0) {
+    gNotifyClient->onSessionByte(data[length - 1]);
   }
 }
-
-ScanCallbacks gScanCallbacks;
-ClientCallbacks gClientCallbacks;
 
 }  // namespace
 
@@ -70,11 +41,16 @@ void TascamX8Client::begin() {
   if (initialized_) {
     return;
   }
-  notifyStream_ = xStreamBufferCreate(2048, 1);
-  NimBLEDevice::init("");
-  NimBLEDevice::setMTU(247);
-  gCallbackClient = this;
-  initialized_ = true;
+  if (notifyStream_ == nullptr) {
+    notifyStream_ = xStreamBufferCreate(2048, 1);
+  }
+  studio::ble::ConnectPolicy policy;
+  policy.connectTimeoutMs = 4000;
+  policy.connectWatchdogMs = 6000;
+  policy.diagnosticTag = "tascam_x8";
+  linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
+  initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  gNotifyClient = this;
 }
 
 void TascamX8Client::activate(const char* address, uint8_t addressType,
@@ -96,8 +72,6 @@ void TascamX8Client::activate(const char* address, uint8_t addressType,
   state_.hasSavedDevice = haveTarget_;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
-  connectFails_ = 0;
-  retryAtMs_ = 0;
   if (haveTarget_) {
     beginConnect();
   } else {
@@ -107,15 +81,11 @@ void TascamX8Client::activate(const char* address, uint8_t addressType,
 
 void TascamX8Client::deactivate() {
   connectRequested_ = false;
-  if (initialized_ && scanActive_) {
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-  }
-  teardownConnection();
-  scanHit_ = false;
-  connectedFlag_ = false;
-  connectFailedFlag_ = false;
-  disconnectedFlag_ = false;
+  studio::ble::bleCentral().release(linkHandle_);
+  linkHandle_ = studio::ble::kInvalidLinkHandle;
+  initialized_ = false;
+  client_ = nullptr;
+  gNotifyClient = nullptr;
   startRequested_ = false;
   stopRequested_ = false;
   setupPending_ = false;
@@ -126,39 +96,10 @@ void TascamX8Client::deactivate() {
 }
 
 void TascamX8Client::loop() {
-  if (connectFailedFlag_) {
-    connectFailedFlag_ = false;
-    ++connectFails_;
-    state_.link = Link::Disconnected;
-    scheduleRetry(1500u * (connectFails_ < 4 ? connectFails_ : 4));
-  }
-  if (disconnectedFlag_) {
-    disconnectedFlag_ = false;
-    handleDisconnect();
-  }
-  if (connectedFlag_) {
-    connectedFlag_ = false;
-    setupPending_ = true;
-    setupAtMs_ = millis() + 100;
-  }
-
   drainNotifications();
 
   if (!connectRequested_) {
     return;
-  }
-
-  if (scanHit_) {
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-    std::strncpy(targetAddr_, scanHitAddr_, sizeof(targetAddr_) - 1);
-    targetAddr_[sizeof(targetAddr_) - 1] = '\0';
-    targetAddrType_ = scanHitType_;
-    std::strncpy(targetName_, scanHitName_, sizeof(targetName_) - 1);
-    targetName_[sizeof(targetName_) - 1] = '\0';
-    haveTarget_ = true;
-    scanHit_ = false;
-    beginConnect();
   }
 
   const uint32_t now = millis();
@@ -166,9 +107,7 @@ void TascamX8Client::loop() {
     setupPending_ = false;
     if (!connectRequested_ || client_ == nullptr || !client_->isConnected() ||
         !completeConnect()) {
-      if (client_ != nullptr && client_->isConnected()) {
-        client_->disconnect();
-      }
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
       return;
     }
   }
@@ -176,22 +115,37 @@ void TascamX8Client::loop() {
       sessionByte_ == kSessionOpenResponse) {
     sessionByte_ = 0;
     sessionOpening_ = false;
+    // LinkState and protocol readiness are independent. The transport write
+    // helper requires the physical link state, but the sequence remains gated
+    // by BleCentral::protocolReady until this initialization write succeeds.
     state_.link = Link::Connected;
+    const uint32_t initializationStartedMs = millis();
+    if (!sendData(buildInitialization())) {
+      state_.link = Link::Disconnected;
+      studio::ble::logTiming(
+          "tascam_x8", linkHandle_, "session_initialization",
+          millis() - initializationStartedMs,
+          millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+          "failed");
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      return;
+    }
+    studio::ble::logTiming(
+        "tascam_x8", linkHandle_, "session_initialization",
+        millis() - initializationStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "ok");
     state_.hasSavedDevice = true;
     std::strncpy(state_.deviceName, targetName_,
                  sizeof(state_.deviceName) - 1);
     state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
     haveTarget_ = true;
     pairingChanged_ = true;
-    connectFails_ = 0;
+    studio::ble::bleCentral().markProtocolReady(linkHandle_);
     keepaliveAtMs_ = now + 4000;
-    if (!sendData(buildInitialization())) {
-      client_->disconnect();
-      return;
-    }
   } else if (sessionOpening_ && state_.link == Link::Connecting &&
              static_cast<int32_t>(now - sessionDeadlineMs_) >= 0) {
-    client_->disconnect();
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     return;
   }
   if (connected() && startRequested_) {
@@ -218,20 +172,9 @@ void TascamX8Client::loop() {
     const uint8_t value = kSessionKeepalive;
     if (sessionChar_ == nullptr ||
         !sessionChar_->writeValue(&value, 1, true)) {
-      if (client_ != nullptr) {
-        client_->disconnect();
-      }
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     } else {
       keepaliveAtMs_ = now + kSessionKeepaliveMs;
-    }
-  }
-
-  if (state_.link == Link::Disconnected &&
-      static_cast<int32_t>(now - retryAtMs_) >= 0) {
-    if (haveTarget_ && connectFails_ < 2) {
-      beginConnect();
-    } else {
-      beginScan();
     }
   }
 }
@@ -262,7 +205,11 @@ bool TascamX8Client::startRecording() {
     return false;
   }
   markCommandQueued(state_, true);
-  startRequested_ = true;
+  if (!sendData(buildRecordStart())) {
+    markCommandWriteFailed(state_);
+    return false;
+  }
+  commandDeadlineMs_ = millis() + 6000;
   return true;
 }
 
@@ -273,7 +220,11 @@ bool TascamX8Client::stopRecording() {
     return false;
   }
   markCommandQueued(state_, false);
-  stopRequested_ = true;
+  if (!sendData(buildRecordStop())) {
+    markCommandWriteFailed(state_);
+    return false;
+  }
+  commandDeadlineMs_ = millis() + 6000;
   return true;
 }
 
@@ -298,45 +249,29 @@ bool TascamX8Client::consumePairingUpdate(
 }
 
 void TascamX8Client::beginScan() {
-  if (scanActive_) {
-    state_.link = Link::Scanning;
-    return;
-  }
-  NimBLEScan* scan = NimBLEDevice::getScan();
-  scan->setScanCallbacks(&gScanCallbacks, false);
-  scan->setActiveScan(true);
-  scan->setInterval(100);
-  scan->setWindow(80);
-  scan->clearResults();
-  scanHit_ = false;
-  scan->start(0, false, true);
-  scanActive_ = true;
+  studio::ble::bleCentral().requestScan(linkHandle_, !haveTarget_);
   state_.link = Link::Scanning;
 }
 
 void TascamX8Client::beginConnect() {
-  if (client_ == nullptr) {
-    client_ = NimBLEDevice::createClient();
-    client_->setClientCallbacks(&gClientCallbacks, false);
-    client_->setConnectTimeout(4000);
-  }
   state_.link = Link::Connecting;
-  NimBLEAddress address(std::string(targetAddr_), targetAddrType_);
-  connectedFlag_ = false;
-  connectFailedFlag_ = false;
   setupPending_ = false;
   sessionOpening_ = false;
-  if (client_->connect(address, true, true, true)) {
-    return;
-  }
-  ++connectFails_;
-  state_.link = Link::Disconnected;
-  scheduleRetry(1500u * (connectFails_ < 4 ? connectFails_ : 4));
+  studio::ble::Address address;
+  std::strncpy(address.value, targetAddr_, sizeof(address.value) - 1);
+  address.type = targetAddrType_;
+  studio::ble::bleCentral().requestConnect(linkHandle_, address);
 }
 
 bool TascamX8Client::completeConnect() {
+  const uint32_t discoveryStartedMs = millis();
   NimBLERemoteService* service = client_->getService(kPrimaryService);
   if (service == nullptr) {
+    studio::ble::logTiming(
+        "tascam_x8", linkHandle_, "gatt_setup",
+        millis() - discoveryStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "failed");
     return false;
   }
   dataChar_ = service->getCharacteristic(kDataCharacteristic);
@@ -348,6 +283,10 @@ bool TascamX8Client::completeConnect() {
     sessionChar_ = nullptr;
     return false;
   }
+  studio::ble::logTiming(
+      "tascam_x8", linkHandle_, "gatt_setup",
+      millis() - discoveryStartedMs,
+      millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
 
   scanner_.reset();
   sessionByte_ = 0;
@@ -364,11 +303,7 @@ bool TascamX8Client::completeConnect() {
 }
 
 void TascamX8Client::teardownConnection() {
-  if (client_ != nullptr && client_->isConnected()) {
-    client_->disconnect();
-  } else if (client_ != nullptr && state_.link == Link::Connecting) {
-    client_->cancelConnect();
-  }
+  studio::ble::bleCentral().disconnect(linkHandle_);
   setupPending_ = false;
   sessionOpening_ = false;
   dataChar_ = nullptr;
@@ -387,7 +322,6 @@ void TascamX8Client::handleDisconnect() {
   scanner_.reset();
   resetTransientState(state_);
   state_.link = Link::Disconnected;
-  scheduleRetry(1500);
 }
 
 void TascamX8Client::drainNotifications() {
@@ -411,35 +345,43 @@ bool TascamX8Client::sendData(const FrameBytes& frame) {
          dataChar_->writeValue(frame.bytes, frame.len, true);
 }
 
-void TascamX8Client::scheduleRetry(uint32_t delayMs) {
-  retryAtMs_ = millis() + delayMs;
-}
-
-void TascamX8Client::onScanMatch(
-    const NimBLEAdvertisedDevice* device) {
-  if (device == nullptr || scanHit_) {
+void TascamX8Client::onBleAdvertisement(
+    studio::ble::LinkHandle link,
+    const studio::ble::Advertisement& advertisement) {
+  if (link != linkHandle_ ||
+      !matchesAdvertisement(advertisement)) {
     return;
   }
-  const std::string address = device->getAddress().toString();
-  const std::string name = device->getName();
-  std::strncpy(scanHitAddr_, address.c_str(), sizeof(scanHitAddr_) - 1);
-  scanHitAddr_[sizeof(scanHitAddr_) - 1] = '\0';
-  scanHitType_ = device->getAddress().getType();
-  std::strncpy(scanHitName_, name.c_str(), sizeof(scanHitName_) - 1);
-  scanHitName_[sizeof(scanHitName_) - 1] = '\0';
-  scanHit_ = true;
+  std::strncpy(targetAddr_, advertisement.address.value,
+               sizeof(targetAddr_) - 1);
+  targetAddrType_ = advertisement.address.type;
+  studio::ble::advertisementName(advertisement, targetName_,
+                                 sizeof(targetName_));
+  haveTarget_ = true;
+  state_.link = Link::Connecting;
+  studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
 }
 
-void TascamX8Client::onLinkConnected() {
-  connectedFlag_ = true;
+void TascamX8Client::onBleEvent(studio::ble::LinkHandle link,
+                                const studio::ble::Event& event) {
+  if (link != linkHandle_) {
+    return;
+  }
+  if (event.type == studio::ble::EventType::Connected) {
+    client_ = static_cast<NimBLEClient*>(
+        studio::ble::bleCentral().nativeClient(linkHandle_));
+    setupPending_ = true;
+    setupAtMs_ = millis();
+  } else if (event.type == studio::ble::EventType::ConnectFailed) {
+    state_.link = Link::Disconnected;
+  } else if (event.type == studio::ble::EventType::Disconnected) {
+    client_ = nullptr;
+    handleDisconnect();
+  }
 }
 
-void TascamX8Client::onConnectFailed() {
-  connectFailedFlag_ = true;
-}
-
-void TascamX8Client::onLinkDisconnected() {
-  disconnectedFlag_ = true;
+bool TascamX8Client::protocolReady() const {
+  return studio::ble::bleCentral().protocolReady(linkHandle_);
 }
 
 void TascamX8Client::onDataBytes(const uint8_t* data, size_t len) {

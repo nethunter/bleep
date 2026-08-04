@@ -6,6 +6,9 @@
 #include <cstring>
 #include <string>
 
+#include "core/ble/ble_runtime.h"
+#include "core/ble/ble_timing.h"
+#include "devices/shark_nano_ii/ble_match.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
@@ -16,45 +19,11 @@ namespace {
 const NimBLEUUID kServiceUuid("fff0");
 const NimBLEUUID kWriteUuid("fff2");
 const NimBLEUUID kNotifyUuid("fff1");
-SharkClient* gCallbackClient = nullptr;
-
-bool nameLooksLikeShark(const std::string& name) {
-  return name.find("Nano") != std::string::npos || name.find("Shark") != std::string::npos;
-}
-
-class ScanCallbacks : public NimBLEScanCallbacks {
- public:
-  void onResult(const NimBLEAdvertisedDevice* device) override {
-    if (device == nullptr) {
-      return;
-    }
-    bool match = device->isAdvertisingService(kServiceUuid);
-    if (!match) {
-      match = nameLooksLikeShark(device->getName());
-    }
-    if (match) {
-      if (gCallbackClient != nullptr) {
-        gCallbackClient->onScanMatch(device);
-      }
-    }
-  }
-};
-
-class ClientCallbacks : public NimBLEClientCallbacks {
- public:
-  void onDisconnect(NimBLEClient*, int) override {
-    if (gCallbackClient != nullptr) {
-      gCallbackClient->onLinkDisconnected();
-    }
-  }
-};
-
-ScanCallbacks gScanCallbacks;
-ClientCallbacks gClientCallbacks;
+SharkClient* gNotifyClient = nullptr;
 
 void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data, size_t length, bool) {
-  if (gCallbackClient != nullptr) {
-    gCallbackClient->onNotifyBytes(data, length);
+  if (gNotifyClient != nullptr) {
+    gNotifyClient->onNotifyBytes(data, length);
   }
 }
 
@@ -64,12 +33,16 @@ void SharkClient::begin() {
   if (initialized_) {
     return;
   }
-  notifyStream_ = xStreamBufferCreate(1024, 1);
-
-  NimBLEDevice::init("");
-  NimBLEDevice::setMTU(247);
-  gCallbackClient = this;
-  initialized_ = true;
+  if (notifyStream_ == nullptr) {
+    notifyStream_ = xStreamBufferCreate(1024, 1);
+  }
+  studio::ble::ConnectPolicy policy;
+  policy.connectTimeoutMs = 3000;
+  policy.connectWatchdogMs = 3000;
+  policy.diagnosticTag = "shark_nano_ii";
+  linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
+  initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  gNotifyClient = this;
 }
 
 void SharkClient::activate(const char* address, uint8_t addressType, const char* name,
@@ -91,8 +64,6 @@ void SharkClient::activate(const char* address, uint8_t addressType, const char*
   state_.hasSavedDevice = haveTarget_;
   strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
-  connectFails_ = 0;
-  retryAtMs_ = 0;
   if (haveTarget_) {
     beginConnect();
   } else {
@@ -102,67 +73,37 @@ void SharkClient::activate(const char* address, uint8_t addressType, const char*
 
 void SharkClient::deactivate() {
   connectRequested_ = false;
-  if (initialized_ && scanActive_) {
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-  }
   stopMotion();
-  teardownConnection();
-  disconnectedFlag_ = false;
-  scanHit_ = false;
+  studio::ble::bleCentral().release(linkHandle_);
+  linkHandle_ = studio::ble::kInvalidLinkHandle;
+  initialized_ = false;
+  client_ = nullptr;
+  gNotifyClient = nullptr;
+  setupPending_ = false;
   resetDeviceState();
   state_.link = Link::Disconnected;
 }
 
 void SharkClient::loop() {
-  if (disconnectedFlag_) {
-    disconnectedFlag_ = false;
-    handleDisconnect();
-  }
-
   drainNotifications();
 
   if (!connectRequested_) {
     return;
   }
 
-  if (scanHit_) {
-    // Snapshot the matched device and stop scanning before connecting.
-    NimBLEDevice::getScan()->stop();
-    scanActive_ = false;
-    strncpy(targetAddr_, scanHitAddr_, sizeof(targetAddr_) - 1);
-    targetAddr_[sizeof(targetAddr_) - 1] = '\0';
-    targetAddrType_ = scanHitType_;
-    strncpy(targetName_, scanHitName_, sizeof(targetName_) - 1);
-    targetName_[sizeof(targetName_) - 1] = '\0';
-    haveTarget_ = true;
-    scanHit_ = false;
-    beginConnect();
+  if (setupPending_) {
+    setupPending_ = false;
+    if (client_ == nullptr || !client_->isConnected()) {
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      return;
+    }
+    completeConnect();
   }
 
   const uint32_t now = millis();
 
   if (trackingPending_ && now > trackingPendingExpiryMs_) {
     trackingPending_ = false;
-  }
-
-  switch (state_.link) {
-    case Link::Disconnected:
-      if (now >= retryAtMs_) {
-        // Try a couple of fast direct connects to the saved device, then fall
-        // back to non-blocking scanning so the UI stays responsive when the
-        // slider is powered off or its address has changed.
-        if (haveTarget_ && connectFails_ < 2) {
-          beginConnect();
-        } else {
-          beginScan();
-        }
-      }
-      break;
-    case Link::Scanning:
-    case Link::Connecting:
-    case Link::Connected:
-      break;
   }
 }
 
@@ -176,11 +117,9 @@ void SharkClient::startScan() {
 }
 
 void SharkClient::disconnectLink() {
-  teardownConnection();
+  studio::ble::bleCentral().disconnect(linkHandle_, true, 1500);
   resetDeviceState();
   state_.link = Link::Disconnected;
-  // Stay disconnected for a moment, then auto-reconnect if a device is known.
-  scheduleRetry(retryAtMs_, 1500);
 }
 
 void SharkClient::forgetDevice() {
@@ -213,52 +152,29 @@ bool SharkClient::consumePairingUpdate(char* address, size_t addressCapacity,
 }
 
 void SharkClient::beginScan() {
-  if (scanActive_) {
-    state_.link = Link::Scanning;
-    return;
-  }
-  NimBLEScan* scan = NimBLEDevice::getScan();
-  scan->setScanCallbacks(&gScanCallbacks, false);
-  scan->setActiveScan(true);
-  scan->setInterval(100);
-  scan->setWindow(80);
-  scan->clearResults();
-  scanHit_ = false;
-  scan->start(0, false, true);  // 0 == scan until stopped
-  scanActive_ = true;
+  studio::ble::bleCentral().requestScan(linkHandle_, !haveTarget_);
   state_.link = Link::Scanning;
 }
 
 void SharkClient::beginConnect() {
-  if (client_ == nullptr) {
-    client_ = NimBLEDevice::createClient();
-    client_->setClientCallbacks(&gClientCallbacks, false);
-    client_->setConnectTimeout(3000);
-  }
   state_.link = Link::Connecting;
-
-  NimBLEAddress address(std::string(targetAddr_), targetAddrType_);
-  const bool ok = client_->connect(address, true, false, true);
-  if (ok) {
-    completeConnect();
-    return;
-  }
-
-  // Connection failed: back off and let loop() decide whether to retry the
-  // direct connect or fall back to scanning.
-  connectFails_++;
-  state_.link = Link::Disconnected;
-  uint32_t delay = 1500u * (connectFails_ < 4 ? connectFails_ : 4);
-  scheduleRetry(retryAtMs_, delay);
+  studio::ble::Address address;
+  std::strncpy(address.value, targetAddr_, sizeof(address.value) - 1);
+  address.type = targetAddrType_;
+  studio::ble::bleCentral().requestConnect(linkHandle_, address);
 }
 
 void SharkClient::completeConnect() {
+  const uint32_t discoveryStartedMs = millis();
   NimBLERemoteService* service = client_->getService(kServiceUuid);
   if (service == nullptr) {
-    client_->disconnect();
-    connectFails_++;
     state_.link = Link::Disconnected;
-    scheduleRetry(retryAtMs_, 2000);
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    studio::ble::logTiming(
+        "shark_nano_ii", linkHandle_, "gatt_setup",
+        millis() - discoveryStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "failed");
     return;
   }
 
@@ -266,49 +182,68 @@ void SharkClient::completeConnect() {
   NimBLERemoteCharacteristic* notifyChar = service->getCharacteristic(kNotifyUuid);
   if (writeChar_ == nullptr || notifyChar == nullptr) {
     writeChar_ = nullptr;
-    client_->disconnect();
-    connectFails_++;
     state_.link = Link::Disconnected;
-    scheduleRetry(retryAtMs_, 2000);
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     return;
   }
 
   scanner_.reset();
-  notifyChar->subscribe(true, notifyTrampoline, true);
+  if (!notifyChar->subscribe(true, notifyTrampoline, true)) {
+    writeChar_ = nullptr;
+    state_.link = Link::Disconnected;
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    studio::ble::logTiming(
+        "shark_nano_ii", linkHandle_, "gatt_setup",
+        millis() - discoveryStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "failed");
+    return;
+  }
 
   resetDeviceState();
   strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   state_.link = Link::Connected;
-  connectFails_ = 0;
-
+  if (!sendHandshake()) {
+    state_.link = Link::Disconnected;
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    studio::ble::logTiming(
+        "shark_nano_ii", linkHandle_, "gatt_setup",
+        millis() - discoveryStartedMs,
+        millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_),
+        "failed");
+    return;
+  }
   state_.hasSavedDevice = true;
   pairingChanged_ = true;
-
-  sendHandshake();
+  studio::ble::bleCentral().markProtocolReady(linkHandle_);
+  studio::ble::logTiming(
+      "shark_nano_ii", linkHandle_, "gatt_setup",
+      millis() - discoveryStartedMs,
+      millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
 }
 
 void SharkClient::teardownConnection() {
-  if (client_ != nullptr && client_->isConnected()) {
-    client_->disconnect();
-  }
+  studio::ble::bleCentral().disconnect(linkHandle_);
   writeChar_ = nullptr;
 }
 
 void SharkClient::handleDisconnect() {
   writeChar_ = nullptr;
+  setupPending_ = false;
   resetDeviceState();
   state_.link = Link::Disconnected;
-  scheduleRetry(retryAtMs_, 1500);
 }
 
-void SharkClient::sendHandshake() {
+bool SharkClient::sendHandshake() {
   // Replay the connection handshake documented in protocol.md so the slider
   // begins pushing state, then request the initial snapshots.
   const uint8_t initData[1] = {0x02};
-  sendFrame(encodeFrame(0x06, 0x18, initData, 1));
-  sendFrame(buildControlPing(0x15, nextTx()));
-  refreshAll();
+  return writeFrameRaw(encodeFrame(0x06, 0x18, initData, 1)) &&
+         writeFrameRaw(buildControlPing(0x15, nextTx())) &&
+         writeFrameRaw(buildControlPing(0x00, nextTx())) &&
+         writeFrameRaw(buildControlPing(0x03, nextTx())) &&
+         writeFrameRaw(buildTimingQuery(nextTx()));
 }
 
 void SharkClient::refreshAll() {
@@ -321,7 +256,14 @@ void SharkClient::refreshAll() {
 }
 
 bool SharkClient::sendFrame(const FrameBytes& frame, bool response) {
-  if (writeChar_ == nullptr || !connected() || frame.len == 0) {
+  if (!connected()) {
+    return false;
+  }
+  return writeFrameRaw(frame, response);
+}
+
+bool SharkClient::writeFrameRaw(const FrameBytes& frame, bool response) {
+  if (writeChar_ == nullptr || frame.len == 0) {
     return false;
   }
   return writeChar_->writeValue(frame.bytes, frame.len, response);
@@ -524,27 +466,55 @@ void SharkClient::stopMotion() {
   setMotionVector(0, 0);
 }
 
-void SharkClient::onScanMatch(const NimBLEAdvertisedDevice* device) {
-  if (scanHit_) {
-    return;  // already captured a candidate; ignore until loop() consumes it
+void SharkClient::onBleAdvertisement(
+    studio::ble::LinkHandle link,
+    const studio::ble::Advertisement& advertisement) {
+  if (link != linkHandle_ || !matchesAdvertisement(advertisement)) {
+    return;
   }
-  const std::string addr = device->getAddress().toString();
   // When a device is remembered, only auto-reconnect to that exact address so
   // we don't latch onto a different nearby slider. Pairing (no saved device)
   // accepts the first matching Shark Nano.
-  if (haveTarget_ && targetAddr_[0] != '\0' && addr != targetAddr_) {
+  if (haveTarget_ && targetAddr_[0] != '\0' &&
+      std::strcmp(advertisement.address.value, targetAddr_) != 0) {
     return;
   }
-  strncpy(scanHitAddr_, addr.c_str(), sizeof(scanHitAddr_) - 1);
-  scanHitAddr_[sizeof(scanHitAddr_) - 1] = '\0';
-  scanHitType_ = device->getAddressType();
-  const std::string name = device->getName();
-  strncpy(scanHitName_, name.empty() ? "Shark Nano II" : name.c_str(), sizeof(scanHitName_) - 1);
-  scanHitName_[sizeof(scanHitName_) - 1] = '\0';
-  scanHit_ = true;
+  std::strncpy(targetAddr_, advertisement.address.value,
+               sizeof(targetAddr_) - 1);
+  targetAddrType_ = advertisement.address.type;
+  if (!studio::ble::advertisementName(advertisement, targetName_,
+                                      sizeof(targetName_))) {
+    std::strncpy(targetName_, "Shark Nano II", sizeof(targetName_) - 1);
+  }
+  haveTarget_ = true;
+  state_.link = Link::Connecting;
+  studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
 }
 
-void SharkClient::onLinkDisconnected() { disconnectedFlag_ = true; }
+void SharkClient::onBleEvent(studio::ble::LinkHandle link,
+                             const studio::ble::Event& event) {
+  if (link != linkHandle_) {
+    return;
+  }
+  if (event.type == studio::ble::EventType::Connected) {
+    client_ = static_cast<NimBLEClient*>(
+        studio::ble::bleCentral().nativeClient(linkHandle_));
+    if (client_ != nullptr) {
+      setupPending_ = true;
+    } else {
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    }
+  } else if (event.type == studio::ble::EventType::ConnectFailed) {
+    state_.link = Link::Disconnected;
+  } else if (event.type == studio::ble::EventType::Disconnected) {
+    client_ = nullptr;
+    handleDisconnect();
+  }
+}
+
+bool SharkClient::protocolReady() const {
+  return studio::ble::bleCentral().protocolReady(linkHandle_);
+}
 
 void SharkClient::onNotifyBytes(const uint8_t* data, size_t len) {
   if (notifyStream_ == nullptr || data == nullptr || len == 0) {
@@ -560,7 +530,5 @@ void SharkClient::resetDeviceState() {
   timingPending_ = false;
   trackingPending_ = false;
 }
-
-void SharkClient::scheduleRetry(uint32_t& whenMs, uint32_t delayMs) { whenMs = millis() + delayMs; }
 
 }  // namespace shark

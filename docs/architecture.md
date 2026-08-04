@@ -2,7 +2,7 @@
 
 ## Goal
 
-The firmware is a direct Bluetooth and HTTP studio remote. A project builder
+Ble(e)p is a direct Bluetooth and HTTP studio controller. A project builder
 selects device drivers at compile time. The operator then creates, configures,
 enables, disables, groups, and controls instances of those compiled drivers at
 runtime.
@@ -47,10 +47,13 @@ feasibility spikes:
 - schema version 1 stores up to eight device records in the `studio` NVS
   namespace and retains records for unavailable driver IDs;
 - the Shark descriptor permits one instance in the current build;
-- Home and Devices load without initializing NimBLE; selecting the enabled
-  Shark instance activates its transport, and leaving releases it;
-- Groups, Portal, generic device-type UI, and the GATT facade remain
-  unimplemented. Panel Scenes (ADR-019/020) provide authored Start/Stop
+- Home and Devices load without initializing NimBLE; the first requested BLE
+  device lazily starts one shared central runtime, and the last release shuts
+  it down;
+- Groups, Portal, and generic device-type UI remain unimplemented. The first
+  GATT facade tranche (ADR-021) now centralizes scanning, async links, retries,
+  address claims, security serialization, bonds, and teardown for all four BLE
+  clients. Panel Scenes (ADR-019/020) provide authored Start/Stop
   sequences with concurrent Canon Smart + Tascam links; generated reverse-Stop,
   groups, lights, and Portal editing remain deferred.
 
@@ -108,9 +111,61 @@ Home provides:
 
 Opening a device screen requests that instance's connection. Opening a sequence
 run screen prepares every Start/Stop target concurrently and holds those links
-until Back, Cancel, or Stop complete. Leaving a screen may retain a
+until Back, Cancel, or Stop complete. Preparation reaches `Ready` only after
+every target is physically connected and its driver reports protocol readiness.
+Leaving a screen may retain a
 healthy connection according to the connection policy, but no device is
 selected implicitly at boot.
+
+### Shared BLE central
+
+`src/core/ble/` contains a bounded backend-independent coordinator and the
+NimBLE backend. Device clients acquire one link handle and retain only their
+protocol policy: advertisement matching, candidate choice, GATT discovery,
+subscriptions, handshakes, commands, and notification parsing.
+
+One physical active scanner fans fixed-size advertisement observations to every
+interested link. Selecting a peer removes only that subscriber's scan demand;
+other preparing devices continue to receive observations. Address claims keep
+two clients from selecting the same peer. Connects are asynchronous and use
+independent slots with a bounded watchdog and `1500 * min(failures, 4)` retry
+backoff. A saved target receives three direct attempts before rediscovery, which
+avoids paying scan latency for the common case where a nearby peripheral needs
+one or two radio-wakeup retries. The ESP32-C3 initiates at most one physical connection or security
+procedure at a time; queued targets continue sharing discovery, and the next
+link can connect while an already-linked driver's protocol initialization runs.
+This avoids observed HCI `0x3e` establishment timeouts without serializing the
+entire preparation pipeline. Canon security procedures are also serialized
+because NimBLE security configuration is controller-global.
+
+The central tracks physical connection separately from protocol readiness and
+clears readiness on retry, failure, release, and reconnect. Drivers publish
+readiness only after their final required subscription, identity/session write,
+handshake, and initial refresh has succeeded. Connection setup is scheduled on
+the next main-loop pass so queued link events can drain first. Drivers request
+targeted service/characteristic/descriptor discovery rather than full attribute
+walks. The backend also makes best-effort connection-parameter requests: 7.5–15
+ms during setup and 15–30 ms after protocol readiness; rejection is diagnostic
+and non-fatal.
+
+Serial-only `ble_timing` records cover activation, scan/direct connect, link,
+security, GATT setup, protocol readiness, retries, teardown, and total sequence
+preparation. A shared asynchronous GATT executor remains conditional: implement
+it only if ten-cycle hardware measurements show blocking GATT work consumes at
+least 25% of median readiness time for any driver or the concurrent Canon Smart
++ Tascam pair. Until that gate is met, UUID selection and GATT sequencing remain
+driver-owned under ADR-021.
+
+NimBLE host callbacks only enqueue fixed-size scan/link/security events.
+`loopBleRuntime(now)` drains them before `DeviceManager::loop()`, so matching,
+state mutation, GATT setup/writes, and all LVGL access remain on the main loop.
+The first acquired link initializes `Ble(e)p` with MTU 247; releasing the last
+link begins client deletion and deinitializes NimBLE only after asynchronous
+client teardown has actually emptied NimBLE's global slots. An immediate
+reacquire can reserve links during that interval; the backend provisions their
+replacement clients as capacity returns. Backend callback objects have backend
+lifetime rather than link lifetime, and final GAP events are accepted only when
+their client pointer still owns the logical slot.
 
 ## Capabilities and unified UI
 
@@ -207,4 +262,3 @@ Versioned persistent records cover:
 
 Secrets are masked in UI and logs. Backups exclude keys and credentials unless
 the operator explicitly requests a protected full export.
-

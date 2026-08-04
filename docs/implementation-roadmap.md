@@ -125,6 +125,17 @@ Work:
 - add native tests for registration, dependency checks, command routing, and
   state reduction.
 
+Implemented deviation (ADR-021): the first GATT facade tranche is shared by
+Shark, Canon Trigger, Canon Smart, and Tascam. It provides lazy NimBLE lifetime,
+one scanner with main-loop fan-out, bounded async connection slots, reconnect
+backoff/watchdogs, address claims, serialized Canon security, bond deletion,
+explicit protocol readiness, targeted discovery, timing telemetry, best-effort
+connection parameters, and deterministic host tests. Build a fixed-capacity
+per-link asynchronous GATT executor only if ten-cycle hardware measurements
+show blocking GATT work reaches 25% of median readiness for a driver or the
+Canon Smart + Tascam pair. The Phase 1 physical coexistence and heap gates
+remain open; this implementation does not claim Mesh/GATT coexistence.
+
 Completion gate:
 
 - Shark passes Phase 0 behavior through the new interfaces;
@@ -238,7 +249,9 @@ Bounded gate for the ADR-019/020 tranche:
 - Press Record Start: Canon `RecordStart`, wait 500 ms, Tascam `RecordStart`;
 - Press Stop: Canon `RecordStop`, then Tascam `RecordStop`;
 - opening a sequence prepares all targets concurrently before Start;
+- `Ready` requires every target's physical link and protocol initialization;
 - links stay held while the run screen is open and through armed/Stop;
+- authored step order and the editable 500 ms wait remain scene data;
 - partial failures and unavailable devices are visible and recoverable.
 
 ## Phase 7: Universal panel UI
@@ -295,4 +308,3 @@ Completion gate:
 - relevant profiles flash and pass hardware checks;
 - memory headroom and known limitations are recorded;
 - no unsupported protocol behavior is presented as confirmed.
-
