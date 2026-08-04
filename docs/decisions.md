@@ -165,8 +165,8 @@ the replacement.
 - Decision: Advance the Tascam Portacapture X8 from the future recorder list as
   a bounded AK-BT1 BLE tranche with connect, explicit record start, explicit
   record stop, and recorder-confirmed recording state.
-- Evidence: The annotated nRF52840 capture in
-  `docs/protocols/dumps/tascam_x8.pcapng` confirms the custom GATT service, COBS stream
+- Evidence: The annotated nRF52840 research capture summarized in
+  `docs/protocols/tascam-x8.md` confirms the custom GATT service, COBS stream
   envelope, session keepalive, start/stop commands, and state events for both
   app-originated and recorder-originated actions. Golden vectors and confidence
   labels are recorded in `docs/protocols/tascam-x8.md`.
@@ -195,8 +195,9 @@ the replacement.
   transport remains active at a time.
 - Evidence: Public EOS M6 Camera Connect reverse-engineering documents the
   `00010000-...` handshake service and `00030000-...` shooting service. The
-  sanitized EOS R6 Mark III host-HCI fixtures in `docs/protocols/dumps/`
-  confirm confirmation-first pairing, explicit movie start/stop writes,
+  minimized EOS R6 Mark III host-HCI research findings summarized in
+  `docs/protocols/canon-smartphone-ble.md` confirm confirmation-first pairing,
+  explicit movie start/stop writes,
   shooting-state notifications, and the `00020002-...` Wi-Fi handoff request
   with `00020003-...` responses. The handoff fixture excludes serial,
   controller, SSID-like, credential-like, and SMP key material. BR-E1 Trigger

@@ -22,8 +22,8 @@ which was tested on an EOS M6:
 
 Two public handshake orderings exist. The original EOS M6 demo waits for camera
 confirmation before sending controller identity, while some newer public
-implementations send identity first. The Pixel 9 Pro XL Camera Connect capture
-confirms that the EOS R6 Mark III uses the confirmation-first ordering:
+implementations send identity first. A controlled Android Camera Connect
+capture confirms that the EOS R6 Mark III uses the confirmation-first ordering:
 
 1. complete BLE bonding;
 2. write `01` followed by the controller name to the pairing-command
@@ -36,7 +36,7 @@ confirms that the EOS R6 Mark III uses the confirmation-first ordering:
 8. write `05 02` to identify as Android;
 9. write `01` to finish.
 
-The Pixel requests Secure Connections and MITM, but the camera's pairing
+The Android host requests Secure Connections and MITM, but the camera's pairing
 response accepts bonding only. The resulting exchange is legacy Just Works
 pairing with 16-byte keys, not Secure Connections with MITM.
 
@@ -77,14 +77,15 @@ camera down after shooting, receives `01`, and the camera disconnects. Values
 
 ### Capture: EOS R6 Mark III
 
-Fixture: [`dumps/canon-capture.pcapng`](dumps/canon-capture.pcapng)
+Source: private discovery capture (SHA-256 retained below); raw capture omitted
+from the public repository.
 
 SHA-256:
 `e61fbf83a0e57551fa64b086b06cf85772531d818aba41d1085afc842e0d0d62`
 
-The capture identifies camera `7c:b8:da:2a:c8:75` advertising as
-`EOSR6m3_2AC874`. Unencrypted discovery confirms the smartphone pairing service
-and characteristics `00010005`, `00010006`, `0001000a`, and `0001000b`.
+Unencrypted discovery confirms an EOS R6 Mark III advertising a device-specific
+`EOSR6m3_...` name, the smartphone pairing service, and characteristics
+`00010005`, `00010006`, `0001000a`, and `0001000b`.
 The primary advertisement carries `00010000-...`; its separate scan response
 carries the `EOSR6m3_...` name and Canon manufacturer data (`0x01A9`). Panel
 discovery accepts the pairing service, Canon manufacturer data, or a name
@@ -110,14 +111,14 @@ obtained.
 
 ### Capture: Camera Connect pairing and BLE movie control
 
-Fixture:
-[`dumps/canon-camera-connect-pairing.pcapng`](dumps/canon-camera-connect-pairing.pcapng)
+Source: minimized host-HCI pairing capture; raw capture omitted from the public
+repository because device-specific advertisement data remained visible.
 
 SHA-256:
 `fac58a7277072f25b45c91f5051dae9c335d71ca9323e9388b69f6e3399cd08c`
 
-This sanitized host-side HCI fixture contains 297 ATT packets from the Pixel 9
-Pro XL Camera Connect session. SMP key exchange, camera serial number,
+This minimized host-side HCI research set contains 297 ATT packets from an
+Android Camera Connect session. SMP key exchange, camera serial number,
 controller ID, and the SSID-like and credential-like characteristic values are
 excluded. It confirms:
 
@@ -134,13 +135,13 @@ success and state must remain notification-driven.
 
 ### Capture: Camera Connect Wi-Fi handoff
 
-Fixture:
-[`dumps/canon-camera-connect-wifi-handoff.pcapng`](dumps/canon-camera-connect-wifi-handoff.pcapng)
+Source: minimized host-HCI handoff capture; raw capture omitted from the public
+repository because packet metadata can still identify the research setup.
 
 SHA-256:
 `25e59aca42f47a9ca554fd85273f8bfe5b9f5577d96c9d59051838e407bf17ad`
 
-This sanitized fixture contains 90 ATT packets plus the final disconnect event
+This minimized research set contains 90 ATT packets plus the final disconnect event
 from a bonded Camera Connect handoff. Camera serial number, SSID-like value,
 and credential-like value are excluded. The ordered handoff is:
 

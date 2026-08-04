@@ -91,7 +91,7 @@ Reference research:
 
 Public EOS M6 reverse-engineering reports `00 10` start, `00 11` stop, and
 `01 01 02`/`01 01 01` recording-state notifications on the smartphone shooting
-service. Sanitized Pixel 9 Pro XL host-HCI captures confirm those values, the
+service. Minimized Android host-HCI research confirms those values, the
 confirmation-first handshake, and mode command `03` with result `05` on the EOS
 R6 Mark III. The panel still leaves state unknown until a matching camera
 notification is observed and never promotes a GATT write ACK to confirmed

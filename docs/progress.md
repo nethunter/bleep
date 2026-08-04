@@ -482,9 +482,9 @@ Record values with the exact build environment and commit/worktree state.
 
 ### 2026-08-03: Tascam X8 captured protocol and record-control driver
 
-- Analyzed annotated nRF52840 fixture
-  `docs/protocols/dumps/tascam_x8.pcapng`
-  (`115e77bcc91ca2c184439115df97ad0459ac8452018ce0e08bdde6568918fd51`)
+- Analyzed an annotated nRF52840 research capture (SHA-256
+  `115e77bcc91ca2c184439115df97ad0459ac8452018ce0e08bdde6568918fd51`),
+  later removed from the publishable tree,
   and documented the AK-BT1 UUIDs, COBS stream, session open/keepalive, exact
   record start/stop writes, and recorder-originated transition events in
   `docs/protocols/tascam-x8.md`.
@@ -512,9 +512,9 @@ Record values with the exact build environment and commit/worktree state.
 
 ### 2026-08-03: Tascam asynchronous connect and reconnect-state restoration
 
-- Analyzed controlled recording/stopped reconnect fixture
-  `docs/protocols/dumps/tascam_x8_reconnect.pcapng`
-  (`7d095c94a454827778f3ecc86778b70e2109269f2e47acd0383c997f019ec783`).
+- Analyzed a controlled recording/stopped reconnect capture (SHA-256
+  `7d095c94a454827778f3ecc86778b70e2109269f2e47acd0383c997f019ec783`),
+  later removed from the publishable tree.
   `DR 20 20 00` reports recording as `0x81`, stopped as `0x10`, and the
   transition between them as `0x82`.
 - Added capture-backed current-state reduction so reconnect restores confirmed
@@ -600,14 +600,13 @@ Record values with the exact build environment and commit/worktree state.
 
 ### 2026-08-03: Canon Camera Connect pairing and Wi-Fi handoff captures
 
-- Analyzed Pixel 9 Pro XL host-HCI captures of fresh EOS R6 Mark III
+- Analyzed Android host-HCI captures of fresh EOS R6 Mark III
   smartphone pairing, BLE movie control, bonded reconnect, and successful
   Camera Connect Wi-Fi offload.
-- Added sanitized ATT-only fixtures
-  `docs/protocols/dumps/canon-camera-connect-pairing.pcapng`
-  (`fac58a7277072f25b45c91f5051dae9c335d71ca9323e9388b69f6e3399cd08c`)
-  and `docs/protocols/dumps/canon-camera-connect-wifi-handoff.pcapng`
-  (`25e59aca42f47a9ca554fd85273f8bfe5b9f5577d96c9d59051838e407bf17ad`).
+- Added minimized ATT-only research sets (SHA-256
+  `fac58a7277072f25b45c91f5051dae9c335d71ca9323e9388b69f6e3399cd08c`
+  and `25e59aca42f47a9ca554fd85273f8bfe5b9f5577d96c9d59051838e407bf17ad`),
+  later removed from the publishable tree.
   SMP keys, camera serial number, controller ID, SSID-like value, and
   credential-like value are excluded.
 - Camera Connect waits for pairing indication `02` before writing controller
@@ -632,7 +631,7 @@ Record values with the exact build environment and commit/worktree state.
 
 ### 2026-08-03: Canon captured BLE behavior implemented
 
-- Aligned the ADR-017 client with the Pixel 9 Pro XL host-HCI fixtures:
+- Aligned the ADR-017 client with the Android host-HCI research:
   bonding-only Just Works negotiation, request-before-subscribe pairing,
   confirmation-first identity, captured `06`/`07`/`08`/`0c` post-pair queries,
   and automatic `03` wake with required `05` session result. Bonded reconnect
@@ -1100,3 +1099,43 @@ Record values with the exact build environment and commit/worktree state.
 - `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
   The ten-cycle median/p95 benchmark and physical Start/Stop checks remain
   open; two successful relinks are regression evidence, not tranche completion.
+
+### 2026-08-04: GitHub publication preparation
+
+- Reworked the public README around Ble(e)p's long-term goal: an open,
+  community-built controller ecosystem for many devices and controller
+  hardware targets. Documented current support, limitations, architecture,
+  setup, contribution flow, roadmap, safety, and trademark independence.
+- Added contribution, conduct, and security policies; GitHub issue forms, a
+  pull-request template, and native-test/firmware-build CI.
+- Audited tracked text and Git patches for common credential patterns. No
+  embedded API key, password, authorization token, or private key was found.
+- Found private publication risk in the tracked packet captures: nearby device
+  names and stable suffixes, radio addresses, camera/phone identifiers, local
+  capture-interface metadata, and unrelated traffic. Removed every raw pcapng
+  from the current tree and added ignore/privacy rules. Extracted protocol
+  vectors, confidence notes, and source hashes remain in the documentation.
+- Removed the tracked macOS `.DS_Store` and ignored OS/editor/build artifacts.
+- Verification: documentation links and GitHub YAML parsed successfully;
+  native tests passed 30/30; `crowpanel_128` built with espressif32 7.0.1 at
+  947,354 bytes flash / 138,028 bytes RAM and flashed successfully to the
+  configured ESP32-C3 panel.
+- At that point, publishing blockers included selecting an open-source license
+  and scrubbing the capture blobs from existing Git history (or publishing a
+  reviewed squashed history). Git author identity/email also needed review for
+  intended public attribution.
+
+### 2026-08-04: Apache-2.0 license and project origin
+
+- Selected Apache License 2.0, matching Home Assistant Core, and added the
+  standard license text at the repository root. Updated contribution terms and
+  marked the license decision complete in the publishing checklist.
+- Added the project's origin story to the README: Ble(e)p began as a Hacking
+  Modern Life YouTube build for a better iFootage Shark Nano II remote, then
+  grew into the broader open controller ecosystem.
+- Documentation links and license-file structure validated. Native tests passed
+  30/30; `crowpanel_128` built at 947,354 bytes flash / 138,028 bytes RAM and
+  flashed successfully to the configured ESP32-C3 panel.
+- The remaining publication blocker is Git history: removed capture blobs are
+  still present in earlier commits and must be scrubbed or excluded through a
+  reviewed squashed public history before pushing.

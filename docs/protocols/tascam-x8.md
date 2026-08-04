@@ -5,15 +5,14 @@ confirmed from an annotated over-the-air capture.
 
 ## Evidence
 
-The primary fixture is `docs/protocols/dumps/tascam_x8.pcapng` (SHA-256
+The primary private research capture was `tascam_x8.pcapng` (SHA-256
 `115e77bcc91ca2c184439115df97ad0459ac8452018ce0e08bdde6568918fd51`).
 It was captured with an nRF52840 sniffer while the official Portacapture
 Control app operated a Portacapture X8 through an AK-BT1. Packet comments mark
 record start/stop from both the phone and the recorder, input toggles, and mode
 changes.
 
-The controlled reconnect fixture is
-`docs/protocols/dumps/tascam_x8_reconnect.pcapng` (SHA-256
+The controlled reconnect capture was `tascam_x8_reconnect.pcapng` (SHA-256
 `7d095c94a454827778f3ecc86778b70e2109269f2e47acd0383c997f019ec783`).
 It contains annotated reconnects while recording and while stopped, both with
 the recorder in Manual Mixer mode.

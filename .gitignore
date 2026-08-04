@@ -2,5 +2,19 @@
 .platformio-core/
 .venv/
 sim/screenshots/
+.DS_Store
+*.swp
+*.swo
+*.log
+
+# Raw protocol captures and device bug reports can include pairing keys,
+# addresses, serial numbers, nearby device names, credentials, and host data.
+# Publish only reviewed, minimized fixtures in a dedicated allowlisted format.
+*.pcap
+*.pcapng
+*.btsnoop
+*.btsnoop_hci.log
+bugreport-*/
+bugreport-*.zip
 
 canon-pairing*

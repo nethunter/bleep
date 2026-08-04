@@ -1,0 +1,42 @@
+name: Bug report
+description: Report reproducible firmware, UI, connection, or device behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach raw captures, bugreports, credentials, pairing keys, or stable device identifiers. Use the private route in SECURITY.md for sensitive material.
+  - type: input
+    id: revision
+    attributes:
+      label: Revision
+      description: Commit SHA, branch, or release.
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Controller and target hardware
+      description: Panel revision, device model, and required adapter.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include expected behavior, actual behavior, and reproducible steps.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Evidence
+      description: Sanitized logs, measurements, and physical observations. An ACK alone is not physical confirmation.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy and safety
+      options:
+        - label: I removed secrets, addresses, serial numbers, credentials, and unrelated nearby-device data.
+          required: true

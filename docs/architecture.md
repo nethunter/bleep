@@ -41,12 +41,15 @@ events.
 ADR-013 advances a bounded subset of this architecture before the transport
 feasibility spikes:
 
-- `DriverCatalog` currently contains only `ifootage.shark_nano_ii`;
+- the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
+  Canon Smart, and Tascam X8; smaller profiles compile selected drivers out;
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, active
   driver lifecycle, and persistence;
 - schema version 1 stores up to eight device records in the `studio` NVS
   namespace and retains records for unavailable driver IDs;
-- the Shark descriptor permits one instance in the current build;
+- the catalog permits one Shark, up to three Canon Trigger instances, up to
+  three Canon Smart instances, and one Tascam X8 within the eight-record
+  registry;
 - Home and Devices load without initializing NimBLE; the first requested BLE
   device lazily starts one shared central runtime, and the last release shuts
   it down;

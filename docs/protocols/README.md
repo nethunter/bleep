@@ -1,16 +1,25 @@
 # Protocol research
 
-Capture-backed protocol notes and their fixtures live here.
+The protocol notes here were derived from controlled captures and public
+research. The public repository keeps extracted command vectors, annotated
+behavior, hashes of the original research material, and confidence labels. It
+does not ship raw packet captures.
 
 - [Tascam Portacapture X8](tascam-x8.md)
-  - Fixture: [`dumps/tascam_x8.pcapng`](dumps/tascam_x8.pcapng)
 - [Canon smartphone-mode BLE](canon-smartphone-ble.md)
-  - Discovery fixture:
-    [`dumps/canon-capture.pcapng`](dumps/canon-capture.pcapng)
-  - Sanitized Camera Connect pairing fixture:
-    [`dumps/canon-camera-connect-pairing.pcapng`](dumps/canon-camera-connect-pairing.pcapng)
-  - Sanitized Wi-Fi handoff fixture:
-    [`dumps/canon-camera-connect-wifi-handoff.pcapng`](dumps/canon-camera-connect-wifi-handoff.pcapng)
 
-Keep confirmed behavior separate from hypotheses, and identify capture fixtures
-by hash in the corresponding protocol document.
+Raw captures were removed before publication because radio traces can contain
+stable addresses, nearby device names, phone/camera identifiers, pairing
+material, host paths, and unrelated traffic. A small filtered capture can still
+leak identifiers in metadata or advertisements.
+
+For contributions:
+
+1. extract the smallest golden request/response or notification vectors needed
+   to reproduce the conclusion;
+2. replace device-specific identifiers and omit credential-bearing values;
+3. document capture conditions, packet order, and original SHA-256 privately;
+4. keep confirmed behavior separate from `Research`, `Hypothesis`, and
+   `Blocked` conclusions;
+5. do not attach raw captures or mobile bugreports to public issues or pull
+   requests.
