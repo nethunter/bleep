@@ -209,7 +209,8 @@ Completion gate:
 Planned:
 
 - Tascam Portacapture X8 Bluetooth: ADR-016 record-control tranche implemented
-  from an annotated AK-BT1 capture; hardware completion gate remains open;
+  from annotated AK-BT1 captures; bounded record-control hardware checks pass,
+  while scene integration and broader recorder capabilities remain open;
 - Deity PR4 remote control.
 
 Work for each driver begins with protocol documentation or capture-based

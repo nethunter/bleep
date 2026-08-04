@@ -39,9 +39,9 @@ control through the AK-BT1 adapter.
   recorder-originated transition or current-state packets. Confirmed state is
   restored after reconnect. The custom GATT UUIDs, COBS framing, session
   keepalive, commands, and state vectors are documented in
-  [`docs/protocols/tascam-x8.md`](docs/protocols/tascam-x8.md). Initial hardware
-  start/stop verification passed; the reconnect-state update still requires a
-  hardware regression check.
+  [`docs/protocols/tascam-x8.md`](docs/protocols/tascam-x8.md). Hardware
+  start/stop, persisted reconnect, state restoration after remote restart, and
+  media-file creation are verified.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:

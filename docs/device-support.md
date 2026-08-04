@@ -107,7 +107,8 @@ Reference research:
 
 ### Tascam Portacapture X8 Bluetooth
 
-- Status: `Research implementation`.
+- Status: `Current` for the bounded record-control tranche; broader recorder
+  capabilities remain `Research`.
 - Expected device type: recorder.
 - Required initial capabilities: record start and record stop.
 - Desired state: recording, battery, and media status where the protocol
@@ -121,6 +122,9 @@ Reference research:
   confirmed from annotated captures. The current recording/stopped field is
   confirmed by controlled reconnects in both states. Extended reconnect
   behavior, battery, and media fields remain unverified.
+- Hardware status: start/stop, persisted reconnect, state restoration after
+  remote restart, stopping an existing recording, and media-file creation are
+  verified on the target panel with the X8/AK-BT1.
 - Evidence and golden vectors:
   [protocols/tascam-x8.md](protocols/tascam-x8.md).
 

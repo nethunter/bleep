@@ -5,9 +5,9 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-014 Canon Trigger verification, ADR-015 Canon Smart
-  handoff research, and ADR-016 Tascam X8 record-control hardware verification;
-  physical regression gates pending.
+- Current phase: ADR-014 Canon Trigger extended verification, ADR-015 Canon
+  Smart handoff research, and the combined Phase 0/foundation physical
+  regression gates.
 - Firmware state: Home-first, persistent device registry, on-demand Shark and
   Canon BLE, asynchronous on-demand Tascam X8/AK-BT1 record control with
   reconnect-state restoration, and device-specific hardware-trigger CTA
@@ -41,19 +41,16 @@ short, factual, and reproducible.
 
 Complete the Canon BLE and combined Phase 0/foundation hardware gates:
 
-1. Verify the flashed Tascam update opens its UI immediately, restores Ready
-   and Recording after reconnect, and can stop a recording started before the
-   remote reboot. Recheck persisted reconnect and actual media files.
-2. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
+1. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
    pairing through Wi-Fi AP startup and the first network request.
-3. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
+2. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
    data, camera prompts, and reconnect behavior.
-4. Verify Trigger forget/re-pair and repeated screen entry/exit; record
+3. Verify Trigger forget/re-pair and repeated screen entry/exit; record
    connection/command latency and free/minimum heap.
-5. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+4. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
-6. Verify that boot and Home perform no BLE scan or connection.
-7. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
+5. Verify that boot and Home perform no BLE scan or connection.
+6. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
 
 ## Measurements
 
@@ -520,4 +517,17 @@ Record values with the exact build environment and commit/worktree state.
   872,442/166,540.
 - The corrected default profile flashed successfully to
   `/dev/cu.usbserial-211240`. Hardware reconnection remains operator-pending.
+
+### 2026-08-03: Tascam record-control hardware regression passed
+
+- Operator verification passed for immediate Tascam screen opening, persisted
+  reconnect, recording-state restoration after remote restart, stopping the
+  pre-existing recording, and creation of the expected media file.
+- The bounded ADR-016 record-control hardware tranche is verified. Battery,
+  media-capacity reporting, mixer controls, and scene integration remain
+  outside this tranche.
+- Current Canon Trigger and Shark control were also reported working. Canon
+  Smart remains blocked on its BLE-to-Wi-Fi handoff capture, and the exact
+  extended Canon/combined foundation checks listed above remain open until
+  individually measured or confirmed.
 

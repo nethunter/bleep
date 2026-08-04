@@ -174,7 +174,9 @@ Confirmed:
 - session open and keepalive bytes;
 - record start/stop writes;
 - recorder-originated start/stop transition events;
-- current recording/stopped state after reconnect.
+- current recording/stopped state after reconnect;
+- target-panel start/stop, persisted reconnect, state restoration after remote
+  restart, stopping an existing recording, and media-file creation.
 
 Research:
 
