@@ -260,13 +260,18 @@ the replacement.
   discovery/subscriptions/initialization. Links stay held while the run
   screen is open, during Start/Stop execution, while armed after Start, and
   after a successful Stop so editing/restart does not reconnect unchanged
-  targets. Leaving the run screen (Back/Unlink/hide) releases links. Manual device
-  screens retain exclusive single-active activation outside sequence holds.
+  targets. Leaving the run screen (Back/Unlink/hide) releases links. Manual
+  device screens retain exclusive single-active activation outside sequence
+  holds. A sequence target chip may temporarily open that target's full device
+  screen by borrowing its held activation; Back returns to the sequence without
+  releasing any held target.
 - Consequence: `DeviceManager` supports a bounded multi-active set across
   different compiled drivers (Canon Smart + Tascam in the first tranche). Start
   from `Ready` does not re-activate targets. Prepare/connect failures surface
-  on the run screen. Opening a device screen while a sequence holds links is
-  blocked. Shark motion remains outside sequences.
+  on the run screen. Device screens opened outside the sequence remain blocked
+  while it holds links. Sequence-owned target controls are disabled during
+  Start/Stop execution, and Start/Stop remain unavailable while any target is
+  not protocol-ready. Shark motion remains outside sequences.
 - Roadmap deviation: This advances a bounded Phase 6/7 panel-scene tranche
   ahead of groups, Portal HTTP editing, lights, and generated reverse-Stop.
 

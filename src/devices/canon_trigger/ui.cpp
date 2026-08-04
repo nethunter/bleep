@@ -28,6 +28,7 @@ lv_obj_t* triggerButton = nullptr;
 lv_obj_t* triggerLabel = nullptr;
 studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
+bool borrowedActivation = false;
 uint32_t lastRefreshMs = 0;
 
 void enqueue(studio::CommandType type) {
@@ -88,7 +89,7 @@ void refresh() {
 
 void onBack(lv_event_t*) {
   hide();
-  ui::showDevices();
+  ui::showDeviceParent();
 }
 
 void triggerRecord() {
@@ -188,12 +189,19 @@ void ensureScreen() {
 
 void init() {}
 
-void show(studio::InstanceId id) {
+void show(studio::InstanceId id, bool preserveActivation) {
   ensureScreen();
   instanceId = id;
   const studio::DeviceRecord* record = studio::devices().find(id);
   lv_label_set_text(titleLabel, record != nullptr ? record->displayName : "");
-  visible = studio::devices().activate(id);
+  borrowedActivation = preserveActivation;
+  visible = preserveActivation ? studio::devices().isActive(id)
+                               : studio::devices().activate(id);
+  if (!visible) {
+    borrowedActivation = false;
+    instanceId = studio::kInvalidInstanceId;
+    return;
+  }
   lastRefreshMs = 0;
   refresh();
   lv_scr_load(screen);
@@ -201,10 +209,11 @@ void show(studio::InstanceId id) {
 }
 
 void hide() {
-  if (visible) {
+  if (visible && !borrowedActivation) {
     studio::devices().deactivate();
   }
   visible = false;
+  borrowedActivation = false;
   instanceId = studio::kInvalidInstanceId;
 }
 

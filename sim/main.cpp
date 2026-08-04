@@ -421,6 +421,24 @@ int main() {
     return 1;
   }
   scene_ui::simShowRun(sceneId);
+  pump(200);
+  if (!capture("24a_scenes_run_connecting")) {
+    return 1;
+  }
+  studio::scenes().loop(1);
+  studio::scenes().loop(CONFIG_SCENE_CONNECT_TIMEOUT_MS + 2);
+  pump(200);
+  if (studio::scenes().progress().phase != studio::ScenePhase::Failed) {
+    std::fprintf(stderr, "Sequence did not reach terminal connection failure\n");
+    return 1;
+  }
+  if (!capture("24aa_scenes_connect_failed")) {
+    return 1;
+  }
+  if (studio::scenes().prepare(sceneId) != studio::SceneRunStatus::Ok) {
+    std::fprintf(stderr, "Sequence did not restart preparation after failure\n");
+    return 1;
+  }
   studio::simSetSequenceConnectedState();
   for (int i = 0; i < 10; ++i) {
     studio::devices().loop();
@@ -434,6 +452,39 @@ int main() {
   if (!capture("24_scenes_run_ready")) {
     return 1;
   }
+  const size_t heldDeviceCount = studio::devices().activeCount();
+  scene_ui::simOpenDeviceControl(canonId);
+  pump(200);
+  if (!canon_ble_ui::active() || !scene_ui::deviceControlOpen() ||
+      studio::devices().activeCount() != heldDeviceCount ||
+      !studio::devices().isActive(tascamId)) {
+    std::fprintf(stderr,
+                 "Sequence device control did not preserve held links\n");
+    return 1;
+  }
+  if (!capture("24b_sequence_camera_control")) {
+    return 1;
+  }
+  ui::handleLongPress();
+  pump(200);
+  if (canon_ble_ui::active() || scene_ui::deviceControlOpen() ||
+      studio::devices().activeCount() != heldDeviceCount ||
+      !studio::devices().isActive(canonId) ||
+      !studio::devices().isActive(tascamId)) {
+    std::fprintf(stderr,
+                 "Returning to sequence released a held device link\n");
+    return 1;
+  }
+  studio::simCanonState().link =
+      canon_ble::CanonBleState::Link::Disconnected;
+  studio::simCanonState().phase =
+      canon_ble::CanonBleState::Phase::PoweredOff;
+  pump(200);
+  if (!capture("24c_scenes_camera_disconnected")) {
+    return 1;
+  }
+  studio::simSetSequenceConnectedState();
+  pump(200);
   ui::handleShortPress();
   if (studio::scenes().progress().phase != studio::ScenePhase::RunningStart) {
     std::fprintf(stderr, "Hardware trigger did not start Press Record sequence\n");
@@ -477,6 +528,23 @@ int main() {
   pump(200);
   printLvglMemory("after sequence stop settings");
   if (!capture("27b_scenes_settings_after_stop")) {
+    return 1;
+  }
+  scene_ui::hide();
+  ui::showHome();
+
+  scene_ui::simShowRun(sceneId);
+  scene_ui::simShowSettings(sceneId);
+  if (studio::scenes().progress().phase != studio::ScenePhase::Connecting) {
+    std::fprintf(stderr,
+                 "Delete regression did not begin from sequence preparation\n");
+    return 1;
+  }
+  scene_ui::simDeleteCurrentScene();
+  if (studio::scenes().find(sceneId) != nullptr ||
+      studio::scenes().holdsLinks() || studio::devices().activeCount() != 0) {
+    std::fprintf(stderr,
+                 "Delete did not cancel preparation and remove sequence\n");
     return 1;
   }
   scene_ui::hide();

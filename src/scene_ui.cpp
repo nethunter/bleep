@@ -6,7 +6,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "assets/ui_icons.h"
 #include "core/device_manager.h"
+#include "core/driver_catalog.h"
 #include "core/scene_service.h"
 #include "fonts/ui_fonts.h"
 #include "ui.h"
@@ -22,6 +24,7 @@ constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr uint32_t kColOk = 0x3DDC97;
+constexpr uint32_t kColConnecting = 0x35C7F2;
 
 constexpr lv_coord_t kRoundBackX = 40;
 constexpr lv_coord_t kRoundBackY = 36;
@@ -30,6 +33,7 @@ enum class View : uint8_t { List, Run, Edit };
 
 View view = View::List;
 bool visible = false;
+bool borrowedDeviceOpen = false;
 studio::SceneId currentScene = studio::kInvalidSceneId;
 bool editingStart = true;
 uint32_t lastRefreshMs = 0;
@@ -40,7 +44,7 @@ lv_obj_t* scrEdit = nullptr;
 lv_obj_t* listBody = nullptr;
 lv_obj_t* runTitle = nullptr;
 lv_obj_t* runPhase = nullptr;
-lv_obj_t* runDetail = nullptr;
+lv_obj_t* runChipRow = nullptr;
 lv_obj_t* startButton = nullptr;
 lv_obj_t* stopButton = nullptr;
 lv_obj_t* prepareCancelButton = nullptr;
@@ -48,6 +52,24 @@ lv_obj_t* settingsButton = nullptr;
 lv_obj_t* settingsOverlay = nullptr;
 lv_obj_t* editBody = nullptr;
 lv_obj_t* editTitle = nullptr;
+
+enum class ChipState : uint8_t {
+  Unknown,
+  Disconnected,
+  Connecting,
+  Ready,
+  Failed,
+};
+
+struct RunChip {
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  lv_obj_t* button = nullptr;
+  lv_obj_t* icon = nullptr;
+  ChipState state = ChipState::Unknown;
+};
+
+RunChip runChips[CONFIG_MAX_ACTIVE_LINKS] = {};
+uint8_t runChipCount = 0;
 
 void styleScreen(lv_obj_t* object) {
   lv_obj_set_style_bg_color(object, lv_color_hex(kColBg), 0);
@@ -77,6 +99,38 @@ studio::SceneId eventScene(lv_event_t* event) {
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
 }
 
+studio::InstanceId eventInstance(lv_event_t* event) {
+  return static_cast<studio::InstanceId>(
+      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+}
+
+const lv_img_dsc_t* categoryIcon(studio::DeviceType type) {
+  switch (type) {
+    case studio::DeviceType::Motion:
+      return &ui_icon_cat_motion;
+    case studio::DeviceType::Light:
+      return &ui_icon_cat_lights;
+    case studio::DeviceType::Camera:
+      return &ui_icon_cat_cameras;
+    case studio::DeviceType::Recorder:
+      return &ui_icon_cat_recorders;
+    case studio::DeviceType::Unknown:
+      return &ui_icon_devices;
+  }
+  return &ui_icon_devices;
+}
+
+void setChipBorderOpacity(void* object, int32_t value) {
+  lv_obj_set_style_border_opa(static_cast<lv_obj_t*>(object),
+                              static_cast<lv_opa_t>(value), 0);
+}
+
+void stopChipAnimation(RunChip& chip) {
+  if (chip.button != nullptr) {
+    lv_anim_del(chip.button, setChipBorderOpacity);
+  }
+}
+
 const char* phaseText(studio::ScenePhase phase) {
   switch (phase) {
     case studio::ScenePhase::Idle:
@@ -97,6 +151,30 @@ const char* phaseText(studio::ScenePhase phase) {
       return "Done";
   }
   return "Idle";
+}
+
+uint32_t phaseColor(studio::ScenePhase phase, bool targetsReady) {
+  if (!targetsReady &&
+      (phase == studio::ScenePhase::Ready ||
+       phase == studio::ScenePhase::IdleArmed ||
+       phase == studio::ScenePhase::Completed)) {
+    return kColDanger;
+  }
+  switch (phase) {
+    case studio::ScenePhase::Connecting:
+    case studio::ScenePhase::RunningStart:
+    case studio::ScenePhase::RunningStop:
+      return kColAccent;
+    case studio::ScenePhase::Ready:
+    case studio::ScenePhase::Completed:
+      return kColOk;
+    case studio::ScenePhase::IdleArmed:
+    case studio::ScenePhase::Failed:
+      return kColDanger;
+    case studio::ScenePhase::Idle:
+      return kColMuted;
+  }
+  return kColMuted;
 }
 
 void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
@@ -124,6 +202,48 @@ void showEditView(studio::SceneId sceneId, bool startList);
 void closeSettings();
 void releaseHeldScene();
 
+uint8_t collectTargets(const studio::SceneRecord& record,
+                       studio::InstanceId (&targets)[CONFIG_MAX_ACTIVE_LINKS]) {
+  uint8_t count = 0;
+  const studio::SceneStep* lists[] = {record.startSteps, record.stopSteps};
+  const uint8_t counts[] = {record.startCount, record.stopCount};
+  for (size_t list = 0; list < 2; ++list) {
+    for (uint8_t i = 0; i < counts[list]; ++i) {
+      const studio::SceneStep& step = lists[list][i];
+      if (step.type != studio::SceneStepType::Action) {
+        continue;
+      }
+      bool known = false;
+      for (uint8_t target = 0; target < count; ++target) {
+        if (targets[target] == step.targetId) {
+          known = true;
+          break;
+        }
+      }
+      if (!known && count < CONFIG_MAX_ACTIVE_LINKS) {
+        targets[count++] = step.targetId;
+      }
+    }
+  }
+  return count;
+}
+
+bool allTargetsReady(const studio::SceneRecord& record) {
+  studio::InstanceId targets[CONFIG_MAX_ACTIVE_LINKS] = {};
+  const uint8_t count = collectTargets(record, targets);
+  if (count == 0) {
+    return false;
+  }
+  for (uint8_t i = 0; i < count; ++i) {
+    const studio::DeviceRuntimeState runtime =
+        studio::devices().runtimeState(targets[i]);
+    if (runtime.link != studio::LinkState::Connected || !runtime.protocolReady) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void onBackToHome(lv_event_t*) {
   hide();
   ui::showHome();
@@ -137,6 +257,20 @@ void onBackToList(lv_event_t*) {
 void onBackToRun(lv_event_t*) { showRunView(currentScene); }
 
 void onOpenScene(lv_event_t* event) { showRunView(eventScene(event)); }
+
+void onOpenDeviceControl(lv_event_t* event) {
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.phase == studio::ScenePhase::RunningStart ||
+      progress.phase == studio::ScenePhase::RunningStop) {
+    return;
+  }
+  const studio::InstanceId instanceId = eventInstance(event);
+  if (!studio::devices().isActive(instanceId)) {
+    return;
+  }
+  borrowedDeviceOpen = true;
+  ui::showDevice(instanceId, ui::DeviceControlMode::PreserveActivation);
+}
 
 void onAddBlank(lv_event_t*) {
   if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
@@ -168,17 +302,20 @@ bool canStartSequence(const studio::SceneRecord& record,
                       const studio::SceneProgress& progress) {
   const bool forScene = progress.sceneId == currentScene;
   const bool ready = forScene && progress.phase == studio::ScenePhase::Ready;
-  return !studio::scenes().busy() && record.startCount > 0 &&
+  return !studio::scenes().busy() && allTargetsReady(record) &&
+         record.startCount > 0 &&
          (ready || progress.phase == studio::ScenePhase::Idle ||
           progress.phase == studio::ScenePhase::Completed || !forScene);
 }
 
-bool canStopSequence(const studio::SceneProgress& progress) {
+bool canStopSequence(const studio::SceneRecord& record,
+                     const studio::SceneProgress& progress) {
   if (progress.sceneId != currentScene) {
     return false;
   }
-  const bool armed = progress.phase == studio::ScenePhase::IdleArmed ||
-                     progress.phase == studio::ScenePhase::Failed;
+  const bool armed = (progress.phase == studio::ScenePhase::IdleArmed ||
+                      progress.phase == studio::ScenePhase::Failed) &&
+                     allTargetsReady(record);
   return armed || progress.phase == studio::ScenePhase::RunningStart ||
          (progress.phase == studio::ScenePhase::Connecting &&
           progress.runningStart);
@@ -219,6 +356,18 @@ bool canMutateScene() {
   return true;
 }
 
+bool canDeleteScene() {
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.sceneId != currentScene) {
+    return true;
+  }
+  return progress.phase != studio::ScenePhase::RunningStart &&
+         progress.phase != studio::ScenePhase::RunningStop &&
+         progress.phase != studio::ScenePhase::IdleArmed &&
+         !(progress.phase == studio::ScenePhase::Connecting &&
+           progress.runningStart);
+}
+
 void onEditStart(lv_event_t*) {
   if (!canMutateScene()) {
     return;
@@ -237,14 +386,18 @@ void onEditStop(lv_event_t*) {
 }
 
 void onDeleteScene(lv_event_t*) {
-  if (!canMutateScene()) {
+  if (!canDeleteScene()) {
     return;
   }
   closeSettings();
-  if (studio::scenes().holdsLinks()) {
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (studio::scenes().holdsLinks() || progress.sceneId == currentScene) {
     studio::scenes().cancel();
   }
-  studio::scenes().remove(currentScene);
+  if (studio::scenes().remove(currentScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    return;
+  }
   currentScene = studio::kInvalidSceneId;
   showListView();
 }
@@ -316,6 +469,9 @@ void buildSettingsOverlay() {
   lv_obj_set_size(editStop, lv_pct(100), 32);
   lv_obj_t* del = makeButton(body, "Delete", onDeleteScene, kColDanger);
   lv_obj_set_size(del, lv_pct(100), 32);
+  if (!canDeleteScene()) {
+    lv_obj_add_state(del, LV_STATE_DISABLED);
+  }
 }
 
 void onOpenSettings(lv_event_t*) {
@@ -466,8 +622,147 @@ void refreshRun() {
   lv_label_set_text(runTitle, record->name);
   const studio::SceneProgress& progress = studio::scenes().progress();
   const bool forScene = progress.sceneId == currentScene;
-  lv_label_set_text(runPhase, forScene ? phaseText(progress.phase) : "Idle");
-  lv_label_set_text(runDetail, forScene ? progress.detail : "Open to prepare");
+  const bool targetsReady = allTargetsReady(*record);
+  const bool stablePhase = progress.phase == studio::ScenePhase::Ready ||
+                           progress.phase == studio::ScenePhase::IdleArmed ||
+                           progress.phase == studio::ScenePhase::Completed;
+  const bool connectionFailed =
+      forScene && progress.phase == studio::ScenePhase::Failed &&
+      progress.lastStatus == studio::SceneRunStatus::ConnectTimeout;
+  lv_label_set_text(
+      runPhase,
+      connectionFailed
+          ? "Failed to connect"
+          : (forScene && stablePhase && !targetsReady
+                 ? "Not connected"
+                 : (forScene ? phaseText(progress.phase) : "Idle")));
+  lv_obj_set_style_text_color(
+      runPhase,
+      lv_color_hex(forScene ? phaseColor(progress.phase, targetsReady)
+                            : kColMuted),
+      0);
+
+  studio::InstanceId targetIds[CONFIG_MAX_ACTIVE_LINKS] = {};
+  const uint8_t targetCount = collectTargets(*record, targetIds);
+  bool rebuildChips = targetCount != runChipCount;
+  for (uint8_t i = 0; !rebuildChips && i < targetCount; ++i) {
+    rebuildChips = runChips[i].instanceId != targetIds[i];
+  }
+  if (rebuildChips) {
+    for (uint8_t i = 0; i < runChipCount; ++i) {
+      stopChipAnimation(runChips[i]);
+    }
+    lv_obj_clean(runChipRow);
+    runChipCount = targetCount;
+    const lv_coord_t slotWidth =
+        targetCount > 0 ? static_cast<lv_coord_t>(184 / targetCount) : 184;
+    for (uint8_t i = 0; i < targetCount; ++i) {
+      RunChip& chip = runChips[i];
+      chip = RunChip{};
+      chip.instanceId = targetIds[i];
+      const studio::DeviceRecord* device = studio::devices().find(targetIds[i]);
+      const studio::DriverDescriptor* descriptor =
+          device != nullptr ? studio::DriverCatalog::find(device->driverId)
+                            : nullptr;
+
+      lv_obj_t* item = lv_obj_create(runChipRow);
+      lv_obj_set_size(item, slotWidth, 59);
+      lv_obj_set_pos(item, static_cast<lv_coord_t>(i * slotWidth), 0);
+      lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(item, 0, 0);
+      lv_obj_set_style_pad_all(item, 0, 0);
+      lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
+
+      chip.button = lv_btn_create(item);
+      lv_obj_set_size(chip.button, 40, 40);
+      lv_obj_align(chip.button, LV_ALIGN_TOP_MID, 0, 0);
+      lv_obj_set_style_radius(chip.button, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_color(chip.button, lv_color_hex(kColPanel), 0);
+      lv_obj_set_style_shadow_width(chip.button, 0, 0);
+      lv_obj_set_style_border_width(chip.button, 2, 0);
+      lv_obj_set_style_pad_all(chip.button, 0, 0);
+      void* userData = reinterpret_cast<void*>(
+          static_cast<uintptr_t>(chip.instanceId));
+      lv_obj_add_event_cb(chip.button, onOpenDeviceControl, LV_EVENT_CLICKED,
+                          userData);
+
+      chip.icon = lv_img_create(chip.button);
+      lv_img_set_src(chip.icon,
+                     categoryIcon(descriptor != nullptr
+                                      ? descriptor->type
+                                      : studio::DeviceType::Unknown));
+      lv_img_set_zoom(chip.icon, 176);
+      lv_obj_center(chip.icon);
+
+      lv_obj_t* name = lv_label_create(item);
+      lv_label_set_text(name, device != nullptr ? device->displayName : "?");
+      lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+      lv_obj_set_width(name, slotWidth - 2);
+      lv_obj_set_height(name, 17);
+      lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_font(name, UI_FONT_14, 0);
+      lv_obj_set_style_text_color(name, lv_color_hex(kColMuted), 0);
+      lv_obj_align(name, LV_ALIGN_BOTTOM_MID, 0, 0);
+    }
+    for (uint8_t i = targetCount; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
+      runChips[i] = RunChip{};
+    }
+  }
+
+  const bool chipNavigationDisabled =
+      forScene && (progress.phase == studio::ScenePhase::RunningStart ||
+                   progress.phase == studio::ScenePhase::RunningStop);
+  for (uint8_t i = 0; i < runChipCount; ++i) {
+    RunChip& chip = runChips[i];
+    const studio::DeviceRuntimeState runtime =
+        studio::devices().runtimeState(chip.instanceId);
+    ChipState nextState = ChipState::Disconnected;
+    if (runtime.link == studio::LinkState::Connected && runtime.protocolReady) {
+      nextState = ChipState::Ready;
+    } else if (connectionFailed) {
+      nextState = ChipState::Failed;
+    } else if ((forScene &&
+                progress.phase == studio::ScenePhase::Connecting) ||
+               runtime.link == studio::LinkState::Scanning ||
+               runtime.link == studio::LinkState::Connecting ||
+               runtime.link == studio::LinkState::Connected) {
+      // Drivers report Disconnected during the central's bounded retry
+      // backoff. The sequence phase preserves the operator-facing intent.
+      nextState = ChipState::Connecting;
+    }
+    if (nextState != chip.state) {
+      stopChipAnimation(chip);
+      chip.state = nextState;
+      lv_obj_set_style_border_opa(chip.button, LV_OPA_COVER, 0);
+      if (nextState == ChipState::Ready) {
+        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColOk), 0);
+      } else if (nextState == ChipState::Failed) {
+        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColDanger), 0);
+      } else if (nextState == ChipState::Disconnected) {
+        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColMuted), 0);
+      } else {
+        lv_obj_set_style_border_color(chip.button,
+                                      lv_color_hex(kColConnecting), 0);
+        lv_anim_t animation;
+        lv_anim_init(&animation);
+        lv_anim_set_var(&animation, chip.button);
+        lv_anim_set_exec_cb(&animation, setChipBorderOpacity);
+        lv_anim_set_values(&animation, LV_OPA_30, LV_OPA_COVER);
+        lv_anim_set_time(&animation, 600);
+        lv_anim_set_playback_time(&animation, 600);
+        lv_anim_set_repeat_count(&animation, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_path_cb(&animation, lv_anim_path_ease_in_out);
+        lv_anim_start(&animation);
+      }
+    }
+    if (chipNavigationDisabled) {
+      lv_obj_add_state(chip.button, LV_STATE_DISABLED);
+      lv_obj_set_style_img_opa(chip.icon, LV_OPA_50, 0);
+    } else {
+      lv_obj_clear_state(chip.button, LV_STATE_DISABLED);
+      lv_obj_set_style_img_opa(chip.icon, LV_OPA_COVER, 0);
+    }
+  }
 
   const bool busy = studio::scenes().busy();
   const bool canStart = canStartSequence(*record, progress);
@@ -477,7 +772,7 @@ void refreshRun() {
     lv_obj_add_state(startButton, LV_STATE_DISABLED);
   }
 
-  const bool canStop = canStopSequence(progress);
+  const bool canStop = canStopSequence(*record, progress);
   if (canStop && progress.phase != studio::ScenePhase::RunningStop) {
     lv_obj_clear_state(stopButton, LV_STATE_DISABLED);
   } else {
@@ -604,26 +899,29 @@ void buildRun() {
   lv_obj_set_style_text_align(runTitle, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(runTitle, LV_ALIGN_TOP_MID, 0, 29);
 
-  runPhase = lv_label_create(scrRun);
-  lv_obj_set_style_text_font(runPhase, UI_FONT_20, 0);
-  lv_obj_set_style_text_color(runPhase, lv_color_hex(kColAccent), 0);
-  lv_obj_align(runPhase, LV_ALIGN_TOP_MID, 0, 72);
-
-  runDetail = lv_label_create(scrRun);
-  lv_obj_set_width(runDetail, 170);
-  lv_label_set_long_mode(runDetail, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_font(runDetail, UI_FONT_14, 0);
-  lv_obj_set_style_text_color(runDetail, lv_color_hex(kColMuted), 0);
-  lv_obj_set_style_text_align(runDetail, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(runDetail, LV_ALIGN_TOP_MID, 0, 100);
+  runChipRow = lv_obj_create(scrRun);
+  lv_obj_set_size(runChipRow, 184, 59);
+  lv_obj_align(runChipRow, LV_ALIGN_TOP_MID, 0, 60);
+  lv_obj_set_style_bg_opa(runChipRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(runChipRow, 0, 0);
+  lv_obj_set_style_pad_all(runChipRow, 0, 0);
+  lv_obj_clear_flag(runChipRow, LV_OBJ_FLAG_SCROLLABLE);
 
   startButton = makeButton(scrRun, "Start", onStart, kColOk);
   lv_obj_set_size(startButton, 70, 34);
-  lv_obj_align(startButton, LV_ALIGN_TOP_MID, -40, 130);
+  lv_obj_align(startButton, LV_ALIGN_TOP_MID, -40, 123);
 
   stopButton = makeButton(scrRun, "Stop", onStop, kColDanger);
   lv_obj_set_size(stopButton, 70, 34);
-  lv_obj_align(stopButton, LV_ALIGN_TOP_MID, 40, 130);
+  lv_obj_align(stopButton, LV_ALIGN_TOP_MID, 40, 123);
+
+  runPhase = lv_label_create(scrRun);
+  lv_obj_set_width(runPhase, 170);
+  lv_label_set_long_mode(runPhase, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_font(runPhase, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(runPhase, lv_color_hex(kColMuted), 0);
+  lv_obj_set_style_text_align(runPhase, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(runPhase, LV_ALIGN_TOP_MID, 0, 166);
 
   prepareCancelButton =
       makeButton(scrRun, "Prepare", onPrepareOrCancel, kColAccent);
@@ -676,6 +974,7 @@ void showListView() {
   closeSettings();
   ui::closeRenamePrompt();
   view = View::List;
+  borrowedDeviceOpen = false;
   refreshList();
   lv_scr_load(scrList);
 }
@@ -687,6 +986,7 @@ void showRunView(studio::SceneId sceneId) {
   ui::closeRenamePrompt();
   currentScene = sceneId;
   view = View::Run;
+  borrowedDeviceOpen = false;
   const studio::SceneProgress& progress = studio::scenes().progress();
   const bool alreadyHeld =
       progress.sceneId == sceneId && studio::scenes().holdsLinks() &&
@@ -712,6 +1012,7 @@ void showEditView(studio::SceneId sceneId, bool startList) {
   currentScene = sceneId;
   editingStart = startList;
   view = View::Edit;
+  borrowedDeviceOpen = false;
   refreshEdit();
   lv_scr_load(scrEdit);
 }
@@ -734,6 +1035,18 @@ void tick() {
 
 bool active() { return visible; }
 
+bool deviceControlOpen() { return visible && borrowedDeviceOpen; }
+
+void returnFromDeviceControl() {
+  if (!deviceControlOpen()) {
+    return;
+  }
+  borrowedDeviceOpen = false;
+  refreshRun();
+  lv_scr_load(scrRun);
+  ui::releaseInactiveScreens();
+}
+
 void show() {
   visible = true;
   lastRefreshMs = 0;
@@ -751,6 +1064,7 @@ void hide() {
   ui::closeRenamePrompt();
   releaseHeldScene();
   visible = false;
+  borrowedDeviceOpen = false;
   view = View::List;
   currentScene = studio::kInvalidSceneId;
 }
@@ -793,7 +1107,7 @@ void handleLongPress() {
       return;
     }
     const studio::SceneProgress& progress = studio::scenes().progress();
-    if (canStopSequence(progress)) {
+    if (canStopSequence(*record, progress)) {
       onStop(nullptr);
     } else if (canStartSequence(*record, progress)) {
       onStart(nullptr);
@@ -836,6 +1150,15 @@ void simShowSettings(studio::SceneId sceneId) {
   lv_scr_load(scrRun);
   buildSettingsOverlay();
 }
+
+void simOpenDeviceControl(studio::InstanceId instanceId) {
+  lv_event_t event{};
+  event.user_data = reinterpret_cast<void*>(
+      static_cast<uintptr_t>(instanceId));
+  onOpenDeviceControl(&event);
+}
+
+void simDeleteCurrentScene() { onDeleteScene(nullptr); }
 
 void simShowAddStepCategory(studio::SceneId sceneId) {
   visible = true;

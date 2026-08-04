@@ -176,8 +176,10 @@ then open that device to begin scanning or reconnecting. Pairing mode matters:
 
 Open **Scenes** to create ordered Start and Stop lists. A scene reaches `Ready`
 only when every target has both a physical link and completed protocol setup.
-The panel holds those links while the run screen is open. Back or Unlink
-releases them.
+The panel holds those links while the run screen is open. Circular target chips
+show connection readiness and open each device's full controls without dropping
+the other sequence links. Back returns to the sequence; Back from the run screen
+or Unlink releases all targets.
 
 ## How the firmware is organized
 

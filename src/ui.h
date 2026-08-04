@@ -7,12 +7,22 @@ namespace ui {
 
 using RenameDoneFn = void (*)(const char* name);
 
+enum class DeviceControlMode : uint8_t {
+  Exclusive,
+  PreserveActivation,
+};
+
 void init();
 void tick();
 void handleShortPress();
 void handleLongPress();
 void showHome();
 void showDevices();
+void showDevice(studio::InstanceId instanceId,
+                DeviceControlMode mode = DeviceControlMode::Exclusive);
+// Return to the sequence that lent a held activation, or Devices for a normal
+// device screen.
+void showDeviceParent();
 // Load Home/Devices so a device screen can be deleted safely, without changing
 // device activation state.
 void parkForScreenRebuild();

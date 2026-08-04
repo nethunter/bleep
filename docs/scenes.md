@@ -43,6 +43,23 @@ Completing Stop keeps prepared links while the run/edit screen remains open so
 the sequence can be edited or restarted without reconnecting. Back and Unlink
 perform teardown.
 
+Deleting a sequence while it is only preparing connections first cancels that
+preparation and releases its links, then removes the record. Delete remains
+disabled while Start/Stop is executing or the sequence is armed.
+
+The run screen deduplicates direct targets across both authored lists and shows
+each as a circular category-icon chip. The border communicates live readiness:
+breathing cyan while connecting or initializing, green when protocol-ready,
+red after a terminal connection failure, and muted gray when simply
+disconnected or powered off. Retry backoff remains part of Connecting and keeps
+breathing cyan. Tapping a chip outside Start/Stop execution opens that target's
+full controls using the held activation. Returning preserves all links and the
+sequence's logical phase; manual record commands are per-device overrides, so a
+later authored Stop still runs for every target. Sequence Start/Stop controls
+stay disabled while any stable-phase target is not ready.
+The compact run status uses blue for connection/transitions, green for
+Ready/Done, red for Recording/failure/disconnection, and muted text for Idle.
+
 While a sequence run screen is open, the panel's hardware action button mirrors
 the enabled run action: Start when the sequence is ready (or restartable), and
 Stop when it is armed or Start is in flight. It does nothing while preparation

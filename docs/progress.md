@@ -1158,3 +1158,61 @@ Record values with the exact build environment and commit/worktree state.
   short press; overlays and non-run scene screens ignore short presses.
 - Follow-up: reduced the long-press threshold from 1.6 seconds to 700 ms after
   physical use showed the original Back delay was too long.
+
+### 2026-08-04: Sequence target controls and readiness chips
+
+- Rebased `codex/add-sequence-device-controls` onto local `main` at `f9633b4`
+  before implementation.
+- The sequence run screen now deduplicates direct Start/Stop targets into
+  circular category-icon chips above Start/Stop. Borders breathe cyan during
+  connection/protocol initialization, stay green when ready, and turn red when
+  disconnected. The compact sequence phase sits above Cancel/Unlink.
+- A chip opens the target's full device UI using its sequence-held activation.
+  Simulator regression verified Canon control entry/Back while Canon and
+  Tascam both remained active. Manual device controls retain the sequence's
+  logical phase; stable Start/Stop actions remain gated until every target is
+  protocol-ready.
+- Native tests passed 30/30. `ui_sim` built and all captures completed,
+  including connecting, ready, borrowed Canon control, and disconnected-camera
+  sequence states. The post-Stop settings capture had 14,416 bytes free,
+  17,012-byte peak LVGL use, and 1% fragmentation.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 943,916 bytes flash / 137,996 bytes RAM;
+  `crowpanel_128_roboto` 913,460 / 137,996;
+  `canon_ble` 942,716 / 136,636;
+  `canon_trigger` 939,882 / 136,268;
+  `tascam_x8` 941,732 / 136,476.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
+  Physical chip touch targets, border animation, camera power-off/recovery, and
+  preservation of the second live BLE link remain operator-pending.
+- Follow-up: the compact run status now uses semantic colors: blue for
+  connection/transitions, green for Ready/Done, red for Recording/Failed/not
+  connected, and muted text for Idle. Native tests remained 30/30 and the full
+  simulator capture set passed. Updated firmware builds succeeded:
+  `crowpanel_128` 944,044 bytes flash / 137,996 bytes RAM;
+  `crowpanel_128_roboto` 913,588 / 137,996;
+  `canon_ble` 942,844 / 136,636;
+  `canon_trigger` 940,010 / 136,268;
+  `tascam_x8` 941,860 / 136,476. The updated `crowpanel_128` flashed
+  successfully to `/dev/cu.usbserial-211240`.
+- Follow-up: red chip borders now mean terminal connection failure only.
+  WaitingRetry/WaitingConnect backoff remains breathing blue even when a driver
+  temporarily reports `Disconnected`; powered-off or otherwise idle-disconnected
+  targets use muted gray. The simulator now captures an explicit 30-second
+  connection timeout and recovery. Native tests passed 30/30; every simulator
+  capture passed. Updated builds succeeded: `crowpanel_128` 944,166 bytes flash
+  / 137,996 bytes RAM; `crowpanel_128_roboto` 913,710 / 137,996; `canon_ble`
+  942,974 / 136,636; `canon_trigger` 940,140 / 136,268; `tascam_x8` 941,982 /
+  136,476. The corrected default firmware flashed successfully to
+  `/dev/cu.usbserial-211240`.
+- Follow-up: fixed Delete silently returning while automatic sequence
+  preparation was in `Connecting`. Delete now cancels connection-only
+  preparation, releases its held links, and removes the sequence; it remains
+  disabled during Start/Stop execution and while armed. The simulator includes
+  a connecting-delete regression that verifies the scene record and every held
+  activation are removed. Native tests passed 30/30 and all simulator captures
+  passed. Updated builds succeeded: `crowpanel_128` 944,276 bytes flash /
+  137,996 bytes RAM; `crowpanel_128_roboto` 913,820 / 137,996; `canon_ble`
+  943,084 / 136,636; `canon_trigger` 940,250 / 136,268; `tascam_x8` 942,092 /
+  136,476. The delete fix flashed successfully to
+  `/dev/cu.usbserial-211240`.

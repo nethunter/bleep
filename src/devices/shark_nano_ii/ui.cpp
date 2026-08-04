@@ -19,6 +19,7 @@ namespace {
 using Link = shark::SharkClient::Link;
 
 studio::InstanceId activeInstance = studio::kInvalidInstanceId;
+bool borrowedActivation = false;
 
 class SharkUiClient {
  public:
@@ -426,7 +427,10 @@ void advanceRunState() {
 void onRunAction(lv_event_t*) { advanceRunState(); }
 
 void onRepair(lv_event_t*) { gShark.forgetDevice(); }
-void onBack(lv_event_t*) { ui::showDevices(); }
+void onBack(lv_event_t*) {
+  hide();
+  ui::showDeviceParent();
+}
 
 void closeModal() {
   modalOpen = false;
@@ -1325,8 +1329,11 @@ void showScreenForState(const shark::SharkClient::State& s) {
 
 void init() {}
 
-void show(studio::InstanceId instanceId) {
-  if (!studio::devices().activate(instanceId)) {
+void show(studio::InstanceId instanceId, bool preserveActivation) {
+  borrowedActivation = preserveActivation;
+  if (preserveActivation ? !studio::devices().isActive(instanceId)
+                         : !studio::devices().activate(instanceId)) {
+    borrowedActivation = false;
     return;
   }
   activeInstance = instanceId;
@@ -1348,7 +1355,10 @@ void hide() {
     closeModal();
   }
   stopActiveMotion();
-  studio::devices().deactivate();
+  if (!borrowedActivation) {
+    studio::devices().deactivate();
+  }
+  borrowedActivation = false;
   activeInstance = studio::kInvalidInstanceId;
 }
 
@@ -1413,7 +1423,8 @@ void handleLongPress() {
     cancelPositioning();
     return;
   }
-  ui::showDevices();
+  hide();
+  ui::showDeviceParent();
 }
 
 #ifdef UI_SIMULATOR

@@ -233,30 +233,7 @@ void onOpenDevice(lv_event_t* event) {
   if (studio::scenes().holdsLinks()) {
     return;
   }
-  switch (record->driverId) {
-#if CONFIG_DRIVER_SHARK_NANO_II
-    case studio::DriverId::SharkNanoII:
-      shark_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-    case studio::DriverId::CanonTrigger:
-      canon_trigger_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-    case studio::DriverId::CanonBle:
-      canon_ble_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-    case studio::DriverId::TascamX8:
-      tascam_x8_ui::show(instanceId);
-      break;
-#endif
-    default:
-      break;
-  }
+  showDevice(instanceId);
 }
 
 void buildDeviceModal();
@@ -709,10 +686,6 @@ void init() {
 }
 
 void tick() {
-  if (scene_ui::active()) {
-    scene_ui::tick();
-    return;
-  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::tick();
@@ -737,6 +710,10 @@ void tick() {
     return;
   }
 #endif
+  if (scene_ui::active()) {
+    scene_ui::tick();
+    return;
+  }
   const uint32_t now = millis();
   if (now - lastRefreshMs < 500) {
     return;
@@ -748,10 +725,6 @@ void tick() {
 }
 
 void handleShortPress() {
-  if (scene_ui::active()) {
-    scene_ui::handleShortPress();
-    return;
-  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleShortPress();
@@ -776,13 +749,13 @@ void handleShortPress() {
     return;
   }
 #endif
+  if (scene_ui::active()) {
+    scene_ui::handleShortPress();
+    return;
+  }
 }
 
 void handleLongPress() {
-  if (scene_ui::active()) {
-    scene_ui::handleLongPress();
-    return;
-  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleLongPress();
@@ -807,6 +780,10 @@ void handleLongPress() {
     return;
   }
 #endif
+  if (scene_ui::active()) {
+    scene_ui::handleLongPress();
+    return;
+  }
   if (picker_shell::handleBack()) {
     return;
   }
@@ -883,6 +860,46 @@ void showDevices() {
   refreshDevices();
   lv_scr_load(scrDevices);
   releaseDeviceUis();
+}
+
+void showDevice(studio::InstanceId instanceId, DeviceControlMode mode) {
+  const studio::DeviceRecord* record = studio::devices().find(instanceId);
+  if (record == nullptr || !record->enabled) {
+    return;
+  }
+  const bool preserve = mode == DeviceControlMode::PreserveActivation;
+  switch (record->driverId) {
+#if CONFIG_DRIVER_SHARK_NANO_II
+    case studio::DriverId::SharkNanoII:
+      shark_ui::show(instanceId, preserve);
+      break;
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+    case studio::DriverId::CanonTrigger:
+      canon_trigger_ui::show(instanceId, preserve);
+      break;
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+    case studio::DriverId::CanonBle:
+      canon_ble_ui::show(instanceId, preserve);
+      break;
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+    case studio::DriverId::TascamX8:
+      tascam_x8_ui::show(instanceId, preserve);
+      break;
+#endif
+    default:
+      break;
+  }
+}
+
+void showDeviceParent() {
+  if (scene_ui::deviceControlOpen()) {
+    scene_ui::returnFromDeviceControl();
+    return;
+  }
+  showDevices();
 }
 
 void parkForScreenRebuild() {

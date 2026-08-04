@@ -8,7 +8,7 @@
 namespace shark_ui {
 
 void init();
-void show(studio::InstanceId instanceId);
+void show(studio::InstanceId instanceId, bool preserveActivation = false);
 void hide();
 void release();
 bool active();

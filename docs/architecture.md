@@ -116,6 +116,10 @@ Opening a device screen requests that instance's connection. Opening a sequence
 run screen prepares every Start/Stop target concurrently and holds those links
 until Back, Cancel, or Stop complete. Preparation reaches `Ready` only after
 every target is physically connected and its driver reports protocol readiness.
+The run screen shows one category-icon chip per target. A chip borrows the
+already-held activation to open full device controls, then returns without
+tearing down that device or its peers. Normal Devices navigation remains
+exclusive outside this sequence-owned path.
 Leaving a screen may retain a
 healthy connection according to the connection policy, but no device is
 selected implicitly at boot.
@@ -203,6 +207,13 @@ Devices **Add device** and Scenes **+ Step** share `src/ui/picker_shell.*`: a
 category icon grid, then a driver or enabled-device list, then (for scene
 steps) Record Start / Stop. The overlay is created on open and deleted on
 close.
+
+The sequence run screen reuses the same category icons in circular target
+chips. Their borders breathe cyan during connection/protocol setup, stay green
+when protocol-ready, turn red after a terminal connection failure, and remain
+muted gray when simply disconnected or powered off. Chip navigation is disabled
+while Start or Stop steps execute; a compact status label remains above
+Cancel/Unlink.
 
 After simulator measurements of peak use and fragmentation, the LVGL pool was
 reduced from 128 KiB to 64 KiB to return static RAM to the general heap.

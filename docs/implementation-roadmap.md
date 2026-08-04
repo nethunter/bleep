@@ -251,6 +251,8 @@ Bounded gate for the ADR-019/020 tranche:
 - opening a sequence prepares all targets concurrently before Start;
 - `Ready` requires every target's physical link and protocol initialization;
 - links stay held while the run screen is open and through armed/Stop;
+- target chips expose full controls without releasing the sequence's held
+  links, and show per-target connection/protocol readiness;
 - authored step order and the editable 500 ms wait remain scene data;
 - partial failures and unavailable devices are visible and recoverable.
 
