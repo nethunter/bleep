@@ -391,6 +391,20 @@ the replacement.
   resource if any gate fails. The uncommitted multi-instance `DeviceManager`
   work present when this tranche began is the authorized implementation
   baseline and must be preserved.
+- Hardware constraint observed 2026-08-04: Opening an authored HA-first mixed
+  sequence started Wi-Fi before the lazy BLE central. NimBLE then failed its
+  contiguous `0x7800` allocation (`BLE_INIT: Malloc failed`) and asserted into
+  an interrupt-watchdog reset. Preparation now acquires all physical targets
+  before HA targets regardless of authored action order. A subsequent live
+  run proved that two BLE sessions left too little heap for the Wi-Fi driver's
+  four required RX buffers. The target now uses two 20-row DMA display strips,
+  a 76 KiB LVGL pool, and two 2 KiB HA frame slots. The complete simulator flow
+  passes at those bounds; a measured 72 KiB LVGL pool was rejected. WebSocket
+  disconnects now reset protocol state and schedule a main-loop reconnect
+  instead of leaving the runtime permanently unauthenticated. These
+  mitigations have native/simulator coverage, and one mixed
+  HA/Canon/Tascam hardware run reached all-targets-ready in 8.6 seconds. The
+  ten-cycle teardown/heap-recovery gate remains open.
 
 ## Open decisions
 

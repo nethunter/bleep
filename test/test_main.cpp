@@ -175,6 +175,9 @@ class FakeDriver : public studio::DeviceDriver {
       active = true;
       activeInstance = record.instanceId;
       ++activationCount;
+      if (activationSequence != nullptr && firstActivationOrder == 0) {
+        firstActivationOrder = ++(*activationSequence);
+      }
       return true;
     }
     return false;
@@ -233,6 +236,8 @@ class FakeDriver : public studio::DeviceDriver {
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
   studio::InstanceId activeInstances[studio::DeviceManager::kMaxActiveLinks] = {};
   int activationCount = 0;
+  int* activationSequence = nullptr;
+  int firstActivationOrder = 0;
   int deactivationCount = 0;
   int loopCount = 0;
   int dispatchCount = 0;
@@ -920,6 +925,70 @@ void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::SceneValidationStatus::MissingCapability),
       static_cast<int>(scenes.validate(scene)));
+}
+
+void test_mixed_scene_activates_physical_transport_before_home_assistant() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver physicalDriver(studio::DriverId::CanonBle);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  int activationSequence = 0;
+  physicalDriver.activationSequence = &activationSequence;
+  homeAssistantDriver.activationSequence = &activationSequence;
+  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Mixed order", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 2;
+  // Authored HA-first order must not dictate transport initialization order.
+  record.startSteps[0] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  record.startSteps[1] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.stopCount = 2;
+  record.stopSteps[0] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOff);
+  record.stopSteps[1] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStop);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  // Reproduce navigation from a retained HA entity screen into the sequence.
+  TEST_ASSERT_TRUE(
+      devices.acquire(helperId, studio::ConnectionOwner::Foreground));
+  devices.release(helperId, studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_TRUE(devices.isActive(helperId));
+  activationSequence = 0;
+  physicalDriver.firstActivationOrder = 0;
+  homeAssistantDriver.firstActivationOrder = 0;
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, physicalDriver.firstActivationOrder);
+  TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
+  scenes.cancel();
 }
 
 void test_manager_migrates_legacy_without_boot_activation() {
@@ -1791,6 +1860,7 @@ int main(int, char**) {
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
+  RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_routes_to_canon_driver);

@@ -233,6 +233,27 @@ failure. A matching refreshed state succeeds; only HTTP 404 means missing,
 while transport and parse failures remain unknown. The runtime disconnects
 Wi-Fi after its final HA instance is evicted or explicitly unlinked.
 
+Mixed sequences initialize every physical transport before acquiring any Home
+Assistant target, independent of authored action order. On the ESP32-C3,
+NimBLE initialization requires a contiguous allocation of roughly `0x7800`
+bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
+underlying BLE library to assert instead of returning a recoverable error.
+Before that ordering pass, preparation evicts every idle retained HA session so
+navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
+Pending HA work makes preparation fail safely. Action execution still follows
+the authored order after all targets prepare. The LVGL pool is held to 76 KiB
+and the target keeps two 20-row DMA display strips, returning 42.5 KiB of
+static SRAM compared with the earlier 96 KiB/40-row configuration. The full
+simulator flow is the regression gate for the LVGL allocation budget. HA keeps
+two 2 KiB WebSocket frame slots; oversized state events intentionally become
+unknown and use the individual REST recovery path. A WebSocket disconnect is
+reported to the main loop as a flag, where authentication and subscription
+state are cleared and a bounded reconnect is scheduled.
+Transient failures while resolving an entity's initial REST state do not leave
+protocol readiness permanently false: one entity is retried at a time after a
+two-second delay. HTTP 404 remains a terminal missing-entity result; transport,
+other HTTP, and malformed JSON results remain unknown and retry.
+
 Drivers publish limits and availability. For example, a CCT-only light does
 not expose HSI controls. Specialized workflows such as Shark keypoints may
 extend the common motion UI without leaking into other drivers.
@@ -265,9 +286,10 @@ while Start or Stop steps execute; a compact status label remains above
 Cancel/Done.
 
 The twelve-record Devices screen plus the largest specialized control screen
-exhausted the earlier 64 KiB LVGL pool. The HA capacity simulation therefore
-sets the pool to 96 KiB; the full capture run leaves about 34 KiB free at the
-Shark screen checkpoint. Target heap recovery remains part of ADR-023's open
+exhausted the earlier 64 KiB LVGL pool. The final 76 KiB pool passes the full
+capture run and retains 14,192 bytes on its most demanding sequence-stop
+screen; 72 KiB was measured and rejected after stalling the simulator after
+the Shark run screen. Target heap recovery remains part of ADR-023's open
 hardware gate.
 
 State fields carry a quality:

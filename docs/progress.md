@@ -1410,3 +1410,96 @@ Record values with the exact build environment and commit/worktree state.
 - The reconciliation fix flashed successfully to
   `/dev/cu.usbserial-211240`; repeat the previously successful helper action on
   target hardware to close this observed confirmation issue.
+
+### 2026-08-04: Mixed-sequence BLE allocation crash
+
+- Reproduced the reported Sequence 1 reset under a live serial monitor. The
+  board logged `BLE_INIT: Malloc failed`, then `assert emi.c 164` and an
+  interrupt-watchdog panic. The requested contiguous allocation was `0x7800`.
+  This occurred because the authored sequence encountered an HA target first,
+  initialized Wi-Fi, and only then lazily initialized the shared BLE central.
+- Changed preparation ownership acquisition—not authored action execution—to
+  initialize every physical target before any HA target. Rollback now tracks
+  the actual acquisition order. A native regression authors the HA action
+  first, begins with a retained HA session, verifies that it is evicted, and
+  verifies that the physical driver then activates before HA. Pending HA work
+  aborts preparation rather than entering the unsafe allocator order. Native
+  tests pass 36/36.
+- `crowpanel_128` built at 1,683,794 bytes flash / 207,828 bytes RAM
+  (53.5% / 63.4%), `crowpanel_128_roboto` built at 1,653,338 / 207,828
+  (52.6% / 63.4%), and `home_assistant` built at 1,675,386 / 204,716
+  (53.3% / 62.5%). The full UI simulator also completed. The target image
+  flashed successfully to `/dev/cu.usbserial-211240`.
+  A post-flash monitor remained stable at Home for two minutes, but the exact
+  Sequence 1 reopen was not performed during that monitoring window. The
+  physical-before-Wi-Fi mitigation therefore remains hardware-unverified and
+  ADR-023 stays Experimental.
+
+### 2026-08-04: Mixed-sequence HA connection follow-up
+
+- Investigated the follow-up where the reordered mixed sequence no longer
+  crashed but did not connect to Home Assistant. The HA WebSocket disconnect
+  callback previously had no handling, so `websocketStarted_` could remain true
+  while authentication and subscription could never restart. The callback now
+  flips a flag only; `loop()` clears protocol state and schedules a bounded
+  reconnect. Secret-free stage logs distinguish Wi-Fi start/timeout,
+  WebSocket start/disconnect, authentication, and subscription result and
+  include free/largest-allocation heap figures.
+- Reduced the LVGL pool from 96 KiB to 80 KiB to return 16 KiB to concurrent
+  BLE and Wi-Fi operation. The complete `ui_sim` capture run passed at 80 KiB;
+  its most demanding sequence-stop screen retained 18,296 bytes free with a
+  20,897-byte peak allocation and 1% fragmentation.
+- Native tests passed 36/36. Builds passed with `crowpanel_128` at 1,684,552
+  bytes flash / 191,444 bytes RAM (53.6% / 58.4%),
+  `crowpanel_128_roboto` at 1,654,096 / 191,444 (52.6% / 58.4%), and
+  `home_assistant` at 1,676,132 / 188,332 (53.3% / 57.5%). The corrected
+  `crowpanel_128` image flashed successfully to `/dev/cu.usbserial-211240`.
+  Boot reported about 102 KiB free heap and the panel remained stable at Home
+  for 150 seconds. No sequence activation occurred during the live monitor
+  window, so the exact mixed HA connection remains an open hardware check and
+  ADR-023 stays Experimental.
+
+### 2026-08-04: HA initial-state readiness recovery
+
+- Found another permanent-wait path during the mixed-sequence audit. After
+  WebSocket authentication, a transient failure of the one-time individual
+  REST state request left the entity `present == false` forever. The
+  subscription could be healthy, but sequence readiness could never complete.
+- Initial and reconciliation REST transport errors, non-404 HTTP errors, and
+  malformed state JSON now schedule a per-entity retry after two seconds. Only
+  one eligible entity is refreshed per main-loop pass, refreshes require an
+  authenticated WebSocket, successful state updates clear the retry, and HTTP
+  404 remains the terminal missing-entity result. Added a secret-free
+  `rest_retry` stage log with HTTP and heap diagnostics.
+- Native tests passed 36/36; `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, and `home_assistant` built successfully. The main
+  image uses 1,684,760 bytes flash / 191,460 bytes RAM (53.6% / 58.4%) and
+  flashed successfully to `/dev/cu.usbserial-211240`. Live mixed-sequence
+  confirmation remains open pending an operator run on this image.
+
+### 2026-08-04: Mixed HA/Canon/Tascam hardware success and SRAM bound
+
+- Captured the remaining failure with the operator reproducing while the UART
+  monitor stayed attached. With the 40-row display buffers, ESP-IDF reported
+  `Expected to init 4 rx buffer, actual is 2`, `esp_wifi_init 257`, and repeated
+  STA-enable failures. The board had about 25 KiB free heap and reached an
+  8,376-byte minimum: the blocker was Wi-Fi RX-buffer allocation after two BLE
+  sessions, not HA authentication or entity state.
+- Reduced each of the two DMA display strips from 40 rows to 20, returning
+  19,200 bytes without removing double buffering. The next live run connected
+  Wi-Fi, received `auth_required`/`auth_ok`, established the selected-entity
+  subscription, brought Tascam and Canon to protocol-ready, and reported
+  `all_targets_ready` in 8,569 ms. The operator confirmed the sequence worked.
+- That successful run still reached only 1,248 bytes minimum free heap, so the
+  final bounds reduce each HA WebSocket frame slot from 4 KiB to 2 KiB and the
+  LVGL pool from 80 KiB to 76 KiB. Oversized state events already fall back to
+  individual REST. A 72 KiB LVGL attempt stalled the simulator and was
+  rejected; 76 KiB completed every capture with 14,192 bytes free on the most
+  demanding sequence-stop screen.
+- Final verification: native tests passed 36/36; full `ui_sim` passed;
+  `crowpanel_128` built at 1,680,660 bytes flash / 164,068 bytes RAM
+  (53.4% / 50.1%); `crowpanel_128_roboto` built at 1,650,204 / 164,068
+  (52.5% / 50.1%); and `home_assistant` built at 1,672,256 / 160,956
+  (53.2% / 49.1%). The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. One mixed run passes; the required ten-cycle
+  teardown and heap-recovery gate remains open, so ADR-023 stays Experimental.

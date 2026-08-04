@@ -30,6 +30,7 @@ class HomeAssistantClient {
   studio::DeviceRuntimeState runtimeState(studio::InstanceId instanceId) const;
   const EntityState* entityState(studio::InstanceId instanceId) const;
   void enqueueFrame(const uint8_t* payload, size_t length);
+  void markWebsocketDisconnected();
 
  private:
   struct Session {
@@ -41,6 +42,7 @@ class HomeAssistantClient {
     bool expectedOn = false;
     uint32_t pendingSince = 0;
     bool refreshNeeded = false;
+    uint32_t refreshAfterMs = 0;
   };
 
   Session* sessionFor(studio::InstanceId instanceId);
@@ -67,12 +69,15 @@ class HomeAssistantClient {
   uint32_t retryAt_ = 0;
   uint8_t failures_ = 0;
   studio::HomeAssistantConfig config_;
-  static constexpr size_t kFrameCapacity = 4096;
+  // HA auth/results fit comfortably; oversized state events intentionally
+  // fall back to the bounded per-entity REST reconciliation path.
+  static constexpr size_t kFrameCapacity = 2048;
   char frames_[2][kFrameCapacity + 1] = {};
   size_t frameLengths_[2] = {};
   uint8_t frameHead_ = 0;
   uint8_t frameTail_ = 0;
   bool frameFault_ = false;
+  bool websocketDisconnected_ = false;
 };
 
 }  // namespace home_assistant

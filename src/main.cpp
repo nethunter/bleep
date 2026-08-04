@@ -65,8 +65,9 @@ constexpr bool touchInvertY = TOUCH_INVERT_Y;
 constexpr uint32_t i2cFreq = 400000;
 constexpr uint16_t screenWidth = 240;
 constexpr uint16_t screenHeight = 240;
-// Smaller partial-render buffers leave SRAM headroom for the BLE host stack.
-constexpr uint16_t drawBufferRows = 40;
+// Keep DMA double buffering, but use narrow partial-render strips so the
+// ESP32-C3 can initialize Wi-Fi while two BLE links remain active.
+constexpr uint16_t drawBufferRows = 20;
 constexpr uint32_t buttonDebounceMs = 35;
 constexpr uint32_t buttonLongPressMs = 700;
 }  // namespace board

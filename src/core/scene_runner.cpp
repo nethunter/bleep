@@ -125,12 +125,54 @@ bool SceneRunner::collectTargets(const SceneRecord& record, TargetSet& out) cons
 }
 
 bool SceneRunner::activateTargets(const TargetSet& targets) {
+  bool hasPhysicalTarget = false;
+  bool hasHomeAssistantTarget = false;
   for (uint8_t i = 0; i < targets.count; ++i) {
-    if (!devices_.acquire(targets.ids[i], ConnectionOwner::Sequence)) {
-      for (uint8_t acquired = 0; acquired < i; ++acquired) {
-        devices_.release(targets.ids[acquired], ConnectionOwner::Sequence);
+    const DeviceRecord* record = devices_.find(targets.ids[i]);
+    if (record != nullptr && record->driverId == DriverId::HomeAssistant) {
+      hasHomeAssistantTarget = true;
+    } else {
+      hasPhysicalTarget = true;
+    }
+  }
+  if (hasPhysicalTarget && hasHomeAssistantTarget) {
+    // A retained HA screen can leave Wi-Fi running even before preparation.
+    // Stop every idle HA session so NimBLE gets its large contiguous block
+    // first. Pending/owned HA work returns Busy and aborts safely.
+    for (size_t i = 0; i < devices_.count(); ++i) {
+      const DeviceRecord* record = devices_.at(i);
+      if (record == nullptr || record->driverId != DriverId::HomeAssistant ||
+          !devices_.isActive(record->instanceId)) {
+        continue;
       }
-      return false;
+      const CommandStatus status = devices_.disconnect(record->instanceId);
+      if (status != CommandStatus::Succeeded &&
+          status != CommandStatus::Unavailable) {
+        return false;
+      }
+    }
+  }
+
+  InstanceId acquiredIds[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+  uint8_t acquiredCount = 0;
+  // BLE initialization needs one large contiguous allocation. Bring physical
+  // transports up before HA starts Wi-Fi, regardless of authored step order.
+  for (uint8_t pass = 0; pass < 2; ++pass) {
+    const bool homeAssistantPass = pass == 1;
+    for (uint8_t i = 0; i < targets.count; ++i) {
+      const DeviceRecord* record = devices_.find(targets.ids[i]);
+      const bool homeAssistant =
+          record != nullptr && record->driverId == DriverId::HomeAssistant;
+      if (homeAssistant != homeAssistantPass) {
+        continue;
+      }
+      if (!devices_.acquire(targets.ids[i], ConnectionOwner::Sequence)) {
+        for (uint8_t acquired = 0; acquired < acquiredCount; ++acquired) {
+          devices_.release(acquiredIds[acquired], ConnectionOwner::Sequence);
+        }
+        return false;
+      }
+      acquiredIds[acquiredCount++] = targets.ids[i];
     }
   }
   return true;
