@@ -1392,12 +1392,7 @@ void handleShortPress() {
   if (!gShark.connected()) {
     return;
   }
-  if (modalOpen) {
-    closeModal();
-    return;
-  }
-  if (setOverlayOpen) {
-    cancelPositioning();
+  if (modalOpen || setOverlayOpen) {
     return;
   }
   if (currentMain == 1) {
@@ -1407,6 +1402,18 @@ void handleShortPress() {
   ensureConnectedScreens();
   currentMain = 1;
   lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+
+void handleLongPress() {
+  if (modalOpen) {
+    closeModal();
+    return;
+  }
+  if (setOverlayOpen) {
+    cancelPositioning();
+    return;
+  }
+  ui::showDevices();
 }
 
 #ifdef UI_SIMULATOR

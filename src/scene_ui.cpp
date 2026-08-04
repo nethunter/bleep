@@ -756,6 +756,19 @@ void hide() {
 }
 
 void handleShortPress() {
+  if (!visible || view != View::Run || ui::renamePromptActive() ||
+      settingsOverlay != nullptr || picker_shell::active()) {
+    return;
+  }
+  refreshRun();
+  if (!lv_obj_has_state(stopButton, LV_STATE_DISABLED)) {
+    onStop(nullptr);
+  } else if (!lv_obj_has_state(startButton, LV_STATE_DISABLED)) {
+    onStart(nullptr);
+  }
+}
+
+void handleLongPress() {
   if (!visible) {
     return;
   }
@@ -767,7 +780,7 @@ void handleShortPress() {
     closeSettings();
     return;
   }
-  if (picker_shell::handleShortPress()) {
+  if (picker_shell::handleBack()) {
     return;
   }
   if (view == View::Edit) {

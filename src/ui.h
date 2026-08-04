@@ -10,6 +10,7 @@ using RenameDoneFn = void (*)(const char* name);
 void init();
 void tick();
 void handleShortPress();
+void handleLongPress();
 void showHome();
 void showDevices();
 // Load Home/Devices so a device screen can be deleted safely, without changing

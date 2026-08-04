@@ -182,4 +182,6 @@ void tick() {
 
 void handleShortPress() { performPrimaryAction(); }
 
+void handleLongPress() { onBack(); }
+
 }  // namespace tascam_x8_ui

@@ -229,4 +229,6 @@ void handleShortPress() {
   triggerRecord();
 }
 
+void handleLongPress() { onBack(nullptr); }
+
 }  // namespace canon_trigger_ui

@@ -23,7 +23,7 @@ void show(Mode mode, const Callbacks& callbacks);
 void hide();
 bool active();
 // Returns true when the short-press was consumed by the picker.
-bool handleShortPress();
+bool handleBack();
 
 #ifdef UI_SIMULATOR
 void simShowCategory(Mode mode);

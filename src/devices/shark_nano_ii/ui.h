@@ -15,6 +15,8 @@ bool active();
 void tick();
 // Dispatches the hardware trigger to the current screen's primary action.
 void handleShortPress();
+// Navigates back or closes the current overlay.
+void handleLongPress();
 
 #ifdef UI_SIMULATOR
 void simShowKeypoints();

@@ -541,7 +541,7 @@ bool active() {
   return overlay != nullptr && !lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
-bool handleShortPress() {
+bool handleBack() {
   if (!active()) {
     return false;
   }

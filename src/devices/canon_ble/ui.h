@@ -12,5 +12,6 @@ bool active();
 void tick();
 // Dispatches the hardware trigger to the current screen's primary action.
 void handleShortPress();
+void handleLongPress();
 
 }  // namespace canon_ble_ui

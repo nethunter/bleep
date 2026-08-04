@@ -10,6 +10,7 @@ bool active();
 void show();
 void hide();
 void handleShortPress();
+void handleLongPress();
 
 #ifdef UI_SIMULATOR
 void simShowList();

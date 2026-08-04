@@ -776,7 +776,38 @@ void handleShortPress() {
     return;
   }
 #endif
-  if (picker_shell::handleShortPress()) {
+}
+
+void handleLongPress() {
+  if (scene_ui::active()) {
+    scene_ui::handleLongPress();
+    return;
+  }
+#if CONFIG_DRIVER_SHARK_NANO_II
+  if (shark_ui::active()) {
+    shark_ui::handleLongPress();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  if (canon_trigger_ui::active()) {
+    canon_trigger_ui::handleLongPress();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  if (canon_ble_ui::active()) {
+    canon_ble_ui::handleLongPress();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+  if (tascam_x8_ui::active()) {
+    tascam_x8_ui::handleLongPress();
+    return;
+  }
+#endif
+  if (picker_shell::handleBack()) {
     return;
   }
   if (renameOverlay != nullptr) {

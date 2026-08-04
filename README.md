@@ -102,6 +102,18 @@ The board does not include battery-voltage sensing, so the firmware cannot show
 the controller's own battery level without a hardware modification. Battery
 values shown on the Shark screen come from the slider.
 
+### Controls
+
+- **Touch:** Home, device management, sequences, connection, keypoints,
+  positioning, run controls, per-keypoint settings, and explicit Canon camera
+  power-down/wake.
+- **Button (GPIO 1):** A short press activates the current primary action. On a
+  sequence run screen it starts from Ready and stops once armed or while Start
+  is running. Device screens similarly dispatch their primary Shark, Canon, or
+  Tascam action. A 700 ms hold navigates Back, cancels, or closes the current
+  overlay. The button has no power behavior; the hardware SPDT switch controls
+  controller power.
+
 ### Pin assumptions
 
 | Function | GPIO / address |

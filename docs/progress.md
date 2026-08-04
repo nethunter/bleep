@@ -1139,3 +1139,22 @@ Record values with the exact build environment and commit/worktree state.
 - The remaining publication blocker is Git history: removed capture blobs are
   still present in earlier commits and must be scrubbed or excluded through a
   reviewed squashed public history before pushing.
+### 2026-08-04: Action-button long-press Back
+
+- Split the GPIO 1 action button by intent: short press only dispatches the
+  active device's primary action; a 700 ms hold navigates Back, cancels, or
+  closes the current overlay. Releasing after a handled long press does not
+  dispatch a short-press action.
+- Removed deep-sleep, long-hold power-off, and button-wake handling. The
+  hardware SPDT switch is now the only remote power control.
+- Host tests passed 30/30. `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, and `tascam_x8` builds
+  succeeded with PlatformIO 7.0.1. The flashed default firmware uses 941,552
+  bytes flash and 137,924 bytes static RAM; the Roboto build uses 911,128 bytes
+  flash and 137,924 bytes static RAM.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`.
+  Physical short-action / long-Back button timing remains operator-pending.
+- Follow-up: sequence Run now dispatches its enabled Start/Stop control on a
+  short press; overlays and non-run scene screens ignore short presses.
+- Follow-up: reduced the long-press threshold from 1.6 seconds to 700 ms after
+  physical use showed the original Back delay was too long.

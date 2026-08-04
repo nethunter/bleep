@@ -11,5 +11,6 @@ void release();
 bool active();
 void tick();
 void handleShortPress();
+void handleLongPress();
 
 }  // namespace tascam_x8_ui

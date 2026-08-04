@@ -250,4 +250,6 @@ void tick() {
 
 void handleShortPress() { performPrimaryAction(); }
 
+void handleLongPress() { onBack(); }
+
 }  // namespace canon_ble_ui
