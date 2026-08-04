@@ -12,6 +12,12 @@ Control app operated a Portacapture X8 through an AK-BT1. Packet comments mark
 record start/stop from both the phone and the recorder, input toggles, and mode
 changes.
 
+The controlled reconnect fixture is
+`docs/protocols/dumps/tascam_x8_reconnect.pcapng` (SHA-256
+`7d095c94a454827778f3ecc86778b70e2109269f2e47acd0383c997f019ec783`).
+It contains annotated reconnects while recording and while stopped, both with
+the recorder in Manual Mixer mode.
+
 The capture identifies the AK-BT1's Device Information values as:
 
 - manufacturer: `u-blox`;
@@ -125,10 +131,22 @@ Confirmed examples are packet 29557 for an app stop and packets 36748 and
 without a preceding app write, these notifications—not the ATT Write
 Response—are the authoritative transition evidence.
 
-The capture does not expose a stable recording boolean with enough confidence
-to restore state after reconnect. The driver starts each connection with state
-unknown, marks local commands Starting/Stopping, and promotes the UI to
-Recording/Stopped only after these transition notifications.
+## Current recording status
+
+The controlled reconnect capture identifies `DR 20 20 00` byte 5 as the
+current transport state:
+
+```text
+recording: 44 52 20 20 00 81 00 00 00 00 00 00 00 00 00 00 00 00
+stopped:   44 52 20 20 00 10 00 00 00 00 00 00 00 00 00 00 00 00
+```
+
+Recording reconnect packet 13038 reports `0x81`; stopped reconnect packet
+16627 reports `0x10`. The same field changes `0x10 -> 0x82 -> 0x81` during the
+captured start and `0x81 -> 0x82 -> 0x10` during the captured stop. `0x82` is
+therefore treated as transitional and does not overwrite the last confirmed
+state. The stable `0x81` and `0x10` values restore confirmed state after
+reconnect.
 
 ## Initial snapshot queries
 
@@ -139,7 +157,8 @@ record-only tranche.
 
 The implementation replays the captured bundle to put the AK-BT1 session into
 the same reporting mode as the official app. Unknown responses are ignored.
-Only the confirmed transition events documented above mutate recording state.
+The confirmed transition events and `DR 20 20 00` current-state values mutate
+recording state.
 
 The recurring decoded request `44 52 30 41 0f 76 ...` triggers a broad
 multi-frame refresh. No direct matching response or stable recording field has
@@ -154,7 +173,8 @@ Confirmed:
 - COBS stream envelope;
 - session open and keepalive bytes;
 - record start/stop writes;
-- recorder-originated start/stop transition events.
+- recorder-originated start/stop transition events;
+- current recording/stopped state after reconnect.
 
 Research:
 
@@ -162,8 +182,6 @@ Research:
 - session timeout and keepalive tolerance;
 - behavior across other X8 and AK-BT1 firmware versions;
 - complete meaning of snapshot, meter, media, battery, and mixer frames;
-- a stable current-recording field in the broad refresh response;
-- reconnect while the recorder is already recording;
 - failure responses for full media, write protection, or unavailable record
   mode.
 

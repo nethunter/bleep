@@ -34,12 +34,14 @@ control through the AK-BT1 adapter.
   extended stability checks remain open.
 - **Tascam X8 record control (research).** Opening a Tascam recorder scans for
   the `Portacapture X8` advertisement and connects through the required AK-BT1
-  adapter. The control screen sends distinct record start/stop commands and
-  changes between Ready and Recording only after recorder-originated transition
-  events. The custom GATT UUIDs, COBS framing, session keepalive, commands, and
-  transition vectors are documented in
+  adapter without blocking screen navigation. The control screen sends distinct
+  record start/stop commands and changes between Ready and Recording only after
+  recorder-originated transition or current-state packets. Confirmed state is
+  restored after reconnect. The custom GATT UUIDs, COBS framing, session
+  keepalive, commands, and state vectors are documented in
   [`docs/protocols/tascam-x8.md`](docs/protocols/tascam-x8.md). Initial hardware
-  verification from this controller remains open.
+  start/stop verification passed; the reconnect-state update still requires a
+  hardware regression check.
 - **Keypoints (A-H).** Set, go-to, and delete keypoints. The Keypoints screen
   shows configured slots plus the next unset slot only, matching the slider's
   sequential route model. Tapping the next unset slot opens a positioning overlay:

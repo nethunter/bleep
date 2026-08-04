@@ -166,6 +166,16 @@ RecordEvent parseRecordEvent(const ParsedFrame& frame) {
     return RecordEvent::None;
   }
   if (frame.len >= 6 && frame.data[2] == 0x20 && frame.data[3] == 0x20 &&
+      frame.data[4] == 0x00) {
+    if (frame.data[5] == 0x81) {
+      return RecordEvent::Started;
+    }
+    if (frame.data[5] == 0x10) {
+      return RecordEvent::Stopped;
+    }
+    return RecordEvent::None;
+  }
+  if (frame.len >= 6 && frame.data[2] == 0x20 && frame.data[3] == 0x20 &&
       frame.data[4] == 0x24 && frame.data[5] == 0x01) {
     return RecordEvent::Started;
   }

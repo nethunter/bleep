@@ -9,9 +9,9 @@ short, factual, and reproducible.
   handoff research, and ADR-016 Tascam X8 record-control hardware verification;
   physical regression gates pending.
 - Firmware state: Home-first, persistent device registry, on-demand Shark and
-  Canon BLE, on-demand Tascam X8/AK-BT1 record control, and device-specific
-  hardware-trigger CTA routing built, host-tested, simulator-tested, and
-  flashed.
+  Canon BLE, asynchronous on-demand Tascam X8/AK-BT1 record control with
+  reconnect-state restoration, and device-specific hardware-trigger CTA
+  routing built, host-tested, simulator-tested, and flashed.
 - Universal driver framework: Bounded routing supports compiled Shark and Canon
   BLE and Tascam X8 drivers while preserving one active device instance at a
   time.
@@ -41,9 +41,9 @@ short, factual, and reproducible.
 
 Complete the Canon BLE and combined Phase 0/foundation hardware gates:
 
-1. Verify Tascam X8 first connect, persisted reconnect, start/stop, physical
-   recorder state synchronization, actual media files, and disconnect during
-   recording using the flashed ADR-016 build.
+1. Verify the flashed Tascam update opens its UI immediately, restores Ready
+   and Recording after reconnect, and can stop a recording started before the
+   remote reboot. Recheck persisted reconnect and actual media files.
 2. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
    pairing through Wi-Fi AP startup and the first network request.
 3. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
@@ -483,4 +483,41 @@ Record values with the exact build environment and commit/worktree state.
   `/dev/cu.usbserial-211240`. Physical X8/AK-BT1 connection, command, state,
   reconnect, and media-file checks remain operator-pending; the tranche is not
   hardware-complete.
+
+### 2026-08-03: Tascam asynchronous connect and reconnect-state restoration
+
+- Analyzed controlled recording/stopped reconnect fixture
+  `docs/protocols/dumps/tascam_x8_reconnect.pcapng`
+  (`7d095c94a454827778f3ecc86778b70e2109269f2e47acd0383c997f019ec783`).
+  `DR 20 20 00` reports recording as `0x81`, stopped as `0x10`, and the
+  transition between them as `0x82`.
+- Added capture-backed current-state reduction so reconnect restores confirmed
+  Ready/Recording instead of remaining unknown. Transitional `0x82` does not
+  overwrite the last confirmed state.
+- Changed the Tascam direct connection attempt to NimBLE's asynchronous mode;
+  connect callbacks only set flags and service/session setup remains owned by
+  `loop()`, allowing the Tascam screen to load before connection completes.
+- Native tests passed 18/18. Firmware builds passed: `crowpanel_128` used
+  870,986 bytes flash and 167,700 bytes static RAM;
+  `crowpanel_128_roboto` used 840,514/167,700; and `tascam_x8` used
+  872,334/166,532.
+- The default profile flashed successfully to
+  `/dev/cu.usbserial-211240`. Immediate screen display and recording/stopped
+  reconnect restoration remain operator-pending hardware checks.
+
+### 2026-08-03: Tascam asynchronous session-loop regression fix
+
+- Hardware exposed an infinite reconnect loop: BLE connected, but the panel
+  remained in Waiting because the session-open timeout was evaluated before
+  asynchronous link setup had started and therefore used its zero-initialized
+  deadline.
+- Added an explicit session-opening phase, delayed GATT/session setup briefly
+  after the link callback, restored fresh attribute discovery on each attempt,
+  and cancel an outstanding asynchronous attempt when leaving the screen.
+- Native tests passed 18/18. Firmware builds passed: `crowpanel_128` used
+  871,082 bytes flash and 167,700 bytes static RAM;
+  `crowpanel_128_roboto` used 840,610/167,700; and `tascam_x8` used
+  872,442/166,540.
+- The corrected default profile flashed successfully to
+  `/dev/cu.usbserial-211240`. Hardware reconnection remains operator-pending.
 

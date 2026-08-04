@@ -175,9 +175,10 @@ the replacement.
   than reusing Canon Trigger's stateless toggle. The UI may show recording only
   after the recorder's confirmed `DR 20 20 24 01` start event and stopped only
   after `DR 10 20 08`; ATT write responses are not physical success. No stable
-  recording boolean or reconnect-state query is yet confirmed. Battery, media
-  status, mixer control, and other Portacapture functions remain future
-  research.
+  recording boolean was confirmed in the original fixture. A subsequent
+  controlled reconnect capture confirms `DR 20 20 00` values `0x81` recording,
+  `0x10` stopped, and transitional `0x82`. Battery, media status, mixer control,
+  and other Portacapture functions remain future research.
 - Roadmap deviation: This tranche advances a future recorder driver while the
   Phase 0/foundation and Canon verification gates remain open. It does not
   begin dependent scene or group work and retains one active transport.

@@ -367,6 +367,41 @@ void test_tascam_scanner_and_confirmed_state() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(tascam_x8::TascamX8State::Recording::Stopped),
       static_cast<int>(state.recording));
+
+  uint8_t statusPayload[18] = {'D', 'R', 0x20, 0x20, 0x00, 0x81};
+  const tascam_x8::FrameBytes recordingStatus =
+      tascam_x8::encodeFrame(statusPayload, sizeof(statusPayload));
+  scanner.feed(recordingStatus.data(), recordingStatus.len,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(tascam_x8::TascamX8State::Recording::Recording),
+      static_cast<int>(state.recording));
+
+  statusPayload[5] = 0x82;
+  const tascam_x8::FrameBytes transitionalStatus =
+      tascam_x8::encodeFrame(statusPayload, sizeof(statusPayload));
+  scanner.feed(transitionalStatus.data(), transitionalStatus.len,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(tascam_x8::TascamX8State::Recording::Recording),
+      static_cast<int>(state.recording));
+
+  statusPayload[5] = 0x10;
+  const tascam_x8::FrameBytes stoppedStatus =
+      tascam_x8::encodeFrame(statusPayload, sizeof(statusPayload));
+  scanner.feed(stoppedStatus.data(), stoppedStatus.len,
+               [&](const tascam_x8::ParsedFrame& frame) {
+                 tascam_x8::reduceFrame(state, frame);
+               });
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(tascam_x8::TascamX8State::Recording::Stopped),
+      static_cast<int>(state.recording));
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {

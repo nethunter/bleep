@@ -30,6 +30,16 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
 class ClientCallbacks : public NimBLEClientCallbacks {
  public:
+  void onConnect(NimBLEClient*) override {
+    if (gCallbackClient != nullptr) {
+      gCallbackClient->onLinkConnected();
+    }
+  }
+  void onConnectFail(NimBLEClient*, int) override {
+    if (gCallbackClient != nullptr) {
+      gCallbackClient->onConnectFailed();
+    }
+  }
   void onDisconnect(NimBLEClient*, int) override {
     if (gCallbackClient != nullptr) {
       gCallbackClient->onLinkDisconnected();
@@ -103,18 +113,33 @@ void TascamX8Client::deactivate() {
   }
   teardownConnection();
   scanHit_ = false;
+  connectedFlag_ = false;
+  connectFailedFlag_ = false;
   disconnectedFlag_ = false;
   startRequested_ = false;
   stopRequested_ = false;
+  setupPending_ = false;
+  sessionOpening_ = false;
   scanner_.reset();
   resetTransientState(state_);
   state_.link = Link::Disconnected;
 }
 
 void TascamX8Client::loop() {
+  if (connectFailedFlag_) {
+    connectFailedFlag_ = false;
+    ++connectFails_;
+    state_.link = Link::Disconnected;
+    scheduleRetry(1500u * (connectFails_ < 4 ? connectFails_ : 4));
+  }
   if (disconnectedFlag_) {
     disconnectedFlag_ = false;
     handleDisconnect();
+  }
+  if (connectedFlag_) {
+    connectedFlag_ = false;
+    setupPending_ = true;
+    setupAtMs_ = millis() + 100;
   }
 
   drainNotifications();
@@ -137,9 +162,20 @@ void TascamX8Client::loop() {
   }
 
   const uint32_t now = millis();
+  if (setupPending_ && static_cast<int32_t>(now - setupAtMs_) >= 0) {
+    setupPending_ = false;
+    if (!connectRequested_ || client_ == nullptr || !client_->isConnected() ||
+        !completeConnect()) {
+      if (client_ != nullptr && client_->isConnected()) {
+        client_->disconnect();
+      }
+      return;
+    }
+  }
   if (state_.link == Link::Connecting &&
       sessionByte_ == kSessionOpenResponse) {
     sessionByte_ = 0;
+    sessionOpening_ = false;
     state_.link = Link::Connected;
     state_.hasSavedDevice = true;
     std::strncpy(state_.deviceName, targetName_,
@@ -153,7 +189,7 @@ void TascamX8Client::loop() {
       client_->disconnect();
       return;
     }
-  } else if (state_.link == Link::Connecting &&
+  } else if (sessionOpening_ && state_.link == Link::Connecting &&
              static_cast<int32_t>(now - sessionDeadlineMs_) >= 0) {
     client_->disconnect();
     return;
@@ -286,11 +322,12 @@ void TascamX8Client::beginConnect() {
   }
   state_.link = Link::Connecting;
   NimBLEAddress address(std::string(targetAddr_), targetAddrType_);
-  if (client_->connect(address, true, false, true) && completeConnect()) {
+  connectedFlag_ = false;
+  connectFailedFlag_ = false;
+  setupPending_ = false;
+  sessionOpening_ = false;
+  if (client_->connect(address, true, true, true)) {
     return;
-  }
-  if (client_->isConnected()) {
-    client_->disconnect();
   }
   ++connectFails_;
   state_.link = Link::Disconnected;
@@ -321,6 +358,7 @@ bool TascamX8Client::completeConnect() {
 
   resetTransientState(state_);
   state_.link = Link::Connecting;
+  sessionOpening_ = true;
   sessionDeadlineMs_ = millis() + 3000;
   return true;
 }
@@ -328,7 +366,11 @@ bool TascamX8Client::completeConnect() {
 void TascamX8Client::teardownConnection() {
   if (client_ != nullptr && client_->isConnected()) {
     client_->disconnect();
+  } else if (client_ != nullptr && state_.link == Link::Connecting) {
+    client_->cancelConnect();
   }
+  setupPending_ = false;
+  sessionOpening_ = false;
   dataChar_ = nullptr;
   sessionChar_ = nullptr;
   sessionByte_ = 0;
@@ -339,6 +381,8 @@ void TascamX8Client::handleDisconnect() {
   sessionChar_ = nullptr;
   startRequested_ = false;
   stopRequested_ = false;
+  setupPending_ = false;
+  sessionOpening_ = false;
   sessionByte_ = 0;
   scanner_.reset();
   resetTransientState(state_);
@@ -384,6 +428,14 @@ void TascamX8Client::onScanMatch(
   std::strncpy(scanHitName_, name.c_str(), sizeof(scanHitName_) - 1);
   scanHitName_[sizeof(scanHitName_) - 1] = '\0';
   scanHit_ = true;
+}
+
+void TascamX8Client::onLinkConnected() {
+  connectedFlag_ = true;
+}
+
+void TascamX8Client::onConnectFailed() {
+  connectFailedFlag_ = true;
 }
 
 void TascamX8Client::onLinkDisconnected() {

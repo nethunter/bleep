@@ -118,7 +118,8 @@ Reference research:
   advertisement; no SMP pairing or encrypted ATT exchange was observed.
 - Protocol status: record start, record stop, COBS framing, custom GATT UUIDs,
   session keepalive, and recorder-originated start/stop transition events are
-  confirmed from the annotated capture. A stable recording boolean, reconnect
+  confirmed from annotated captures. The current recording/stopped field is
+  confirmed by controlled reconnects in both states. Extended reconnect
   behavior, battery, and media fields remain unverified.
 - Evidence and golden vectors:
   [protocols/tascam-x8.md](protocols/tascam-x8.md).

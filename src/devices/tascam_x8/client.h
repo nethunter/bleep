@@ -35,6 +35,8 @@ class TascamX8Client {
 
   // NimBLE host-task callbacks only copy identity, bytes, or flags.
   void onScanMatch(const NimBLEAdvertisedDevice* device);
+  void onLinkConnected();
+  void onConnectFailed();
   void onLinkDisconnected();
   void onDataBytes(const uint8_t* data, size_t len);
   void onSessionByte(uint8_t value);
@@ -64,7 +66,11 @@ class TascamX8Client {
   bool pairingChanged_ = false;
   bool startRequested_ = false;
   bool stopRequested_ = false;
+  bool setupPending_ = false;
+  bool sessionOpening_ = false;
   volatile bool scanHit_ = false;
+  volatile bool connectedFlag_ = false;
+  volatile bool connectFailedFlag_ = false;
   volatile bool disconnectedFlag_ = false;
   volatile uint8_t sessionByte_ = 0;
 
@@ -76,6 +82,7 @@ class TascamX8Client {
   char scanHitName_[40] = "";
 
   uint32_t retryAtMs_ = 0;
+  uint32_t setupAtMs_ = 0;
   uint32_t sessionDeadlineMs_ = 0;
   uint32_t keepaliveAtMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
