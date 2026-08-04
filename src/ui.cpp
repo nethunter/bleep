@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 #include "assets/ui_icons.h"
 #include "core/device_manager.h"
@@ -66,6 +67,7 @@ uint32_t lastRefreshMs = 0;
 bool removeArmed = false;
 uint8_t renamePage = 0;
 bool renameUpperCase = true;
+RenameDoneFn renameDoneCallback = nullptr;
 
 static const char* kRenameUpperPage0[] = {"A", "B", "C", "\n", "D", "E", "F", "\n",
                                          "G", "H", "I", ""};
@@ -167,7 +169,10 @@ void closeRename() {
   renameKeypad = nullptr;
   renamePageLabel = nullptr;
   renameCaseLabel = nullptr;
+  renameDoneCallback = nullptr;
 }
+
+void buildRenameOverlay();
 
 void onAddPickerClosed() {
   if (addButton != nullptr) {
@@ -467,29 +472,32 @@ void onRenameCase(lv_event_t*) {
   refreshRenameKeypad();
 }
 
+void onDeviceRenameDone(const char* name) {
+  if (managedInstance != studio::kInvalidInstanceId && name != nullptr) {
+    studio::devices().rename(managedInstance, name);
+  }
+  closeDeviceModal();
+  refreshDevices();
+}
+
 void onOpenRename(lv_event_t*) {
   const studio::DeviceRecord* record = studio::devices().find(managedInstance);
   if (record == nullptr) {
     return;
   }
-  if (renameOverlay == nullptr) {
-    buildRenameOverlay();
-  }
-  lv_textarea_set_text(renameText, record->displayName);
-  lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
-  renamePage = 0;
-  renameUpperCase = true;
-  refreshRenameKeypad();
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+  promptRename(record->displayName, onDeviceRenameDone);
 }
 
 void onSaveRename(lv_event_t*) {
-  if (managedInstance != studio::kInvalidInstanceId) {
-    studio::devices().rename(managedInstance, lv_textarea_get_text(renameText));
+  const RenameDoneFn done = renameDoneCallback;
+  char name[studio::kDeviceNameCapacity] = "";
+  if (renameText != nullptr) {
+    std::strncpy(name, lv_textarea_get_text(renameText), sizeof(name) - 1);
   }
   closeRename();
-  closeDeviceModal();
-  refreshDevices();
+  if (done != nullptr) {
+    done(name);
+  }
 }
 
 void onCancelRename(lv_event_t*) { closeRename(); }
@@ -855,6 +863,26 @@ void parkForScreenRebuild() {
 
 void releaseInactiveScreens() { releaseDeviceUis(); }
 
+void promptRename(const char* initial, RenameDoneFn onDone) {
+  if (renameOverlay == nullptr) {
+    buildRenameOverlay();
+  }
+  renameDoneCallback = onDone;
+  lv_textarea_set_text(renameText, initial != nullptr ? initial : "");
+  lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
+  renamePage = 0;
+  renameUpperCase = true;
+  refreshRenameKeypad();
+  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+void closeRenamePrompt() { closeRename(); }
+
+bool renamePromptActive() {
+  return renameOverlay != nullptr &&
+         !lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+
 #ifdef UI_SIMULATOR
 void simShowAddDevice() {
   showDevices();
@@ -892,15 +920,7 @@ void simShowRename(studio::InstanceId instanceId) {
   if (record == nullptr) {
     return;
   }
-  if (renameOverlay == nullptr) {
-    buildRenameOverlay();
-  }
-  lv_textarea_set_text(renameText, record->displayName);
-  lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
-  renamePage = 0;
-  renameUpperCase = true;
-  refreshRenameKeypad();
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+  promptRename(record->displayName, onDeviceRenameDone);
 }
 #endif
 

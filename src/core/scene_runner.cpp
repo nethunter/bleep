@@ -185,11 +185,72 @@ bool SceneRunner::busy() const {
 }
 
 bool SceneRunner::holdsLinks() const {
-  return devices_.linksHeld() || progress_.phase == ScenePhase::IdleArmed ||
+  return devices_.linksHeld() || progress_.phase == ScenePhase::Ready ||
+         progress_.phase == ScenePhase::IdleArmed ||
          progress_.phase == ScenePhase::Connecting ||
          progress_.phase == ScenePhase::RunningStart ||
          progress_.phase == ScenePhase::RunningStop ||
          (progress_.phase == ScenePhase::Failed && targets_.count > 0);
+}
+
+SceneRunStatus SceneRunner::prepare(SceneId sceneId) {
+  if (busy()) {
+    return SceneRunStatus::Busy;
+  }
+  if (progress_.phase == ScenePhase::Ready && progress_.sceneId == sceneId &&
+      devices_.linksHeld()) {
+    return SceneRunStatus::Ok;
+  }
+  if (progress_.phase == ScenePhase::IdleArmed && progress_.sceneId == sceneId) {
+    return SceneRunStatus::Ok;
+  }
+  if (holdsLinks() && progress_.sceneId != sceneId) {
+    cancel();
+  }
+
+  const SceneRecord* record = registry_.find(sceneId);
+  if (record == nullptr) {
+    return SceneRunStatus::InvalidScene;
+  }
+  if (!record->enabled) {
+    return SceneRunStatus::Disabled;
+  }
+  const SceneValidationStatus validation = validate(*record);
+  if (validation != SceneValidationStatus::Ok) {
+    progress_ = SceneProgress{};
+    progress_.sceneId = sceneId;
+    progress_.phase = ScenePhase::Idle;
+    progress_.lastStatus = SceneRunStatus::ValidationFailed;
+    setDetail(validation == SceneValidationStatus::Empty ? "Add steps"
+                                                         : "Invalid sequence");
+    activeScene_ = *record;
+    targets_ = TargetSet{};
+    direction_ = Direction::None;
+    return SceneRunStatus::ValidationFailed;
+  }
+  if (!collectTargets(*record, targets_)) {
+    return SceneRunStatus::ValidationFailed;
+  }
+
+  activeScene_ = *record;
+  progress_ = SceneProgress{};
+  progress_.sceneId = sceneId;
+  progress_.phase = ScenePhase::Connecting;
+  progress_.stepCount = activeScene_.startCount;
+  progress_.stepIndex = 0;
+  progress_.stepResult = SceneStepResult::Pending;
+  setDetail("Connecting");
+  direction_ = Direction::Prepare;
+  phaseStartedMs_ = 0;
+  waitUntilMs_ = 0;
+  waitingForResult_ = false;
+  pendingRequestId_ = 0;
+
+  if (!activateTargets(targets_)) {
+    fail(SceneRunStatus::ActionFailed, "Activate failed");
+    return SceneRunStatus::ActionFailed;
+  }
+  return SceneRunStatus::Ok;
 }
 
 SceneRunStatus SceneRunner::start(SceneId sceneId) {
@@ -209,11 +270,34 @@ SceneRunStatus SceneRunner::start(SceneId sceneId) {
   if (record->startCount == 0) {
     return SceneRunStatus::ValidationFailed;
   }
-  if (!collectTargets(*record, targets_)) {
-    return SceneRunStatus::ValidationFailed;
+
+  const bool alreadyPrepared = progress_.phase == ScenePhase::Ready &&
+                               progress_.sceneId == sceneId &&
+                               devices_.linksHeld();
+  if (!alreadyPrepared) {
+    if (!collectTargets(*record, targets_)) {
+      return SceneRunStatus::ValidationFailed;
+    }
   }
 
   activeScene_ = *record;
+  if (alreadyPrepared) {
+    progress_.phase = ScenePhase::RunningStart;
+    progress_.runningStart = true;
+    progress_.stepCount = activeScene_.startCount;
+    progress_.stepIndex = 0;
+    progress_.stepResult = SceneStepResult::Running;
+    progress_.lastStatus = SceneRunStatus::Ok;
+    setDetail("Starting");
+    direction_ = Direction::Start;
+    phaseStartedMs_ = 0;
+    waitUntilMs_ = 0;
+    waitingForResult_ = false;
+    pendingRequestId_ = 0;
+    beginStep(0);
+    return SceneRunStatus::Ok;
+  }
+
   progress_ = SceneProgress{};
   progress_.sceneId = sceneId;
   progress_.phase = ScenePhase::Connecting;
@@ -246,6 +330,11 @@ SceneRunStatus SceneRunner::stop() {
       progress_.phase != ScenePhase::Failed &&
       progress_.phase != ScenePhase::RunningStart &&
       progress_.phase != ScenePhase::Connecting) {
+    return SceneRunStatus::InvalidScene;
+  }
+  // Preparing (not yet Ready) must not jump into Stop mid-connect-for-prepare.
+  if (progress_.phase == ScenePhase::Connecting &&
+      direction_ == Direction::Prepare) {
     return SceneRunStatus::InvalidScene;
   }
   if (activeScene_.stopCount == 0) {
@@ -386,6 +475,13 @@ void SceneRunner::tick(uint32_t nowMs) {
         progress_.phase = ScenePhase::RunningStop;
         setDetail("Stopping");
         beginStep(nowMs);
+      } else if (direction_ == Direction::Prepare) {
+        progress_.phase = ScenePhase::Ready;
+        progress_.stepResult = SceneStepResult::Succeeded;
+        progress_.lastStatus = SceneRunStatus::Ok;
+        setDetail("Ready");
+        direction_ = Direction::None;
+        phaseStartedMs_ = nowMs;
       } else {
         progress_.phase = ScenePhase::RunningStart;
         setDetail("Starting");

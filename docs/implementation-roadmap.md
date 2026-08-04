@@ -217,10 +217,10 @@ Work:
 - edit, validate, import, and export scenes through Portal-mode HTTP.
 
 Active deviation (ADR-019 / ADR-020): the first panel tranche ships authored
-Start and Stop lists, concurrent connect-all-before-actions for sequence
-targets, NVS persistence, and Press Record / Press Stop for Canon Smart +
-Tascam. Generated reverse-Stop, groups, lights, Parallel, and Portal editing
-remain for later Phase 6 work.
+Start and Stop lists, prepare-on-open concurrent links (`Ready` before Start),
+NVS persistence, and Press Record / Press Stop for Canon Smart + Tascam.
+Generated reverse-Stop, groups, lights, Parallel, and Portal editing remain
+for later Phase 6 work.
 
 Completion gate:
 
@@ -237,7 +237,8 @@ Bounded gate for the ADR-019/020 tranche:
 
 - Press Record Start: Canon `RecordStart`, wait 500 ms, Tascam `RecordStart`;
 - Press Stop: Canon `RecordStop`, then Tascam `RecordStop`;
-- all sequence targets stay connected concurrently for the run;
+- opening a sequence prepares all targets concurrently before Start;
+- links stay held while the run screen is open and through armed/Stop;
 - partial failures and unavailable devices are visible and recoverable.
 
 ## Phase 7: Universal panel UI

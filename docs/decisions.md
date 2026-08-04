@@ -252,16 +252,17 @@ the replacement.
 
 ## ADR-020: Sequence runs hold concurrent device links
 
-- Status: Accepted
-- Decision: While a sequence is connecting, running, or armed after Start, every
-  distinct device target referenced by its Start or Stop lists is activated and
-  kept connected concurrently. Manual device screens retain exclusive
-  single-active activation outside sequence runs.
+- Status: Accepted (amended 2026-08-04)
+- Decision: Opening a sequence run screen prepares every distinct Start/Stop
+  target concurrently (`Connecting` → `Ready`). Links stay held while the run
+  screen is open, during Start/Stop execution, and while armed after Start.
+  Leaving the run screen (Back/Cancel/hide) releases links. Manual device
+  screens retain exclusive single-active activation outside sequence holds.
 - Consequence: `DeviceManager` supports a bounded multi-active set across
-  different compiled drivers (Canon Smart + Tascam in the first tranche). Scene
-  launch fails visibly if any required link misses its connect timeout. Opening
-  a device screen while a sequence holds links is blocked. Shark motion remains
-  outside sequences.
+  different compiled drivers (Canon Smart + Tascam in the first tranche). Start
+  from `Ready` does not re-activate targets. Prepare/connect failures surface
+  on the run screen. Opening a device screen while a sequence holds links is
+  blocked. Shark motion remains outside sequences.
 - Roadmap deviation: This advances a bounded Phase 6/7 panel-scene tranche
   ahead of groups, Portal HTTP editing, lights, and generated reverse-Stop.
 

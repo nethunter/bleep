@@ -49,6 +49,7 @@ struct SceneRecord {
 enum class ScenePhase : uint8_t {
   Idle,
   Connecting,
+  Ready,  // Connected and held; waiting for Start
   RunningStart,
   IdleArmed,
   RunningStop,

@@ -106,8 +106,9 @@ Home provides:
 - Portal;
 - status and power controls.
 
-Opening a device screen requests that instance's connection. Launching a scene
-requests only the devices needed by the scene. Leaving a screen may retain a
+Opening a device screen requests that instance's connection. Opening a sequence
+run screen prepares every Start/Stop target concurrently and holds those links
+until Back, Cancel, or Stop complete. Leaving a screen may retain a
 healthy connection according to the connection policy, but no device is
 selected implicitly at boot.
 

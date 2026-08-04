@@ -25,8 +25,9 @@ Later example with lights/groups (full Phase 6 gate):
 5. start recording on the Tascam recorder.
 
 Generated reverse-Stop remains a later option (ADR-008). The first on-device
-tranche uses explicit Start and Stop lists (ADR-019) and holds every target
-connected concurrently for the run (ADR-020).
+tranche uses explicit Start and Stop lists (ADR-019) and prepares every target
+concurrently when the sequence run screen opens, holding links until leave,
+Cancel, or Stop complete (ADR-020).
 
 ## Data model
 

@@ -12,6 +12,8 @@ class SceneRunner {
   SceneValidationStatus validate(const SceneRecord& record) const;
   SceneValidationStatus validate(SceneId sceneId) const;
 
+  // Connect and hold all Start/Stop targets; phase becomes Ready when linked.
+  SceneRunStatus prepare(SceneId sceneId);
   SceneRunStatus start(SceneId sceneId);
   SceneRunStatus stop();
   void cancel();
@@ -22,7 +24,7 @@ class SceneRunner {
   const SceneProgress& progress() const { return progress_; }
 
  private:
-  enum class Direction : uint8_t { None, Start, Stop };
+  enum class Direction : uint8_t { None, Prepare, Start, Stop };
 
   struct TargetSet {
     InstanceId ids[CONFIG_MAX_ACTIVE_LINKS] = {};

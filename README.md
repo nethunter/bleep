@@ -22,10 +22,10 @@ adapter.
   uses a round-native paged keypad with large character keys,
   A-I/J-R/S-Z/number-symbol pages, Space, backspace, and case controls.
 - **Scenes (sequences).** Create, edit, and run ordered Start/Stop sequences
-  from the panel. The one-tap **Press Record** seed builds: Canon Smart
-  `RecordStart`, wait 500 ms, Tascam `RecordStart` for Start; Canon
-  `RecordStop` then Tascam `RecordStop` for Stop. Launching a sequence connects
-  every target concurrently and holds those links until Stop finishes or Cancel.
+  from the panel. New sequences default to `Sequence n`. Opening a sequence
+  connects every Start/Stop target concurrently and holds those links until
+  Back, Cancel, or Stop finishes; Start then runs the authored steps. A
+  top-right settings cog offers Rename, Edit Start, Edit Stop, and Delete.
   Device screens are blocked while a sequence holds links. Scenes persist in a
   separate NVS blob from the device registry.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts

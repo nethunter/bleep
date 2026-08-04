@@ -133,6 +133,10 @@ bool SceneService::seedPressRecord(SceneId& outId) {
   return true;
 }
 
+SceneRunStatus SceneService::prepare(SceneId sceneId) {
+  return runner_.prepare(sceneId);
+}
+
 SceneRunStatus SceneService::start(SceneId sceneId) { return runner_.start(sceneId); }
 
 SceneRunStatus SceneService::stop() { return runner_.stop(); }

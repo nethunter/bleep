@@ -16,6 +16,7 @@ void simShowList();
 void simShowRun(studio::SceneId sceneId);
 void simShowEditStart(studio::SceneId sceneId);
 void simShowEditStop(studio::SceneId sceneId);
+void simShowSettings(studio::SceneId sceneId);
 void simShowAddStepCategory(studio::SceneId sceneId);
 void simShowAddStepDevice(studio::SceneId sceneId, studio::DeviceType category);
 void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId);

@@ -415,8 +415,22 @@ int main() {
   if (!capture("23_scenes_edit_stop")) {
     return 1;
   }
-  scene_ui::simShowRun(sceneId);
+  scene_ui::simShowSettings(sceneId);
   pump(200);
+  if (!capture("23b_scenes_settings")) {
+    return 1;
+  }
+  scene_ui::simShowRun(sceneId);
+  studio::simSetSequenceConnectedState();
+  for (int i = 0; i < 10; ++i) {
+    studio::devices().loop();
+    studio::scenes().loop(static_cast<uint32_t>(i * 20));
+    pump(20);
+  }
+  if (studio::scenes().progress().phase != studio::ScenePhase::Ready) {
+    std::fprintf(stderr, "Sequence did not reach Ready after prepare\n");
+    return 1;
+  }
   if (!capture("24_scenes_run_ready")) {
     return 1;
   }
@@ -424,7 +438,6 @@ int main() {
     std::fprintf(stderr, "Failed to start Press Record sequence\n");
     return 1;
   }
-  studio::simSetSequenceConnectedState();
   for (int i = 0; i < 40; ++i) {
     studio::devices().loop();
     studio::scenes().loop(static_cast<uint32_t>(i * 20));

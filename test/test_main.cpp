@@ -991,6 +991,65 @@ void test_press_record_start_and_authored_stop() {
   TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
 }
 
+void test_prepare_ready_then_start_from_held_links() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::CanonBle, "R6 II", canonId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::TascamX8, "X8", tascamId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_TRUE(scenes.seedPressRecord(sceneId));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ScenePhase::Connecting),
+      static_cast<int>(scenes.progress().phase));
+  devices.loop();
+  scenes.loop(1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(scenes.holdsLinks());
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+  TEST_ASSERT_FALSE(scenes.busy());
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ScenePhase::RunningStart),
+      static_cast<int>(scenes.progress().phase));
+  for (uint32_t t = 2; t < 600; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ScenePhase::IdleArmed),
+      static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+
+  scenes.cancel();
+  TEST_ASSERT_FALSE(scenes.holdsLinks());
+  TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -1018,5 +1077,6 @@ int main(int, char**) {
   RUN_TEST(test_manager_holds_concurrent_active_links);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_press_record_start_and_authored_stop);
+  RUN_TEST(test_prepare_ready_then_start_from_held_links);
   return UNITY_END();
 }

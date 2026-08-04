@@ -9,12 +9,12 @@ short, factual, and reproducible.
   drivers, Tascam X8, and remaining Phase 0/foundation hardware gates.
 - Firmware state: Home-first, persistent device registry, on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
-  lists, concurrent sequence links, NVS scene persistence, and Press Record /
-  Press Stop seeding. Lazy UI allocation keeps Home/Devices resident; scene UI
-  loads on demand.
-- Universal driver framework: Bounded multi-active links for sequence runs
-  (Canon Smart + Tascam); exclusive single-active activation remains for manual
-  device screens.
+  lists, prepare-on-open concurrent links (`Ready`), settings cog
+  (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
+  Home/Devices resident; scene UI loads on demand.
+- Universal driver framework: Bounded multi-active links while a sequence run
+  screen is open / running / armed (Canon Smart + Tascam); exclusive
+  single-active activation remains for manual device screens.
 - Last updated: 2026-08-04.
 
 ## Completed planning
@@ -42,11 +42,10 @@ short, factual, and reproducible.
 Exercise Press Record / Press Stop on hardware, then remaining Canon/foundation
 gates:
 
-1. With paired Canon Smart (R6 II or III) and Tascam X8 configured, open Scenes,
-   seed or open Press Record, Start, confirm both enter recording with the
-   500 ms gap, then Stop and confirm both stop. Confirm both stay connected for
-   the whole run.
-2. Confirm device screens refuse open while a sequence holds links; Cancel
+1. With paired Canon Smart (R6 II or III) and Tascam X8 configured, open a
+   Press Record sequence, confirm both devices connect to Ready, Start, confirm
+   both enter recording with the 500 ms gap, then Stop and confirm both stop.
+2. Confirm device screens refuse open while a sequence holds links; Back/Cancel
    releases links.
 3. Confirm scene persistence across power cycle.
 4. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
@@ -836,5 +835,19 @@ Record values with the exact build environment and commit/worktree state.
 - Simulator: full capture through `27_scenes_stop_progress`; peak LVGL use
   17,012 bytes after remove refresh.
 - Firmware: `crowpanel_128` build succeeded (flash 935,596 / RAM 137,428) and
+  flashed to `/dev/cu.usbserial-211240`.
+
+### 2026-08-04: Scenes settings + prepare-on-open
+
+- Removed Scenes-list Press Record seed button; `+` names blank sequences
+  `Sequence n` with `n = count + 1`. `seedPressRecord` remains for sim/tests.
+- Added `ScenePhase::Ready` and `prepare()`; opening a run screen connects all
+  Start/Stop targets and holds links; Start from Ready skips re-activate.
+  Amended ADR-020. Run-screen settings cog: Rename / Edit Start / Edit Stop /
+  Delete. Shared `ui::promptRename` for scene rename.
+- Host tests: 24/24 including prepare→Ready→Start from held links.
+- Simulator: list without seed; `23b_scenes_settings`; `24_scenes_run_ready` at
+  Ready phase; peak LVGL use 17,012 bytes after remove refresh.
+- Firmware: `crowpanel_128` build succeeded (flash 937,214 / RAM 137,444) and
   flashed to `/dev/cu.usbserial-211240`.
 

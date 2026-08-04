@@ -43,6 +43,9 @@ lv_obj_t* runPhase = nullptr;
 lv_obj_t* runDetail = nullptr;
 lv_obj_t* startButton = nullptr;
 lv_obj_t* stopButton = nullptr;
+lv_obj_t* prepareCancelButton = nullptr;
+lv_obj_t* settingsButton = nullptr;
+lv_obj_t* settingsOverlay = nullptr;
 lv_obj_t* editBody = nullptr;
 lv_obj_t* editTitle = nullptr;
 
@@ -77,9 +80,11 @@ studio::SceneId eventScene(lv_event_t* event) {
 const char* phaseText(studio::ScenePhase phase) {
   switch (phase) {
     case studio::ScenePhase::Idle:
-      return "Ready";
+      return "Idle";
     case studio::ScenePhase::Connecting:
       return "Connecting";
+    case studio::ScenePhase::Ready:
+      return "Ready";
     case studio::ScenePhase::RunningStart:
       return "Starting";
     case studio::ScenePhase::IdleArmed:
@@ -91,7 +96,7 @@ const char* phaseText(studio::ScenePhase phase) {
     case studio::ScenePhase::Completed:
       return "Done";
   }
-  return "Ready";
+  return "Idle";
 }
 
 void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
@@ -116,33 +121,33 @@ void refreshEdit();
 void showListView();
 void showRunView(studio::SceneId sceneId);
 void showEditView(studio::SceneId sceneId, bool startList);
+void closeSettings();
+void releaseHeldScene();
 
 void onBackToHome(lv_event_t*) {
   hide();
   ui::showHome();
 }
-void onBackToList(lv_event_t*) { showListView(); }
+
+void onBackToList(lv_event_t*) {
+  releaseHeldScene();
+  showListView();
+}
+
 void onBackToRun(lv_event_t*) { showRunView(currentScene); }
 
 void onOpenScene(lv_event_t* event) { showRunView(eventScene(event)); }
 
 void onAddBlank(lv_event_t*) {
-  if (studio::scenes().busy()) {
+  if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
     return;
   }
+  char name[studio::kDeviceNameCapacity];
+  std::snprintf(name, sizeof(name), "Sequence %u",
+                static_cast<unsigned>(studio::scenes().count() + 1));
   studio::SceneId id = studio::kInvalidSceneId;
-  if (studio::scenes().add("Sequence", id) == studio::SceneRegistryStatus::Ok) {
+  if (studio::scenes().add(name, id) == studio::SceneRegistryStatus::Ok) {
     showEditView(id, true);
-  }
-}
-
-void onSeedPressRecord(lv_event_t*) {
-  if (studio::scenes().busy()) {
-    return;
-  }
-  studio::SceneId id = studio::kInvalidSceneId;
-  if (studio::scenes().seedPressRecord(id)) {
-    showRunView(id);
   }
 }
 
@@ -159,32 +164,156 @@ void onStop(lv_event_t*) {
   refreshRun();
 }
 
-void onCancel(lv_event_t*) {
-  studio::scenes().cancel();
+bool sequenceHoldsOrBusy() {
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.sceneId != currentScene) {
+    return false;
+  }
+  return studio::scenes().holdsLinks() || studio::scenes().busy() ||
+         progress.phase == studio::ScenePhase::Ready ||
+         progress.phase == studio::ScenePhase::IdleArmed ||
+         progress.phase == studio::ScenePhase::Failed;
+}
+
+void onPrepareOrCancel(lv_event_t*) {
+  if (currentScene == studio::kInvalidSceneId) {
+    return;
+  }
+  if (sequenceHoldsOrBusy()) {
+    studio::scenes().cancel();
+  } else {
+    studio::scenes().prepare(currentScene);
+  }
   refreshRun();
 }
 
+bool canMutateScene() {
+  if (studio::scenes().busy()) {
+    return false;
+  }
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.sceneId == currentScene &&
+      progress.phase == studio::ScenePhase::IdleArmed) {
+    return false;
+  }
+  return true;
+}
+
 void onEditStart(lv_event_t*) {
-  if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
+  if (!canMutateScene()) {
     return;
   }
+  closeSettings();
+  // Keep prepared links held while editing steps.
   showEditView(currentScene, true);
 }
 
 void onEditStop(lv_event_t*) {
-  if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
+  if (!canMutateScene()) {
     return;
   }
+  closeSettings();
   showEditView(currentScene, false);
 }
 
 void onDeleteScene(lv_event_t*) {
-  if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
+  if (!canMutateScene()) {
     return;
+  }
+  closeSettings();
+  if (studio::scenes().holdsLinks()) {
+    studio::scenes().cancel();
   }
   studio::scenes().remove(currentScene);
   currentScene = studio::kInvalidSceneId;
   showListView();
+}
+
+void onSceneRenameDone(const char* name) {
+  if (currentScene != studio::kInvalidSceneId && name != nullptr) {
+    studio::scenes().rename(currentScene, name);
+  }
+  refreshRun();
+}
+
+void onRenameScene(lv_event_t*) {
+  if (!canMutateScene()) {
+    return;
+  }
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
+  if (record == nullptr) {
+    return;
+  }
+  closeSettings();
+  ui::promptRename(record->name, onSceneRenameDone);
+}
+
+void closeSettings() {
+  if (settingsOverlay != nullptr) {
+    lv_obj_del(settingsOverlay);
+    settingsOverlay = nullptr;
+  }
+}
+
+void onCloseSettings(lv_event_t*) { closeSettings(); }
+
+void buildSettingsOverlay() {
+  closeSettings();
+  settingsOverlay = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(settingsOverlay, 236, 236);
+  lv_obj_center(settingsOverlay);
+  lv_obj_set_style_radius(settingsOverlay, 118, 0);
+  lv_obj_set_style_bg_color(settingsOverlay, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_border_width(settingsOverlay, 0, 0);
+  lv_obj_set_style_pad_all(settingsOverlay, 0, 0);
+  lv_obj_clear_flag(settingsOverlay, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* close = makeButton(settingsOverlay, LV_SYMBOL_CLOSE, onCloseSettings);
+  lv_obj_set_size(close, 30, 30);
+  lv_obj_align(close, LV_ALIGN_TOP_LEFT, 34, 24);
+
+  lv_obj_t* title = lv_label_create(settingsOverlay);
+  lv_label_set_text(title, "Settings");
+  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 10, 30);
+
+  lv_obj_t* body = lv_obj_create(settingsOverlay);
+  lv_obj_set_size(body, 168, 140);
+  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(body, 0, 0);
+  lv_obj_set_style_pad_row(body, 4, 0);
+  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_scrollbar_mode(body, LV_SCROLLBAR_MODE_OFF);
+
+  lv_obj_t* rename = makeButton(body, "Rename", onRenameScene);
+  lv_obj_set_size(rename, lv_pct(100), 32);
+  lv_obj_t* editStart = makeButton(body, "Edit Start", onEditStart);
+  lv_obj_set_size(editStart, lv_pct(100), 32);
+  lv_obj_t* editStop = makeButton(body, "Edit Stop", onEditStop);
+  lv_obj_set_size(editStop, lv_pct(100), 32);
+  lv_obj_t* del = makeButton(body, "Delete", onDeleteScene, kColDanger);
+  lv_obj_set_size(del, lv_pct(100), 32);
+}
+
+void onOpenSettings(lv_event_t*) {
+  if (ui::renamePromptActive()) {
+    return;
+  }
+  buildSettingsOverlay();
+}
+
+void releaseHeldScene() {
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.phase == studio::ScenePhase::RunningStop) {
+    return;
+  }
+  if (studio::scenes().holdsLinks() ||
+      progress.sceneId != studio::kInvalidSceneId) {
+    studio::scenes().cancel();
+  }
 }
 
 bool loadEditable(studio::SceneRecord& record) {
@@ -317,31 +446,48 @@ void refreshRun() {
   lv_label_set_text(runTitle, record->name);
   const studio::SceneProgress& progress = studio::scenes().progress();
   const bool forScene = progress.sceneId == currentScene;
-  lv_label_set_text(runPhase, forScene ? phaseText(progress.phase) : "Ready");
-  lv_label_set_text(runDetail, forScene ? progress.detail : "Start or edit");
+  lv_label_set_text(runPhase, forScene ? phaseText(progress.phase) : "Idle");
+  lv_label_set_text(runDetail, forScene ? progress.detail : "Open to prepare");
 
   const bool busy = studio::scenes().busy();
-  const bool armed = forScene && (progress.phase == studio::ScenePhase::IdleArmed ||
-                                  progress.phase == studio::ScenePhase::Failed);
-  if (busy && progress.phase == studio::ScenePhase::RunningStart) {
-    lv_obj_add_state(startButton, LV_STATE_DISABLED);
-  } else if (!busy && record->startCount > 0) {
+  const bool ready =
+      forScene && progress.phase == studio::ScenePhase::Ready;
+  const bool armed =
+      forScene && (progress.phase == studio::ScenePhase::IdleArmed ||
+                   progress.phase == studio::ScenePhase::Failed);
+  const bool canStart =
+      !busy && record->startCount > 0 &&
+      (ready || progress.phase == studio::ScenePhase::Idle ||
+       progress.phase == studio::ScenePhase::Completed || !forScene);
+  if (canStart) {
     lv_obj_clear_state(startButton, LV_STATE_DISABLED);
   } else {
     lv_obj_add_state(startButton, LV_STATE_DISABLED);
   }
-  if ((busy && progress.phase == studio::ScenePhase::RunningStop) ||
-      (!busy && !armed && progress.phase != studio::ScenePhase::RunningStart &&
-       progress.phase != studio::ScenePhase::Connecting)) {
-    if (armed || progress.phase == studio::ScenePhase::RunningStart ||
-        progress.phase == studio::ScenePhase::Connecting ||
-        progress.phase == studio::ScenePhase::IdleArmed) {
-      lv_obj_clear_state(stopButton, LV_STATE_DISABLED);
-    } else {
-      lv_obj_add_state(stopButton, LV_STATE_DISABLED);
-    }
-  } else {
+
+  const bool canStop =
+      forScene &&
+      (armed || progress.phase == studio::ScenePhase::RunningStart ||
+       (progress.phase == studio::ScenePhase::Connecting &&
+        progress.runningStart));
+  if (canStop && progress.phase != studio::ScenePhase::RunningStop) {
     lv_obj_clear_state(stopButton, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(stopButton, LV_STATE_DISABLED);
+  }
+
+  if (prepareCancelButton != nullptr) {
+    const bool showCancel = sequenceHoldsOrBusy();
+    lv_label_set_text(lv_obj_get_child(prepareCancelButton, 0),
+                      showCancel ? "Cancel" : "Prepare");
+    lv_obj_set_style_bg_color(
+        prepareCancelButton,
+        lv_color_hex(showCancel ? kColPanel : kColAccent), 0);
+    if (busy && progress.phase == studio::ScenePhase::RunningStop) {
+      lv_obj_add_state(prepareCancelButton, LV_STATE_DISABLED);
+    } else {
+      lv_obj_clear_state(prepareCancelButton, LV_STATE_DISABLED);
+    }
   }
 }
 
@@ -414,7 +560,7 @@ void buildList() {
   lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
 
   listBody = lv_obj_create(scrList);
-  lv_obj_set_size(listBody, 188, 96);
+  lv_obj_set_size(listBody, 188, 118);
   lv_obj_align(listBody, LV_ALIGN_TOP_MID, 0, 68);
   lv_obj_set_style_bg_opa(listBody, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(listBody, 0, 0);
@@ -423,12 +569,9 @@ void buildList() {
   lv_obj_set_scroll_dir(listBody, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(listBody, LV_SCROLLBAR_MODE_OFF);
 
-  lv_obj_t* seed = makeButton(scrList, "Press Record", onSeedPressRecord, kColAccent);
-  lv_obj_set_size(seed, 108, 28);
-  lv_obj_align(seed, LV_ALIGN_BOTTOM_MID, -42, -16);
-  lv_obj_t* add = makeButton(scrList, "+", onAddBlank);
-  lv_obj_set_size(add, 40, 28);
-  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 58, -16);
+  lv_obj_t* add = makeButton(scrList, "+", onAddBlank, kColAccent);
+  lv_obj_set_size(add, 48, 28);
+  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, -16);
 }
 
 void buildRun() {
@@ -437,14 +580,18 @@ void buildRun() {
 
   lv_obj_t* back = makeButton(scrRun, LV_SYMBOL_LEFT, onBackToList);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
+
+  settingsButton = makeButton(scrRun, LV_SYMBOL_SETTINGS, onOpenSettings);
+  lv_obj_set_size(settingsButton, 34, 30);
+  lv_obj_align(settingsButton, LV_ALIGN_TOP_RIGHT, -40, 22);
 
   runTitle = lv_label_create(scrRun);
-  lv_obj_set_width(runTitle, 140);
+  lv_obj_set_width(runTitle, 92);
   lv_label_set_long_mode(runTitle, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_font(runTitle, UI_FONT_16, 0);
   lv_obj_set_style_text_align(runTitle, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(runTitle, LV_ALIGN_TOP_MID, 10, 40);
+  lv_obj_align(runTitle, LV_ALIGN_TOP_MID, 0, 29);
 
   runPhase = lv_label_create(scrRun);
   lv_obj_set_style_text_font(runPhase, UI_FONT_20, 0);
@@ -467,21 +614,10 @@ void buildRun() {
   lv_obj_set_size(stopButton, 70, 34);
   lv_obj_align(stopButton, LV_ALIGN_TOP_MID, 40, 130);
 
-  lv_obj_t* editStart = makeButton(scrRun, "Edit Start", onEditStart);
-  lv_obj_set_size(editStart, 78, 26);
-  lv_obj_align(editStart, LV_ALIGN_BOTTOM_MID, -48, -42);
-
-  lv_obj_t* editStop = makeButton(scrRun, "Edit Stop", onEditStop);
-  lv_obj_set_size(editStop, 78, 26);
-  lv_obj_align(editStop, LV_ALIGN_BOTTOM_MID, 48, -42);
-
-  lv_obj_t* cancel = makeButton(scrRun, "Cancel", onCancel, kColPanel);
-  lv_obj_set_size(cancel, 64, 24);
-  lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, -40, -14);
-
-  lv_obj_t* del = makeButton(scrRun, "Delete", onDeleteScene, kColDanger);
-  lv_obj_set_size(del, 64, 24);
-  lv_obj_align(del, LV_ALIGN_BOTTOM_MID, 40, -14);
+  prepareCancelButton =
+      makeButton(scrRun, "Prepare", onPrepareOrCancel, kColAccent);
+  lv_obj_set_size(prepareCancelButton, 90, 28);
+  lv_obj_align(prepareCancelButton, LV_ALIGN_BOTTOM_MID, 0, -18);
 }
 
 void buildEdit() {
@@ -526,6 +662,8 @@ void ensureScreens() {
 void showListView() {
   ensureScreens();
   closeAddOverlay();
+  closeSettings();
+  ui::closeRenamePrompt();
   view = View::List;
   refreshList();
   lv_scr_load(scrList);
@@ -534,8 +672,22 @@ void showListView() {
 void showRunView(studio::SceneId sceneId) {
   ensureScreens();
   closeAddOverlay();
+  closeSettings();
+  ui::closeRenamePrompt();
   currentScene = sceneId;
   view = View::Run;
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  const bool alreadyHeld =
+      progress.sceneId == sceneId && studio::scenes().holdsLinks() &&
+      (progress.phase == studio::ScenePhase::Ready ||
+       progress.phase == studio::ScenePhase::IdleArmed ||
+       progress.phase == studio::ScenePhase::Failed ||
+       progress.phase == studio::ScenePhase::Connecting ||
+       progress.phase == studio::ScenePhase::RunningStart ||
+       progress.phase == studio::ScenePhase::RunningStop);
+  if (!alreadyHeld) {
+    studio::scenes().prepare(sceneId);
+  }
   refreshRun();
   lv_scr_load(scrRun);
 }
@@ -543,6 +695,8 @@ void showRunView(studio::SceneId sceneId) {
 void showEditView(studio::SceneId sceneId, bool startList) {
   ensureScreens();
   closeAddOverlay();
+  closeSettings();
+  ui::closeRenamePrompt();
   currentScene = sceneId;
   editingStart = startList;
   view = View::Edit;
@@ -581,6 +735,9 @@ void hide() {
     return;
   }
   closeAddOverlay();
+  closeSettings();
+  ui::closeRenamePrompt();
+  releaseHeldScene();
   visible = false;
   view = View::List;
   currentScene = studio::kInvalidSceneId;
@@ -588,6 +745,14 @@ void hide() {
 
 void handleShortPress() {
   if (!visible) {
+    return;
+  }
+  if (ui::renamePromptActive()) {
+    ui::closeRenamePrompt();
+    return;
+  }
+  if (settingsOverlay != nullptr) {
+    closeSettings();
     return;
   }
   if (picker_shell::handleShortPress()) {
@@ -601,6 +766,7 @@ void handleShortPress() {
     if (studio::scenes().busy()) {
       return;
     }
+    releaseHeldScene();
     showListView();
     return;
   }
@@ -627,6 +793,18 @@ void simShowEditStart(studio::SceneId sceneId) {
 void simShowEditStop(studio::SceneId sceneId) {
   visible = true;
   showEditView(sceneId, false);
+}
+
+void simShowSettings(studio::SceneId sceneId) {
+  visible = true;
+  // Avoid prepare side-effects for a static settings screenshot.
+  ensureScreens();
+  closeAddOverlay();
+  currentScene = sceneId;
+  view = View::Run;
+  refreshRun();
+  lv_scr_load(scrRun);
+  buildSettingsOverlay();
 }
 
 void simShowAddStepCategory(studio::SceneId sceneId) {

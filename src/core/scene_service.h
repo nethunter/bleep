@@ -25,6 +25,7 @@ class SceneService {
 
   bool seedPressRecord(SceneId& outId);
 
+  SceneRunStatus prepare(SceneId sceneId);
   SceneRunStatus start(SceneId sceneId);
   SceneRunStatus stop();
   void cancel();
