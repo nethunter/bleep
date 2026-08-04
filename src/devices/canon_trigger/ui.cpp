@@ -55,6 +55,9 @@ const char* linkText(studio::LinkState link) {
 }
 
 void refresh() {
+  if (screen == nullptr) {
+    return;
+  }
   const studio::DeviceRuntimeState runtime =
       studio::devices().runtimeState(instanceId);
   const auto* state = static_cast<const canon_trigger::CanonTriggerState*>(
@@ -98,9 +101,28 @@ void triggerRecord() {
 
 void onTrigger(lv_event_t*) { triggerRecord(); }
 
-}  // namespace
+void clearPointers() {
+  screen = nullptr;
+  titleLabel = nullptr;
+  statusLabel = nullptr;
+  triggerRing = nullptr;
+  triggerButton = nullptr;
+  triggerLabel = nullptr;
+}
 
-void init() {
+void destroyScreen() {
+  if (screen == nullptr || lv_scr_act() == screen) {
+    return;
+  }
+  lv_obj_del(screen);
+  clearPointers();
+}
+
+void ensureScreen() {
+  if (screen != nullptr) {
+    return;
+  }
+
   screen = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(screen, lv_color_hex(kBg), 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(kText), 0);
@@ -162,7 +184,12 @@ void init() {
   lv_obj_center(triggerLabel);
 }
 
+}  // namespace
+
+void init() {}
+
 void show(studio::InstanceId id) {
+  ensureScreen();
   instanceId = id;
   const studio::DeviceRecord* record = studio::devices().find(id);
   lv_label_set_text(titleLabel, record != nullptr ? record->displayName : "");
@@ -170,6 +197,7 @@ void show(studio::InstanceId id) {
   lastRefreshMs = 0;
   refresh();
   lv_scr_load(screen);
+  ui::releaseInactiveScreens();
 }
 
 void hide() {
@@ -178,6 +206,13 @@ void hide() {
   }
   visible = false;
   instanceId = studio::kInvalidInstanceId;
+}
+
+void release() {
+  if (visible) {
+    return;
+  }
+  destroyScreen();
 }
 
 bool active() { return visible; }

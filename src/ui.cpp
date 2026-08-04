@@ -143,23 +143,37 @@ studio::InstanceId eventInstance(lv_event_t* event) {
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
 }
 
-void closeDeviceModal() {
-  lv_obj_add_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
-  removeArmed = false;
-  if (removeButton != nullptr) {
-    lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
+void destroyOverlay(lv_obj_t*& overlay) {
+  if (overlay == nullptr) {
+    return;
   }
+  lv_obj_del(overlay);
+  overlay = nullptr;
+}
+
+void closeDeviceModal() {
+  removeArmed = false;
   managedInstance = studio::kInvalidInstanceId;
+  destroyOverlay(deviceModal);
+  deviceModalTitle = nullptr;
+  enabledSwitch = nullptr;
+  removeButton = nullptr;
 }
 
 void closeRename() {
-  lv_obj_add_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+  destroyOverlay(renameOverlay);
+  renameText = nullptr;
+  renameKeypad = nullptr;
+  renamePageLabel = nullptr;
+  renameCaseLabel = nullptr;
 }
 
 void closeAddPicker() {
-  lv_obj_add_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clean(addList);
-  lv_obj_clear_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  destroyOverlay(addOverlay);
+  addList = nullptr;
+  if (addButton != nullptr) {
+    lv_obj_clear_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 size_t instanceCount(studio::DriverId driverId) {
@@ -245,12 +259,19 @@ void onOpenDevice(lv_event_t* event) {
   }
 }
 
+void buildDeviceModal();
+void buildRenameOverlay();
+void buildAddOverlay();
+
 void onOpenManage(lv_event_t* event) {
   managedInstance = eventInstance(event);
   const studio::DeviceRecord* record = studio::devices().find(managedInstance);
   if (record == nullptr) {
     managedInstance = studio::kInvalidInstanceId;
     return;
+  }
+  if (deviceModal == nullptr) {
+    buildDeviceModal();
   }
   lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
@@ -407,6 +428,9 @@ void refreshAddPicker() {
 }
 
 void onAddDevice(lv_event_t*) {
+  if (addOverlay == nullptr) {
+    buildAddOverlay();
+  }
   refreshAddPicker();
   lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
@@ -519,6 +543,9 @@ void onOpenRename(lv_event_t*) {
   if (record == nullptr) {
     return;
   }
+  if (renameOverlay == nullptr) {
+    buildRenameOverlay();
+  }
   lv_textarea_set_text(renameText, record->displayName);
   lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
   renamePage = 0;
@@ -601,6 +628,9 @@ void buildDevices() {
 }
 
 void buildAddOverlay() {
+  if (addOverlay != nullptr) {
+    return;
+  }
   addOverlay = lv_obj_create(lv_layer_top());
   lv_obj_set_size(addOverlay, 240, 240);
   lv_obj_center(addOverlay);
@@ -638,6 +668,9 @@ void buildAddOverlay() {
 }
 
 void buildDeviceModal() {
+  if (deviceModal != nullptr) {
+    return;
+  }
   deviceModal = lv_obj_create(lv_layer_top());
   lv_obj_set_size(deviceModal, 236, 236);
   lv_obj_center(deviceModal);
@@ -683,6 +716,9 @@ void buildDeviceModal() {
 }
 
 void buildRenameOverlay() {
+  if (renameOverlay != nullptr) {
+    return;
+  }
   renameOverlay = lv_obj_create(lv_layer_top());
   lv_obj_set_size(renameOverlay, 236, 236);
   lv_obj_center(renameOverlay);
@@ -752,24 +788,24 @@ void buildRenameOverlay() {
 
 }  // namespace
 
+void releaseDeviceUis() {
+#if CONFIG_DRIVER_SHARK_NANO_II
+  shark_ui::release();
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  canon_trigger_ui::release();
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+  canon_ble_ui::release();
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+  tascam_x8_ui::release();
+#endif
+}
+
 void init() {
   buildHome();
   buildDevices();
-  buildAddOverlay();
-  buildDeviceModal();
-  buildRenameOverlay();
-#if CONFIG_DRIVER_SHARK_NANO_II
-  shark_ui::init();
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  canon_trigger_ui::init();
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  canon_ble_ui::init();
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  tascam_x8_ui::init();
-#endif
   refreshHome();
   refreshDevices();
   lv_scr_load(scrHome);
@@ -835,11 +871,11 @@ void handleShortPress() {
     return;
   }
 #endif
-  if (!lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN)) {
+  if (renameOverlay != nullptr) {
     closeRename();
-  } else if (!lv_obj_has_flag(addOverlay, LV_OBJ_FLAG_HIDDEN)) {
+  } else if (addOverlay != nullptr) {
     closeAddPicker();
-  } else if (!lv_obj_has_flag(deviceModal, LV_OBJ_FLAG_HIDDEN)) {
+  } else if (deviceModal != nullptr) {
     closeDeviceModal();
   } else if (screen == Screen::Devices) {
     showHome();
@@ -873,6 +909,7 @@ void showHome() {
   screen = Screen::Home;
   refreshHome();
   lv_scr_load(scrHome);
+  releaseDeviceUis();
 }
 
 void showDevices() {
@@ -902,11 +939,24 @@ void showDevices() {
   screen = Screen::Devices;
   refreshDevices();
   lv_scr_load(scrDevices);
+  releaseDeviceUis();
 }
+
+void parkForScreenRebuild() {
+  lv_obj_t* resident = screen == Screen::Devices ? scrDevices : scrHome;
+  if (resident != nullptr) {
+    lv_scr_load(resident);
+  }
+}
+
+void releaseInactiveScreens() { releaseDeviceUis(); }
 
 #ifdef UI_SIMULATOR
 void simShowAddDevice() {
   showDevices();
+  if (addOverlay == nullptr) {
+    buildAddOverlay();
+  }
   refreshAddPicker();
   lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
@@ -919,6 +969,9 @@ void simShowManage(studio::InstanceId instanceId) {
   if (record == nullptr) {
     managedInstance = studio::kInvalidInstanceId;
     return;
+  }
+  if (deviceModal == nullptr) {
+    buildDeviceModal();
   }
   lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
@@ -936,6 +989,9 @@ void simShowRename(studio::InstanceId instanceId) {
   const studio::DeviceRecord* record = studio::devices().find(managedInstance);
   if (record == nullptr) {
     return;
+  }
+  if (renameOverlay == nullptr) {
+    buildRenameOverlay();
   }
   lv_textarea_set_text(renameText, record->displayName);
   lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);

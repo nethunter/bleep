@@ -117,9 +117,12 @@ void setupDisplay() {
 void printLvglMemory(const char* stage) {
   lv_mem_monitor_t monitor {};
   lv_mem_monitor(&monitor);
-  std::printf("LVGL memory %s: %u bytes free, %u%% used\n", stage,
-              static_cast<unsigned>(monitor.free_size),
-              static_cast<unsigned>(monitor.used_pct));
+  std::printf(
+      "LVGL memory %s: %u bytes free, %u%% used, %u bytes peak used, frag %u%%\n",
+      stage, static_cast<unsigned>(monitor.free_size),
+      static_cast<unsigned>(monitor.used_pct),
+      static_cast<unsigned>(monitor.max_used),
+      static_cast<unsigned>(monitor.frag_pct));
 }
 
 }  // namespace

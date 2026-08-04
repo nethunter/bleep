@@ -7,12 +7,13 @@ short, factual, and reproducible.
 
 - Current phase: dual Canon drivers (Trigger + Smart BLE), ADR-015 Canon Smart
   Wi-Fi/CCAPI handoff research, and the combined Phase 0/foundation physical
-  regression gates.
+  regression gates. UI memory optimization is implemented in firmware/sim;
+  physical navigation regression remains operator-pending.
 - Firmware state: Home-first, persistent device registry, on-demand Shark,
   Canon (Trigger) BR-E1, Canon (Smart) smartphone BLE, asynchronous on-demand
   Tascam X8/AK-BT1 record control with reconnect-state restoration, and
-  device-specific hardware-trigger CTA routing built, host-tested,
-  simulator-tested, and flashed.
+  device-specific hardware-trigger CTA routing built, host-tested, and
+  simulator-tested. Lazy UI allocation keeps only Home/Devices resident.
 - Universal driver framework: Bounded routing supports compiled Shark, Canon
   Trigger, Canon Smart, and Tascam X8 drivers while preserving one active
   device instance at a time.
@@ -781,4 +782,22 @@ Record values with the exact build environment and commit/worktree state.
   128 KiB LVGL). An earlier dual-driver image flashed to
   `/dev/cu.usbserial-211240`; the post-heap-bump reflash could not run because
   that port was absent (only unrelated usbmodem devices present).
+
+### 2026-08-03: UI memory optimization
+
+- Implemented the planned UI allocation work: Home/Devices stay resident;
+  Add/Manage/Rename overlays are created on open and deleted on close; Shark,
+  Canon Trigger, Canon Smart, and Tascam screens are built on show and released
+  after navigation leaves them.
+- Extracted shared `src/ui/recorder_shell.*` for Canon (Smart) and Tascam, with
+  optional power and unknown START/STOP controls owned by adapters.
+- Simulator full-navigation peak LVGL use was 17,012 bytes (frag 45% at end).
+  Reduced `LV_MEM_SIZE` from 128 KiB to 64 KiB in firmware and `ui_sim`.
+- Host tests: 20/20 passed (`native`).
+- Simulator: captures through `20_tascam_recording.png`. After max-device init
+  with 64 KiB pool: 40,152 bytes free / 10,684 peak; after remove refresh:
+  42,208 free / 17,012 peak.
+- Firmware: `crowpanel_128` build succeeded (flash 889,324 / RAM 135,628) and
+  flashed to `/dev/cu.usbserial-211240`. Physical navigation regression remains
+  operator-pending.
 

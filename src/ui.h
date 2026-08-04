@@ -10,6 +10,11 @@ void tick();
 void handleShortPress();
 void showHome();
 void showDevices();
+// Load Home/Devices so a device screen can be deleted safely, without changing
+// device activation state.
+void parkForScreenRebuild();
+// Delete inactive device screens/overlays after a resident screen is loaded.
+void releaseInactiveScreens();
 
 #ifdef UI_SIMULATOR
 void simShowAddDevice();

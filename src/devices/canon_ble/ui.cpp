@@ -1,35 +1,20 @@
 #include "devices/canon_ble/ui.h"
 
 #include <Arduino.h>
-#include <lvgl.h>
 
 #include "core/device_manager.h"
 #include "devices/canon_ble/state.h"
-#include "fonts/ui_fonts.h"
+#include "ui/recorder_shell.h"
 #include "../../ui.h"
 
 namespace canon_ble_ui {
 
 namespace {
 
-constexpr uint32_t kBg = 0x05070A;
-constexpr uint32_t kPanel = 0x171B22;
 constexpr uint32_t kAccent = 0xE53935;
 constexpr uint32_t kReady = 0x2E7D5B;
-constexpr uint32_t kText = 0xF3F4F6;
-constexpr uint32_t kMuted = 0x8A94A6;
+constexpr auto kOwner = recorder_shell::Owner::CanonBle;
 
-lv_obj_t* screen = nullptr;
-lv_obj_t* titleLabel = nullptr;
-lv_obj_t* statusLabel = nullptr;
-lv_obj_t* qualityLabel = nullptr;
-lv_obj_t* powerButton = nullptr;
-lv_obj_t* actionRing = nullptr;
-lv_obj_t* actionButton = nullptr;
-lv_obj_t* actionLabel = nullptr;
-lv_obj_t* unknownControls = nullptr;
-lv_obj_t* unknownStart = nullptr;
-lv_obj_t* unknownStop = nullptr;
 studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
 uint32_t lastRefreshMs = 0;
@@ -42,141 +27,6 @@ void enqueue(studio::CommandType type) {
   command.instanceId = instanceId;
   command.type = type;
   studio::devices().enqueue(command);
-}
-
-void showUnknownControls(bool show) {
-  if (show) {
-    lv_obj_add_flag(actionRing, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(unknownControls, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_clear_flag(actionRing, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(unknownControls, LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
-void setAction(const char* label, uint32_t color, bool enabled) {
-  showUnknownControls(false);
-  lv_label_set_text(actionLabel, label);
-  lv_obj_set_style_border_color(actionRing, lv_color_hex(color), 0);
-  lv_obj_set_style_bg_color(actionButton,
-                            lv_color_hex(enabled ? color : kPanel), 0);
-  if (enabled) {
-    lv_obj_clear_state(actionButton, LV_STATE_DISABLED);
-  } else {
-    lv_obj_add_state(actionButton, LV_STATE_DISABLED);
-  }
-}
-
-void setPowerEnabled(bool enabled) {
-  if (enabled) {
-    lv_obj_clear_state(powerButton, LV_STATE_DISABLED);
-  } else {
-    lv_obj_add_state(powerButton, LV_STATE_DISABLED);
-  }
-}
-
-void refresh() {
-  const studio::DeviceRuntimeState runtime =
-      studio::devices().runtimeState(instanceId);
-  const auto* state = static_cast<const canon_ble::CanonBleState*>(
-      studio::devices().specializedState(instanceId));
-
-  if (runtime.link != studio::LinkState::Connected || state == nullptr) {
-    const char* status = "DISCONNECTED";
-    const char* detail = "SMARTPHONE BLE";
-    if (state != nullptr &&
-        state->phase == canon_ble::CanonBleState::Phase::PoweredOff) {
-      status = "CAMERA OFF";
-      detail = "PRESS POWER TO WAKE";
-    } else if (runtime.link == studio::LinkState::Scanning) {
-      if (state != nullptr && state->claimedPeerVisible) {
-        status = "ALREADY ADDED";
-        detail = "OPEN EXISTING DEVICE";
-      } else {
-        status = "PAIRING...";
-        detail = "SELECT OK ON CAMERA";
-      }
-    } else if (runtime.link == studio::LinkState::Connecting) {
-      status = "CONNECTING...";
-      detail = "SECURE HANDSHAKE";
-    } else if (state != nullptr && state->pairingRejected) {
-      status = "PAIRING REJECTED";
-      detail = "TRY AGAIN";
-    }
-    lv_label_set_text(statusLabel, status);
-    lv_label_set_text(qualityLabel, detail);
-    setPowerEnabled(
-        state != nullptr &&
-        state->phase == canon_ble::CanonBleState::Phase::PoweredOff);
-    setAction("WAITING", kAccent, false);
-    return;
-  }
-
-  if (state->phase == canon_ble::CanonBleState::Phase::PoweringOff) {
-    lv_label_set_text(statusLabel, "POWERING OFF...");
-    lv_label_set_text(qualityLabel, "WAITING FOR CAMERA");
-    setPowerEnabled(false);
-    setAction("WAIT", kAccent, false);
-    return;
-  }
-
-  if (state->phase == canon_ble::CanonBleState::Phase::AwaitingConfirmation ||
-      state->phase == canon_ble::CanonBleState::Phase::Handshaking ||
-      state->phase == canon_ble::CanonBleState::Phase::PostPairSetup) {
-    lv_label_set_text(statusLabel, "PAIRING...");
-    lv_label_set_text(qualityLabel, "SELECT OK ON CAMERA");
-    setPowerEnabled(false);
-    setAction("WAIT", kAccent, false);
-    return;
-  }
-
-  if (state->phase != canon_ble::CanonBleState::Phase::Ready) {
-    lv_label_set_text(statusLabel, "OPENING...");
-    lv_label_set_text(qualityLabel, "WAITING FOR SHOOTING MODE");
-    setPowerEnabled(false);
-    setAction("WAIT", kAccent, false);
-    return;
-  }
-
-  using Recording = canon_ble::CanonBleState::Recording;
-  const bool recording =
-      state->recordingConfirmed && state->recording == Recording::Recording;
-  setPowerEnabled(!state->commandPending && !recording);
-  if (state->recording == Recording::Starting) {
-    lv_label_set_text(statusLabel, "STARTING...");
-    lv_label_set_text(qualityLabel, "WAITING FOR CAMERA");
-    setAction("WAIT", kAccent, false);
-  } else if (state->recording == Recording::Stopping) {
-    lv_label_set_text(statusLabel, "STOPPING...");
-    lv_label_set_text(qualityLabel, "WAITING FOR CAMERA");
-    setAction("WAIT", kAccent, false);
-  } else if (state->recordingConfirmed &&
-             state->recording == Recording::Recording) {
-    lv_label_set_text(statusLabel,
-                      state->lastCommandFailed ? "STOP FAILED" : "RECORDING");
-    lv_label_set_text(qualityLabel, "CAMERA CONFIRMED");
-    setAction("STOP", kAccent, true);
-  } else if (state->recordingConfirmed &&
-             state->recording == Recording::Stopped) {
-    lv_label_set_text(
-        statusLabel, state->powerOffFailed
-                         ? "POWER OFF FAILED"
-                         : (state->lastCommandFailed ? "START FAILED" : "READY"));
-    lv_label_set_text(qualityLabel, state->powerOffFailed
-                                       ? "CAMERA STILL CONNECTED"
-                                       : "CAMERA CONFIRMED");
-    setAction("START", kReady, true);
-  } else {
-    lv_label_set_text(statusLabel,
-                      state->powerOffFailed
-                          ? "POWER OFF FAILED"
-                          : (state->lastCommandFailed ? "NO CONFIRMATION"
-                                                      : "CONNECTED"));
-    lv_label_set_text(qualityLabel, state->powerOffFailed
-                                       ? "CAMERA STILL CONNECTED"
-                                       : "STATE UNKNOWN");
-    showUnknownControls(true);
-  }
 }
 
 void performPrimaryAction() {
@@ -199,22 +49,18 @@ void performPrimaryAction() {
   }
 }
 
-void onBack(lv_event_t*) {
+void onBack() {
   hide();
   ui::showDevices();
 }
 
-void onAction(lv_event_t*) { performPrimaryAction(); }
+void onAction() { performPrimaryAction(); }
 
-void onUnknownStart(lv_event_t*) {
-  enqueue(studio::CommandType::RecordStart);
-}
+void onUnknownStart() { enqueue(studio::CommandType::RecordStart); }
 
-void onUnknownStop(lv_event_t*) {
-  enqueue(studio::CommandType::RecordStop);
-}
+void onUnknownStop() { enqueue(studio::CommandType::RecordStop); }
 
-void onPower(lv_event_t*) {
+void onPower() {
   const auto* state = static_cast<const canon_ble::CanonBleState*>(
       studio::devices().specializedState(instanceId));
   enqueue(state != nullptr &&
@@ -223,119 +69,158 @@ void onPower(lv_event_t*) {
               : studio::CommandType::CameraPowerOff);
 }
 
-lv_obj_t* createUnknownButton(lv_obj_t* parent, const char* label,
-                              uint32_t color, lv_event_cb_t callback) {
-  lv_obj_t* button = lv_btn_create(parent);
-  lv_obj_set_size(button, 78, 62);
-  lv_obj_set_style_radius(button, 24, 0);
-  lv_obj_set_style_bg_color(button, lv_color_hex(color), 0);
-  lv_obj_set_style_shadow_width(button, 0, 0);
-  lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* text = lv_label_create(button);
-  lv_label_set_text(text, label);
-  lv_obj_set_style_text_font(text, UI_FONT_16, 0);
-  lv_obj_set_style_text_color(text, lv_color_hex(kText), 0);
-  lv_obj_center(text);
-  return button;
+void ensureShell() {
+  if (recorder_shell::ownedBy(kOwner)) {
+    return;
+  }
+  if (recorder_shell::screen() != nullptr &&
+      lv_scr_act() == recorder_shell::screen()) {
+    ui::parkForScreenRebuild();
+  }
+  recorder_shell::destroyIdle();
+
+  recorder_shell::Options options;
+  options.enablePower = true;
+  options.enableUnknownControls = true;
+  recorder_shell::Callbacks callbacks;
+  callbacks.onBack = onBack;
+  callbacks.onAction = onAction;
+  callbacks.onUnknownStart = onUnknownStart;
+  callbacks.onUnknownStop = onUnknownStop;
+  callbacks.onPower = onPower;
+  recorder_shell::acquire(kOwner, options, callbacks);
+}
+
+void refresh() {
+  if (!recorder_shell::ownedBy(kOwner)) {
+    return;
+  }
+
+  recorder_shell::View view;
+  const studio::DeviceRecord* record = studio::devices().find(instanceId);
+  view.title = record != nullptr ? record->displayName : "";
+
+  const studio::DeviceRuntimeState runtime =
+      studio::devices().runtimeState(instanceId);
+  const auto* state = static_cast<const canon_ble::CanonBleState*>(
+      studio::devices().specializedState(instanceId));
+
+  if (runtime.link != studio::LinkState::Connected || state == nullptr) {
+    view.status = "DISCONNECTED";
+    view.detail = "SMARTPHONE BLE";
+    if (state != nullptr &&
+        state->phase == canon_ble::CanonBleState::Phase::PoweredOff) {
+      view.status = "CAMERA OFF";
+      view.detail = "PRESS POWER TO WAKE";
+    } else if (runtime.link == studio::LinkState::Scanning) {
+      if (state != nullptr && state->claimedPeerVisible) {
+        view.status = "ALREADY ADDED";
+        view.detail = "OPEN EXISTING DEVICE";
+      } else {
+        view.status = "PAIRING...";
+        view.detail = "SELECT OK ON CAMERA";
+      }
+    } else if (runtime.link == studio::LinkState::Connecting) {
+      view.status = "CONNECTING...";
+      view.detail = "SECURE HANDSHAKE";
+    } else if (state != nullptr && state->pairingRejected) {
+      view.status = "PAIRING REJECTED";
+      view.detail = "TRY AGAIN";
+    }
+    view.powerEnabled =
+        state != nullptr &&
+        state->phase == canon_ble::CanonBleState::Phase::PoweredOff;
+    view.actionLabel = "WAITING";
+    view.actionColor = kAccent;
+    view.actionEnabled = false;
+    recorder_shell::apply(view);
+    return;
+  }
+
+  if (state->phase == canon_ble::CanonBleState::Phase::PoweringOff) {
+    view.status = "POWERING OFF...";
+    view.detail = "WAITING FOR CAMERA";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
+    recorder_shell::apply(view);
+    return;
+  }
+
+  if (state->phase == canon_ble::CanonBleState::Phase::AwaitingConfirmation ||
+      state->phase == canon_ble::CanonBleState::Phase::Handshaking ||
+      state->phase == canon_ble::CanonBleState::Phase::PostPairSetup) {
+    view.status = "PAIRING...";
+    view.detail = "SELECT OK ON CAMERA";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
+    recorder_shell::apply(view);
+    return;
+  }
+
+  if (state->phase != canon_ble::CanonBleState::Phase::Ready) {
+    view.status = "OPENING...";
+    view.detail = "WAITING FOR SHOOTING MODE";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
+    recorder_shell::apply(view);
+    return;
+  }
+
+  using Recording = canon_ble::CanonBleState::Recording;
+  const bool recording =
+      state->recordingConfirmed && state->recording == Recording::Recording;
+  view.powerEnabled = !state->commandPending && !recording;
+  if (state->recording == Recording::Starting) {
+    view.status = "STARTING...";
+    view.detail = "WAITING FOR CAMERA";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
+  } else if (state->recording == Recording::Stopping) {
+    view.status = "STOPPING...";
+    view.detail = "WAITING FOR CAMERA";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
+  } else if (state->recordingConfirmed &&
+             state->recording == Recording::Recording) {
+    view.status = state->lastCommandFailed ? "STOP FAILED" : "RECORDING";
+    view.detail = "CAMERA CONFIRMED";
+    view.actionLabel = "STOP";
+    view.actionColor = kAccent;
+    view.actionEnabled = true;
+  } else if (state->recordingConfirmed &&
+             state->recording == Recording::Stopped) {
+    view.status = state->powerOffFailed
+                      ? "POWER OFF FAILED"
+                      : (state->lastCommandFailed ? "START FAILED" : "READY");
+    view.detail = state->powerOffFailed ? "CAMERA STILL CONNECTED"
+                                        : "CAMERA CONFIRMED";
+    view.actionLabel = "START";
+    view.actionColor = kReady;
+    view.actionEnabled = true;
+  } else {
+    view.status = state->powerOffFailed
+                      ? "POWER OFF FAILED"
+                      : (state->lastCommandFailed ? "NO CONFIRMATION"
+                                                  : "CONNECTED");
+    view.detail = state->powerOffFailed ? "CAMERA STILL CONNECTED"
+                                        : "STATE UNKNOWN";
+    view.showUnknownControls = true;
+  }
+  recorder_shell::apply(view);
 }
 
 }  // namespace
 
-void init() {
-  screen = lv_obj_create(nullptr);
-  lv_obj_set_style_bg_color(screen, lv_color_hex(kBg), 0);
-  lv_obj_set_style_text_color(screen, lv_color_hex(kText), 0);
-  lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t* back = lv_btn_create(screen);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
-  lv_obj_set_style_bg_color(back, lv_color_hex(kPanel), 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* backLabel = lv_label_create(back);
-  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
-  lv_obj_center(backLabel);
-
-  powerButton = lv_btn_create(screen);
-  lv_obj_set_size(powerButton, 34, 30);
-  lv_obj_align(powerButton, LV_ALIGN_TOP_RIGHT, -40, 22);
-  lv_obj_set_style_bg_color(powerButton, lv_color_hex(kPanel), 0);
-  lv_obj_set_style_opa(powerButton, LV_OPA_40,
-                       LV_PART_MAIN | LV_STATE_DISABLED);
-  lv_obj_set_style_shadow_width(powerButton, 0, 0);
-  lv_obj_add_event_cb(powerButton, onPower, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* powerLabel = lv_label_create(powerButton);
-  lv_label_set_text(powerLabel, LV_SYMBOL_POWER);
-  lv_obj_set_style_text_font(powerLabel, UI_FONT_16, 0);
-  lv_obj_center(powerLabel);
-
-  titleLabel = lv_label_create(screen);
-  lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(titleLabel, 92);
-  lv_obj_set_height(titleLabel, 20);
-  lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
-  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 0, 29);
-
-  statusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(statusLabel, UI_FONT_16, 0);
-  lv_obj_set_style_text_color(statusLabel, lv_color_hex(kText), 0);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_MID, 0, 62);
-
-  qualityLabel = lv_label_create(screen);
-  lv_obj_set_width(qualityLabel, 190);
-  lv_obj_set_style_text_align(qualityLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(qualityLabel, UI_FONT_14, 0);
-  lv_obj_set_style_text_color(qualityLabel, lv_color_hex(kMuted), 0);
-  lv_obj_align(qualityLabel, LV_ALIGN_TOP_MID, 0, 78);
-
-  actionRing = lv_obj_create(screen);
-  lv_obj_set_size(actionRing, 136, 136);
-  lv_obj_align(actionRing, LV_ALIGN_BOTTOM_MID, 0, -4);
-  lv_obj_set_style_radius(actionRing, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(actionRing, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(actionRing, 3, 0);
-  lv_obj_set_style_pad_all(actionRing, 8, 0);
-  lv_obj_clear_flag(actionRing, LV_OBJ_FLAG_SCROLLABLE);
-
-  actionButton = lv_btn_create(actionRing);
-  lv_obj_set_size(actionButton, 118, 118);
-  lv_obj_center(actionButton);
-  lv_obj_set_style_radius(actionButton, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_shadow_width(actionButton, 0, 0);
-  lv_obj_add_event_cb(actionButton, onAction, LV_EVENT_CLICKED, nullptr);
-  actionLabel = lv_label_create(actionButton);
-  lv_obj_set_style_text_align(actionLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(actionLabel, UI_FONT_16, 0);
-  lv_obj_set_style_text_color(actionLabel, lv_color_hex(kText), 0);
-  lv_obj_center(actionLabel);
-
-  unknownControls = lv_obj_create(screen);
-  lv_obj_set_size(unknownControls, 180, 82);
-  lv_obj_align(unknownControls, LV_ALIGN_BOTTOM_MID, 0, -34);
-  lv_obj_set_style_bg_opa(unknownControls, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(unknownControls, 0, 0);
-  lv_obj_set_style_pad_all(unknownControls, 0, 0);
-  lv_obj_clear_flag(unknownControls, LV_OBJ_FLAG_SCROLLABLE);
-  unknownStart =
-      createUnknownButton(unknownControls, "START", kReady, onUnknownStart);
-  lv_obj_align(unknownStart, LV_ALIGN_LEFT_MID, 4, 0);
-  unknownStop =
-      createUnknownButton(unknownControls, "STOP", kAccent, onUnknownStop);
-  lv_obj_align(unknownStop, LV_ALIGN_RIGHT_MID, -4, 0);
-  lv_obj_add_flag(unknownControls, LV_OBJ_FLAG_HIDDEN);
-}
+void init() {}
 
 void show(studio::InstanceId id) {
+  ensureShell();
   instanceId = id;
-  const studio::DeviceRecord* record = studio::devices().find(id);
-  lv_label_set_text(titleLabel, record != nullptr ? record->displayName : "");
   visible = studio::devices().activate(id);
   lastRefreshMs = 0;
   refresh();
-  lv_scr_load(screen);
+  lv_scr_load(recorder_shell::screen());
+  ui::releaseInactiveScreens();
 }
 
 void hide() {
@@ -344,6 +229,13 @@ void hide() {
   }
   visible = false;
   instanceId = studio::kInvalidInstanceId;
+}
+
+void release() {
+  if (visible) {
+    return;
+  }
+  recorder_shell::release(kOwner);
 }
 
 bool active() { return visible; }

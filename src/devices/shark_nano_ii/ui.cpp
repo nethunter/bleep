@@ -331,6 +331,10 @@ void showSetActions() {
 
 void closeModal();
 
+void destroySetOverlayObjects();
+void destroyModalObjects();
+void maybeDestroyScrim();
+
 void closeSetOverlay(bool commit) {
   const int slot = setSlot;
   const bool wasUnlocked = manualUnlockActive;
@@ -338,12 +342,8 @@ void closeSetOverlay(bool commit) {
   setOverlayOpen = false;
   setSlot = -1;
   manualUnlockActive = false;
-  if (setOverlay != nullptr) {
-    lv_obj_add_flag(setOverlay, LV_OBJ_FLAG_HIDDEN);
-  }
-  if (!modalOpen && overlayScrim != nullptr) {
-    lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
-  }
+  destroySetOverlayObjects();
+  maybeDestroyScrim();
   if (commit && slot >= 0) {
     gShark.keypointSet(slot);
   }
@@ -353,6 +353,9 @@ void closeSetOverlay(bool commit) {
 }
 
 void cancelPositioning() { closeSetOverlay(false); }
+
+void ensureScrim();
+void buildSetOverlay();
 
 void openSetOverlay(int slot) {
   if (slot < 0 || slot >= shark::kKeypointCount) {
@@ -365,6 +368,8 @@ void openSetOverlay(int slot) {
   manualUnlockActive = false;
   setSlot = slot;
   setOverlayOpen = true;
+  ensureScrim();
+  buildSetOverlay();
 
   char title[24];
   snprintf(title, sizeof(title), "Set %s Position", kSlotLetters[slot]);
@@ -426,12 +431,8 @@ void onBack(lv_event_t*) { ui::showDevices(); }
 void closeModal() {
   modalOpen = false;
   modalSlot = -1;
-  if (modal != nullptr) {
-    lv_obj_add_flag(modal, LV_OBJ_FLAG_HIDDEN);
-  }
-  if (!setOverlayOpen && overlayScrim != nullptr) {
-    lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
-  }
+  destroyModalObjects();
+  maybeDestroyScrim();
 }
 
 void openModal(int slot);
@@ -578,6 +579,9 @@ void onHoldPlus(lv_event_t*) {
 // ---- screen construction --------------------------------------------------
 
 void buildConnectScreen() {
+  if (scrConnect != nullptr) {
+    return;
+  }
   scrConnect = lv_obj_create(nullptr);
   styleScreen(scrConnect);
 
@@ -636,6 +640,9 @@ void buildConnectScreen() {
 }
 
 void buildKeysScreen() {
+  if (scrKeys != nullptr) {
+    return;
+  }
   scrKeys = lv_obj_create(nullptr);
   styleScreen(scrKeys);
   lv_obj_add_event_cb(scrKeys, onScreenGesture, LV_EVENT_GESTURE, nullptr);
@@ -716,6 +723,9 @@ void buildKeysScreen() {
 }
 
 void buildRunScreen() {
+  if (scrRun != nullptr) {
+    return;
+  }
   scrRun = lv_obj_create(nullptr);
   styleScreen(scrRun);
   lv_obj_add_event_cb(scrRun, onScreenGesture, LV_EVENT_GESTURE, nullptr);
@@ -789,7 +799,10 @@ void buildRunScreen() {
   lv_obj_center(dirLabel);
 }
 
-void buildModal() {
+void ensureScrim() {
+  if (overlayScrim != nullptr) {
+    return;
+  }
   // Opaque backing prevents the active screen from showing around the rounded
   // panel near the physical display edge.
   overlayScrim = lv_obj_create(lv_layer_top());
@@ -802,7 +815,52 @@ void buildModal() {
   lv_obj_set_style_pad_all(overlayScrim, 0, 0);
   lv_obj_clear_flag(overlayScrim, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(overlayScrim, LV_OBJ_FLAG_HIDDEN);
+}
 
+void maybeDestroyScrim() {
+  if (modalOpen || setOverlayOpen || overlayScrim == nullptr) {
+    return;
+  }
+  lv_obj_del(overlayScrim);
+  overlayScrim = nullptr;
+}
+
+void destroyModalObjects() {
+  if (modal == nullptr) {
+    return;
+  }
+  lv_obj_del(modal);
+  modal = nullptr;
+  modalTitle = nullptr;
+  modalPresence = nullptr;
+  speedRow = nullptr;
+  speedSlider = nullptr;
+  speedValue = nullptr;
+  holdRow = nullptr;
+  holdValue = nullptr;
+}
+
+void destroySetOverlayObjects() {
+  if (setOverlay == nullptr) {
+    return;
+  }
+  lv_obj_del(setOverlay);
+  setOverlay = nullptr;
+  setTitle = nullptr;
+  setHint = nullptr;
+  setModeMark = nullptr;
+  joystickBase = nullptr;
+  joystickKnob = nullptr;
+  unlockBtn = nullptr;
+  joystickBtn = nullptr;
+  setBtn = nullptr;
+  cancelBtn = nullptr;
+}
+
+void buildModal() {
+  if (modal != nullptr) {
+    return;
+  }
   // Full-screen settings panel. The accent border reads as a ring at the bezel
   // and overlays whatever screen is active.
   modal = lv_obj_create(lv_layer_top());
@@ -916,6 +974,9 @@ void buildModal() {
 }
 
 void buildSetOverlay() {
+  if (setOverlay != nullptr) {
+    return;
+  }
   setOverlay = lv_obj_create(lv_layer_top());
   lv_obj_set_size(setOverlay, 240, 240);
   lv_obj_center(setOverlay);
@@ -1021,6 +1082,8 @@ void openModal(int slot) {
   }
   modalSlot = slot;
   modalOpen = true;
+  ensureScrim();
+  buildModal();
 
   char title[16];
   snprintf(title, sizeof(title), "%s Settings", kSlotLetters[slot]);
@@ -1178,8 +1241,68 @@ void refreshModal(const shark::SharkClient::State& s) {
   lv_label_set_text(modalPresence, s.present[modalSlot] ? "configured" : "not set");
 }
 
+void ensureConnectedScreens() {
+  buildKeysScreen();
+  buildRunScreen();
+}
+
+void clearScreenPointers() {
+  scrConnect = nullptr;
+  connTitle = nullptr;
+  connArc = nullptr;
+  connMark = nullptr;
+  connStatus = nullptr;
+  connDevice = nullptr;
+
+  scrKeys = nullptr;
+  keysHeader = nullptr;
+  keyList = nullptr;
+  for (int i = 0; i < shark::kKeypointCount; ++i) {
+    keyRows[i] = nullptr;
+    keyButtons[i] = nullptr;
+    keyLabels[i] = nullptr;
+    gearButtons[i] = nullptr;
+  }
+
+  scrRun = nullptr;
+  runHeader = nullptr;
+  runBar = nullptr;
+  runPercent = nullptr;
+  runActionBtn = nullptr;
+  runActionLabel = nullptr;
+  loopBtn = nullptr;
+  dirBtn = nullptr;
+  loopLabel = nullptr;
+  dirLabel = nullptr;
+}
+
+void destroyIdleScreens() {
+  const lv_obj_t* active = lv_scr_act();
+  if (active == scrConnect || active == scrKeys || active == scrRun) {
+    return;
+  }
+  if (scrConnect != nullptr) {
+    lv_obj_del(scrConnect);
+  }
+  if (scrKeys != nullptr) {
+    lv_obj_del(scrKeys);
+  }
+  if (scrRun != nullptr) {
+    lv_obj_del(scrRun);
+  }
+  clearScreenPointers();
+  destroySetOverlayObjects();
+  destroyModalObjects();
+  maybeDestroyScrim();
+  if (overlayScrim != nullptr) {
+    lv_obj_del(overlayScrim);
+    overlayScrim = nullptr;
+  }
+}
+
 void showScreenForState(const shark::SharkClient::State& s) {
   if (s.link == Link::Connected) {
+    ensureConnectedScreens();
     lv_obj_t* target = (currentMain == 1) ? scrRun : scrKeys;
     if (lv_scr_act() != target) {
       lv_scr_load(target);
@@ -1191,6 +1314,7 @@ void showScreenForState(const shark::SharkClient::State& s) {
     if (setOverlayOpen) {
       cancelPositioning();
     }
+    buildConnectScreen();
     if (lv_scr_act() != scrConnect) {
       lv_scr_load(scrConnect);
     }
@@ -1199,13 +1323,7 @@ void showScreenForState(const shark::SharkClient::State& s) {
 
 }  // namespace
 
-void init() {
-  buildConnectScreen();
-  buildKeysScreen();
-  buildRunScreen();
-  buildModal();
-  buildSetOverlay();
-}
+void init() {}
 
 void show(studio::InstanceId instanceId) {
   if (!studio::devices().activate(instanceId)) {
@@ -1213,11 +1331,13 @@ void show(studio::InstanceId instanceId) {
   }
   activeInstance = instanceId;
   currentMain = 0;
+  buildConnectScreen();
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
   if (record != nullptr) {
     lv_label_set_text(connTitle, record->displayName);
   }
   lv_scr_load(scrConnect);
+  ui::releaseInactiveScreens();
 }
 
 void hide() {
@@ -1230,6 +1350,13 @@ void hide() {
   stopActiveMotion();
   studio::devices().deactivate();
   activeInstance = studio::kInvalidInstanceId;
+}
+
+void release() {
+  if (active()) {
+    return;
+  }
+  destroyIdleScreens();
 }
 
 bool active() { return activeInstance != studio::kInvalidInstanceId; }
@@ -1277,12 +1404,14 @@ void handleShortPress() {
     advanceRunState();
     return;
   }
+  ensureConnectedScreens();
   currentMain = 1;
   lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
 #ifdef UI_SIMULATOR
 void simShowKeypoints() {
+  ensureConnectedScreens();
   currentMain = 0;
   lv_scr_load(scrKeys);
 }

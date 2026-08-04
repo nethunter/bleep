@@ -7,6 +7,7 @@ namespace canon_trigger_ui {
 void init();
 void show(studio::InstanceId instanceId);
 void hide();
+void release();
 bool active();
 void tick();
 // Dispatches the hardware trigger to the current screen's primary action.
