@@ -32,9 +32,22 @@ Append exactly one concise subject description:
 - **Portal:** `Subject: a whimsical Wi-Fi portal doorway / gateway arch
   shooting playful signal waves, violet and turquoise neon candy colors.`
 
-For a new mode, preserve the shared block and append a similarly concrete
-subject sentence. Specify recognizable objects, a small palette, and any
-important count or arrangement. Generate each icon independently as a 1:1 PNG.
+Device-category icons (Add device / Add scene step grids):
+
+- **Motion:** `Subject: a cute cartoon motorized camera slider with a tiny
+  smiling camera riding the rail, cyan and electric blue accents, warm orange
+  wheels.`
+- **Lights:** `Subject: a cute glowing LED softbox light character with a warm
+  friendly face, lime green and gold colors, soft glow.`
+- **Cameras:** `Subject: a cute cartoon mirrorless camera with a big friendly
+  lens eye and a tiny smiling face, coral red and cyan accents, glossy body.`
+- **Recorders:** `Subject: a cute cartoon portable audio recorder with chunky
+  knobs and a smiling VU meter face, mint green and gold accents.`
+
+For a new mode or category, preserve the shared block and append a similarly
+concrete subject sentence. Specify recognizable objects, a small palette, and
+any important count or arrangement. Generate each icon independently as a 1:1
+PNG. Save category icons as `icon_cat_<name>.png`.
 
 ## Review checklist
 

@@ -824,3 +824,17 @@ Record values with the exact build environment and commit/worktree state.
   `22d_scenes_add_action`.
 - Firmware rebuilt and flashed to `/dev/cu.usbserial-211240`.
 
+### 2026-08-04: Shared category-icon picker shell
+
+- Extracted `src/ui/picker_shell.*` for Devices **Add device** and Scenes
+  **+ Step**: Category icon grid → driver/device list → (scene) action.
+  SceneStep keeps Wait 500 ms on the category screen.
+- Added cute category icons (`icon_cat_{motion,lights,cameras,recorders}`) via
+  Nano Banana / `tools/gen_icons.py` → `ui_icon_cat_*`.
+- Picker overlay is deleted on close (not merely hidden) so LVGL heap stays
+  stable across later Shark navigation in `ui_sim`.
+- Simulator: full capture through `27_scenes_stop_progress`; peak LVGL use
+  17,012 bytes after remove refresh.
+- Firmware: `crowpanel_128` build succeeded (flash 935,596 / RAM 137,428) and
+  flashed to `/dev/cu.usbserial-211240`.
+

@@ -7,10 +7,10 @@
 #include <cstring>
 
 #include "core/device_manager.h"
-#include "core/driver_catalog.h"
 #include "core/scene_service.h"
 #include "fonts/ui_fonts.h"
 #include "ui.h"
+#include "ui/picker_shell.h"
 
 namespace scene_ui {
 namespace {
@@ -27,16 +27,12 @@ constexpr lv_coord_t kRoundBackX = 40;
 constexpr lv_coord_t kRoundBackY = 36;
 
 enum class View : uint8_t { List, Run, Edit };
-enum class AddLevel : uint8_t { Category, Device, Action };
 
 View view = View::List;
 bool visible = false;
 studio::SceneId currentScene = studio::kInvalidSceneId;
 bool editingStart = true;
 uint32_t lastRefreshMs = 0;
-AddLevel addLevel = AddLevel::Category;
-studio::DeviceType addCategory = studio::DeviceType::Camera;
-studio::InstanceId addDeviceId = studio::kInvalidInstanceId;
 
 lv_obj_t* scrList = nullptr;
 lv_obj_t* scrRun = nullptr;
@@ -49,11 +45,6 @@ lv_obj_t* startButton = nullptr;
 lv_obj_t* stopButton = nullptr;
 lv_obj_t* editBody = nullptr;
 lv_obj_t* editTitle = nullptr;
-lv_obj_t* addOverlay = nullptr;
-lv_obj_t* addTitle = nullptr;
-lv_obj_t* addBackButton = nullptr;
-lv_obj_t* addCloseButton = nullptr;
-lv_obj_t* addList = nullptr;
 
 void styleScreen(lv_obj_t* object) {
   lv_obj_set_style_bg_color(object, lv_color_hex(kColBg), 0);
@@ -205,62 +196,13 @@ bool loadEditable(studio::SceneRecord& record) {
   return true;
 }
 
-const char* categoryName(studio::DeviceType type) {
-  switch (type) {
-    case studio::DeviceType::Motion:
-      return "Motion";
-    case studio::DeviceType::Light:
-      return "Lights";
-    case studio::DeviceType::Camera:
-      return "Cameras";
-    case studio::DeviceType::Recorder:
-      return "Recorders";
-    case studio::DeviceType::Unknown:
-      return "Other";
-  }
-  return "Other";
-}
-
-bool deviceSupportsSceneActions(const studio::DeviceRecord& record,
-                                const studio::DriverDescriptor& descriptor) {
-  if (!record.enabled) {
-    return false;
-  }
-  const uint32_t caps = descriptor.capabilities;
-  return (caps & studio::capabilityBit(studio::Capability::RecordStart)) != 0 ||
-         (caps & studio::capabilityBit(studio::Capability::RecordStop)) != 0;
-}
-
-bool categoryHasSceneDevices(studio::DeviceType category) {
-  for (size_t i = 0; i < studio::devices().count(); ++i) {
-    const studio::DeviceRecord* record = studio::devices().at(i);
-    if (record == nullptr) {
-      continue;
-    }
-    const studio::DriverDescriptor* descriptor =
-        studio::DriverCatalog::find(record->driverId);
-    if (descriptor == nullptr || descriptor->type != category) {
-      continue;
-    }
-    if (deviceSupportsSceneActions(*record, *descriptor)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void refreshAddPicker();
-
 void closeAddOverlay() {
-  if (addOverlay != nullptr) {
-    lv_obj_add_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  if (picker_shell::active()) {
+    picker_shell::hide();
   }
-  addLevel = AddLevel::Category;
-  addCategory = studio::DeviceType::Camera;
-  addDeviceId = studio::kInvalidInstanceId;
 }
 
-void onAddWait(lv_event_t*) {
+void appendSceneStep(const studio::SceneStep& step) {
   studio::SceneRecord record;
   if (!loadEditable(record)) {
     return;
@@ -270,59 +212,23 @@ void onAddWait(lv_event_t*) {
   if (count >= CONFIG_MAX_SCENE_STEPS) {
     return;
   }
-  steps[count++] = studio::makeWaitStep(500);
+  steps[count++] = step;
   studio::scenes().replace(record);
-  closeAddOverlay();
   refreshEdit();
 }
 
-void onAddRecordAction(lv_event_t* event) {
-  const auto command = static_cast<studio::CommandType>(
-      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
-  if (addDeviceId == studio::kInvalidInstanceId) {
-    return;
-  }
-  studio::SceneRecord record;
-  if (!loadEditable(record)) {
-    return;
-  }
-  studio::SceneStep* steps = editingStart ? record.startSteps : record.stopSteps;
-  uint8_t& count = editingStart ? record.startCount : record.stopCount;
-  if (count >= CONFIG_MAX_SCENE_STEPS) {
-    return;
-  }
-  steps[count++] = studio::makeActionStep(addDeviceId, command);
-  studio::scenes().replace(record);
-  closeAddOverlay();
-  refreshEdit();
+void onSceneWaitChosen() { appendSceneStep(studio::makeWaitStep(500)); }
+
+void onSceneActionChosen(studio::InstanceId instanceId,
+                         studio::CommandType command) {
+  appendSceneStep(studio::makeActionStep(instanceId, command));
 }
 
-void onChooseCategory(lv_event_t* event) {
-  addCategory = static_cast<studio::DeviceType>(
-      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
-  addLevel = AddLevel::Device;
-  addDeviceId = studio::kInvalidInstanceId;
-  refreshAddPicker();
-}
-
-void onChooseDevice(lv_event_t* event) {
-  addDeviceId = static_cast<studio::InstanceId>(
-      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
-  addLevel = AddLevel::Action;
-  refreshAddPicker();
-}
-
-void onAddPickerBack(lv_event_t*) {
-  if (addLevel == AddLevel::Action) {
-    addLevel = AddLevel::Device;
-    addDeviceId = studio::kInvalidInstanceId;
-    refreshAddPicker();
-    return;
-  }
-  if (addLevel == AddLevel::Device) {
-    addLevel = AddLevel::Category;
-    refreshAddPicker();
-  }
+void onOpenAddStep(lv_event_t*) {
+  picker_shell::Callbacks callbacks;
+  callbacks.onSceneAction = onSceneActionChosen;
+  callbacks.onWaitChosen = onSceneWaitChosen;
+  picker_shell::show(picker_shell::Mode::SceneStep, callbacks);
 }
 
 void onMoveUp(lv_event_t* event) {
@@ -379,130 +285,6 @@ void onDeleteStep(lv_event_t* event) {
   studio::scenes().replace(record);
   refreshEdit();
 }
-
-void refreshAddPicker() {
-  lv_obj_clean(addList);
-  const bool atRoot = addLevel == AddLevel::Category;
-  if (addBackButton != nullptr) {
-    if (atRoot) {
-      lv_obj_add_flag(addBackButton, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_clear_flag(addBackButton, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-  if (addCloseButton != nullptr) {
-    if (atRoot) {
-      lv_obj_clear_flag(addCloseButton, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(addCloseButton, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-
-  if (addLevel == AddLevel::Category) {
-    lv_label_set_text(addTitle, "Add step");
-    lv_obj_t* wait = makeButton(addList, "Wait 500ms", onAddWait, kColAccent);
-    lv_obj_set_size(wait, lv_pct(100), 30);
-
-    constexpr studio::DeviceType kCategories[] = {
-        studio::DeviceType::Camera,
-        studio::DeviceType::Recorder,
-        studio::DeviceType::Motion,
-        studio::DeviceType::Light,
-        studio::DeviceType::Unknown,
-    };
-    for (studio::DeviceType category : kCategories) {
-      if (!categoryHasSceneDevices(category)) {
-        continue;
-      }
-      void* userData =
-          reinterpret_cast<void*>(static_cast<uintptr_t>(category));
-      lv_obj_t* button =
-          makeButton(addList, categoryName(category), onChooseCategory);
-      lv_obj_set_size(button, lv_pct(100), 30);
-      lv_obj_remove_event_cb(button, onChooseCategory);
-      lv_obj_add_event_cb(button, onChooseCategory, LV_EVENT_CLICKED, userData);
-    }
-    return;
-  }
-
-  if (addLevel == AddLevel::Device) {
-    lv_label_set_text(addTitle, categoryName(addCategory));
-    bool any = false;
-    for (size_t i = 0; i < studio::devices().count(); ++i) {
-      const studio::DeviceRecord* record = studio::devices().at(i);
-      if (record == nullptr) {
-        continue;
-      }
-      const studio::DriverDescriptor* descriptor =
-          studio::DriverCatalog::find(record->driverId);
-      if (descriptor == nullptr || descriptor->type != addCategory ||
-          !deviceSupportsSceneActions(*record, *descriptor)) {
-        continue;
-      }
-      any = true;
-      void* userData = reinterpret_cast<void*>(
-          static_cast<uintptr_t>(record->instanceId));
-      lv_obj_t* button =
-          makeButton(addList, record->displayName, onChooseDevice);
-      lv_obj_set_size(button, lv_pct(100), 30);
-      lv_obj_remove_event_cb(button, onChooseDevice);
-      lv_obj_add_event_cb(button, onChooseDevice, LV_EVENT_CLICKED, userData);
-    }
-    if (!any) {
-      lv_obj_t* empty = lv_label_create(addList);
-      lv_label_set_text(empty, "No devices");
-      lv_obj_set_style_text_font(empty, UI_FONT_14, 0);
-      lv_obj_set_style_text_color(empty, lv_color_hex(kColMuted), 0);
-    }
-    return;
-  }
-
-  const studio::DeviceRecord* device = studio::devices().find(addDeviceId);
-  const studio::DriverDescriptor* descriptor =
-      device != nullptr ? studio::DriverCatalog::find(device->driverId)
-                        : nullptr;
-  lv_label_set_text(addTitle,
-                    device != nullptr ? device->displayName : "Action");
-  if (device == nullptr || descriptor == nullptr) {
-    lv_obj_t* empty = lv_label_create(addList);
-    lv_label_set_text(empty, "Missing device");
-    lv_obj_set_style_text_font(empty, UI_FONT_14, 0);
-    lv_obj_set_style_text_color(empty, lv_color_hex(kColMuted), 0);
-    return;
-  }
-  if ((descriptor->capabilities &
-       studio::capabilityBit(studio::Capability::RecordStart)) != 0) {
-    void* userData = reinterpret_cast<void*>(
-        static_cast<uintptr_t>(studio::CommandType::RecordStart));
-    lv_obj_t* button =
-        makeButton(addList, "Record Start", onAddRecordAction, kColOk);
-    lv_obj_set_size(button, lv_pct(100), 34);
-    lv_obj_remove_event_cb(button, onAddRecordAction);
-    lv_obj_add_event_cb(button, onAddRecordAction, LV_EVENT_CLICKED, userData);
-  }
-  if ((descriptor->capabilities &
-       studio::capabilityBit(studio::Capability::RecordStop)) != 0) {
-    void* userData = reinterpret_cast<void*>(
-        static_cast<uintptr_t>(studio::CommandType::RecordStop));
-    lv_obj_t* button =
-        makeButton(addList, "Record Stop", onAddRecordAction, kColDanger);
-    lv_obj_set_size(button, lv_pct(100), 34);
-    lv_obj_remove_event_cb(button, onAddRecordAction);
-    lv_obj_add_event_cb(button, onAddRecordAction, LV_EVENT_CLICKED, userData);
-  }
-}
-
-void onOpenAddStep(lv_event_t*) {
-  if (addOverlay == nullptr) {
-    return;
-  }
-  addLevel = AddLevel::Category;
-  addDeviceId = studio::kInvalidInstanceId;
-  refreshAddPicker();
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
-}
-
-void onCloseAddStep(lv_event_t*) { closeAddOverlay(); }
 
 void refreshList() {
   lv_obj_clean(listBody);
@@ -727,43 +509,6 @@ void buildEdit() {
   lv_obj_t* add = makeButton(scrEdit, "+ Step", onOpenAddStep, kColAccent);
   lv_obj_set_size(add, 90, 28);
   lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, -16);
-
-  addOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(addOverlay, 236, 236);
-  lv_obj_center(addOverlay);
-  lv_obj_set_style_radius(addOverlay, 118, 0);
-  lv_obj_set_style_bg_color(addOverlay, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_color(addOverlay, lv_color_hex(kColAccent), 0);
-  lv_obj_set_style_pad_all(addOverlay, 0, 0);
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
-
-  addCloseButton = makeButton(addOverlay, LV_SYMBOL_CLOSE, onCloseAddStep);
-  lv_obj_set_size(addCloseButton, 30, 30);
-  lv_obj_align(addCloseButton, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  addBackButton = makeButton(addOverlay, LV_SYMBOL_LEFT, onAddPickerBack);
-  lv_obj_set_size(addBackButton, 30, 30);
-  lv_obj_align(addBackButton, LV_ALIGN_TOP_LEFT, 34, 24);
-  lv_obj_add_flag(addBackButton, LV_OBJ_FLAG_HIDDEN);
-
-  addTitle = lv_label_create(addOverlay);
-  lv_label_set_text(addTitle, "Add step");
-  lv_obj_set_style_text_font(addTitle, UI_FONT_16, 0);
-  lv_obj_set_width(addTitle, 140);
-  lv_label_set_long_mode(addTitle, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(addTitle, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(addTitle, LV_ALIGN_TOP_MID, 10, 30);
-
-  addList = lv_obj_create(addOverlay);
-  lv_obj_set_size(addList, 168, 140);
-  lv_obj_align(addList, LV_ALIGN_TOP_MID, 0, 62);
-  lv_obj_set_style_bg_opa(addList, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(addList, 0, 0);
-  lv_obj_set_style_pad_row(addList, 3, 0);
-  lv_obj_set_flex_flow(addList, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_scroll_dir(addList, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(addList, LV_SCROLLBAR_MODE_OFF);
 }
 
 void ensureScreens() {
@@ -845,12 +590,7 @@ void handleShortPress() {
   if (!visible) {
     return;
   }
-  if (addOverlay != nullptr && !lv_obj_has_flag(addOverlay, LV_OBJ_FLAG_HIDDEN)) {
-    if (addLevel != AddLevel::Category) {
-      onAddPickerBack(nullptr);
-      return;
-    }
-    closeAddOverlay();
+  if (picker_shell::handleShortPress()) {
     return;
   }
   if (view == View::Edit) {
@@ -892,33 +632,19 @@ void simShowEditStop(studio::SceneId sceneId) {
 void simShowAddStepCategory(studio::SceneId sceneId) {
   visible = true;
   showEditView(sceneId, true);
-  addLevel = AddLevel::Category;
-  addDeviceId = studio::kInvalidInstanceId;
-  refreshAddPicker();
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  picker_shell::simShowCategory(picker_shell::Mode::SceneStep);
 }
 
 void simShowAddStepDevice(studio::SceneId sceneId, studio::DeviceType category) {
   visible = true;
   showEditView(sceneId, true);
-  addLevel = AddLevel::Device;
-  addCategory = category;
-  addDeviceId = studio::kInvalidInstanceId;
-  refreshAddPicker();
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  picker_shell::simShowDeviceList(picker_shell::Mode::SceneStep, category);
 }
 
 void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId) {
   visible = true;
   showEditView(sceneId, true);
-  const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  const studio::DriverDescriptor* descriptor =
-      record != nullptr ? studio::DriverCatalog::find(record->driverId) : nullptr;
-  addLevel = AddLevel::Action;
-  addCategory = descriptor != nullptr ? descriptor->type : studio::DeviceType::Camera;
-  addDeviceId = instanceId;
-  refreshAddPicker();
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  picker_shell::simShowActions(picker_shell::Mode::SceneStep, instanceId);
 }
 #endif
 

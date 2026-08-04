@@ -142,6 +142,10 @@ def main() -> None:
       ("icon_groups", "ui_icon_groups"),
       ("icon_scenes", "ui_icon_scenes"),
       ("icon_portal", "ui_icon_portal"),
+      ("icon_cat_motion", "ui_icon_cat_motion"),
+      ("icon_cat_lights", "ui_icon_cat_lights"),
+      ("icon_cat_cameras", "ui_icon_cat_cameras"),
+      ("icon_cat_recorders", "ui_icon_cat_recorders"),
   ]
 
   parts = [HEADER]

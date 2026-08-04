@@ -13,13 +13,14 @@ adapter.
   Groups, Scenes, Portal) without initializing Bluetooth. Devices and Scenes
   are active; Groups and Portal remain reserved. Devices are stored in a
   versioned registry and can be added, renamed, enabled, disabled, re-paired,
-  and removed. Add device opens a category-grouped list of compiled Motion,
-  Light, Camera, and Recorder drivers so the operator chooses the model;
-  choices at their instance limit remain visible but unavailable. The current
-  build permits one Shark, up to three Canon (Trigger) and three Canon (Smart)
-  instances, and one Tascam X8. Rename uses a round-native paged keypad with
-  large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
-  case controls.
+  and removed. Add device and Scenes `+ Step` share one picker: a 2×2 category
+  icon grid (Motion / Lights / Cameras / Recorders), then a device or driver
+  list. Scene steps continue to an action (Record Start / Stop); Wait 500 ms is
+  available on the category screen. Driver choices at their instance limit stay
+  visible but unavailable. The current build permits one Shark, up to three
+  Canon (Trigger) and three Canon (Smart) instances, and one Tascam X8. Rename
+  uses a round-native paged keypad with large character keys,
+  A-I/J-R/S-Z/number-symbol pages, Space, backspace, and case controls.
 - **Scenes (sequences).** Create, edit, and run ordered Start/Stop sequences
   from the panel. The one-tap **Press Record** seed builds: Canon Smart
   `RecordStart`, wait 500 ms, Tascam `RecordStart` for Start; Canon

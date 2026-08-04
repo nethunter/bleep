@@ -140,6 +140,11 @@ controls for unknown state. Shark retains specialized keypoint and motion
 views, and creates only the connect screen plus connected screens/overlays
 while active.
 
+Devices **Add device** and Scenes **+ Step** share `src/ui/picker_shell.*`: a
+category icon grid, then a driver or enabled-device list, then (for scene
+steps) Record Start / Stop. The overlay is created on open and deleted on
+close.
+
 After simulator measurements of peak use and fragmentation, the LVGL pool was
 reduced from 128 KiB to 64 KiB to return static RAM to the general heap.
 

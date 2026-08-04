@@ -12,6 +12,7 @@
 #include "core/scene_service.h"
 #include "driver_config.h"
 #include "scene_ui.h"
+#include "ui/picker_shell.h"
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
 #endif
@@ -50,8 +51,6 @@ lv_obj_t* homeStatus = nullptr;
 lv_obj_t* deviceList = nullptr;
 lv_obj_t* addButton = nullptr;
 
-lv_obj_t* addOverlay = nullptr;
-lv_obj_t* addList = nullptr;
 lv_obj_t* deviceModal = nullptr;
 lv_obj_t* deviceModalTitle = nullptr;
 lv_obj_t* enabledSwitch = nullptr;
@@ -170,11 +169,17 @@ void closeRename() {
   renameCaseLabel = nullptr;
 }
 
-void closeAddPicker() {
-  destroyOverlay(addOverlay);
-  addList = nullptr;
+void onAddPickerClosed() {
   if (addButton != nullptr) {
     lv_obj_clear_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void closeAddPicker() {
+  if (picker_shell::active()) {
+    picker_shell::hide();
+  } else {
+    onAddPickerClosed();
   }
 }
 
@@ -190,22 +195,6 @@ size_t instanceCount(studio::DriverId driverId) {
 bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
   return descriptor != nullptr &&
          instanceCount(descriptor->id) < descriptor->maxInstances;
-}
-
-const char* categoryName(studio::DeviceType type) {
-  switch (type) {
-    case studio::DeviceType::Motion:
-      return "Motion";
-    case studio::DeviceType::Light:
-      return "Lights";
-    case studio::DeviceType::Camera:
-      return "Cameras";
-    case studio::DeviceType::Recorder:
-      return "Recorders";
-    case studio::DeviceType::Unknown:
-      return "Other";
-  }
-  return "Other";
 }
 
 void refreshHome() {
@@ -267,7 +256,6 @@ void onOpenDevice(lv_event_t* event) {
 
 void buildDeviceModal();
 void buildRenameOverlay();
-void buildAddOverlay();
 
 void onOpenManage(lv_event_t* event) {
   managedInstance = eventInstance(event);
@@ -356,11 +344,8 @@ void onShowDevices(lv_event_t*) { showDevices(); }
 void onShowHome(lv_event_t*) { showHome(); }
 void onShowScenes(lv_event_t*) { scene_ui::show(); }
 void onCloseModal(lv_event_t*) { closeDeviceModal(); }
-void onCloseAddPicker(lv_event_t*) { closeAddPicker(); }
 
-void onChooseDriver(lv_event_t* event) {
-  const studio::DriverId driverId = static_cast<studio::DriverId>(
-      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+void onDriverChosen(studio::DriverId driverId) {
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(driverId);
   if (!driverCanAdd(descriptor)) {
@@ -368,79 +353,16 @@ void onChooseDriver(lv_event_t* event) {
   }
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   studio::devices().add(descriptor->id, descriptor->model, instanceId);
-  closeAddPicker();
   refreshDevices();
   refreshHome();
 }
 
-void refreshAddPicker() {
-  lv_obj_clean(addList);
-  constexpr studio::DeviceType kCategories[] = {
-      studio::DeviceType::Motion,
-      studio::DeviceType::Light,
-      studio::DeviceType::Camera,
-      studio::DeviceType::Recorder,
-      studio::DeviceType::Unknown,
-  };
-  for (studio::DeviceType category : kCategories) {
-    bool categoryAdded = false;
-    for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
-      const studio::DriverDescriptor* descriptor =
-          studio::DriverCatalog::at(i);
-      if (descriptor == nullptr || descriptor->type != category) {
-        continue;
-      }
-      if (!categoryAdded) {
-        lv_obj_t* heading = lv_label_create(addList);
-        lv_label_set_text(heading, categoryName(category));
-        lv_obj_set_width(heading, lv_pct(100));
-        lv_obj_set_style_text_font(heading, UI_FONT_14, 0);
-        lv_obj_set_style_text_color(heading, lv_color_hex(kColAccent), 0);
-        lv_obj_set_style_pad_left(heading, 5, 0);
-        categoryAdded = true;
-      }
-
-      const bool available = driverCanAdd(descriptor);
-      lv_obj_t* choice = lv_btn_create(addList);
-      lv_obj_set_size(choice, lv_pct(100), 40);
-      lv_obj_set_style_bg_color(choice, lv_color_hex(kColPanel), 0);
-      lv_obj_set_style_bg_opa(choice, available ? LV_OPA_COVER : LV_OPA_60, 0);
-      lv_obj_set_style_radius(choice, 8, 0);
-      lv_obj_set_style_shadow_width(choice, 0, 0);
-      lv_obj_set_style_pad_all(choice, 0, 0);
-      if (available) {
-        void* userData =
-            reinterpret_cast<void*>(static_cast<uintptr_t>(descriptor->id));
-        lv_obj_add_event_cb(choice, onChooseDriver, LV_EVENT_CLICKED, userData);
-      } else {
-        lv_obj_clear_flag(choice, LV_OBJ_FLAG_CLICKABLE);
-      }
-
-      lv_obj_t* model = lv_label_create(choice);
-      lv_label_set_text(model, descriptor->model);
-      lv_label_set_long_mode(model, LV_LABEL_LONG_DOT);
-      lv_obj_set_width(model, 132);
-      lv_obj_set_style_text_font(model, UI_FONT_14, 0);
-      lv_obj_set_style_text_color(
-          model, lv_color_hex(available ? kColText : kColMuted), 0);
-      lv_obj_align(model, LV_ALIGN_TOP_LEFT, 8, 4);
-
-      lv_obj_t* detail = lv_label_create(choice);
-      lv_label_set_text(detail, available ? descriptor->brand : "Limit reached");
-      lv_obj_set_style_text_font(detail, UI_FONT_14, 0);
-      lv_obj_set_style_text_color(detail, lv_color_hex(kColMuted), 0);
-      lv_obj_align(detail, LV_ALIGN_TOP_LEFT, 8, 22);
-    }
-  }
-}
-
 void onAddDevice(lv_event_t*) {
-  if (addOverlay == nullptr) {
-    buildAddOverlay();
-  }
-  refreshAddPicker();
+  picker_shell::Callbacks callbacks;
+  callbacks.onDriverChosen = onDriverChosen;
+  callbacks.onClosed = onAddPickerClosed;
   lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  picker_shell::show(picker_shell::Mode::AddDriver, callbacks);
 }
 
 void onEnabledChanged(lv_event_t* event) {
@@ -632,46 +554,6 @@ void buildDevices() {
   addButton = makeButton(scrDevices, "+ Add device", onAddDevice, kColAccent);
   lv_obj_set_size(addButton, 140, 34);
   lv_obj_align(addButton, LV_ALIGN_BOTTOM_MID, 0, -14);
-}
-
-void buildAddOverlay() {
-  if (addOverlay != nullptr) {
-    return;
-  }
-  addOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(addOverlay, 240, 240);
-  lv_obj_center(addOverlay);
-  lv_obj_set_style_radius(addOverlay, 120, 0);
-  lv_obj_set_style_bg_color(addOverlay, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_width(addOverlay, 0, LV_PART_MAIN | LV_STATE_ANY);
-  lv_obj_set_style_outline_width(addOverlay, 0, LV_PART_MAIN | LV_STATE_ANY);
-  lv_obj_set_style_shadow_width(addOverlay, 0, LV_PART_MAIN | LV_STATE_ANY);
-  lv_obj_set_style_text_color(addOverlay, lv_color_hex(kColText), 0);
-  lv_obj_set_style_pad_all(addOverlay, 0, 0);
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t* close =
-      makeButton(addOverlay, LV_SYMBOL_CLOSE, onCloseAddPicker, kColPanel);
-  lv_obj_set_size(close, 30, 30);
-  lv_obj_align(close, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  lv_obj_t* title = lv_label_create(addOverlay);
-  lv_label_set_text(title, "Add device");
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 30);
-
-  addList = lv_obj_create(addOverlay);
-  lv_obj_set_size(addList, 156, 136);
-  lv_obj_align(addList, LV_ALIGN_TOP_MID, 0, 68);
-  lv_obj_set_style_bg_opa(addList, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(addList, 0, 0);
-  lv_obj_set_style_pad_all(addList, 2, 0);
-  lv_obj_set_style_pad_row(addList, 3, 0);
-  lv_obj_set_flex_flow(addList, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_scroll_dir(addList, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(addList, LV_SCROLLBAR_MODE_OFF);
-  lv_obj_clear_flag(addList, LV_OBJ_FLAG_SCROLL_ELASTIC);
 }
 
 void buildDeviceModal() {
@@ -886,10 +768,11 @@ void handleShortPress() {
     return;
   }
 #endif
+  if (picker_shell::handleShortPress()) {
+    return;
+  }
   if (renameOverlay != nullptr) {
     closeRename();
-  } else if (addOverlay != nullptr) {
-    closeAddPicker();
   } else if (deviceModal != nullptr) {
     closeDeviceModal();
   } else if (screen == Screen::Devices) {
@@ -975,12 +858,10 @@ void releaseInactiveScreens() { releaseDeviceUis(); }
 #ifdef UI_SIMULATOR
 void simShowAddDevice() {
   showDevices();
-  if (addOverlay == nullptr) {
-    buildAddOverlay();
-  }
-  refreshAddPicker();
   lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(addOverlay, LV_OBJ_FLAG_HIDDEN);
+  picker_shell::Callbacks callbacks;
+  callbacks.onClosed = onAddPickerClosed;
+  picker_shell::show(picker_shell::Mode::AddDriver, callbacks);
 }
 
 void simShowManage(studio::InstanceId instanceId) {
