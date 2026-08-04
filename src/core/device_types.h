@@ -13,8 +13,9 @@ constexpr InstanceId kInvalidInstanceId = 0;
 enum class DriverId : uint16_t {
   Unknown = 0,
   SharkNanoII = 1,
-  CanonBle = 2,
+  CanonBle = 2,       // Canon (Smart) smartphone-mode BLE
   TascamX8 = 3,
+  CanonTrigger = 4,   // Canon (Trigger) BR-E1-compatible BLE
 };
 
 enum class DeviceType : uint8_t {

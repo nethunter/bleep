@@ -25,12 +25,13 @@ smartphone BLE request, responses, and credential-bearing characteristics used
 for Wi-Fi handoff. Smart remains blocked on network-side DHCP/endpoint evidence
 and the first successful CCAPI request.
 
-ADR-017 authorizes `spike/canon-smartphone-ble` to replace Trigger on that
-branch with a BLE-only Camera Connect experiment. It tests captured pairing,
+ADR-017 authorizes a BLE-only Camera Connect experiment as `Canon (Smart)`
+beside the verified BR-E1 `Canon (Trigger)` driver. It tests captured pairing,
 setup, explicit movie commands, shooting-state notifications, and lifecycle
-controls without claiming the Smart Wi-Fi/CCAPI workflow or changing the
-main-branch BR-E1 fallback. ADR-018 makes wake automatic on screen activation,
-keeps power-down explicit, and preserves non-destructive Back behavior.
+controls without claiming the Smart Wi-Fi/CCAPI workflow. Both drivers may be
+compiled together; only one transport is active at a time. ADR-018 makes wake
+automatic on screen activation, keeps power-down explicit, and preserves
+non-destructive Back behavior.
 
 ## Planned UI memory optimization
 

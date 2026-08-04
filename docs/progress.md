@@ -5,17 +5,17 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-017 Canon smartphone-mode BLE experiment on
-  `spike/canon-smartphone-ble`, ADR-015 Canon Smart handoff research, and the
-  combined Phase 0/foundation physical regression gates.
-- Firmware state: Home-first, persistent device registry, on-demand Shark and
-  experimental smartphone-mode Canon BLE, asynchronous on-demand Tascam
-  X8/AK-BT1 record control with reconnect-state restoration, and
+- Current phase: dual Canon drivers (Trigger + Smart BLE), ADR-015 Canon Smart
+  Wi-Fi/CCAPI handoff research, and the combined Phase 0/foundation physical
+  regression gates.
+- Firmware state: Home-first, persistent device registry, on-demand Shark,
+  Canon (Trigger) BR-E1, Canon (Smart) smartphone BLE, asynchronous on-demand
+  Tascam X8/AK-BT1 record control with reconnect-state restoration, and
   device-specific hardware-trigger CTA routing built, host-tested,
   simulator-tested, and flashed.
-- Universal driver framework: Bounded routing supports compiled Shark and Canon
-  BLE and Tascam X8 drivers while preserving one active device instance at a
-  time.
+- Universal driver framework: Bounded routing supports compiled Shark, Canon
+  Trigger, Canon Smart, and Tascam X8 drivers while preserving one active
+  device instance at a time.
 - Last updated: 2026-08-03.
 
 ## Completed planning
@@ -40,18 +40,18 @@ short, factual, and reproducible.
 
 ## Next task
 
-Complete the Canon smartphone BLE and combined Phase 0/foundation hardware
-gates:
+Exercise both Canon drivers and the combined Phase 0/foundation hardware gates:
 
-1. Clear the camera and panel's BR-E1 pairing, select **Connect to smartphone**,
-   and verify the ADR-017 first-pair handshake and camera confirmation.
-2. Verify explicit Start/Stop, camera-button-originated state, reconnect while
-   recording/stopped, Back during pairing, and forget/re-pair. Record observed
-   notification values rather than treating write ACKs as state.
-3. Capture the complete Camera Connect BLE-to-Wi-Fi handoff for ADR-015 and
-   annotate request/response bytes, timing, credentials, and camera prompts.
-4. Verify repeated screen entry/exit; record
-   connection/command latency and free/minimum heap.
+1. On a body in BR-E1 / Bluetooth remote mode, verify Canon (Trigger) pair,
+   `0x88`/`0x08` toggle, reconnect, and Forget.
+2. On a body in **Connect to smartphone → Add a device**, verify Canon (Smart)
+   first-pair handshake, Start/Stop, camera-originated state, power control,
+   and forget/re-pair. Record notification values; do not treat write ACKs as
+   state.
+3. Confirm only one transport is active when switching Trigger ↔ Smart ↔ Shark
+   ↔ Tascam screens.
+4. Keep ADR-015 Smart Wi-Fi/CCAPI blocked until network-side DHCP/endpoint and
+   first CCAPI evidence land.
 5. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
 6. Verify that boot and Home perform no BLE scan or connection.
@@ -759,4 +759,26 @@ Record values with the exact build environment and commit/worktree state.
 - Native tests passed 18/18; default firmware flashed to
   `/dev/cu.usbserial-211240`. If an R6 III record was already overwritten with
   the R6 II address, Forget that instance and re-pair on Add-a-device.
+
+### 2026-08-03: Dual Canon Trigger + Smart drivers
+
+- Restored BR-E1 `Canon (Trigger)` into `src/devices/canon_trigger/` with
+  `DriverId::CanonTrigger = 4`. Kept smartphone BLE as `Canon (Smart)` at
+  `DriverId::CanonBle = 2` so existing NVS Smart records stay valid.
+- Catalog labels: `Canon (Trigger)` / `canon.eos_r6.trigger` and
+  `Canon (Smart)` / `canon.eos_r6.smartphone_ble`. Both compile by default;
+  optional `canon_trigger` / `canon_ble` PlatformIO envs isolate each driver.
+- ADR-017 updated: Smart no longer replaces Trigger; both ship, camera menu
+  must match the chosen driver, one active transport remains.
+- Dual Canon screens plus the five-instance sim seed exhausted the prior 96 KiB
+  LVGL heap (freeze at Add device). Raised `LV_MEM_SIZE` to 128 KiB in
+  firmware and `ui_sim`.
+- Host tests: 20/20 passed (`native`).
+- Simulator: captures through `20_tascam_recording.png`, including
+  `03_add_device.png`, `17_canon_trigger_ready.png`, and
+  `18_canon_trigger_sent.png`. Free after max-device init: 36,680 bytes.
+- Firmware: `crowpanel_128` build succeeded (flash 888,272 / RAM 201,172 with
+  128 KiB LVGL). An earlier dual-driver image flashed to
+  `/dev/cu.usbserial-211240`; the post-heap-bump reflash could not run because
+  that port was absent (only unrelated usbmodem devices present).
 

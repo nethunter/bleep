@@ -9,6 +9,8 @@
 #include "core/driver_catalog.h"
 #include "devices/canon_ble/protocol.h"
 #include "devices/canon_ble/state.h"
+#include "devices/canon_trigger/protocol.h"
+#include "devices/canon_trigger/state.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/protocol.h"
@@ -351,6 +353,39 @@ void test_canon_smartphone_handshake_and_record_protocol() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.bytes, sizeof(expectedStop));
 }
 
+void test_canon_trigger_pairing_name_and_trigger_bytes() {
+  TEST_ASSERT_EQUAL_STRING("00050000-0000-1000-0000-d8492fffa821",
+                           canon_trigger::kPrimaryServiceUuid);
+  TEST_ASSERT_EQUAL_HEX8(0x88, canon_trigger::kRecordTriggerPress);
+  TEST_ASSERT_EQUAL_HEX8(0x08, canon_trigger::kRecordTriggerRelease);
+  TEST_ASSERT_EQUAL_UINT32(200, canon_trigger::kTriggerHoldMs);
+
+  const canon_trigger::PairingName name =
+      canon_trigger::buildPairingName("Studio Panel");
+  TEST_ASSERT_EQUAL_UINT32(13, name.len);
+  TEST_ASSERT_EQUAL_HEX8(0x03, name.bytes[0]);
+  TEST_ASSERT_EQUAL_STRING("Studio Panel",
+                           reinterpret_cast<const char*>(&name.bytes[1]));
+}
+
+void test_canon_trigger_state_tracks_trigger_outcome() {
+  canon_trigger::CanonTriggerState state;
+  canon_trigger::markTriggerQueued(state);
+  TEST_ASSERT_TRUE(state.triggerPending);
+  TEST_ASSERT_EQUAL_UINT32(0, state.triggerCount);
+
+  canon_trigger::markTriggerComplete(state, true);
+  TEST_ASSERT_FALSE(state.triggerPending);
+  TEST_ASSERT_TRUE(state.lastTriggerSucceeded);
+  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
+
+  canon_trigger::markTriggerQueued(state);
+  canon_trigger::markTriggerComplete(state, false);
+  TEST_ASSERT_FALSE(state.triggerPending);
+  TEST_ASSERT_FALSE(state.lastTriggerSucceeded);
+  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
+}
+
 void test_canon_state_requires_camera_notifications() {
   canon_ble::CanonBleState state;
   canon_ble::markCommandQueued(state, true);
@@ -501,15 +536,27 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(3, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(4, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
   TEST_ASSERT_EQUAL_STRING("ifootage.shark_nano_ii", descriptor->stableId);
   TEST_ASSERT_EQUAL_UINT8(1, descriptor->maxInstances);
+  const studio::DriverDescriptor* trigger =
+      studio::DriverCatalog::find(studio::DriverId::CanonTrigger);
+  TEST_ASSERT_NOT_NULL(trigger);
+  TEST_ASSERT_EQUAL_STRING("Canon (Trigger)", trigger->model);
+  TEST_ASSERT_EQUAL_STRING("canon.eos_r6.trigger", trigger->stableId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Camera),
+                        static_cast<int>(trigger->type));
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::Link) |
+          studio::capabilityBit(studio::Capability::RecordTrigger),
+      trigger->capabilities);
   const studio::DriverDescriptor* canon =
       studio::DriverCatalog::find(studio::DriverId::CanonBle);
   TEST_ASSERT_NOT_NULL(canon);
+  TEST_ASSERT_EQUAL_STRING("Canon (Smart)", canon->model);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Camera),
                         static_cast<int>(canon->type));
   TEST_ASSERT_EQUAL_STRING("canon.eos_r6.smartphone_ble", canon->stableId);
@@ -648,8 +695,9 @@ void test_manager_routes_to_canon_driver() {
   LegacyBackend legacy;
   FakeDriver sharkDriver;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
-  studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 2);
+  FakeDriver triggerDriver(studio::DriverId::CanonTrigger);
+  studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver, &triggerDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 3);
   TEST_ASSERT_TRUE(manager.begin());
 
   studio::InstanceId canonId = studio::kInvalidInstanceId;
@@ -660,6 +708,7 @@ void test_manager_routes_to_canon_driver() {
   TEST_ASSERT_TRUE(manager.activate(canonId));
   TEST_ASSERT_EQUAL_INT(0, sharkDriver.activationCount);
   TEST_ASSERT_EQUAL_INT(1, canonDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(0, triggerDriver.activationCount);
 
   studio::DeviceCommand command;
   command.instanceId = canonId;
@@ -699,6 +748,26 @@ void test_manager_routes_to_canon_driver() {
       static_cast<int>(manager.clearPairing(canonId)));
   TEST_ASSERT_EQUAL_INT(1, canonDriver.forgetPairingCount);
   TEST_ASSERT_EQUAL_INT(0, sharkDriver.forgetPairingCount);
+  TEST_ASSERT_EQUAL_INT(0, triggerDriver.forgetPairingCount);
+
+  studio::InstanceId triggerId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::CanonTrigger,
+                                   "R6 Trigger", triggerId)));
+  TEST_ASSERT_TRUE(manager.activate(triggerId));
+  TEST_ASSERT_EQUAL_INT(1, triggerDriver.activationCount);
+  TEST_ASSERT_FALSE(canonDriver.active);
+  command.instanceId = triggerId;
+  command.type = studio::CommandType::RecordTrigger;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
+                        static_cast<int>(result.status));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordTrigger),
+      static_cast<int>(triggerDriver.lastCommand));
 }
 
 void test_manager_routes_explicit_tascam_record_commands() {
@@ -764,6 +833,8 @@ int main(int, char**) {
   RUN_TEST(test_state_reducer_decodes_snapshots_and_progress);
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
   RUN_TEST(test_canon_smartphone_handshake_and_record_protocol);
+  RUN_TEST(test_canon_trigger_pairing_name_and_trigger_bytes);
+  RUN_TEST(test_canon_trigger_state_tracks_trigger_outcome);
   RUN_TEST(test_canon_state_requires_camera_notifications);
   RUN_TEST(test_tascam_cobs_commands_match_capture);
   RUN_TEST(test_tascam_scanner_and_confirmed_state);

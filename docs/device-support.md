@@ -51,29 +51,32 @@ Reference research:
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
 
-- Branch status: `Research`. ADR-017 replaces the compiled `Canon (Trigger)`
-  driver with a BLE-only smartphone-mode experiment on
-  `spike/canon-smartphone-ble`; the verified BR-E1 implementation remains on
-  the main branch.
-- Experimental transport: Camera Connect smartphone-mode BLE pairing and
-  shooting services without starting Wi-Fi.
-- `Canon (Smart)` status: `Blocked` on network-side DHCP/endpoint and CCAPI
-  evidence. The EOS R6 Mark III Camera Connect BLE-to-Wi-Fi handoff is now
-  captured.
-- `Canon (Smart)` transport: smartphone-mode BLE pairing and Wi-Fi handoff,
+- Status: both ADR-015 Canon choices are compiled. Use the camera menu that
+  matches the chosen driver.
+- `Canon (Trigger)` (`DriverId::CanonTrigger = 4`): verified BR-E1-compatible
+  BLE remote (`00050000-...`, movie-mode `0x88`/`0x08` press/release). Camera
+  menu: Bluetooth remote / BR-E1. Capabilities: link + stateless record
+  trigger. No recording-state UI.
+- `Canon (Smart)` (`DriverId::CanonBle = 2`): BLE-only Camera Connect
+  smartphone experiment (ADR-017). Camera menu: Connect to smartphone. Status
+  for the production Wi-Fi/CCAPI path remains `Blocked` on network-side
+  DHCP/endpoint and CCAPI evidence; the EOS R6 Mark III BLE-to-Wi-Fi handoff
+  capture exists.
+- Smart experimental transport: smartphone-mode BLE pairing and shooting
+  services without starting Wi-Fi.
+- Planned Smart transport: smartphone-mode BLE pairing and Wi-Fi handoff,
   followed by CCAPI HTTP over the camera's direct access point.
-- Experimental capabilities: explicit record start, record stop, and
+- Smart experimental capabilities: explicit record start, record stop, and
   camera-notification recording state.
-- Capture-backed experimental capabilities: automatic wake from Bluetooth
-  standby with mode `03` and explicit power down after shooting with mode `05`.
-  The power control reconnects and wakes a camera powered down from that
-  screen. Back only releases the panel connection and does not power down the
-  camera.
-- Hardware trigger: starts from Ready/Unknown and stops from a
+- Capture-backed Smart capabilities: automatic wake from Bluetooth standby
+  with mode `03` and explicit power down after shooting with mode `05`. The
+  power control reconnects and wakes a camera powered down from that screen.
+  Back only releases the panel connection and does not power down the camera.
+- Smart hardware trigger: starts from Ready/Unknown and stops from a
   camera-confirmed Recording state. Touch exposes both commands while state is
   unknown.
 - Planned Smart capabilities: record start, record stop, and confirmed
-  recording state.
+  recording state over CCAPI.
 
 Public EOS M6 reverse-engineering reports `00 10` start, `00 11` stop, and
 `01 01 02`/`01 01 01` recording-state notifications on the smartphone shooting
@@ -88,14 +91,15 @@ reverse-engineering supplied the pairing UUIDs and candidate command bytes.
 The same implementation has since passed pairing, movie record triggering, and
 bonded reconnect on the EOS R6 Mark II. EOS R6 support is not yet claimed.
 
-EOS R6 Mark II and Mark III pairing, bonded reconnect, and the BR-E1
-movie-mode `0x88`/`0x08` press/release trigger have been functionally verified.
-Extended cycle, forget/re-pair, latency, heap, and coexistence checks remain
-open on the main branch. Smartphone-mode pairing, explicit movie control, state notifications, and
-reconnect are verified on the EOS R6 Mark III for the ADR-017 branch. The EOS
-R6 Mark II still needs a fresh camera-side **Add a device** pair; reconnecting
-a body that still points at an old smartphone registration produces Canon's
-**Connection target not found** error even when the panel is scanning.
+EOS R6 Mark II and Mark III BR-E1 pairing, bonded reconnect, and the
+movie-mode `0x88`/`0x08` press/release trigger have been functionally verified
+for `Canon (Trigger)`. Extended cycle, forget/re-pair, latency, heap, and
+coexistence checks remain open. Smartphone-mode pairing, explicit movie
+control, state notifications, and reconnect are verified on the EOS R6 Mark III
+for `Canon (Smart)`. The EOS R6 Mark II still needs a fresh camera-side
+**Add a device** pair; reconnecting a body that still points at an old
+smartphone registration produces Canon's **Connection target not found** error
+even when the panel is scanning.
 
 ### Camera Connect handoff capture
 

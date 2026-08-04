@@ -23,12 +23,24 @@ constexpr DriverDescriptor kDrivers[] = {
         1,
     },
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+    {
+        DriverId::CanonTrigger,
+        "canon.eos_r6.trigger",
+        "Canon",
+        "Canon (Trigger)",
+        DeviceType::Camera,
+        capabilityBit(Capability::Link) |
+            capabilityBit(Capability::RecordTrigger),
+        3,
+    },
+#endif
 #if CONFIG_DRIVER_CANON_BLE
     {
         DriverId::CanonBle,
         "canon.eos_r6.smartphone_ble",
         "Canon",
-        "EOS R6 Smartphone BLE",
+        "Canon (Smart)",
         DeviceType::Camera,
         capabilityBit(Capability::Link) |
             capabilityBit(Capability::RecordStart) |

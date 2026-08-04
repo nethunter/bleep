@@ -13,6 +13,9 @@
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+#include "devices/canon_trigger/ui.h"
+#endif
 #include "fonts/ui_fonts.h"
 #if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/ui.h"
@@ -220,6 +223,11 @@ void onOpenDevice(lv_event_t* event) {
 #if CONFIG_DRIVER_SHARK_NANO_II
     case studio::DriverId::SharkNanoII:
       shark_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+    case studio::DriverId::CanonTrigger:
+      canon_trigger_ui::show(instanceId);
       break;
 #endif
 #if CONFIG_DRIVER_CANON_BLE
@@ -753,6 +761,9 @@ void init() {
 #if CONFIG_DRIVER_SHARK_NANO_II
   shark_ui::init();
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  canon_trigger_ui::init();
+#endif
 #if CONFIG_DRIVER_CANON_BLE
   canon_ble_ui::init();
 #endif
@@ -768,6 +779,12 @@ void tick() {
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::tick();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  if (canon_trigger_ui::active()) {
+    canon_trigger_ui::tick();
     return;
   }
 #endif
@@ -800,6 +817,12 @@ void handleShortPress() {
     return;
   }
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  if (canon_trigger_ui::active()) {
+    canon_trigger_ui::handleShortPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_CANON_BLE
   if (canon_ble_ui::active()) {
     canon_ble_ui::handleShortPress();
@@ -829,6 +852,11 @@ void showHome() {
     shark_ui::hide();
   }
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  if (canon_trigger_ui::active()) {
+    canon_trigger_ui::hide();
+  }
+#endif
 #if CONFIG_DRIVER_CANON_BLE
   if (canon_ble_ui::active()) {
     canon_ble_ui::hide();
@@ -851,6 +879,11 @@ void showDevices() {
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::hide();
+  }
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  if (canon_trigger_ui::active()) {
+    canon_trigger_ui::hide();
   }
 #endif
 #if CONFIG_DRIVER_CANON_BLE

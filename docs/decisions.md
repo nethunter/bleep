@@ -182,31 +182,37 @@ the replacement.
   Phase 0/foundation and Canon verification gates remain open. It does not
   begin dependent scene or group work and retains one active transport.
 
-## ADR-017: Canon smartphone BLE experiment replaces Trigger on its branch
+## ADR-017: Canon smartphone BLE ships beside Trigger
 
 - Status: Experimental
-- Decision: On the `spike/canon-smartphone-ble` branch, replace the compiled
-  BR-E1 `Canon (Trigger)` implementation with Canon's smartphone-mode BLE
-  pairing and shooting service. Preserve the verified BR-E1 implementation on
-  the main branch until the smartphone protocol passes its hardware gate.
+- Decision: Compile both ADR-015 Canon choices. `Canon (Trigger)`
+  (`DriverId::CanonTrigger = 4`) keeps the verified BR-E1 remote service
+  (`00050000-...`, movie-mode `0x88`/`0x08`). `Canon (Smart)`
+  (`DriverId::CanonBle = 2`) keeps the Camera Connect smartphone-mode BLE
+  pairing and shooting services as a BLE-only experiment until CCAPI handoff
+  evidence lands. Both may be present in one firmware build; the operator
+  picks the matching camera menu (Remote vs Connect to smartphone). Only one
+  transport remains active at a time.
 - Evidence: Public EOS M6 Camera Connect reverse-engineering documents the
   `00010000-...` handshake service and `00030000-...` shooting service. The
   sanitized EOS R6 Mark III host-HCI fixtures in `docs/protocols/dumps/`
   confirm confirmation-first pairing, explicit movie start/stop writes,
   shooting-state notifications, and the `00020002-...` Wi-Fi handoff request
   with `00020003-...` responses. The handoff fixture excludes serial,
-  controller, SSID-like, credential-like, and SMP key material.
-- Consequence: This branch exposes explicit `RecordStart`, `RecordStop`, and
+  controller, SSID-like, credential-like, and SMP key material. BR-E1 Trigger
+  remains hardware-verified on EOS R6 Mark II/III.
+- Consequence: Smart exposes explicit `RecordStart`, `RecordStop`, and
   recording-state capability, but reports state as unknown until a
   camera-originated `00030031-...` notification is observed. ATT write success
-  is not recording confirmation. Existing BR-E1 bonds and saved records must be
-  forgotten before pairing through the camera's smartphone workflow.
-- Relationship to ADR-015: This is a bounded BLE-only experiment, not the
-  production `Canon (Smart)` BLE-to-Wi-Fi CCAPI workflow. It does not start a
-  camera access point, join Wi-Fi, or implement CCAPI.
+  is not recording confirmation. Trigger stays stateless (`RecordTrigger` only).
+  Existing BR-E1 bonds and Smartphone bonds are not interchangeable; forget and
+  re-pair when switching modes or bodies.
+- Relationship to ADR-015: Smart remains a bounded BLE-only experiment, not the
+  production BLE-to-Wi-Fi CCAPI workflow. It does not start a camera access
+  point, join Wi-Fi, or implement CCAPI.
 - Research boundary: Camera Connect's BLE handoff is captured, but the camera
   network's DHCP/endpoint details and first successful CCAPI request are not.
-  `Canon (Smart)` remains blocked on that network-side evidence.
+  Full `Canon (Smart)` Wi-Fi/CCAPI remains blocked on that network-side evidence.
 - Roadmap deviation: This experiment advances smartphone-mode pairing and
   BLE-only record control while the Phase 0/foundation and Canon Smart handoff
   gates remain open. It retains one active transport and does not begin scene

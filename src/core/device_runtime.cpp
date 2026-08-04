@@ -5,6 +5,9 @@
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/driver.h"
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+#include "devices/canon_trigger/driver.h"
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/driver.h"
 #endif
@@ -20,6 +23,9 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_SHARK_NANO_II
   static SharkDriver sharkDriver;
 #endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+  static CanonTriggerDriver canonTriggerDriver;
+#endif
 #if CONFIG_DRIVER_CANON_BLE
   static CanonBleDriver canonBleDriver;
 #endif
@@ -29,6 +35,9 @@ DeviceManager& devices() {
   static DeviceDriver* drivers[] = {
 #if CONFIG_DRIVER_SHARK_NANO_II
       &sharkDriver,
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+      &canonTriggerDriver,
 #endif
 #if CONFIG_DRIVER_CANON_BLE
       &canonBleDriver,
@@ -45,4 +54,3 @@ DeviceManager& devices() {
 }
 
 }  // namespace studio
-

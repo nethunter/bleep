@@ -7,6 +7,7 @@
 #include "Arduino.h"
 #include "core/device_manager.h"
 #include "devices/canon_ble/ui.h"
+#include "devices/canon_trigger/ui.h"
 #include "devices/shark_nano_ii/ui.h"
 #include "devices/tascam_x8/ui.h"
 #include "sim_runtime.h"
@@ -140,13 +141,14 @@ int main() {
                         canonId);
   studio::InstanceId canonId2 = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonBle, "Camera B", canonId2);
-  studio::InstanceId canonId3 = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
+  studio::InstanceId canonTriggerId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonTrigger, "EOS R6 Trigger",
+                        canonTriggerId);
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::TascamX8, "Recorder A", tascamId);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
-      canonId3 == studio::kInvalidInstanceId ||
+      canonTriggerId == studio::kInvalidInstanceId ||
       tascamId == studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
     return 1;
@@ -165,7 +167,7 @@ int main() {
     return 1;
   }
 
-  if (studio::devices().remove(canonId3) != studio::RegistryStatus::Ok) {
+  if (studio::devices().remove(canonTriggerId) != studio::RegistryStatus::Ok) {
     std::fprintf(stderr, "Failed to prepare add-device picker screenshot\n");
     return 1;
   }
@@ -174,9 +176,10 @@ int main() {
     return 1;
   }
   ui::showDevices();
-  canonId3 = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
-  if (canonId3 == studio::kInvalidInstanceId) {
+  canonTriggerId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonTrigger, "EOS R6 Trigger",
+                        canonTriggerId);
+  if (canonTriggerId == studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Failed to restore maximum device configuration\n");
     return 1;
   }
@@ -325,10 +328,28 @@ int main() {
   }
 
   canon_ble_ui::hide();
+  canon_trigger_ui::show(canonTriggerId);
+  studio::simSetCanonTriggerConnectedState();
+  pump(250);
+  if (!capture("17_canon_trigger_ready")) {
+    return 1;
+  }
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simCanonTriggerState().triggerCount < 1 ||
+      !canon_trigger_ui::active()) {
+    std::fprintf(stderr, "Hardware trigger did not fire Canon Trigger\n");
+    return 1;
+  }
+  if (!capture("18_canon_trigger_sent")) {
+    return 1;
+  }
+  canon_trigger_ui::hide();
+
   tascam_x8_ui::show(tascamId);
   studio::simSetTascamConnectedState(false);
   pump(250);
-  if (!capture("17_tascam_ready")) {
+  if (!capture("19_tascam_ready")) {
     return 1;
   }
 
@@ -340,7 +361,7 @@ int main() {
     std::fprintf(stderr, "Hardware trigger did not start Tascam recording\n");
     return 1;
   }
-  if (!capture("18_tascam_recording")) {
+  if (!capture("20_tascam_recording")) {
     return 1;
   }
 
@@ -353,7 +374,7 @@ int main() {
   }
   tascam_x8_ui::hide();
 
-  if (studio::devices().remove(canonId3) != studio::RegistryStatus::Ok) {
+  if (studio::devices().remove(canonTriggerId) != studio::RegistryStatus::Ok) {
     std::fprintf(stderr, "Failed to remove a device in simulator regression\n");
     return 1;
   }

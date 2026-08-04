@@ -2,9 +2,10 @@
 
 A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
 round display (240x240 GC9A01 + CST816D touch). The current build includes the
-**iFootage Shark Nano II** driver and a research-stage **Canon EOS R6 family
-smartphone-mode BLE** experiment plus research-stage **Tascam Portacapture
-X8** record control through the AK-BT1 adapter.
+**iFootage Shark Nano II** driver, two Canon choices — verified **Canon
+(Trigger)** BR-E1 BLE and experimental **Canon (Smart)** smartphone BLE — plus
+research-stage **Tascam Portacapture X8** record control through the AK-BT1
+adapter.
 
 ## What it does
 
@@ -16,30 +17,33 @@ X8** record control through the AK-BT1 adapter.
   category-grouped list of compiled Motion, Light, Camera, and Recorder drivers
   so the operator chooses the model; choices at their instance limit remain
   visible but unavailable. The current build permits one Shark, up to three
-  Canon BLE instances, and one Tascam X8. Rename uses a
-  round-native paged keypad with
-  large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
-  case controls.
+  Canon (Trigger) and three Canon (Smart) instances, and one Tascam X8. Rename
+  uses a round-native paged keypad with large character keys,
+  A-I/J-R/S-Z/number-symbol pages, Space, backspace, and case controls.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
   active; Back releases the connection and returns to Devices.
-- **Canon smartphone BLE record control (experimental branch).** Opening a
-  Canon device scans for the Camera Connect pairing service, completes bonded
-  confirmation-first smartphone handshaking, runs the captured setup queries,
-  wakes the camera from Bluetooth standby, subscribes to shooting state, and
-  sends explicit movie Start/Stop commands. The camera screen has a separate
-  power button that requests camera power-down and reconnects to wake it again
-  while the screen remains open; Back only releases the panel's BLE connection.
-  Use the camera's **Connect to smartphone → Add a device to connect to**
-  path, not BR-E1 Remote mode and not a previously saved phone entry. If the
-  camera shows **Connection target not found**, it is looking for an old
-  smartphone registration: delete that connection on the camera, Forget pairing
-  on the panel when switching bodies, then pair again while the Canon screen is
-  open and scanning. Captured vectors are documented in
+- **Canon (Trigger).** Opening a Trigger device uses the BR-E1-compatible
+  remote service (`00050000-...`) and toggles movie record with `0x88`/`0x08`.
+  Put the camera in Bluetooth remote / BR-E1 mode. Fast and stateless — no
+  recording-state UI.
+- **Canon (Smart) (experimental).** Opening a Smart device scans for the Camera
+  Connect pairing service, completes bonded confirmation-first smartphone
+  handshaking, runs the captured setup queries, wakes the camera from
+  Bluetooth standby, subscribes to shooting state, and sends explicit movie
+  Start/Stop commands. The camera screen has a separate power button that
+  requests camera power-down and reconnects to wake it again while the screen
+  remains open; Back only releases the panel's BLE connection. Use the
+  camera's **Connect to smartphone → Add a device to connect to** path, not
+  BR-E1 Remote mode and not a previously saved phone entry. If the camera
+  shows **Connection target not found**, it is looking for an old smartphone
+  registration: delete that connection on the camera, Forget pairing on the
+  panel when switching bodies, then pair again while the Canon screen is open
+  and scanning. Captured vectors are documented in
   [`docs/protocols/canon-smartphone-ble.md`](docs/protocols/canon-smartphone-ble.md).
-  EOS R6 Mark III smartphone control is hardware-verified for the current
-  branch; EOS R6 Mark II still needs a fresh Add-a-device pair.
+  EOS R6 Mark III smartphone control is hardware-verified; EOS R6 Mark II still
+  needs a fresh Add-a-device pair.
 - **Tascam X8 record control (research).** Opening a Tascam recorder scans for
   the `Portacapture X8` advertisement and connects through the required AK-BT1
   adapter without blocking screen navigation. The control screen sends distinct
@@ -75,9 +79,10 @@ X8** record control through the AK-BT1 adapter.
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run
     from Keypoints, then advances Standby / Start / Stop on the Run screen. In
-    connected Canon smartphone control it starts from Ready/Unknown and stops
-    from camera-confirmed Recording. In connected Tascam control it explicitly
-    starts from Ready/Unknown and stops from recorder-confirmed Recording.
+    connected Canon (Smart) control it starts from Ready/Unknown and stops from
+    camera-confirmed Recording. In connected Canon (Trigger) control it fires
+    the BR-E1 record toggle. In connected Tascam control it explicitly starts
+    from Ready/Unknown and stops from recorder-confirmed Recording.
   - Long press: power off the remote. When off, hold the button again to wake it;
     a short tap wakes briefly and goes back to sleep.
 
@@ -88,7 +93,8 @@ X8** record control through the AK-BT1 adapter.
 | `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
-| `src/devices/canon_ble/*` | Experimental smartphone pairing/session protocol, explicit movie control, notification state reducer, on-demand NimBLE client, driver adapter, and camera screen. |
+| `src/devices/canon_trigger/*` | Verified BR-E1-compatible pairing and movie trigger, on-demand NimBLE client, driver adapter, and Trigger screen. |
+| `src/devices/canon_ble/*` | Experimental smartphone pairing/session protocol, explicit movie control, notification state reducer, on-demand NimBLE client, driver adapter, and Smart camera screen. |
 | `src/devices/tascam_x8/*` | Captured AK-BT1 protocol, COBS state parser, on-demand NimBLE client, driver adapter, and recorder screen. |
 | `src/ui.*` | Home, Devices, and application navigation. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |

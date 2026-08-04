@@ -6,6 +6,7 @@
 #include "core/config_store.h"
 #include "core/device_driver.h"
 #include "devices/canon_ble/state.h"
+#include "devices/canon_trigger/state.h"
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/state.h"
 
@@ -196,6 +197,57 @@ class SimCanonDriver : public DeviceDriver {
   canon_ble::CanonBleState state_;
 };
 
+class SimCanonTriggerDriver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::CanonTrigger; }
+  void activate(const DeviceRecord& record) override {
+    state_.hasSavedDevice = record.paired;
+    state_.link = canon_trigger::CanonTriggerState::Link::Scanning;
+    std::strncpy(state_.deviceName, record.displayName,
+                 sizeof(state_.deviceName) - 1);
+    state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+  }
+  void deactivate() override {
+    state_.link = canon_trigger::CanonTriggerState::Link::Disconnected;
+    canon_trigger::resetTransientState(state_);
+  }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    if (command.type == CommandType::RecordTrigger &&
+        state_.link == canon_trigger::CanonTriggerState::Link::Connected) {
+      canon_trigger::markTriggerQueued(state_);
+      canon_trigger::markTriggerComplete(state_, true);
+      return CommandStatus::Succeeded;
+    }
+    return CommandStatus::Succeeded;
+  }
+  DeviceRuntimeState runtimeState() const override {
+    DeviceRuntimeState runtime;
+    switch (state_.link) {
+      case canon_trigger::CanonTriggerState::Link::Scanning:
+        runtime.link = LinkState::Scanning;
+        break;
+      case canon_trigger::CanonTriggerState::Link::Connecting:
+        runtime.link = LinkState::Connecting;
+        break;
+      case canon_trigger::CanonTriggerState::Link::Connected:
+        runtime.link = LinkState::Connected;
+        break;
+      case canon_trigger::CanonTriggerState::Link::Disconnected:
+        runtime.link = LinkState::Disconnected;
+        break;
+    }
+    runtime.quality = StateQuality::Unknown;
+    return runtime;
+  }
+  const void* specializedState() const override { return &state_; }
+  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  canon_trigger::CanonTriggerState& state() { return state_; }
+
+ private:
+  canon_trigger::CanonTriggerState state_;
+};
+
 class SimTascamDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::TascamX8; }
@@ -265,10 +317,12 @@ class SimTascamDriver : public DeviceDriver {
 MemoryConfigBackend gBackend;
 SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
+SimCanonTriggerDriver gCanonTriggerDriver;
 SimCanonDriver gCanonDriver;
 SimTascamDriver gTascamDriver;
-DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonDriver, &gTascamDriver};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 3);
+DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
+                            &gTascamDriver};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 4);
 
 }  // namespace
 
@@ -276,6 +330,9 @@ DeviceManager& devices() { return gManager; }
 
 shark::SharkState& simSharkState() { return gSharkDriver.state(); }
 canon_ble::CanonBleState& simCanonState() { return gCanonDriver.state(); }
+canon_trigger::CanonTriggerState& simCanonTriggerState() {
+  return gCanonTriggerDriver.state();
+}
 tascam_x8::TascamX8State& simTascamState() {
   return gTascamDriver.state();
 }
@@ -328,6 +385,18 @@ void simSetCanonConnectedState(bool recording, bool confirmed) {
                              : canon_ble::CanonBleState::Recording::Stopped)
                 : canon_ble::CanonBleState::Recording::Unknown;
   std::strncpy(state.deviceName, "EOS R6 Mark III",
+               sizeof(state.deviceName) - 1);
+  state.deviceName[sizeof(state.deviceName) - 1] = '\0';
+}
+
+void simSetCanonTriggerConnectedState() {
+  canon_trigger::CanonTriggerState& state = gCanonTriggerDriver.state();
+  state.link = canon_trigger::CanonTriggerState::Link::Connected;
+  state.hasSavedDevice = true;
+  state.triggerPending = false;
+  state.lastTriggerSucceeded = false;
+  state.triggerCount = 0;
+  std::strncpy(state.deviceName, "EOS R6 Trigger",
                sizeof(state.deviceName) - 1);
   state.deviceName[sizeof(state.deviceName) - 1] = '\0';
 }
