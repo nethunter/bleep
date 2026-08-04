@@ -7,6 +7,8 @@
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
+#include "core/scene_service.h"
+#include "core/scene_store.h"
 #include "devices/canon_ble/protocol.h"
 #include "devices/canon_ble/state.h"
 #include "devices/canon_trigger/protocol.h"
@@ -822,6 +824,173 @@ void test_removed_registry_stays_empty_after_restart() {
   TEST_ASSERT_EQUAL_INT(0, secondDriver.activationCount);
 }
 
+void test_manager_holds_concurrent_active_links() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(manager.begin());
+
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::CanonBle, "Camera", canonId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
+  TEST_ASSERT_TRUE(manager.activateHeld(canonId));
+  TEST_ASSERT_TRUE(manager.activateHeld(tascamId));
+  TEST_ASSERT_EQUAL_UINT32(2, manager.activeCount());
+  TEST_ASSERT_TRUE(manager.isActive(canonId));
+  TEST_ASSERT_TRUE(manager.isActive(tascamId));
+  TEST_ASSERT_TRUE(canonDriver.active);
+  TEST_ASSERT_TRUE(tascamDriver.active);
+
+  studio::DeviceCommand command;
+  command.instanceId = canonId;
+  command.type = studio::CommandType::RecordStart;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(canonDriver.lastCommand));
+  command.instanceId = tascamId;
+  command.type = studio::CommandType::RecordStart;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(tascamDriver.lastCommand));
+
+  manager.deactivateAll();
+  TEST_ASSERT_EQUAL_UINT32(0, manager.activeCount());
+  TEST_ASSERT_FALSE(canonDriver.active);
+  TEST_ASSERT_FALSE(tascamDriver.active);
+}
+
+void test_scene_store_round_trip_and_corruption() {
+  MemoryBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry source;
+  studio::SceneId id = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(source.add("Press Record", id)));
+  studio::SceneRecord* record = source.find(id);
+  TEST_ASSERT_NOT_NULL(record);
+  record->startCount = 3;
+  record->startSteps[0] =
+      studio::makeActionStep(2, studio::CommandType::RecordStart);
+  record->startSteps[1] = studio::makeWaitStep(500);
+  record->startSteps[2] =
+      studio::makeActionStep(3, studio::CommandType::RecordStart);
+  record->stopCount = 2;
+  record->stopSteps[0] =
+      studio::makeActionStep(2, studio::CommandType::RecordStop);
+  record->stopSteps[1] =
+      studio::makeActionStep(3, studio::CommandType::RecordStop);
+  TEST_ASSERT_TRUE(store.save(source));
+
+  studio::SceneRegistry restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
+  TEST_ASSERT_EQUAL_STRING("Press Record", restored.at(0)->name);
+  TEST_ASSERT_EQUAL_UINT8(3, restored.at(0)->startCount);
+  TEST_ASSERT_EQUAL_UINT8(2, restored.at(0)->stopCount);
+  TEST_ASSERT_EQUAL_UINT32(500, restored.at(0)->startSteps[1].waitMs);
+
+  backend.corruptLastByte();
+  studio::SceneRegistry rejected;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Corrupt),
+      static_cast<int>(store.load(rejected)));
+}
+
+void test_press_record_start_and_authored_stop() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+  // Drop the seeded Shark-less registry noise: begin may seed only Shark when
+  // compiled; with no Shark driver the registry starts empty/missing.
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::CanonBle, "R6 II", canonId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::TascamX8, "X8", tascamId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_TRUE(scenes.seedPressRecord(sceneId));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneValidationStatus::Ok),
+      static_cast<int>(scenes.validate(sceneId)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  // Fake drivers report Connected as soon as activated.
+  scenes.loop(0);
+  devices.loop();
+  scenes.loop(1);
+  devices.loop();
+  scenes.loop(2);
+  // After connect + first action result processing.
+  for (uint32_t t = 3; t < 20; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  // Wait 500 ms from when wait began; advance far enough.
+  for (uint32_t t = 20; t < 600; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ScenePhase::IdleArmed),
+      static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(devices.isActive(canonId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(canonDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(tascamDriver.lastCommand));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.stop()));
+  for (uint32_t t = 600; t < 620; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ScenePhase::Completed),
+      static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStop),
+      static_cast<int>(canonDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStop),
+      static_cast<int>(tascamDriver.lastCommand));
+  TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -846,5 +1015,8 @@ int main(int, char**) {
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
+  RUN_TEST(test_manager_holds_concurrent_active_links);
+  RUN_TEST(test_scene_store_round_trip_and_corruption);
+  RUN_TEST(test_press_record_start_and_authored_stop);
   return UNITY_END();
 }

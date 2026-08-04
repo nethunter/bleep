@@ -10,16 +10,23 @@ adapter.
 ## What it does
 
 - **Home + persistent devices.** Boot opens a neutral icon Home (Devices,
-  Groups, Scenes, Portal) without initializing Bluetooth. Only Devices is
-  active today; the others are reserved. Devices are stored in a versioned
-  registry and can be
-  added, renamed, enabled, disabled, re-paired, and removed. Add device opens a
-  category-grouped list of compiled Motion, Light, Camera, and Recorder drivers
-  so the operator chooses the model; choices at their instance limit remain
-  visible but unavailable. The current build permits one Shark, up to three
-  Canon (Trigger) and three Canon (Smart) instances, and one Tascam X8. Rename
-  uses a round-native paged keypad with large character keys,
-  A-I/J-R/S-Z/number-symbol pages, Space, backspace, and case controls.
+  Groups, Scenes, Portal) without initializing Bluetooth. Devices and Scenes
+  are active; Groups and Portal remain reserved. Devices are stored in a
+  versioned registry and can be added, renamed, enabled, disabled, re-paired,
+  and removed. Add device opens a category-grouped list of compiled Motion,
+  Light, Camera, and Recorder drivers so the operator chooses the model;
+  choices at their instance limit remain visible but unavailable. The current
+  build permits one Shark, up to three Canon (Trigger) and three Canon (Smart)
+  instances, and one Tascam X8. Rename uses a round-native paged keypad with
+  large character keys, A-I/J-R/S-Z/number-symbol pages, Space, backspace, and
+  case controls.
+- **Scenes (sequences).** Create, edit, and run ordered Start/Stop sequences
+  from the panel. The one-tap **Press Record** seed builds: Canon Smart
+  `RecordStart`, wait 500 ms, Tascam `RecordStart` for Start; Canon
+  `RecordStop` then Tascam `RecordStop` for Stop. Launching a sequence connects
+  every target concurrently and holds those links until Stop finishes or Cancel.
+  Device screens are blocked while a sequence holds links. Scenes persist in a
+  separate NVS blob from the device registry.
 - **On-demand pairing + reconnect.** Opening the enabled Shark device starts
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
@@ -72,9 +79,9 @@ adapter.
 
 ## Controls
 
-- **Touch:** Home, Devices and device management, connect, Keypoints, joystick
-  positioning, Run, per-keypoint settings, and explicit Canon camera
-  power-down / wake.
+- **Touch:** Home, Devices and device management, Scenes create/edit/run,
+  connect, Keypoints, joystick positioning, Run, per-keypoint settings, and
+  explicit Canon camera power-down / wake.
 - **Button (GPIO 1):**
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run

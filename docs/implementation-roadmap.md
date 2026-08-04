@@ -25,6 +25,12 @@ smartphone BLE request, responses, and credential-bearing characteristics used
 for Wi-Fi handoff. Smart remains blocked on network-side DHCP/endpoint evidence
 and the first successful CCAPI request.
 
+ADR-019 and ADR-020 authorize a bounded on-device scene tranche ahead of full
+Phase 3/6/7: panel-authored Start and Stop lists, persistent scene storage,
+concurrent Canon Smart + Tascam links during a run, and Press Record / Press
+Stop as the first scenario. Groups, Portal HTTP scene editing, lights,
+generated reverse-Stop, Parallel steps, and Shark-in-scene remain deferred.
+
 ADR-017 authorizes a BLE-only Camera Connect experiment as `Canon (Smart)`
 beside the verified BR-E1 `Canon (Trigger)` driver. It tests captured pairing,
 setup, explicit movie commands, shooting-state notifications, and lifecycle
@@ -210,6 +216,12 @@ Work:
   continue policies;
 - edit, validate, import, and export scenes through Portal-mode HTTP.
 
+Active deviation (ADR-019 / ADR-020): the first panel tranche ships authored
+Start and Stop lists, concurrent connect-all-before-actions for sequence
+targets, NVS persistence, and Press Record / Press Stop for Canon Smart +
+Tascam. Generated reverse-Stop, groups, lights, Parallel, and Portal editing
+remain for later Phase 6 work.
+
 Completion gate:
 
 - the example start sequence works:
@@ -219,6 +231,13 @@ Completion gate:
   4. wait one second;
   5. recorder record start;
 - Stop runs the successful inverse actions in reverse order;
+- partial failures and unavailable devices are visible and recoverable.
+
+Bounded gate for the ADR-019/020 tranche:
+
+- Press Record Start: Canon `RecordStart`, wait 500 ms, Tascam `RecordStart`;
+- Press Stop: Canon `RecordStop`, then Tascam `RecordStop`;
+- all sequence targets stay connected concurrently for the run;
 - partial failures and unavailable devices are visible and recoverable.
 
 ## Phase 7: Universal panel UI

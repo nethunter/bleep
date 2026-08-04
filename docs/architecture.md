@@ -49,8 +49,10 @@ feasibility spikes:
 - the Shark descriptor permits one instance in the current build;
 - Home and Devices load without initializing NimBLE; selecting the enabled
   Shark instance activates its transport, and leaving releases it;
-- Groups, Scenes, Portal, generic device-type UI, the GATT facade, and non-Shark
-  drivers remain unimplemented.
+- Groups, Portal, generic device-type UI, and the GATT facade remain
+  unimplemented. Panel Scenes (ADR-019/020) provide authored Start/Stop
+  sequences with concurrent Canon Smart + Tascam links; generated reverse-Stop,
+  groups, lights, and Portal editing remain deferred.
 
 ## Compile-time driver catalog
 

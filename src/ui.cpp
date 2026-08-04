@@ -9,7 +9,9 @@
 #include "assets/ui_icons.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
+#include "core/scene_service.h"
 #include "driver_config.h"
+#include "scene_ui.h"
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
 #endif
@@ -207,9 +209,10 @@ const char* categoryName(studio::DeviceType type) {
 }
 
 void refreshHome() {
-  char status[32];
-  snprintf(status, sizeof(status), "%u configured",
-           static_cast<unsigned>(studio::devices().count()));
+  char status[40];
+  snprintf(status, sizeof(status), "%u devices · %u scenes",
+           static_cast<unsigned>(studio::devices().count()),
+           static_cast<unsigned>(studio::scenes().count()));
   lv_label_set_text(homeStatus, status);
 }
 
@@ -231,6 +234,9 @@ void onOpenDevice(lv_event_t* event) {
   const studio::InstanceId instanceId = eventInstance(event);
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
   if (record == nullptr || !record->enabled) {
+    return;
+  }
+  if (studio::scenes().holdsLinks()) {
     return;
   }
   switch (record->driverId) {
@@ -348,6 +354,7 @@ void refreshDevices() {
 
 void onShowDevices(lv_event_t*) { showDevices(); }
 void onShowHome(lv_event_t*) { showHome(); }
+void onShowScenes(lv_event_t*) { scene_ui::show(); }
 void onCloseModal(lv_event_t*) { closeDeviceModal(); }
 void onCloseAddPicker(lv_event_t*) { closeAddPicker(); }
 
@@ -589,7 +596,7 @@ void buildHome() {
 
   makeModeTile(grid, &ui_icon_devices, "Devices", true, onShowDevices);
   makeModeTile(grid, &ui_icon_groups, "Groups", false, nullptr);
-  makeModeTile(grid, &ui_icon_scenes, "Scenes", false, nullptr);
+  makeModeTile(grid, &ui_icon_scenes, "Scenes", true, onShowScenes);
   makeModeTile(grid, &ui_icon_portal, "Portal", false, nullptr);
 
   homeStatus = lv_label_create(scrHome);
@@ -812,6 +819,10 @@ void init() {
 }
 
 void tick() {
+  if (scene_ui::active()) {
+    scene_ui::tick();
+    return;
+  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::tick();
@@ -847,6 +858,10 @@ void tick() {
 }
 
 void handleShortPress() {
+  if (scene_ui::active()) {
+    scene_ui::handleShortPress();
+    return;
+  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleShortPress();
@@ -883,6 +898,9 @@ void handleShortPress() {
 }
 
 void showHome() {
+  if (scene_ui::active()) {
+    scene_ui::hide();
+  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::hide();
@@ -913,6 +931,9 @@ void showHome() {
 }
 
 void showDevices() {
+  if (scene_ui::active()) {
+    scene_ui::hide();
+  }
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::hide();

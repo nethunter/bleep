@@ -1,4 +1,5 @@
 #include "core/device_manager.h"
+#include "core/scene_service.h"
 
 #include <cstring>
 #include <vector>
@@ -315,6 +316,7 @@ class SimTascamDriver : public DeviceDriver {
 };
 
 MemoryConfigBackend gBackend;
+MemoryConfigBackend gScenesBackend;
 SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
 SimCanonTriggerDriver gCanonTriggerDriver;
@@ -323,10 +325,13 @@ SimTascamDriver gTascamDriver;
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver};
 DeviceManager gManager(gBackend, gLegacy, gDrivers, 4);
+SceneService gScenes(gScenesBackend, gManager);
 
 }  // namespace
 
 DeviceManager& devices() { return gManager; }
+
+SceneService& scenes() { return gScenes; }
 
 shark::SharkState& simSharkState() { return gSharkDriver.state(); }
 canon_ble::CanonBleState& simCanonState() { return gCanonDriver.state(); }
@@ -414,6 +419,11 @@ void simSetTascamConnectedState(bool recording) {
   std::strncpy(state.deviceName, "Portacapture X8",
                sizeof(state.deviceName) - 1);
   state.deviceName[sizeof(state.deviceName) - 1] = '\0';
+}
+
+void simSetSequenceConnectedState() {
+  simSetCanonConnectedState(false, true);
+  simSetTascamConnectedState(false);
 }
 
 }  // namespace studio

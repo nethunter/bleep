@@ -6,10 +6,12 @@
 
 #include "Arduino.h"
 #include "core/device_manager.h"
+#include "core/scene_service.h"
 #include "devices/canon_ble/ui.h"
 #include "devices/canon_trigger/ui.h"
 #include "devices/shark_nano_ii/ui.h"
 #include "devices/tascam_x8/ui.h"
+#include "scene_ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
 
@@ -133,6 +135,7 @@ int main() {
   setupDisplay();
 
   studio::devices().begin();
+  studio::scenes().begin();
   if (studio::devices().count() > 0) {
     const studio::DeviceRecord* record = studio::devices().at(0);
     if (record != nullptr) {
@@ -376,6 +379,87 @@ int main() {
     return 1;
   }
   tascam_x8_ui::hide();
+
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  if (!studio::scenes().seedPressRecord(sceneId)) {
+    std::fprintf(stderr, "Failed to seed Press Record sequence\n");
+    return 1;
+  }
+  scene_ui::simShowList();
+  pump(200);
+  if (!capture("21_scenes_list")) {
+    return 1;
+  }
+  scene_ui::simShowEditStart(sceneId);
+  pump(200);
+  if (!capture("22_scenes_edit_start")) {
+    return 1;
+  }
+  scene_ui::simShowAddStepCategory(sceneId);
+  pump(200);
+  if (!capture("22b_scenes_add_category")) {
+    return 1;
+  }
+  scene_ui::simShowAddStepDevice(sceneId, studio::DeviceType::Camera);
+  pump(200);
+  if (!capture("22c_scenes_add_device")) {
+    return 1;
+  }
+  scene_ui::simShowAddStepAction(sceneId, canonId);
+  pump(200);
+  if (!capture("22d_scenes_add_action")) {
+    return 1;
+  }
+  scene_ui::simShowEditStop(sceneId);
+  pump(200);
+  if (!capture("23_scenes_edit_stop")) {
+    return 1;
+  }
+  scene_ui::simShowRun(sceneId);
+  pump(200);
+  if (!capture("24_scenes_run_ready")) {
+    return 1;
+  }
+  if (studio::scenes().start(sceneId) != studio::SceneRunStatus::Ok) {
+    std::fprintf(stderr, "Failed to start Press Record sequence\n");
+    return 1;
+  }
+  studio::simSetSequenceConnectedState();
+  for (int i = 0; i < 40; ++i) {
+    studio::devices().loop();
+    studio::scenes().loop(static_cast<uint32_t>(i * 20));
+    pump(20);
+  }
+  if (!capture("25_scenes_start_progress")) {
+    return 1;
+  }
+  for (int i = 40; i < 80; ++i) {
+    studio::devices().loop();
+    studio::scenes().loop(static_cast<uint32_t>(i * 20));
+    pump(20);
+  }
+  if (studio::scenes().progress().phase != studio::ScenePhase::IdleArmed) {
+    std::fprintf(stderr, "Sequence did not reach armed/recording hold\n");
+    return 1;
+  }
+  if (!capture("26_scenes_armed")) {
+    return 1;
+  }
+  if (studio::scenes().stop() != studio::SceneRunStatus::Ok) {
+    std::fprintf(stderr, "Failed to stop Press Record sequence\n");
+    return 1;
+  }
+  studio::simSetSequenceConnectedState();
+  for (int i = 80; i < 100; ++i) {
+    studio::devices().loop();
+    studio::scenes().loop(static_cast<uint32_t>(i * 20));
+    pump(20);
+  }
+  if (!capture("27_scenes_stop_progress")) {
+    return 1;
+  }
+  scene_ui::hide();
+  ui::showHome();
 
   if (studio::devices().remove(canonTriggerId) != studio::RegistryStatus::Ok) {
     std::fprintf(stderr, "Failed to remove a device in simulator regression\n");

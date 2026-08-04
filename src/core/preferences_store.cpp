@@ -31,6 +31,31 @@ bool PreferencesConfigBackend::write(const uint8_t* data, size_t length) {
   return written;
 }
 
+size_t PreferencesScenesBackend::read(uint8_t* destination, size_t capacity) {
+  Preferences preferences;
+  if (!preferences.begin("studio", true)) {
+    return 0;
+  }
+  const size_t length = preferences.getBytesLength("scenes");
+  if (length == 0 || length > capacity) {
+    preferences.end();
+    return 0;
+  }
+  const size_t readLength = preferences.getBytes("scenes", destination, capacity);
+  preferences.end();
+  return readLength;
+}
+
+bool PreferencesScenesBackend::write(const uint8_t* data, size_t length) {
+  Preferences preferences;
+  if (!preferences.begin("studio", false)) {
+    return false;
+  }
+  const bool written = preferences.putBytes("scenes", data, length) == length;
+  preferences.end();
+  return written;
+}
+
 bool PreferencesLegacySharkBackend::readLegacyShark(LegacySharkConfig& config) {
   config = LegacySharkConfig{};
   Preferences preferences;

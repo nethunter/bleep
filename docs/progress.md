@@ -5,19 +5,17 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: dual Canon drivers (Trigger + Smart BLE), ADR-015 Canon Smart
-  Wi-Fi/CCAPI handoff research, and the combined Phase 0/foundation physical
-  regression gates. UI memory optimization is implemented in firmware/sim;
-  physical navigation regression remains operator-pending.
+- Current phase: bounded on-device Scenes tranche (ADR-019/020) beside dual Canon
+  drivers, Tascam X8, and remaining Phase 0/foundation hardware gates.
 - Firmware state: Home-first, persistent device registry, on-demand Shark,
-  Canon (Trigger) BR-E1, Canon (Smart) smartphone BLE, asynchronous on-demand
-  Tascam X8/AK-BT1 record control with reconnect-state restoration, and
-  device-specific hardware-trigger CTA routing built, host-tested, and
-  simulator-tested. Lazy UI allocation keeps only Home/Devices resident.
-- Universal driver framework: Bounded routing supports compiled Shark, Canon
-  Trigger, Canon Smart, and Tascam X8 drivers while preserving one active
-  device instance at a time.
-- Last updated: 2026-08-03.
+  Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
+  lists, concurrent sequence links, NVS scene persistence, and Press Record /
+  Press Stop seeding. Lazy UI allocation keeps Home/Devices resident; scene UI
+  loads on demand.
+- Universal driver framework: Bounded multi-active links for sequence runs
+  (Canon Smart + Tascam); exclusive single-active activation remains for manual
+  device screens.
+- Last updated: 2026-08-04.
 
 ## Completed planning
 
@@ -41,22 +39,19 @@ short, factual, and reproducible.
 
 ## Next task
 
-Exercise both Canon drivers and the combined Phase 0/foundation hardware gates:
+Exercise Press Record / Press Stop on hardware, then remaining Canon/foundation
+gates:
 
-1. On a body in BR-E1 / Bluetooth remote mode, verify Canon (Trigger) pair,
-   `0x88`/`0x08` toggle, reconnect, and Forget.
-2. On a body in **Connect to smartphone → Add a device**, verify Canon (Smart)
-   first-pair handshake, Start/Stop, camera-originated state, power control,
-   and forget/re-pair. Record notification values; do not treat write ACKs as
-   state.
-3. Confirm only one transport is active when switching Trigger ↔ Smart ↔ Shark
-   ↔ Tascam screens.
-4. Keep ADR-015 Smart Wi-Fi/CCAPI blocked until network-side DHCP/endpoint and
-   first CCAPI evidence land.
-5. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
-   and persistence across a power cycle.
-6. Verify that boot and Home perform no BLE scan or connection.
-7. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
+1. With paired Canon Smart (R6 II or III) and Tascam X8 configured, open Scenes,
+   seed or open Press Record, Start, confirm both enter recording with the
+   500 ms gap, then Stop and confirm both stop. Confirm both stay connected for
+   the whole run.
+2. Confirm device screens refuse open while a sequence holds links; Cancel
+   releases links.
+3. Confirm scene persistence across power cycle.
+4. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
+5. Keep groups, lights, Portal scene editing, and generated reverse-Stop
+   deferred.
 
 ## Measurements
 
@@ -800,4 +795,32 @@ Record values with the exact build environment and commit/worktree state.
 - Firmware: `crowpanel_128` build succeeded (flash 889,324 / RAM 135,628) and
   flashed to `/dev/cu.usbserial-211240`. Physical navigation regression remains
   operator-pending.
+
+### 2026-08-04: On-device Scenes (Press Record / Press Stop)
+
+- Recorded ADR-019 (authored Start/Stop) and ADR-020 (concurrent sequence
+  links). Extended `DeviceManager` with `activateHeld` / multi-active loop and
+  dispatch while keeping exclusive `activate` for device screens.
+- Added scene registry/store/runner/service, separate NVS `scenes` blob, panel
+  Scenes UI (list/edit Start/edit Stop/run), and Press Record seed
+  (Canon RecordStart → wait 500 ms → Tascam RecordStart; Stop: Canon then
+  Tascam RecordStop).
+- Host tests: 23/23 passed (`native`), including concurrent links, scene store
+  round-trip/corruption, and Press Record Start/Stop ordering.
+- Simulator: captures `21_scenes_list` through `27_scenes_stop_progress`; full
+  run reached IdleArmed then Completed.
+- Firmware: `crowpanel_128` build succeeded (flash 906,206 / RAM 137,404) and
+  flashed to `/dev/cu.usbserial-211240`.
+- Hardware gate still open: exercise Press Record / Press Stop on real Canon
+  Smart + Tascam with concurrent GATT. Groups, lights, Portal editing, and
+  generated reverse-Stop remain deferred.
+
+### 2026-08-04: Sequence add-step Category → Device → Action
+
+- Restructured Scenes `+ Step` picker into three levels: category (plus Wait),
+  enabled device in that category, then Record Start / Record Stop.
+- Back within the overlay returns one level; hardware short-press matches.
+- Simulator captures: `22b_scenes_add_category`, `22c_scenes_add_device`,
+  `22d_scenes_add_action`.
+- Firmware rebuilt and flashed to `/dev/cu.usbserial-211240`.
 

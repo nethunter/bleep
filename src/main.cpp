@@ -7,6 +7,7 @@
 #include <LovyanGFX.hpp>
 
 #include "core/device_manager.h"
+#include "core/scene_service.h"
 #include "ui.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
@@ -461,6 +462,7 @@ void setup() {
   setupLvgl();
 
   studio::devices().begin();
+  studio::scenes().begin();
   ui::init();
   // Paint Home before any operator-requested device activation.
   lv_timer_handler();
@@ -476,6 +478,7 @@ void loop() {
   lastTickMs = now;
 
   studio::devices().loop();
+  studio::scenes().loop(now);
   const studio::LinkState link = currentLink();
   if (link != lastLink) {
     lastLink = link;

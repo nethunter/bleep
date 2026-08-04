@@ -17,5 +17,6 @@ void simSetScanningState();
 void simSetCanonConnectedState(bool recording, bool confirmed = true);
 void simSetCanonTriggerConnectedState();
 void simSetTascamConnectedState(bool recording);
+void simSetSequenceConnectedState();
 
 }  // namespace studio

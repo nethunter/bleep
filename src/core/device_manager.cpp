@@ -50,17 +50,83 @@ bool DeviceManager::seedInitialRegistry() {
   return save();
 }
 
+InstanceId DeviceManager::activeInstance() const {
+  return activeCount_ > 0 ? activeInstances_[0] : kInvalidInstanceId;
+}
+
+bool DeviceManager::isActive(InstanceId instanceId) const {
+  if (instanceId == kInvalidInstanceId) {
+    return false;
+  }
+  for (size_t i = 0; i < activeCount_; ++i) {
+    if (activeInstances_[i] == instanceId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+InstanceId DeviceManager::activeForDriver(DriverId driverId) const {
+  for (size_t i = 0; i < activeCount_; ++i) {
+    const DeviceRecord* record = registry_.find(activeInstances_[i]);
+    if (record != nullptr && record->driverId == driverId) {
+      return record->instanceId;
+    }
+  }
+  return kInvalidInstanceId;
+}
+
+bool DeviceManager::addActive(InstanceId instanceId) {
+  if (isActive(instanceId)) {
+    return true;
+  }
+  if (activeCount_ >= kMaxActiveLinks) {
+    return false;
+  }
+  activeInstances_[activeCount_++] = instanceId;
+  return true;
+}
+
+void DeviceManager::removeActive(InstanceId instanceId) {
+  for (size_t i = 0; i < activeCount_; ++i) {
+    if (activeInstances_[i] != instanceId) {
+      continue;
+    }
+    for (size_t j = i + 1; j < activeCount_; ++j) {
+      activeInstances_[j - 1] = activeInstances_[j];
+    }
+    --activeCount_;
+    activeInstances_[activeCount_] = kInvalidInstanceId;
+    return;
+  }
+}
+
+void DeviceManager::applySkipPeers(DeviceDriver& driver, const DeviceRecord& record) {
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    const DeviceRecord* other = registry_.at(i);
+    if (other == nullptr || other->instanceId == record.instanceId ||
+        other->driverId != record.driverId || !other->paired ||
+        other->bleAddress[0] == '\0') {
+      continue;
+    }
+    driver.preferSkipPeer(other->bleAddress);
+  }
+}
+
 void DeviceManager::loop() {
   if (!begun_) {
     return;
   }
 
-  DeviceDriver* activeDriver = nullptr;
-  DeviceRecord* activeRecord = registry_.find(activeInstance_);
-  if (activeRecord != nullptr) {
-    activeDriver = driverFor(activeRecord->driverId);
-  }
-  if (activeDriver != nullptr) {
+  for (size_t i = 0; i < activeCount_; ++i) {
+    DeviceRecord* activeRecord = registry_.find(activeInstances_[i]);
+    if (activeRecord == nullptr) {
+      continue;
+    }
+    DeviceDriver* activeDriver = driverFor(activeRecord->driverId);
+    if (activeDriver == nullptr) {
+      continue;
+    }
     activeDriver->loop();
     if (activeDriver->consumePairingUpdate(*activeRecord)) {
       save();
@@ -104,8 +170,8 @@ RegistryStatus DeviceManager::remove(InstanceId instanceId) {
       driver->forgetPairing(*record);
     }
   }
-  if (instanceId == activeInstance_) {
-    deactivate();
+  if (isActive(instanceId)) {
+    deactivate(instanceId);
   }
   const RegistryStatus status = registry_.remove(instanceId);
   if (status == RegistryStatus::Ok) {
@@ -123,8 +189,8 @@ RegistryStatus DeviceManager::rename(InstanceId instanceId, const char* displayN
 }
 
 RegistryStatus DeviceManager::setEnabled(InstanceId instanceId, bool enabled) {
-  if (!enabled && instanceId == activeInstance_) {
-    deactivate();
+  if (!enabled && isActive(instanceId)) {
+    deactivate(instanceId);
   }
   const RegistryStatus status = registry_.setEnabled(instanceId, enabled);
   if (status == RegistryStatus::Ok) {
@@ -142,8 +208,8 @@ RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
   if (driver != nullptr) {
     driver->forgetPairing(*record);
   }
-  if (instanceId == activeInstance_) {
-    deactivate();
+  if (isActive(instanceId)) {
+    deactivate(instanceId);
   }
   const RegistryStatus status = registry_.clearPairing(instanceId);
   if (status == RegistryStatus::Ok) {
@@ -153,6 +219,9 @@ RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
 }
 
 bool DeviceManager::activate(InstanceId instanceId) {
+  if (linksHeld_) {
+    return false;
+  }
   DeviceRecord* record = registry_.find(instanceId);
   if (record == nullptr || !record->enabled) {
     return false;
@@ -161,26 +230,46 @@ bool DeviceManager::activate(InstanceId instanceId) {
   if (driver == nullptr) {
     return false;
   }
-  if (activeInstance_ != kInvalidInstanceId) {
-    deactivate();
-  }
-  activeInstance_ = instanceId;
+  deactivateAll();
+  activeInstances_[0] = instanceId;
+  activeCount_ = 1;
   driver->activate(*record);
-  // Never latch onto a body already claimed by another record of this driver.
-  for (size_t i = 0; i < registry_.count(); ++i) {
-    const DeviceRecord* other = registry_.at(i);
-    if (other == nullptr || other->instanceId == instanceId ||
-        other->driverId != record->driverId || !other->paired ||
-        other->bleAddress[0] == '\0') {
-      continue;
-    }
-    driver->preferSkipPeer(other->bleAddress);
-  }
+  applySkipPeers(*driver, *record);
   return true;
 }
 
-void DeviceManager::deactivate() {
-  DeviceRecord* record = registry_.find(activeInstance_);
+bool DeviceManager::activateHeld(InstanceId instanceId) {
+  DeviceRecord* record = registry_.find(instanceId);
+  if (record == nullptr || !record->enabled) {
+    return false;
+  }
+  DeviceDriver* driver = driverFor(record->driverId);
+  if (driver == nullptr) {
+    return false;
+  }
+  if (isActive(instanceId)) {
+    return true;
+  }
+  const InstanceId sameDriver = activeForDriver(record->driverId);
+  if (sameDriver != kInvalidInstanceId) {
+    deactivate(sameDriver);
+  }
+  if (activeCount_ >= kMaxActiveLinks) {
+    return false;
+  }
+  if (!addActive(instanceId)) {
+    return false;
+  }
+  driver->activate(*record);
+  applySkipPeers(*driver, *record);
+  return true;
+}
+
+void DeviceManager::deactivate(InstanceId instanceId) {
+  if (!isActive(instanceId)) {
+    return;
+  }
+  DeviceRecord* record = registry_.find(instanceId);
   if (record != nullptr) {
     DeviceDriver* driver = driverFor(record->driverId);
     if (driver != nullptr) {
@@ -190,7 +279,27 @@ void DeviceManager::deactivate() {
       }
     }
   }
-  activeInstance_ = kInvalidInstanceId;
+  removeActive(instanceId);
+  if (activeCount_ == 0) {
+    linksHeld_ = false;
+  }
+}
+
+void DeviceManager::deactivateAll() {
+  while (activeCount_ > 0) {
+    deactivate(activeInstances_[0]);
+  }
+  linksHeld_ = false;
+}
+
+void DeviceManager::deactivate() {
+  if (activeCount_ == 1) {
+    deactivate(activeInstances_[0]);
+    return;
+  }
+  if (!linksHeld_ && activeCount_ > 0) {
+    deactivate(activeInstances_[0]);
+  }
 }
 
 bool DeviceManager::enqueue(DeviceCommand command) {
@@ -202,7 +311,7 @@ bool DeviceManager::enqueue(DeviceCommand command) {
 
 DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
   const DeviceRecord* record = registry_.find(instanceId);
-  if (record == nullptr || instanceId != activeInstance_) {
+  if (record == nullptr || !isActive(instanceId)) {
     return DeviceRuntimeState{};
   }
   DeviceDriver* driver = driverFor(record->driverId);
@@ -211,7 +320,7 @@ DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
 
 const void* DeviceManager::specializedState(InstanceId instanceId) const {
   const DeviceRecord* record = registry_.find(instanceId);
-  if (record == nullptr || instanceId != activeInstance_) {
+  if (record == nullptr || !isActive(instanceId)) {
     return nullptr;
   }
   DeviceDriver* driver = driverFor(record->driverId);
@@ -238,13 +347,13 @@ CommandStatus DeviceManager::dispatch(const DeviceCommand& command) {
     return CommandStatus::Disabled;
   }
   if (command.type == CommandType::Disconnect) {
-    if (command.instanceId == activeInstance_) {
-      deactivate();
+    if (isActive(command.instanceId)) {
+      deactivate(command.instanceId);
       return CommandStatus::Succeeded;
     }
     return CommandStatus::Unavailable;
   }
-  if (command.instanceId != activeInstance_) {
+  if (!isActive(command.instanceId)) {
     return CommandStatus::Unavailable;
   }
   DeviceDriver* driver = driverFor(record->driverId);
@@ -252,4 +361,3 @@ CommandStatus DeviceManager::dispatch(const DeviceCommand& command) {
 }
 
 }  // namespace studio
-

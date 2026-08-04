@@ -5,7 +5,18 @@
 A scene coordinates devices and groups through a non-blocking, ordered
 sequence. It must remain transport- and brand-independent.
 
-Example Start:
+First panel scenario — Press Record (Start):
+
+1. start recording on the Canon camera;
+2. wait 500 ms;
+3. start recording on the Tascam recorder.
+
+Press Stop (authored Stop, not reversed Start):
+
+1. stop recording on the Canon camera;
+2. stop recording on the Tascam recorder.
+
+Later example with lights/groups (full Phase 6 gate):
 
 1. turn on the light group;
 2. wait one second;
@@ -13,13 +24,9 @@ Example Start:
 4. wait one second;
 5. start recording on the Tascam recorder.
 
-Default generated Stop:
-
-1. stop recording on the Tascam recorder;
-2. wait one second;
-3. stop recording on the camera;
-4. wait one second;
-5. turn off the light group.
+Generated reverse-Stop remains a later option (ADR-008). The first on-device
+tranche uses explicit Start and Stop lists (ADR-019) and holds every target
+connected concurrently for the run (ADR-020).
 
 ## Data model
 
