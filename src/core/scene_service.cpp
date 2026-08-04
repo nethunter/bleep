@@ -80,6 +80,24 @@ SceneValidationStatus SceneService::validate(SceneId sceneId) const {
   return runner_.validate(sceneId);
 }
 
+bool SceneService::referencesInstance(InstanceId instanceId) const {
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    const SceneRecord* record = registry_.at(i);
+    if (record == nullptr) continue;
+    const SceneStep* lists[] = {record->startSteps, record->stopSteps};
+    const uint8_t counts[] = {record->startCount, record->stopCount};
+    for (size_t list = 0; list < 2; ++list) {
+      for (uint8_t step = 0; step < counts[list]; ++step) {
+        if (lists[list][step].type == SceneStepType::Action &&
+            lists[list][step].targetId == instanceId) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool SceneService::seedPressRecord(SceneId& outId) {
   outId = kInvalidSceneId;
   InstanceId cameraId = kInvalidInstanceId;

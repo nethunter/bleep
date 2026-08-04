@@ -50,54 +50,86 @@ bool DeviceManager::seedInitialRegistry() {
   return save();
 }
 
-InstanceId DeviceManager::activeInstance() const {
-  return activeCount_ > 0 ? activeInstances_[0] : kInvalidInstanceId;
+uint8_t DeviceManager::ownerBit(ConnectionOwner owner) {
+  return static_cast<uint8_t>(owner);
 }
 
-bool DeviceManager::isActive(InstanceId instanceId) const {
-  if (instanceId == kInvalidInstanceId) {
-    return false;
-  }
-  for (size_t i = 0; i < activeCount_; ++i) {
-    if (activeInstances_[i] == instanceId) {
-      return true;
+DeviceManager::ActiveSlot* DeviceManager::slotFor(InstanceId instanceId) {
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId == instanceId) {
+      return &activeSlots_[i];
     }
   }
-  return false;
+  return nullptr;
 }
 
-InstanceId DeviceManager::activeForDriver(DriverId driverId) const {
-  for (size_t i = 0; i < activeCount_; ++i) {
-    const DeviceRecord* record = registry_.find(activeInstances_[i]);
-    if (record != nullptr && record->driverId == driverId) {
-      return record->instanceId;
+const DeviceManager::ActiveSlot* DeviceManager::slotFor(
+    InstanceId instanceId) const {
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId == instanceId) {
+      return &activeSlots_[i];
+    }
+  }
+  return nullptr;
+}
+
+InstanceId DeviceManager::foregroundInstance() const {
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if ((activeSlots_[i].owners & ownerBit(ConnectionOwner::Foreground)) != 0) {
+      return activeSlots_[i].instanceId;
     }
   }
   return kInvalidInstanceId;
 }
 
-bool DeviceManager::addActive(InstanceId instanceId) {
-  if (isActive(instanceId)) {
+bool DeviceManager::isActive(InstanceId instanceId) const {
+  return instanceId != kInvalidInstanceId && slotFor(instanceId) != nullptr;
+}
+
+bool DeviceManager::ownedBy(InstanceId instanceId, ConnectionOwner owner) const {
+  const ActiveSlot* slot = slotFor(instanceId);
+  return slot != nullptr && (slot->owners & ownerBit(owner)) != 0;
+}
+
+bool DeviceManager::isRetained(InstanceId instanceId) const {
+  const ActiveSlot* slot = slotFor(instanceId);
+  return slot != nullptr && slot->retained;
+}
+
+void DeviceManager::touch(ActiveSlot& slot) {
+  ++useCounter_;
+  if (useCounter_ == 0) {
+    useCounter_ = 1;
+  }
+  slot.lastUsed = useCounter_;
+}
+
+bool DeviceManager::addActive(InstanceId instanceId, ConnectionOwner owner) {
+  ActiveSlot* existing = slotFor(instanceId);
+  if (existing != nullptr) {
+    existing->owners |= ownerBit(owner);
+    touch(*existing);
     return true;
   }
-  if (activeCount_ >= kMaxActiveLinks) {
-    return false;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId != kInvalidInstanceId) {
+      continue;
+    }
+    activeSlots_[i].instanceId = instanceId;
+    activeSlots_[i].owners = ownerBit(owner);
+    activeSlots_[i].retained = false;
+    touch(activeSlots_[i]);
+    ++activeCount_;
+    return true;
   }
-  activeInstances_[activeCount_++] = instanceId;
-  return true;
+  return false;
 }
 
 void DeviceManager::removeActive(InstanceId instanceId) {
-  for (size_t i = 0; i < activeCount_; ++i) {
-    if (activeInstances_[i] != instanceId) {
-      continue;
-    }
-    for (size_t j = i + 1; j < activeCount_; ++j) {
-      activeInstances_[j - 1] = activeInstances_[j];
-    }
+  ActiveSlot* slot = slotFor(instanceId);
+  if (slot != nullptr) {
+    *slot = ActiveSlot{};
     --activeCount_;
-    activeInstances_[activeCount_] = kInvalidInstanceId;
-    return;
   }
 }
 
@@ -109,7 +141,7 @@ void DeviceManager::applySkipPeers(DeviceDriver& driver, const DeviceRecord& rec
         other->bleAddress[0] == '\0') {
       continue;
     }
-    driver.preferSkipPeer(other->bleAddress);
+    driver.preferSkipPeer(record.instanceId, other->bleAddress);
   }
 }
 
@@ -118,8 +150,15 @@ void DeviceManager::loop() {
     return;
   }
 
-  for (size_t i = 0; i < activeCount_; ++i) {
-    DeviceRecord* activeRecord = registry_.find(activeInstances_[i]);
+  for (size_t i = 0; i < driverCount_; ++i) {
+    if (drivers_[i] != nullptr) {
+      drivers_[i]->loop();
+    }
+  }
+
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    ActiveSlot& slot = activeSlots_[i];
+    DeviceRecord* activeRecord = registry_.find(slot.instanceId);
     if (activeRecord == nullptr) {
       continue;
     }
@@ -127,8 +166,13 @@ void DeviceManager::loop() {
     if (activeDriver == nullptr) {
       continue;
     }
-    activeDriver->loop();
-    if (activeDriver->consumePairingUpdate(*activeRecord)) {
+    const DeviceRuntimeState runtime =
+        activeDriver->runtimeState(activeRecord->instanceId);
+    if (runtime.protocolReady) {
+      slot.retained = true;
+    }
+    if (activeDriver->consumePairingUpdate(activeRecord->instanceId,
+                                           *activeRecord)) {
       save();
     }
   }
@@ -218,10 +262,104 @@ RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
   return status;
 }
 
-bool DeviceManager::activate(InstanceId instanceId) {
-  if (linksHeld_) {
-    return false;
+RegistryStatus DeviceManager::addHomeAssistantEntity(
+    HomeAssistantDomain domain, const char* entityId, const char* displayName,
+    InstanceId& outId) {
+  const RegistryStatus added =
+      add(DriverId::HomeAssistant, displayName, outId);
+  if (added != RegistryStatus::Ok) {
+    return added;
   }
+  const RegistryStatus configured =
+      registry_.configureHomeAssistant(outId, domain, entityId);
+  if (configured != RegistryStatus::Ok || !save()) {
+    registry_.remove(outId);
+    outId = kInvalidInstanceId;
+    save();
+    return configured == RegistryStatus::Ok ? RegistryStatus::Invalid
+                                             : configured;
+  }
+  return RegistryStatus::Ok;
+}
+
+RegistryStatus DeviceManager::rebindHomeAssistantEntity(
+    InstanceId instanceId, HomeAssistantDomain domain, const char* entityId) {
+  if (isActive(instanceId)) {
+    deactivate(instanceId);
+  }
+  const RegistryStatus status =
+      registry_.configureHomeAssistant(instanceId, domain, entityId);
+  return status == RegistryStatus::Ok && !save() ? RegistryStatus::Invalid
+                                                  : status;
+}
+
+RegistryStatus DeviceManager::replaceHomeAssistantEntities(
+    const HomeAssistantEntitySelection* selections, size_t count) {
+  if ((count > 0 && selections == nullptr) || count > 4) {
+    return RegistryStatus::Invalid;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    if (selections[i].domain == HomeAssistantDomain::None ||
+        selections[i].entityId[0] == '\0' || selections[i].displayName[0] == '\0') {
+      return RegistryStatus::Invalid;
+    }
+    for (size_t j = i + 1; j < count; ++j) {
+      if (std::strncmp(selections[i].entityId, selections[j].entityId,
+                       kHomeAssistantEntityIdCapacity) == 0) {
+        return RegistryStatus::DuplicateDriver;
+      }
+    }
+  }
+
+  DeviceRegistry previous = registry_;
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    const DeviceRecord* record = registry_.at(i);
+    if (record != nullptr && record->driverId == DriverId::HomeAssistant &&
+        isActive(record->instanceId)) {
+      deactivate(record->instanceId);
+    }
+  }
+  for (size_t i = registry_.count(); i > 0; --i) {
+    const DeviceRecord* record = registry_.at(i - 1);
+    if (record == nullptr || record->driverId != DriverId::HomeAssistant) continue;
+    bool keep = false;
+    for (size_t s = 0; s < count; ++s) {
+      keep = keep || selections[s].instanceId == record->instanceId;
+    }
+    if (!keep) registry_.remove(record->instanceId);
+  }
+  for (size_t s = 0; s < count; ++s) {
+    InstanceId id = selections[s].instanceId;
+    DeviceRecord* existing = registry_.find(id);
+    if (existing == nullptr) {
+      const DriverDescriptor* descriptor = DriverCatalog::find(DriverId::HomeAssistant);
+      if (descriptor == nullptr ||
+          registry_.add(DriverId::HomeAssistant, selections[s].displayName,
+                        descriptor->maxInstances, id) != RegistryStatus::Ok) {
+        registry_ = previous;
+        return RegistryStatus::Full;
+      }
+    } else if (existing->driverId != DriverId::HomeAssistant) {
+      registry_ = previous;
+      return RegistryStatus::Invalid;
+    } else {
+      registry_.rename(id, selections[s].displayName);
+    }
+    const RegistryStatus configured = registry_.configureHomeAssistant(
+        id, selections[s].domain, selections[s].entityId);
+    if (configured != RegistryStatus::Ok) {
+      registry_ = previous;
+      return configured;
+    }
+  }
+  if (!save()) {
+    registry_ = previous;
+    return RegistryStatus::Invalid;
+  }
+  return RegistryStatus::Ok;
+}
+
+bool DeviceManager::acquire(InstanceId instanceId, ConnectionOwner owner) {
   DeviceRecord* record = registry_.find(instanceId);
   if (record == nullptr || !record->enabled) {
     return false;
@@ -230,39 +368,81 @@ bool DeviceManager::activate(InstanceId instanceId) {
   if (driver == nullptr) {
     return false;
   }
-  deactivateAll();
-  activeInstances_[0] = instanceId;
-  activeCount_ = 1;
-  driver->activate(*record);
+  if (owner == ConnectionOwner::Foreground) {
+    const InstanceId current = foregroundInstance();
+    if (current != kInvalidInstanceId && current != instanceId) {
+      release(current, ConnectionOwner::Foreground);
+    }
+  }
+  if (isActive(instanceId)) {
+    return addActive(instanceId, owner);
+  }
+  if (activeCount_ >= kMaxActiveInstances && !evictOldestIdle()) {
+    return false;
+  }
+  if (!driver->activate(*record)) {
+    return false;
+  }
+  if (!addActive(instanceId, owner)) {
+    driver->deactivate(instanceId);
+    return false;
+  }
   applySkipPeers(*driver, *record);
   return true;
 }
 
-bool DeviceManager::activateHeld(InstanceId instanceId) {
-  DeviceRecord* record = registry_.find(instanceId);
-  if (record == nullptr || !record->enabled) {
+void DeviceManager::release(InstanceId instanceId, ConnectionOwner owner) {
+  ActiveSlot* slot = slotFor(instanceId);
+  if (slot == nullptr) {
+    return;
+  }
+  if (runtimeState(instanceId).protocolReady) {
+    slot->retained = true;
+  }
+  slot->owners &= ~ownerBit(owner);
+  touch(*slot);
+  if (slot->owners == 0 && !slot->retained) {
+    deactivate(instanceId);
+  }
+}
+
+bool DeviceManager::evictOldestIdle() {
+  ActiveSlot* oldest = nullptr;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    ActiveSlot& slot = activeSlots_[i];
+    if (slot.instanceId == kInvalidInstanceId || slot.owners != 0) {
+      continue;
+    }
+    const DeviceRuntimeState runtime = runtimeState(slot.instanceId);
+    if (runtime.commandPending ||
+        (runtime.recordingConfirmed && runtime.recording)) {
+      continue;
+    }
+    if (oldest == nullptr || slot.lastUsed < oldest->lastUsed) {
+      oldest = &slot;
+    }
+  }
+  if (oldest == nullptr) {
     return false;
   }
-  DeviceDriver* driver = driverFor(record->driverId);
-  if (driver == nullptr) {
-    return false;
-  }
-  if (isActive(instanceId)) {
-    return true;
-  }
-  const InstanceId sameDriver = activeForDriver(record->driverId);
-  if (sameDriver != kInvalidInstanceId) {
-    deactivate(sameDriver);
-  }
-  if (activeCount_ >= kMaxActiveLinks) {
-    return false;
-  }
-  if (!addActive(instanceId)) {
-    return false;
-  }
-  driver->activate(*record);
-  applySkipPeers(*driver, *record);
+  deactivate(oldest->instanceId);
   return true;
+}
+
+CommandStatus DeviceManager::disconnect(InstanceId instanceId, bool confirmed) {
+  ActiveSlot* slot = slotFor(instanceId);
+  if (slot == nullptr) {
+    return CommandStatus::Unavailable;
+  }
+  const DeviceRuntimeState runtime = runtimeState(instanceId);
+  if (ownedBy(instanceId, ConnectionOwner::Sequence) || runtime.commandPending) {
+    return CommandStatus::Busy;
+  }
+  if (runtime.recordingConfirmed && runtime.recording && !confirmed) {
+    return CommandStatus::ConfirmationRequired;
+  }
+  deactivate(instanceId);
+  return CommandStatus::Succeeded;
 }
 
 void DeviceManager::deactivate(InstanceId instanceId) {
@@ -273,32 +453,20 @@ void DeviceManager::deactivate(InstanceId instanceId) {
   if (record != nullptr) {
     DeviceDriver* driver = driverFor(record->driverId);
     if (driver != nullptr) {
-      driver->deactivate();
-      if (driver->consumePairingUpdate(*record)) {
+      if (driver->consumePairingUpdate(instanceId, *record)) {
         save();
       }
+      driver->deactivate(instanceId);
     }
   }
   removeActive(instanceId);
-  if (activeCount_ == 0) {
-    linksHeld_ = false;
-  }
 }
 
 void DeviceManager::deactivateAll() {
-  while (activeCount_ > 0) {
-    deactivate(activeInstances_[0]);
-  }
-  linksHeld_ = false;
-}
-
-void DeviceManager::deactivate() {
-  if (activeCount_ == 1) {
-    deactivate(activeInstances_[0]);
-    return;
-  }
-  if (!linksHeld_ && activeCount_ > 0) {
-    deactivate(activeInstances_[0]);
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId != kInvalidInstanceId) {
+      deactivate(activeSlots_[i].instanceId);
+    }
   }
 }
 
@@ -315,7 +483,52 @@ DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
     return DeviceRuntimeState{};
   }
   DeviceDriver* driver = driverFor(record->driverId);
-  return driver != nullptr ? driver->runtimeState() : DeviceRuntimeState{};
+  return driver != nullptr ? driver->runtimeState(instanceId)
+                           : DeviceRuntimeState{};
+}
+
+InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
+  const DeviceRecord* record = registry_.find(instanceId);
+  if (record == nullptr) {
+    return {};
+  }
+  if (record->driverId == DriverId::HomeAssistant) {
+    InstanceProfile profile;
+    profile.capabilities = capabilityBit(Capability::Link);
+    switch (record->homeAssistantDomain) {
+      case HomeAssistantDomain::Light:
+        profile.type = DeviceType::Light;
+        profile.capabilities |= capabilityBit(Capability::TurnOn) |
+                                capabilityBit(Capability::TurnOff);
+        break;
+      case HomeAssistantDomain::Switch:
+        profile.type = DeviceType::Switch;
+        profile.capabilities |= capabilityBit(Capability::TurnOn) |
+                                capabilityBit(Capability::TurnOff);
+        break;
+      case HomeAssistantDomain::InputBoolean:
+        profile.type = DeviceType::Switch;
+        profile.capabilities |= capabilityBit(Capability::TurnOn) |
+                                capabilityBit(Capability::TurnOff);
+        break;
+      case HomeAssistantDomain::Button:
+        profile.type = DeviceType::Action;
+        profile.capabilities |= capabilityBit(Capability::Press);
+        break;
+      case HomeAssistantDomain::Scene:
+      case HomeAssistantDomain::Script:
+        profile.type = DeviceType::Action;
+        profile.capabilities |= capabilityBit(Capability::Activate);
+        break;
+      case HomeAssistantDomain::None:
+        break;
+    }
+    return profile;
+  }
+  const DriverDescriptor* descriptor = DriverCatalog::find(record->driverId);
+  return descriptor != nullptr
+             ? InstanceProfile{descriptor->type, descriptor->capabilities}
+             : InstanceProfile{};
 }
 
 const void* DeviceManager::specializedState(InstanceId instanceId) const {
@@ -324,7 +537,7 @@ const void* DeviceManager::specializedState(InstanceId instanceId) const {
     return nullptr;
   }
   DeviceDriver* driver = driverFor(record->driverId);
-  return driver != nullptr ? driver->specializedState() : nullptr;
+  return driver != nullptr ? driver->specializedState(instanceId) : nullptr;
 }
 
 DeviceDriver* DeviceManager::driverFor(DriverId driverId) const {
@@ -347,16 +560,16 @@ CommandStatus DeviceManager::dispatch(const DeviceCommand& command) {
     return CommandStatus::Disabled;
   }
   if (command.type == CommandType::Disconnect) {
-    if (isActive(command.instanceId)) {
-      deactivate(command.instanceId);
-      return CommandStatus::Succeeded;
-    }
-    return CommandStatus::Unavailable;
+    return disconnect(command.instanceId, command.value0 != 0);
   }
   if (!isActive(command.instanceId)) {
     return CommandStatus::Unavailable;
   }
   DeviceDriver* driver = driverFor(record->driverId);
+  ActiveSlot* slot = slotFor(command.instanceId);
+  if (slot != nullptr) {
+    touch(*slot);
+  }
   return driver != nullptr ? driver->dispatch(command) : CommandStatus::Unsupported;
 }
 

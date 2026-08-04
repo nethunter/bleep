@@ -68,7 +68,7 @@ struct RunChip {
   ChipState state = ChipState::Unknown;
 };
 
-RunChip runChips[CONFIG_MAX_ACTIVE_LINKS] = {};
+RunChip runChips[CONFIG_MAX_ACTIVE_INSTANCES] = {};
 uint8_t runChipCount = 0;
 
 void styleScreen(lv_obj_t* object) {
@@ -114,6 +114,9 @@ const lv_img_dsc_t* categoryIcon(studio::DeviceType type) {
       return &ui_icon_cat_cameras;
     case studio::DeviceType::Recorder:
       return &ui_icon_cat_recorders;
+    case studio::DeviceType::Switch:
+    case studio::DeviceType::Action:
+      return &ui_icon_devices;
     case studio::DeviceType::Unknown:
       return &ui_icon_devices;
   }
@@ -203,7 +206,7 @@ void closeSettings();
 void releaseHeldScene();
 
 uint8_t collectTargets(const studio::SceneRecord& record,
-                       studio::InstanceId (&targets)[CONFIG_MAX_ACTIVE_LINKS]) {
+                       studio::InstanceId (&targets)[CONFIG_MAX_ACTIVE_INSTANCES]) {
   uint8_t count = 0;
   const studio::SceneStep* lists[] = {record.startSteps, record.stopSteps};
   const uint8_t counts[] = {record.startCount, record.stopCount};
@@ -220,7 +223,7 @@ uint8_t collectTargets(const studio::SceneRecord& record,
           break;
         }
       }
-      if (!known && count < CONFIG_MAX_ACTIVE_LINKS) {
+      if (!known && count < CONFIG_MAX_ACTIVE_INSTANCES) {
         targets[count++] = step.targetId;
       }
     }
@@ -229,7 +232,7 @@ uint8_t collectTargets(const studio::SceneRecord& record,
 }
 
 bool allTargetsReady(const studio::SceneRecord& record) {
-  studio::InstanceId targets[CONFIG_MAX_ACTIVE_LINKS] = {};
+  studio::InstanceId targets[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   const uint8_t count = collectTargets(record, targets);
   if (count == 0) {
     return false;
@@ -269,7 +272,7 @@ void onOpenDeviceControl(lv_event_t* event) {
     return;
   }
   borrowedDeviceOpen = true;
-  ui::showDevice(instanceId, ui::DeviceControlMode::PreserveActivation);
+  ui::showDevice(instanceId);
 }
 
 void onAddBlank(lv_event_t*) {
@@ -642,7 +645,7 @@ void refreshRun() {
                             : kColMuted),
       0);
 
-  studio::InstanceId targetIds[CONFIG_MAX_ACTIVE_LINKS] = {};
+  studio::InstanceId targetIds[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   const uint8_t targetCount = collectTargets(*record, targetIds);
   bool rebuildChips = targetCount != runChipCount;
   for (uint8_t i = 0; !rebuildChips && i < targetCount; ++i) {
@@ -661,9 +664,9 @@ void refreshRun() {
       chip = RunChip{};
       chip.instanceId = targetIds[i];
       const studio::DeviceRecord* device = studio::devices().find(targetIds[i]);
-      const studio::DriverDescriptor* descriptor =
-          device != nullptr ? studio::DriverCatalog::find(device->driverId)
-                            : nullptr;
+      const studio::InstanceProfile profile =
+          device != nullptr ? studio::devices().profile(device->instanceId)
+                            : studio::InstanceProfile{};
 
       lv_obj_t* item = lv_obj_create(runChipRow);
       lv_obj_set_size(item, slotWidth, 59);
@@ -688,9 +691,7 @@ void refreshRun() {
 
       chip.icon = lv_img_create(chip.button);
       lv_img_set_src(chip.icon,
-                     categoryIcon(descriptor != nullptr
-                                      ? descriptor->type
-                                      : studio::DeviceType::Unknown));
+                     categoryIcon(profile.type));
       lv_img_set_zoom(chip.icon, 176);
       lv_obj_center(chip.icon);
 
@@ -704,7 +705,7 @@ void refreshRun() {
       lv_obj_set_style_text_color(name, lv_color_hex(kColMuted), 0);
       lv_obj_align(name, LV_ALIGN_BOTTOM_MID, 0, 0);
     }
-    for (uint8_t i = targetCount; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
+    for (uint8_t i = targetCount; i < CONFIG_MAX_ACTIVE_INSTANCES; ++i) {
       runChips[i] = RunChip{};
     }
   }
@@ -784,7 +785,7 @@ void refreshRun() {
     const bool connecting =
         forScene && progress.phase == studio::ScenePhase::Connecting;
     const char* action = !linkedOrBusy ? "Prepare"
-                                      : (connecting ? "Cancel" : "Unlink");
+                                      : (connecting ? "Cancel" : "Done");
     lv_label_set_text(lv_obj_get_child(prepareCancelButton, 0), action);
     lv_obj_set_style_bg_color(
         prepareCancelButton,

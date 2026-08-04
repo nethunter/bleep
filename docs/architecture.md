@@ -22,12 +22,15 @@ flowchart TB
   DeviceManager --> AmaranDriver
   DeviceManager --> CanonTriggerDriver
   DeviceManager --> CanonSmartDriver
+  DeviceManager --> HomeAssistantDriver
   DeviceManager --> FutureRecorderDrivers
   SharkDriver --> BluetoothRuntime
   AmaranDriver --> BluetoothRuntime
   CanonTriggerDriver --> BluetoothRuntime
   CanonSmartDriver --> BluetoothRuntime
   CanonSmartDriver --> WifiHttpRuntime
+  HomeAssistantDriver --> HomeAssistantRuntime
+  PortalUI --> HomeAssistantRuntime
   ConfigStore --> DeviceManager
   ConfigStore --> SceneRunner
 ```
@@ -42,23 +45,28 @@ ADR-013 advances a bounded subset of this architecture before the transport
 feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
-  Canon Smart, and Tascam X8; smaller profiles compile selected drivers out;
-- `DeviceManager` owns a fixed-capacity registry, command/result queues, active
-  driver lifecycle, and persistence;
-- schema version 1 stores up to eight device records in the `studio` NVS
-  namespace and retains records for unavailable driver IDs;
+  Canon Smart, Tascam X8, and Home Assistant; smaller profiles compile selected
+  drivers out;
+- `DeviceManager` owns a fixed-capacity registry, command/result queues, a
+  four-session retained connection pool, per-owner lifecycle, and persistence;
+- schema version 2 stores up to twelve device records in the `studio` NVS
+  namespace, migrates v1 BLE records unchanged, and retains records for
+  unavailable driver IDs. HA credentials and token use a separate checksummed
+  `ha_config` record;
 - the catalog permits one Shark, up to three Canon Trigger instances, up to
   three Canon Smart instances, and one Tascam X8 within the eight-record
   registry;
 - Home and Devices load without initializing NimBLE; the first requested BLE
   device lazily starts one shared central runtime, and the last release shuts
   it down;
-- Groups, Portal, and generic device-type UI remain unimplemented. The first
+- Groups and the remaining generic device-type UI remain unimplemented. The first
   GATT facade tranche (ADR-021) now centralizes scanning, async links, retries,
   address claims, security serialization, bonds, and teardown for all four BLE
   clients. Panel Scenes (ADR-019/020) provide authored Start/Stop
-  sequences with concurrent Canon Smart + Tascam links; generated reverse-Stop,
-  groups, lights, and Portal editing remain deferred.
+  sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
+  Portal provisioning and four local HA entities; its target hardware gate is
+  still open. Generated reverse-Stop, groups, and native BLE lights remain
+  deferred.
 
 ## Compile-time driver catalog
 
@@ -112,17 +120,19 @@ Home provides:
 - Portal;
 - status and power controls.
 
-Opening a device screen requests that instance's connection. Opening a sequence
-run screen prepares every Start/Stop target concurrently and holds those links
-until Back, Cancel, or Stop complete. Preparation reaches `Ready` only after
+Opening a device screen acquires a foreground owner for that instance. Opening
+a sequence run screen acquires a sequence owner for every Start/Stop target.
+Preparation reaches `Ready` only after
 every target is physically connected and its driver reports protocol readiness.
 The run screen shows one category-icon chip per target. A chip borrows the
 already-held activation to open full device controls, then returns without
-tearing down that device or its peers. Normal Devices navigation remains
-exclusive outside this sequence-owned path.
-Leaving a screen may retain a
-healthy connection according to the connection policy, but no device is
-selected implicitly at boot.
+tearing down that device or its peers. Once a session reaches protocol readiness,
+removing its last owner parks it in the retained pool and bounded reconnect
+continues after unexpected drops. Attempts that never became ready are canceled.
+The active-instance pool evicts only the least-recently-used idle and
+unprotected session; it
+never evicts sequence/foreground owners, pending commands, or confirmed
+recording. No device is selected or restored implicitly at boot.
 
 ### Shared BLE central
 
@@ -183,6 +193,45 @@ state:
 - `camera`: record start/stop, recording state, and later camera controls;
 - `motion`: run, stop, progress, keypoints, and manual movement;
 - `recorder`: record start/stop, recording state, battery, and media status.
+- `switch`: explicit on/off with confirmed state;
+- `action`: explicit Press or Activate with no inferred toggle/value action;
+- `input_boolean`: explicit On/Off commands with one context-sensitive entity
+  button that sends the opposite of the last confirmed state.
+
+Home Assistant is the first dynamic-profile driver: each persistent instance
+derives its device type and capabilities from its stored entity domain rather
+than the driver's catalog row. Device pickers, scene validation, and command
+selection query this instance profile. Four HA instances share one retained
+network runtime and do not consume the four physical BLE link slots.
+
+### Home Assistant Portal and runtime
+
+Portal suspends scenes and physical links. If studio Wi-Fi is not configured or
+cannot be joined, it starts a temporary WPA2 SoftAP and a SoftAP-bound page that
+offers a bounded asynchronous Wi-Fi scan and manual SSID/password entry. The
+join is a main-loop state machine, leaving HTTP and LVGL responsive while the
+browser and panel report scanning, connecting, success, timeout, missing SSID,
+or rejected credentials. A successful join saves those credentials, exposes
+the assigned numeric LAN address during a bounded handoff, destroys the AP,
+binds a new listener to the station address, and advertises a best-effort
+`http://bleep.local` mDNS alias. HA URL/token/entity setup is served only on that
+LAN listener. Discovery incrementally parses `/api/states`; the browser
+receives at most 24 bounded summaries and may select four. Secrets are password
+fields and never appear in `/api/config`. Exit or ten minutes of inactivity
+stops HTTP/mDNS, disconnects STA, and returns Wi-Fi to off.
+
+Opening an HA screen or preparing an HA scene target acquires the shared
+`HomeAssistantRuntime`. It joins Wi-Fi, authenticates `/api/websocket`, fetches
+each active entity's initial state through REST, and installs a
+`subscribe_trigger` state subscription containing only active entity IDs.
+Callbacks copy at most two 4096-byte frames; the main loop parses them with
+ArduinoJson, mutates state, sends service calls, and updates LVGL. Malformed,
+oversized, or dropped frames mark state unknown and schedule a bounded REST
+refresh. When a subscribed confirmation has not arrived after five seconds,
+the runtime reconciles the individual entity through REST before reporting
+failure. A matching refreshed state succeeds; only HTTP 404 means missing,
+while transport and parse failures remain unknown. The runtime disconnects
+Wi-Fi after its final HA instance is evicted or explicitly unlinked.
 
 Drivers publish limits and availability. For example, a CCT-only light does
 not expose HSI controls. Specialized workflows such as Shark keypoints may
@@ -213,10 +262,13 @@ chips. Their borders breathe cyan during connection/protocol setup, stay green
 when protocol-ready, turn red after a terminal connection failure, and remain
 muted gray when simply disconnected or powered off. Chip navigation is disabled
 while Start or Stop steps execute; a compact status label remains above
-Cancel/Unlink.
+Cancel/Done.
 
-After simulator measurements of peak use and fragmentation, the LVGL pool was
-reduced from 128 KiB to 64 KiB to return static RAM to the general heap.
+The twelve-record Devices screen plus the largest specialized control screen
+exhausted the earlier 64 KiB LVGL pool. The HA capacity simulation therefore
+sets the pool to 96 KiB; the full capture run leaves about 34 KiB free at the
+Shark screen checkpoint. Target heap recovery remains part of ADR-023's open
+hardware gate.
 
 State fields carry a quality:
 
@@ -252,17 +304,21 @@ The administration server does not run during normal operation.
 Entering Portal mode:
 
 1. refuses entry or requests confirmation if a scene is active;
-2. suspends device connections and leaves the studio Wi-Fi station;
-3. starts a temporary WPA2 SoftAP with a per-session credential;
-4. starts the bounded HTTP server on the AP interface;
-5. displays SSID, password, URL, timeout, and Exit on the panel.
+2. suspends device connections;
+3. joins saved studio Wi-Fi, or starts a temporary WPA2 SoftAP whose page
+   collects only Wi-Fi credentials;
+4. after joining, shows the numeric station address, closes the AP, and binds
+   the bounded HTTP server there with `bleep.local` as best-effort discovery;
+5. displays the active network, URL, timeout, and Exit on the panel.
 
 Exiting Portal mode, reaching the inactivity timeout, or rebooting destroys the
-HTTP server and SoftAP before restoring normal operation. Teardown tests must
-verify that no listener, AP, server task, or portal buffer remains active.
+HTTP server, mDNS responder, SoftAP, and station connection before restoring
+normal operation. Teardown tests must verify that no listener, AP, server task,
+or portal buffer remains active.
 
 Canon CCAPI is unavailable in Portal mode because normal station-mode control
-is intentionally suspended. The portal is not exposed on the studio LAN.
+is intentionally suspended. The portal is exposed on the trusted studio LAN
+only for the lifetime of the active Portal screen.
 
 ## Persistence
 

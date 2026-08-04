@@ -16,6 +16,7 @@ enum class DriverId : uint16_t {
   CanonBle = 2,       // Canon (Smart) smartphone-mode BLE
   TascamX8 = 3,
   CanonTrigger = 4,   // Canon (Trigger) BR-E1-compatible BLE
+  HomeAssistant = 5,
 };
 
 enum class DeviceType : uint8_t {
@@ -24,6 +25,18 @@ enum class DeviceType : uint8_t {
   Light,
   Camera,
   Recorder,
+  Switch,
+  Action,
+};
+
+enum class HomeAssistantDomain : uint8_t {
+  None = 0,
+  Light,
+  Switch,
+  InputBoolean,
+  Button,
+  Scene,
+  Script,
 };
 
 enum class LinkState : uint8_t {
@@ -54,6 +67,10 @@ enum class Capability : uint32_t {
   RecordStart = 1u << 10,
   RecordStop = 1u << 11,
   RecordingState = 1u << 12,
+  TurnOn = 1u << 13,
+  TurnOff = 1u << 14,
+  Press = 1u << 15,
+  Activate = 1u << 16,
 };
 
 constexpr uint32_t capabilityBit(Capability capability) {
@@ -81,6 +98,10 @@ enum class CommandType : uint8_t {
   RecordStop,
   CameraPowerOn,
   CameraPowerOff,
+  TurnOn,
+  TurnOff,
+  Press,
+  Activate,
 };
 
 struct DeviceCommand {
@@ -100,6 +121,8 @@ enum class CommandStatus : uint8_t {
   InvalidArgument,
   Unavailable,
   QueueFull,
+  Busy,
+  ConfirmationRequired,
 };
 
 struct CommandResult {
@@ -112,6 +135,15 @@ struct DeviceRuntimeState {
   LinkState link = LinkState::Disconnected;
   bool protocolReady = false;
   StateQuality quality = StateQuality::Unknown;
+  bool commandPending = false;
+  bool commandFailed = false;
+  bool recordingConfirmed = false;
+  bool recording = false;
+};
+
+enum class ConnectionOwner : uint8_t {
+  Foreground = 1u << 0,
+  Sequence = 1u << 1,
 };
 
 constexpr size_t kInstanceIdTextCapacity = 16;
@@ -119,6 +151,7 @@ constexpr size_t kDriverIdTextCapacity = 24;
 constexpr size_t kDeviceNameCapacity = 32;
 constexpr size_t kBleAddressCapacity = 20;
 constexpr size_t kBleNameCapacity = 40;
+constexpr size_t kHomeAssistantEntityIdCapacity = 72;
 
 struct DeviceRecord {
   InstanceId instanceId = kInvalidInstanceId;
@@ -129,6 +162,24 @@ struct DeviceRecord {
   char bleAddress[kBleAddressCapacity] = "";
   uint8_t bleAddressType = 0;
   char bleName[kBleNameCapacity] = "";
+  HomeAssistantDomain homeAssistantDomain = HomeAssistantDomain::None;
+  char homeAssistantEntityId[kHomeAssistantEntityIdCapacity] = "";
+};
+
+struct InstanceProfile {
+  DeviceType type = DeviceType::Unknown;
+  uint32_t capabilities = 0;
+
+  constexpr InstanceProfile() = default;
+  constexpr InstanceProfile(DeviceType deviceType, uint32_t capabilityMask)
+      : type(deviceType), capabilities(capabilityMask) {}
+};
+
+struct HomeAssistantEntitySelection {
+  InstanceId instanceId = kInvalidInstanceId;
+  HomeAssistantDomain domain = HomeAssistantDomain::None;
+  char entityId[kHomeAssistantEntityIdCapacity] = "";
+  char displayName[kDeviceNameCapacity] = "";
 };
 
 struct DriverDescriptor {

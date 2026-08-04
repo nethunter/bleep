@@ -6,6 +6,10 @@ namespace {
 constexpr CommandTrait kTraits[] = {
     {CommandType::RecordStart, Capability::RecordStart, true},
     {CommandType::RecordStop, Capability::RecordStop, true},
+    {CommandType::TurnOn, Capability::TurnOn, true},
+    {CommandType::TurnOff, Capability::TurnOff, true},
+    {CommandType::Press, Capability::Press, true},
+    {CommandType::Activate, Capability::Activate, true},
 };
 
 }  // namespace

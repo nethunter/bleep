@@ -8,19 +8,24 @@ namespace studio {
 class CanonTriggerDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::CanonTrigger; }
-  void activate(const DeviceRecord& record) override;
-  void deactivate() override;
+  bool activate(const DeviceRecord& record) override;
+  void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
-  DeviceRuntimeState runtimeState() const override;
-  const void* specializedState() const override { return &client_.state(); }
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
+  const void* specializedState(InstanceId instanceId) const override;
   void forgetPairing(const DeviceRecord& record) override;
-  bool consumePairingUpdate(DeviceRecord& record) override;
+  bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:
-  canon_trigger::CanonTriggerClient client_;
-  InstanceId activeInstance_ = kInvalidInstanceId;
-  bool active_ = false;
+  static constexpr size_t kMaxSessions = 3;
+  struct Session {
+    canon_trigger::CanonTriggerClient client;
+    InstanceId instanceId = kInvalidInstanceId;
+  };
+  Session* sessionFor(InstanceId instanceId);
+  const Session* sessionFor(InstanceId instanceId) const;
+  Session sessions_[kMaxSessions];
 };
 
 }  // namespace studio

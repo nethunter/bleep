@@ -8,18 +8,19 @@ namespace studio {
 class TascamX8Driver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::TascamX8; }
-  void activate(const DeviceRecord& record) override;
-  void deactivate() override;
+  bool activate(const DeviceRecord& record) override;
+  void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
-  DeviceRuntimeState runtimeState() const override;
-  const void* specializedState() const override { return &client_.state(); }
-  bool consumePairingUpdate(DeviceRecord& record) override;
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
+  const void* specializedState(InstanceId instanceId) const override;
+  bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:
-  tascam_x8::TascamX8Client client_;
-  InstanceId activeInstance_ = kInvalidInstanceId;
-  bool active_ = false;
+  struct Session {
+    tascam_x8::TascamX8Client client;
+    InstanceId instanceId = kInvalidInstanceId;
+  } session_;
 };
 
 }  // namespace studio

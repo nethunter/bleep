@@ -8,14 +8,13 @@ short, factual, and reproducible.
 - Current phase: bounded on-device Scenes tranche (ADR-019/020) with the
   shared BLE central tranche (ADR-021), beside remaining Phase 0/foundation
   hardware gates.
-- Firmware state: Home-first, persistent device registry, on-demand Shark,
+- Firmware state: Home-first, persistent device registry, retained on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
   lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
   (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
   Home/Devices resident; scene UI loads on demand.
-- Universal driver framework: Bounded multi-active links while a sequence run
-  screen is open / running / armed (Canon Smart + Tascam); exclusive
-  single-active activation remains for manual device screens. All four GATT
+- Universal driver framework: Four-slot retained connection pool for manual and
+  sequence sessions, including multiple instances of one Canon driver. All four GATT
   clients now share one lazy NimBLE scanner/runtime and async link slots,
   targeted discovery, explicit protocol readiness, and BLE timing telemetry.
 - Last updated: 2026-08-04.
@@ -49,8 +48,8 @@ remaining Canon/foundation gates:
    disconnected, open a sequence; confirm the shared scanner discovers both,
    both async links reach Ready without starvation, Start records with the
    authored gap, and Stop confirms both stopped.
-2. Confirm device screens refuse open while a sequence holds links; Back/Cancel
-   releases links.
+2. Confirm device screens refuse open while a sequence owns links; Back/Done
+   releases sequence ownership while protocol-ready sessions remain connected.
 3. Confirm scene persistence across power cycle.
 4. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
 5. Run ten initially disconnected cycles per driver and ten Canon Smart +
@@ -193,6 +192,7 @@ Record values with the exact build environment and commit/worktree state.
 - Build result: all affected environments succeeded with espressif32 7.0.1.
 - Flash result: combined `crowpanel_128` succeeded on
   `/dev/cu.usbserial-211240`.
+
 - Host tests: 15/15 passed in the PlatformIO `native` environment.
 - Simulator result: twelve 240x240 captures completed, including the Canon
   record-trigger screen.
@@ -1216,3 +1216,197 @@ Record values with the exact build environment and commit/worktree state.
   943,084 / 136,636; `canon_trigger` 940,250 / 136,268; `tascam_x8` 942,092 /
   136,476. The delete fix flashed successfully to
   `/dev/cu.usbserial-211240`.
+
+### 2026-08-04: Persistent BLE connection pool
+
+- Added ADR-022 and replaced screen-scoped teardown with a four-session
+  retained pool. Foreground and sequence owners are tracked per instance;
+  protocol-ready sessions survive navigation, unfinished attempts stop when
+  their final owner leaves, and unexpected drops retain the driver's bounded
+  reconnect policy.
+- Added safe LRU eviction and explicit Disconnect. Foreground, sequence-owned,
+  pending-command, and confirmed-recording sessions cannot be auto-evicted;
+  confirmed recording requires a second confirmation before Disconnect.
+- Refactored compiled drivers to route lifecycle, commands, runtime state, and
+  pairing updates by instance. Canon Trigger and Canon Smart now have three
+  fixed client sessions each, allowing same-driver connections without dynamic
+  allocation. Sequence prepare reuses retained targets and Done/Back releases
+  only sequence ownership.
+- Native tests passed 32/32, including ready/unready Back behavior,
+  same-driver sessions, safe LRU, recording protection, retained sequence
+  cancellation, and reuse without reactivation. `ui_sim` built and completed
+  every capture; the management and recording-confirmation layouts fit the
+  240x240 panel. Peak LVGL use remained 17,012 bytes with 1% fragmentation at
+  the post-Stop checkpoint.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 947,390 bytes flash / 139,244 bytes RAM;
+  `crowpanel_128_roboto` 916,934 / 139,244;
+  `canon_ble` 945,506 / 137,604;
+  `canon_trigger` 941,852 / 136,612;
+  `tascam_x8` 943,204 / 136,508. The default profile uses 1,248 bytes more
+  static RAM than the preceding documented build because the Canon drivers now
+  reserve per-instance client state.
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240` after
+  granting direct serial access. Physical retained reopen, off-screen retry,
+  same-driver concurrency, safe eviction, recording protection, and multi-link
+  heap behavior remain operator-pending.
+
+### 2026-08-04: Experimental Home Assistant entity tranche
+
+- Added ADR-023 and preserved the in-progress multi-instance manager as the
+  baseline. `DriverId::HomeAssistant` supports four dynamic entity profiles for
+  `light`, `switch`, `input_boolean`, `button`, `scene`, and `script`, with only
+  explicit On/Off, Press, and Activate capabilities. Configured-device capacity
+  is now 12; active instance capacity is eight and remains distinct from the
+  four-link BLE central limit.
+- Device persistence is schema v2 and decodes v1 BLE identity records unchanged.
+  Canonical HA entity IDs/domains live in tagged device records. Wi-Fi SSID and
+  password, local HA URL, and long-lived token use a separate checksummed NVS
+  record; Portal config responses omit password/token.
+- Implemented temporary-AP Portal setup with a WPA2 password shown on-panel,
+  a Wi-Fi-only bootstrap page, then a station-bound LAN Portal for Home
+  Assistant setup and bounded incremental `/api/states` summaries,
+  four-slot atomic save/rebind, referenced-entity removal protection, explicit
+  Exit, and ten-minute inactivity teardown. Portal entry cancels scenes and
+  physical sessions; teardown turns Wi-Fi off.
+- Added one lazy shared HA REST/WebSocket runtime using ArduinoJson 7.4.3 and
+  arduinoWebSockets. It performs bearer auth, individual initial-state reads,
+  active-entity `subscribe_trigger`, bounded queue-only frames, reconnect
+  backoff, service calls, subscribed confirmation with five-second timeout, and
+  REST refresh after malformed/oversized/dropped updates. Four HA instances
+  reuse the session and final eviction/unlink tears it down.
+- Added round-panel On/Off, Press, and Activate screens with offline, missing,
+  unknown, unavailable, pending, and failure states. Scene pickers and validation
+  now use dynamic instance profiles, so safe HA actions can mix with Canon and
+  Tascam steps.
+- Raising configured capacity exposed a deterministic 64 KiB LVGL allocation
+  failure while constructing the Shark run screen. The pool is now 96 KiB. The
+  full simulator ran once under AddressSanitizer and then in the normal profile;
+  all captures completed, including `28_ha_light.png` through
+  `28e_ha_error.png`, `29_ha_button.png`, and `30_portal.png`. With 12 records,
+  it reported 60,496 bytes free after init, 34,688 bytes free at the post-Stop
+  checkpoint, 20,896-byte peak use, and 24% fragmentation there.
+- Native tests passed 35/35, including v1-to-v2 migration, separate checksummed
+  secrets/corruption, four-entity capacity, dynamic profiles, HA command/service
+  mapping, and HA scene capability validation. `ui_sim` built and executed
+  successfully.
+- Firmware builds succeeded with espressif32 7.0.1:
+  `crowpanel_128` 1,644,674 bytes flash / 205,644 bytes RAM (52.3% / 62.8%);
+  `crowpanel_128_roboto` 1,614,210 / 205,644 (51.3% / 62.8%); and
+  `home_assistant` 1,636,214 / 202,532 (52.0% / 61.8%).
+- `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240`. A bounded
+  serial read showed normal panel/touch initialization and
+  `runtime event=boot ... link=disconnected free_heap=88328 min_free_heap=85888`;
+  no Wi-Fi activity was initiated at boot.
+- Hardware gate remains open because no local HA URL, token, or Wi-Fi credentials
+  were supplied in this session. AP-to-LAN handoff/lifetime, real REST and
+  authenticated WebSocket behavior, external state changes, every physical
+  action, wrong-token/missing-entity/restart/loss recovery, mixed HA/BLE
+  execution, rebind, and ten Portal plus ten runtime heap/socket/task cycles are
+  therefore `Blocked` on operator-provided target-server testing. Do not promote
+  ADR-023 beyond Experimental until those results are recorded.
+
+### 2026-08-04: Simpler Portal setup password
+
+- Replaced the generated setup password with the fixed WPA2 password
+  `12345678`. It remains visible on the Portal screen. A user-configurable AP
+  password is deferred; the setup AP exists only while Portal mode is active
+  and is replaced by the LAN Portal after Wi-Fi joins.
+- Native tests passed 35/35. The UI simulator rebuilt and completed every
+  capture; `30_portal.png` confirms the shorter password fits the round panel.
+  Firmware builds passed with `crowpanel_128` at 1,644,652 bytes flash /
+  205,644 bytes RAM, `crowpanel_128_roboto` at 1,614,188 / 205,644, and
+  `home_assistant` at 1,636,192 / 202,532.
+- The updated `crowpanel_128` firmware flashed successfully to
+  `/dev/cu.usbserial-211240`.
+
+### 2026-08-04: Wi-Fi-first Portal with local-network access
+
+- Split Portal into two listener lifetimes. With no working saved Wi-Fi, the
+  SoftAP-bound page collects only SSID/password. After a successful join it
+  saves Wi-Fi, returns handoff instructions, destroys the AP listener and AP,
+  and starts a new listener bound to the station address.
+- The LAN Portal contains Home Assistant URL/token/entity configuration. The
+  panel shows the numeric DHCP address and advertises `http://bleep.local`
+  through mDNS as a best-effort alias. The LAN listener exists only
+  while the panel remains on Portal; Exit, timeout, or Wi-Fi loss tears it down.
+  Wi-Fi loss falls back to the Wi-Fi setup AP so credentials can be repaired.
+- The simulator now captures both `30_portal.png` Wi-Fi bootstrap and
+  `30b_portal_lan.png` local-network states. Target AP-to-LAN handoff, mDNS
+  resolution, request reachability, timeout, and heap recovery remain part of
+  the open hardware gate.
+- Final verification passed: native tests 35/35; `ui_sim` built and completed
+  all captures; `crowpanel_128` used 1,675,488 bytes flash / 207,636 bytes RAM
+  (53.3% / 63.4%); `crowpanel_128_roboto` used 1,645,032 / 207,636
+  (52.3% / 63.4%); and `home_assistant` used 1,667,076 / 204,524
+  (53.0% / 62.4%).
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. Live AP-to-LAN browser and mDNS behavior still
+  requires entering the target studio Wi-Fi on the panel and remains part of
+  the open hardware gate.
+
+### 2026-08-04: Wi-Fi discovery, join feedback, and numeric LAN handoff
+
+- Added bounded asynchronous discovery of up to 16 unique visible SSIDs, with
+  RSSI/security summaries and retained manual entry for hidden networks.
+- Replaced the blocking setup join with a main-loop state machine. The setup
+  browser polls connection state while the panel reports scanning, joining,
+  connected, missing-network, rejected-password, timeout, and storage failure
+  states. A failed attempt leaves the setup AP available for retry.
+- Made the assigned DHCP address the authoritative Portal URL shown by the
+  browser and panel. `http://bleep.local` remains advertised as a convenience
+  alias because client and network mDNS support is not reliable. Successful
+  setup allows an eight-second handoff window, shortened after the browser has
+  received the numeric address, before destroying the AP and starting the
+  station-bound listener.
+- Native tests passed 35/35. `ui_sim` built and completed all captures,
+  including `30a_portal_connecting.png`, `30aa_portal_wifi_failed.png`, and the
+  numeric-address `30b_portal_lan.png`. Firmware builds passed with
+  `crowpanel_128` at 1,682,826 bytes flash / 207,828 bytes RAM
+  (53.5% / 63.4%), `crowpanel_128_roboto` at 1,652,370 / 207,828
+  (52.5% / 63.4%), and `home_assistant` at 1,674,410 / 204,716
+  (53.2% / 62.5%).
+- The updated `crowpanel_128` firmware flashed successfully to
+  `/dev/cu.usbserial-211240`. Real network scan results, connection error
+  classification, DHCP handoff, and numeric-address reachability remain target
+  hardware checks requiring operator interaction with the studio Wi-Fi.
+
+### 2026-08-04: Home Assistant input-boolean action
+
+- Kept explicit TurnOn/TurnOff capabilities and service calls for safe authored
+  scenes, but replaced the two-button entity screen with one context-sensitive
+  action. With confirmed OFF state it shows ON and calls `turn_on`; with
+  confirmed ON it shows OFF and calls `turn_off`. Unknown state disables it.
+- Native tests cover both `input_boolean.turn_on` and `turn_off` payloads plus
+  explicit On and Off scene validation. Simulator captures
+  `28f_ha_input_boolean.png` and `28g_ha_input_boolean_on.png` verify that the
+  single action changes from ON to OFF with confirmed state.
+- Native tests passed 35/35 and the full UI simulator completed. Firmware builds
+  passed with `crowpanel_128` at 1,683,014 bytes flash / 207,828 bytes RAM
+  (53.5% / 63.4%), `crowpanel_128_roboto` at 1,652,558 / 207,828
+  (52.5% / 63.4%), and `home_assistant` at 1,674,598 / 204,716
+  (53.2% / 62.5%).
+- The corrected `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. Live HA confirmation of both entity-screen
+  directions and explicit sequence On/Off remains part of target testing.
+
+### 2026-08-04: HA command-confirmation reconciliation
+
+- Corrected a false-negative path observed when an `input_boolean` changed in
+  Home Assistant but Ble(e)p displayed `ACTION FAILED` or `MISSING`. The
+  five-second subscription deadline now keeps the action pending while an
+  individual REST state refresh runs. A matching refreshed state completes the
+  command successfully; only a confirmed mismatch or refresh failure becomes
+  an action failure.
+- Restricted `MISSING` to an entity-state HTTP 404 or an actual removed-state
+  event. Transport errors, malformed responses, and state events without a
+  usable state now produce `UNKNOWN` and schedule reconciliation instead of
+  claiming the entity does not exist. Event parsing accepts both the
+  trigger-variable shape and a state-event data fallback.
+- Native tests passed 35/35. Firmware builds passed with `crowpanel_128` at
+  1,683,552 bytes flash / 207,828 bytes RAM (53.5% / 63.4%),
+  `crowpanel_128_roboto` at 1,653,096 / 207,828 (52.6% / 63.4%), and
+  `home_assistant` at 1,675,144 / 204,716 (53.3% / 62.5%).
+- The reconciliation fix flashed successfully to
+  `/dev/cu.usbserial-211240`; repeat the previously successful helper action on
+  target hardware to close this observed confirmation issue.

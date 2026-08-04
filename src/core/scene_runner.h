@@ -29,12 +29,14 @@ class SceneRunner {
   enum class Direction : uint8_t { None, Prepare, Start, Stop };
 
   struct TargetSet {
-    InstanceId ids[CONFIG_MAX_ACTIVE_LINKS] = {};
+    InstanceId ids[CONFIG_MAX_ACTIVE_INSTANCES] = {};
     uint8_t count = 0;
   };
 
   bool collectTargets(const SceneRecord& record, TargetSet& out) const;
   bool activateTargets(const TargetSet& targets);
+  void releaseTargets(const TargetSet& targets);
+  bool ownsTargets(const TargetSet& targets) const;
   bool allTargetsConnected(const TargetSet& targets, InstanceId& waiting) const;
   void setDetail(const char* text);
   void fail(SceneRunStatus status, const char* detail);
@@ -54,6 +56,7 @@ class SceneRunner {
   uint32_t waitUntilMs_ = 0;
   uint32_t pendingRequestId_ = 0;
   bool waitingForResult_ = false;
+  bool waitingForConfirmation_ = false;
 };
 
 }  // namespace studio

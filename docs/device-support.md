@@ -18,6 +18,41 @@ the next target connects. Concurrent Canon Smart + Tascam scene
 preparation, ten-cycle timing distributions, and post-teardown heap recovery
 remain hardware gates.
 
+ADR-022 retains protocol-ready sessions across navigation and sequences, up to
+four active runtime instances. Multiple instances of the same Canon driver use
+independent client state. Unexpected drops retry while retained; unfinished
+first-time attempts stop when their last owner leaves.
+
+## Home Assistant
+
+- Status: `Experimental`; software/build/simulator gates pass, target HA
+  feasibility gate remains open.
+- Transport: local plaintext Wi-Fi using bearer-authenticated REST and the
+  authenticated `/api/websocket` endpoint. No TLS, cloud, OAuth, or inbound HA
+  integration.
+- Supported entities: up to four canonical IDs in `light`, `switch`,
+  `input_boolean`, `button`, `scene`, and `script` domains.
+- Capabilities: power-only On/Off for lights, switches, and `input_boolean`;
+  input booleans display these through one context-sensitive On/Off action
+  button. Buttons use Press and HA scenes/scripts use Activate. Brightness,
+  color, Toggle, arbitrary value actions,
+  sensors, covers, climate, media, automations, HA devices, and areas are out of
+  scope.
+- Provisioning: the temporary WPA2 SoftAP scans nearby networks and collects
+  only studio Wi-Fi, with manual SSID entry for hidden networks and visible
+  connection progress/failure. After joining, the AP closes and the full Portal
+  is reachable at the displayed numeric LAN address only while the panel remains
+  on its Portal screen. `http://bleep.local` is a best-effort mDNS alias.
+  Wi-Fi credentials and token are stored separately from ordinary device
+  records and are not returned by the configuration endpoint.
+- Runtime: four HA instances share one lazy retained session. Protocol-ready
+  requires Wi-Fi, WebSocket authentication, selected-entity subscription, and
+  initial REST state. Stateful actions wait for subscribed confirmation; a
+  five-second miss reports failure and schedules REST refresh.
+- Hardware gate: AP-to-LAN handoff and listener teardown, external state updates, all six domain
+  mappings, failure recovery, mixed HA/BLE sequences, and ten lifecycle/heap
+  cycles remain unverified on a real local Home Assistant installation.
+
 ## iFootage
 
 ### Shark Nano II
@@ -82,7 +117,7 @@ Reference research:
 - Capture-backed Smart capabilities: automatic wake from Bluetooth standby
   with mode `03` and explicit power down after shooting with mode `05`. The
   power control reconnects and wakes a camera powered down from that screen.
-  Back only releases the panel connection and does not power down the camera.
+  Back retains the panel connection and does not power down the camera.
 - Smart hardware trigger: starts from Ready/Unknown and stops from a
   camera-confirmed Recording state. Touch exposes both commands while state is
   unknown.

@@ -56,6 +56,31 @@ bool PreferencesScenesBackend::write(const uint8_t* data, size_t length) {
   return written;
 }
 
+size_t PreferencesHomeAssistantBackend::read(uint8_t* destination,
+                                             size_t capacity) {
+  Preferences preferences;
+  if (!preferences.begin("studio", true)) {
+    return 0;
+  }
+  const size_t length = preferences.getBytesLength("ha_config");
+  const size_t read = length > 0 && length <= capacity
+                          ? preferences.getBytes("ha_config", destination, length)
+                          : 0;
+  preferences.end();
+  return read;
+}
+
+bool PreferencesHomeAssistantBackend::write(const uint8_t* data,
+                                             size_t length) {
+  Preferences preferences;
+  if (!preferences.begin("studio", false)) {
+    return false;
+  }
+  const bool ok = preferences.putBytes("ha_config", data, length) == length;
+  preferences.end();
+  return ok;
+}
+
 bool PreferencesLegacySharkBackend::readLegacyShark(LegacySharkConfig& config) {
   config = LegacySharkConfig{};
   Preferences preferences;
@@ -78,4 +103,3 @@ bool PreferencesLegacySharkBackend::readLegacyShark(LegacySharkConfig& config) {
 }
 
 }  // namespace studio
-

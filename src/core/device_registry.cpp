@@ -144,6 +144,30 @@ RegistryStatus DeviceRegistry::clearPairing(InstanceId instanceId) {
   return RegistryStatus::Ok;
 }
 
+RegistryStatus DeviceRegistry::configureHomeAssistant(
+    InstanceId instanceId, HomeAssistantDomain domain, const char* entityId) {
+  DeviceRecord* record = find(instanceId);
+  if (record == nullptr) {
+    return RegistryStatus::NotFound;
+  }
+  if (record->driverId != DriverId::HomeAssistant ||
+      domain == HomeAssistantDomain::None || entityId == nullptr ||
+      entityId[0] == '\0') {
+    return RegistryStatus::Invalid;
+  }
+  for (size_t i = 0; i < count_; ++i) {
+    if (records_[i].instanceId != instanceId &&
+        records_[i].driverId == DriverId::HomeAssistant &&
+        std::strncmp(records_[i].homeAssistantEntityId, entityId,
+                     sizeof(records_[i].homeAssistantEntityId)) == 0) {
+      return RegistryStatus::DuplicateDriver;
+    }
+  }
+  record->homeAssistantDomain = domain;
+  copyText(record->homeAssistantEntityId, entityId);
+  return RegistryStatus::Ok;
+}
+
 void DeviceRegistry::clear(bool initialized) {
   for (size_t i = 0; i < capacity(); ++i) {
     records_[i] = DeviceRecord{};
@@ -172,4 +196,3 @@ bool DeviceRegistry::restore(const DeviceRecord* records, size_t count,
 }
 
 }  // namespace studio
-

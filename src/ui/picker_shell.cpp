@@ -61,6 +61,10 @@ const char* categoryName(studio::DeviceType type) {
       return "Cameras";
     case studio::DeviceType::Recorder:
       return "Recorders";
+    case studio::DeviceType::Switch:
+      return "Switches";
+    case studio::DeviceType::Action:
+      return "Actions";
     case studio::DeviceType::Unknown:
       return "Other";
   }
@@ -78,6 +82,10 @@ const char* categoryTileLabel(studio::DeviceType type) {
       return "Camera";
     case studio::DeviceType::Recorder:
       return "Record";
+    case studio::DeviceType::Switch:
+      return "Switch";
+    case studio::DeviceType::Action:
+      return "Action";
     case studio::DeviceType::Unknown:
       return "Other";
   }
@@ -94,6 +102,9 @@ const lv_img_dsc_t* categoryIcon(studio::DeviceType type) {
       return &ui_icon_cat_cameras;
     case studio::DeviceType::Recorder:
       return &ui_icon_cat_recorders;
+    case studio::DeviceType::Switch:
+    case studio::DeviceType::Action:
+      return &ui_icon_devices;
     case studio::DeviceType::Unknown:
       return &ui_icon_devices;
   }
@@ -117,7 +128,8 @@ bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
 bool categoryHasDrivers(studio::DeviceType type) {
   for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
     const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
-    if (descriptor != nullptr && descriptor->type == type) {
+    if (descriptor != nullptr && descriptor->id != studio::DriverId::HomeAssistant &&
+        descriptor->type == type) {
       return true;
     }
   }
@@ -125,13 +137,17 @@ bool categoryHasDrivers(studio::DeviceType type) {
 }
 
 bool deviceSupportsSceneActions(const studio::DeviceRecord& record,
-                                const studio::DriverDescriptor& descriptor) {
+                                const studio::InstanceProfile& profile) {
   if (!record.enabled) {
     return false;
   }
-  const uint32_t caps = descriptor.capabilities;
+  const uint32_t caps = profile.capabilities;
   return (caps & studio::capabilityBit(studio::Capability::RecordStart)) != 0 ||
-         (caps & studio::capabilityBit(studio::Capability::RecordStop)) != 0;
+         (caps & studio::capabilityBit(studio::Capability::RecordStop)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::TurnOn)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::TurnOff)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::Press)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::Activate)) != 0;
 }
 
 bool categoryHasSceneDevices(studio::DeviceType type) {
@@ -140,10 +156,9 @@ bool categoryHasSceneDevices(studio::DeviceType type) {
     if (record == nullptr) {
       continue;
     }
-    const studio::DriverDescriptor* descriptor =
-        studio::DriverCatalog::find(record->driverId);
-    if (descriptor != nullptr && descriptor->type == type &&
-        deviceSupportsSceneActions(*record, *descriptor)) {
+    const studio::InstanceProfile profile =
+        studio::devices().profile(record->instanceId);
+    if (profile.type == type && deviceSupportsSceneActions(*record, profile)) {
       return true;
     }
   }
@@ -275,11 +290,13 @@ void refreshCategory() {
       studio::DeviceType::Light,
       studio::DeviceType::Camera,
       studio::DeviceType::Recorder,
+      studio::DeviceType::Switch,
+      studio::DeviceType::Action,
   };
-  studio::DeviceType visible[4];
+  studio::DeviceType visible[6];
   uint8_t shown = 0;
   for (studio::DeviceType type : kCategories) {
-    if (!categoryVisible(type) || shown >= 4) {
+    if (!categoryVisible(type) || shown >= 6) {
       continue;
     }
     visible[shown++] = type;
@@ -330,7 +347,8 @@ void refreshDriverList() {
   bool any = false;
   for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
     const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
-    if (descriptor == nullptr || descriptor->type != category) {
+    if (descriptor == nullptr || descriptor->id == studio::DriverId::HomeAssistant ||
+        descriptor->type != category) {
       continue;
     }
     any = true;
@@ -385,10 +403,10 @@ void refreshDeviceList() {
     if (record == nullptr) {
       continue;
     }
-    const studio::DriverDescriptor* descriptor =
-        studio::DriverCatalog::find(record->driverId);
-    if (descriptor == nullptr || descriptor->type != category ||
-        !deviceSupportsSceneActions(*record, *descriptor)) {
+    const studio::InstanceProfile profile =
+        studio::devices().profile(record->instanceId);
+    if (profile.type != category ||
+        !deviceSupportsSceneActions(*record, profile)) {
       continue;
     }
     any = true;
@@ -408,21 +426,22 @@ void refreshDeviceList() {
 
 void refreshActions() {
   const studio::DeviceRecord* device = studio::devices().find(selectedDevice);
-  const studio::DriverDescriptor* descriptor =
-      device != nullptr ? studio::DriverCatalog::find(device->driverId) : nullptr;
+  const studio::InstanceProfile profile =
+      device != nullptr ? studio::devices().profile(device->instanceId)
+                        : studio::InstanceProfile{};
   lv_label_set_text(titleLabel, device != nullptr ? device->displayName : "Action");
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(body, 6, 0);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
 
-  if (device == nullptr || descriptor == nullptr) {
+  if (device == nullptr || profile.type == studio::DeviceType::Unknown) {
     lv_obj_t* empty = lv_label_create(body);
     lv_label_set_text(empty, "Missing device");
     lv_obj_set_style_text_color(empty, lv_color_hex(kColMuted), 0);
     return;
   }
-  if ((descriptor->capabilities &
+  if ((profile.capabilities &
        studio::capabilityBit(studio::Capability::RecordStart)) != 0) {
     void* userData = reinterpret_cast<void*>(
         static_cast<uintptr_t>(studio::CommandType::RecordStart));
@@ -431,12 +450,34 @@ void refreshActions() {
     lv_obj_remove_event_cb(button, onChooseAction);
     lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
   }
-  if ((descriptor->capabilities &
+  if ((profile.capabilities &
        studio::capabilityBit(studio::Capability::RecordStop)) != 0) {
     void* userData = reinterpret_cast<void*>(
         static_cast<uintptr_t>(studio::CommandType::RecordStop));
     lv_obj_t* button =
         makeButton(body, "Record Stop", onChooseAction, kColDanger);
+    lv_obj_set_size(button, lv_pct(100), 36);
+    lv_obj_remove_event_cb(button, onChooseAction);
+    lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
+  }
+  struct ActionChoice {
+    studio::Capability capability;
+    studio::CommandType command;
+    const char* label;
+    uint32_t color;
+  };
+  constexpr ActionChoice choices[] = {
+      {studio::Capability::TurnOn, studio::CommandType::TurnOn, "Turn On", kColOk},
+      {studio::Capability::TurnOff, studio::CommandType::TurnOff, "Turn Off", kColDanger},
+      {studio::Capability::Press, studio::CommandType::Press, "Press", kColAccent},
+      {studio::Capability::Activate, studio::CommandType::Activate, "Activate", kColAccent},
+  };
+  for (const ActionChoice& choice : choices) {
+    if ((profile.capabilities & studio::capabilityBit(choice.capability)) == 0) {
+      continue;
+    }
+    void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(choice.command));
+    lv_obj_t* button = makeButton(body, choice.label, onChooseAction, choice.color);
     lv_obj_set_size(button, lv_pct(100), 36);
     lv_obj_remove_event_cb(button, onChooseAction);
     lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
@@ -572,9 +613,12 @@ void simShowActions(Mode showMode, studio::InstanceId instanceId) {
   Callbacks empty{};
   show(showMode, empty);
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  const studio::DriverDescriptor* descriptor =
-      record != nullptr ? studio::DriverCatalog::find(record->driverId) : nullptr;
-  category = descriptor != nullptr ? descriptor->type : studio::DeviceType::Camera;
+  const studio::InstanceProfile profile =
+      record != nullptr ? studio::devices().profile(record->instanceId)
+                        : studio::InstanceProfile{};
+  category = profile.type != studio::DeviceType::Unknown
+                 ? profile.type
+                 : studio::DeviceType::Camera;
   selectedDevice = instanceId;
   level = Level::Action;
   refresh();

@@ -312,12 +312,92 @@ the replacement.
   gate triggers, amend this ADR before moving generic GATT mechanics into the
   shared layer; drivers retain UUID profiles and protocol semantics.
 
+## ADR-022: Protocol-ready device links persist in a bounded pool
+
+- Status: Accepted
+- Decision: `DeviceManager` keeps up to `CONFIG_MAX_ACTIVE_LINKS` protocol-ready
+  device sessions active after their screen or sequence owner leaves. Sessions
+  are keyed by runtime instance, so multiple instances of one compiled driver
+  may coexist. Boot remains BLE-free, and an attempt that has never reached
+  protocol readiness is canceled when its last owner leaves.
+- Ownership: Foreground device screens and sequences hold independent owners.
+  Reopening or preparing an already-active instance reuses its session. Leaving
+  removes only that owner; retained sessions continue bounded reconnect after
+  an unexpected drop. Canon's explicit power-down remains intentional and does
+  not trigger reconnect until requested.
+- Capacity and safety: When four sessions are active, acquisition evicts the
+  least-recently-used retained session with no owner, pending command, or
+  confirmed recording. If none is safe, acquisition fails. Confirmed-recording
+  links require explicit confirmation before manual Disconnect. Disconnect,
+  disable, forget, remove, Portal entry, and controller shutdown release the
+  session without treating an ACK as proof of device state.
+- Supersedes: This replaces ADR-013's leave-screen teardown, ADR-018's statement
+  that Back releases the Canon link, and ADR-020's leave-sequence teardown and
+  manual single-active restriction. Their boot, power safety, sequence
+  readiness, and borrowed-control decisions remain accepted.
+- Consequence: The shared BLE runtime remains initialized while any retained
+  session owns a central slot. Static per-driver session storage replaces the
+  former single-client driver adapters and must remain within measured ESP32-C3
+  RAM limits.
+
+## ADR-023: Bounded local Home Assistant entity client
+
+- Status: Experimental; amended 2026-08-04; hardware feasibility gate open
+- Decision: Add one shared Home Assistant client for at most four selected
+  `light`, `switch`, `input_boolean`, `button`, `scene`, and `script` entities.
+  V1 is client-only: Ble(e)p does not expose its physical devices to Home
+  Assistant. Lights are power-only. Local plaintext `http://` and `ws://`
+  endpoints plus a pasted long-lived access token are allowed; TLS, cloud
+  access, OAuth, devices/areas, and other domains remain deferred.
+- Provisioning boundary: First-time Portal setup creates a WPA2 SoftAP with
+  password `12345678`, performs a bounded nearby-network scan, and collects only
+  studio Wi-Fi credentials. Manual SSID entry remains available for hidden
+  networks. During the non-blocking join it uses AP+STA while the listener
+  remains bound to SoftAP and both the browser and panel report progress or a
+  bounded failure reason.
+  After a successful join, it destroys the AP listener and AP, then binds a new
+  listener to the station address. The assigned numeric address is authoritative
+  and shown during handoff; `http://bleep.local` is a best-effort mDNS alias.
+  The LAN Portal contains Home Assistant URL/token/entity setup and is reachable
+  only while Portal remains open on the panel. Entering Portal cancels scenes
+  and physical links; explicit Exit or ten minutes of inactivity destroys the
+  listener and disconnects Wi-Fi. Normal Home boot remains network-free.
+- Persistence and capacity: Device schema v2 adds a tagged HA domain and
+  canonical entity ID while decoding v1 BLE records unchanged. Wi-Fi password
+  and HA token live in a separate checksummed NVS record and are excluded from
+  ordinary device backup/UI responses. The registry grows from eight to twelve
+  records: eight physical records plus four HA entities. Active runtime-instance
+  capacity is separate from the four-link BLE transport limit because HA
+  instances share one network session.
+- Runtime: Use Home Assistant's documented bearer-token REST API and
+  authenticated `/api/websocket` API only. Resolve initial states individually,
+  subscribe only to active entities with `subscribe_trigger`, and rebuild that
+  subscription as ownership changes. WebSocket callbacks enqueue bounded raw
+  frames; JSON parsing, state mutation, service calls, and LVGL access stay in
+  `loop()`. Stateful commands require matching subscribed state or time out
+  after five seconds; stateless actions complete on a successful service result.
+- Safety and scenes: Generic `TurnOn`, `TurnOff`, `Press`, and `Activate`
+  commands are capability-checked through each instance's dynamic profile.
+  Lights and switches expose explicit On/Off controls. Input booleans retain
+  explicit On/Off commands for safe scene authoring but present one
+  context-sensitive action button on their entity screen. HA scenes/scripts
+  expose only Activate. No Toggle or value action is inferred.
+  Portal refuses to remove an entity referenced by a Ble(e)p scene and may
+  rebind an existing instance ID so those references survive entity-ID changes.
+- Feasibility gate: Before this moves beyond Experimental, verify on the target
+  board AP-to-LAN handoff, LAN listener lifetime, REST discovery, authenticated WebSocket subscription,
+  LVGL responsiveness, teardown, and heap recovery across ten Portal and ten
+  runtime connect/disconnect cycles. Stop promotion and document the limiting
+  resource if any gate fails. The uncommitted multi-instance `DeviceManager`
+  work present when this tranche began is the authorized implementation
+  baseline and must be preserved.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
 
 - ESP-IDF Bluetooth backend and exact GATT/Mesh coexistence design;
-- exact SoftAP credential, timeout, and network defaults;
+- whether to add a user-configurable setup password or captive-portal discovery;
 - execution-journal persistence and power-loss recovery policy;
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;

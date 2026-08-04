@@ -61,12 +61,12 @@ SceneValidationStatus SceneRunner::validate(const SceneRecord& record) const {
       if (!device->enabled) {
         return SceneValidationStatus::DisabledTarget;
       }
-      const DriverDescriptor* descriptor = DriverCatalog::find(device->driverId);
-      if (descriptor == nullptr) {
+      const InstanceProfile profile = devices_.profile(device->instanceId);
+      if (profile.type == DeviceType::Unknown) {
         return SceneValidationStatus::MissingTarget;
       }
       const Capability required = requiredCapability(step.command);
-      if ((descriptor->capabilities & capabilityBit(required)) == 0) {
+      if ((profile.capabilities & capabilityBit(required)) == 0) {
         return SceneValidationStatus::MissingCapability;
       }
       bool known = false;
@@ -77,7 +77,7 @@ SceneValidationStatus SceneRunner::validate(const SceneRecord& record) const {
         }
       }
       if (!known) {
-        if (targets.count >= CONFIG_MAX_ACTIVE_LINKS) {
+        if (targets.count >= CONFIG_MAX_ACTIVE_INSTANCES) {
           return SceneValidationStatus::TooManyTargets;
         }
         targets.ids[targets.count++] = step.targetId;
@@ -115,7 +115,7 @@ bool SceneRunner::collectTargets(const SceneRecord& record, TargetSet& out) cons
       if (known) {
         continue;
       }
-      if (out.count >= CONFIG_MAX_ACTIVE_LINKS) {
+      if (out.count >= CONFIG_MAX_ACTIVE_INSTANCES) {
         return false;
       }
       out.ids[out.count++] = step.targetId;
@@ -125,14 +125,32 @@ bool SceneRunner::collectTargets(const SceneRecord& record, TargetSet& out) cons
 }
 
 bool SceneRunner::activateTargets(const TargetSet& targets) {
-  devices_.deactivateAll();
   for (uint8_t i = 0; i < targets.count; ++i) {
-    if (!devices_.activateHeld(targets.ids[i])) {
-      devices_.deactivateAll();
+    if (!devices_.acquire(targets.ids[i], ConnectionOwner::Sequence)) {
+      for (uint8_t acquired = 0; acquired < i; ++acquired) {
+        devices_.release(targets.ids[acquired], ConnectionOwner::Sequence);
+      }
       return false;
     }
   }
-  devices_.setLinksHeld(true);
+  return true;
+}
+
+void SceneRunner::releaseTargets(const TargetSet& targets) {
+  for (uint8_t i = 0; i < targets.count; ++i) {
+    devices_.release(targets.ids[i], ConnectionOwner::Sequence);
+  }
+}
+
+bool SceneRunner::ownsTargets(const TargetSet& targets) const {
+  if (targets.count == 0) {
+    return false;
+  }
+  for (uint8_t i = 0; i < targets.count; ++i) {
+    if (!devices_.ownedBy(targets.ids[i], ConnectionOwner::Sequence)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -159,10 +177,8 @@ void SceneRunner::fail(SceneRunStatus status, const char* detail) {
   direction_ = Direction::None;
   waitingForResult_ = false;
   pendingRequestId_ = 0;
-  // Keep links held so Stop can still run after a partial Start failure.
-  if (!devices_.linksHeld()) {
-    devices_.setLinksHeld(targets_.count > 0);
-  }
+  // Sequence ownership stays in place so Stop can still run after a partial
+  // Start failure.
 }
 
 void SceneRunner::finishStop(SceneRunStatus status) {
@@ -175,12 +191,6 @@ void SceneRunner::finishStop(SceneRunStatus status) {
   direction_ = Direction::None;
   waitingForResult_ = false;
   pendingRequestId_ = 0;
-  if (status == SceneRunStatus::Ok && devices_.activeCount() > 0) {
-    devices_.setLinksHeld(true);
-  } else {
-    devices_.deactivateAll();
-    targets_ = TargetSet{};
-  }
 }
 
 bool SceneRunner::busy() const {
@@ -190,7 +200,7 @@ bool SceneRunner::busy() const {
 }
 
 bool SceneRunner::holdsLinks() const {
-  return devices_.linksHeld() || progress_.phase == ScenePhase::Ready ||
+  return ownsTargets(targets_) || progress_.phase == ScenePhase::Ready ||
          progress_.phase == ScenePhase::IdleArmed ||
          progress_.phase == ScenePhase::Connecting ||
          progress_.phase == ScenePhase::RunningStart ||
@@ -203,7 +213,7 @@ SceneRunStatus SceneRunner::prepare(SceneId sceneId) {
     return SceneRunStatus::Busy;
   }
   if (progress_.phase == ScenePhase::Ready && progress_.sceneId == sceneId &&
-      devices_.linksHeld()) {
+      ownsTargets(targets_)) {
     return SceneRunStatus::Ok;
   }
   if (progress_.phase == ScenePhase::IdleArmed && progress_.sceneId == sceneId) {
@@ -266,7 +276,7 @@ SceneRunStatus SceneRunner::refreshPrepared(SceneId sceneId) {
   if (record == nullptr) {
     return SceneRunStatus::InvalidScene;
   }
-  if (progress_.sceneId != sceneId || !devices_.linksHeld()) {
+  if (progress_.sceneId != sceneId || !ownsTargets(targets_)) {
     return SceneRunStatus::Ok;
   }
 
@@ -286,12 +296,12 @@ SceneRunStatus SceneRunner::refreshPrepared(SceneId sceneId) {
 
   for (uint8_t i = 0; i < targets_.count; ++i) {
     if (!contains(nextTargets, targets_.ids[i])) {
-      devices_.deactivate(targets_.ids[i]);
+      devices_.release(targets_.ids[i], ConnectionOwner::Sequence);
     }
   }
   for (uint8_t i = 0; i < nextTargets.count; ++i) {
-    if (!devices_.isActive(nextTargets.ids[i]) &&
-        !devices_.activateHeld(nextTargets.ids[i])) {
+    if (!devices_.ownedBy(nextTargets.ids[i], ConnectionOwner::Sequence) &&
+        !devices_.acquire(nextTargets.ids[i], ConnectionOwner::Sequence)) {
       fail(SceneRunStatus::ActionFailed, "Activate failed");
       return SceneRunStatus::ActionFailed;
     }
@@ -299,7 +309,6 @@ SceneRunStatus SceneRunner::refreshPrepared(SceneId sceneId) {
 
   targets_ = nextTargets;
   activeScene_ = *record;
-  devices_.setLinksHeld(targets_.count > 0);
   progress_.stepCount = activeScene_.startCount;
   progress_.stepIndex = 0;
   progress_.lastStatus = SceneRunStatus::Ok;
@@ -347,7 +356,7 @@ SceneRunStatus SceneRunner::start(SceneId sceneId) {
   InstanceId waiting = kInvalidInstanceId;
   const bool alreadyPrepared = reusablePhase &&
                                progress_.sceneId == sceneId &&
-                               devices_.linksHeld() &&
+                               ownsTargets(targets_) &&
                                allTargetsConnected(targets_, waiting);
   if (!alreadyPrepared) {
     if (!collectTargets(*record, targets_)) {
@@ -431,7 +440,7 @@ SceneRunStatus SceneRunner::stop() {
   phaseStartedMs_ = 0;
   waitUntilMs_ = 0;
 
-  if (!devices_.linksHeld() || devices_.activeCount() == 0) {
+  if (!ownsTargets(targets_)) {
     if (!activateTargets(targets_)) {
       fail(SceneRunStatus::ActionFailed, "Reconnect failed");
       return SceneRunStatus::ActionFailed;
@@ -452,7 +461,7 @@ void SceneRunner::cancel() {
   direction_ = Direction::None;
   waitingForResult_ = false;
   pendingRequestId_ = 0;
-  devices_.deactivateAll();
+  releaseTargets(targets_);
   targets_ = TargetSet{};
   activeScene_ = SceneRecord{};
   progress_.sceneId = kInvalidSceneId;
@@ -486,6 +495,7 @@ void SceneRunner::dispatchCurrentAction() {
   }
   // requestId assigned in enqueue; recover from next result match by instance.
   waitingForResult_ = true;
+  waitingForConfirmation_ = false;
   pendingRequestId_ = 0;
   progress_.stepResult = SceneStepResult::Running;
   char detail[48];
@@ -528,6 +538,7 @@ void SceneRunner::advanceStep(uint32_t nowMs) {
   progress_.stepResult = SceneStepResult::Succeeded;
   ++progress_.stepIndex;
   waitingForResult_ = false;
+  waitingForConfirmation_ = false;
   pendingRequestId_ = 0;
   beginStep(nowMs);
 }
@@ -598,6 +609,22 @@ void SceneRunner::tick(uint32_t nowMs) {
     return;
   }
 
+  if (waitingForConfirmation_) {
+    const DeviceRuntimeState runtime = devices_.runtimeState(step->targetId);
+    if (!runtime.commandPending) {
+      if (runtime.commandFailed) {
+        fail(SceneRunStatus::ActionFailed, "Confirmation failed");
+      } else {
+        advanceStep(nowMs);
+      }
+      return;
+    }
+    if (nowMs - phaseStartedMs_ >= CONFIG_SCENE_ACTION_TIMEOUT_MS) {
+      fail(SceneRunStatus::ActionTimeout, "Confirmation timeout");
+    }
+    return;
+  }
+
   if (waitingForResult_) {
     CommandResult result;
     while (devices_.popResult(result)) {
@@ -609,7 +636,11 @@ void SceneRunner::tick(uint32_t nowMs) {
         fail(SceneRunStatus::ActionFailed, "Action failed");
         return;
       }
-      advanceStep(nowMs);
+      if (devices_.runtimeState(step->targetId).commandPending) {
+        waitingForConfirmation_ = true;
+      } else {
+        advanceStep(nowMs);
+      }
       return;
     }
     if (nowMs - phaseStartedMs_ >= CONFIG_SCENE_ACTION_TIMEOUT_MS) {

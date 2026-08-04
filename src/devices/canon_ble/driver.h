@@ -8,20 +8,25 @@ namespace studio {
 class CanonBleDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::CanonBle; }
-  void activate(const DeviceRecord& record) override;
-  void deactivate() override;
+  bool activate(const DeviceRecord& record) override;
+  void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
-  DeviceRuntimeState runtimeState() const override;
-  const void* specializedState() const override { return &client_.state(); }
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
+  const void* specializedState(InstanceId instanceId) const override;
   void forgetPairing(const DeviceRecord& record) override;
-  void preferSkipPeer(const char* bleAddress) override;
-  bool consumePairingUpdate(DeviceRecord& record) override;
+  void preferSkipPeer(InstanceId instanceId, const char* bleAddress) override;
+  bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:
-  canon_ble::CanonBleClient client_;
-  InstanceId activeInstance_ = kInvalidInstanceId;
-  bool active_ = false;
+  static constexpr size_t kMaxSessions = 3;
+  struct Session {
+    canon_ble::CanonBleClient client;
+    InstanceId instanceId = kInvalidInstanceId;
+  };
+  Session* sessionFor(InstanceId instanceId);
+  const Session* sessionFor(InstanceId instanceId) const;
+  Session sessions_[kMaxSessions];
 };
 
 }  // namespace studio

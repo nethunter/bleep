@@ -19,7 +19,6 @@ namespace {
 using Link = shark::SharkClient::Link;
 
 studio::InstanceId activeInstance = studio::kInvalidInstanceId;
-bool borrowedActivation = false;
 
 class SharkUiClient {
  public:
@@ -1329,11 +1328,9 @@ void showScreenForState(const shark::SharkClient::State& s) {
 
 void init() {}
 
-void show(studio::InstanceId instanceId, bool preserveActivation) {
-  borrowedActivation = preserveActivation;
-  if (preserveActivation ? !studio::devices().isActive(instanceId)
-                         : !studio::devices().activate(instanceId)) {
-    borrowedActivation = false;
+void show(studio::InstanceId instanceId) {
+  if (!studio::devices().acquire(instanceId,
+                                 studio::ConnectionOwner::Foreground)) {
     return;
   }
   activeInstance = instanceId;
@@ -1355,10 +1352,8 @@ void hide() {
     closeModal();
   }
   stopActiveMotion();
-  if (!borrowedActivation) {
-    studio::devices().deactivate();
-  }
-  borrowedActivation = false;
+  studio::devices().release(activeInstance,
+                            studio::ConnectionOwner::Foreground);
   activeInstance = studio::kInvalidInstanceId;
 }
 

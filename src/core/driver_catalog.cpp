@@ -63,6 +63,17 @@ constexpr DriverDescriptor kDrivers[] = {
         1,
     },
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+    {
+        DriverId::HomeAssistant,
+        "home_assistant.entity",
+        "Home Assistant",
+        "Entity",
+        DeviceType::Action,
+        capabilityBit(Capability::Link),
+        4,
+    },
+#endif
     {},
 };
 constexpr size_t kDriverCount = (sizeof(kDrivers) / sizeof(kDrivers[0])) - 1;
@@ -85,4 +96,3 @@ const DriverDescriptor* DriverCatalog::find(DriverId id) {
 }
 
 }  // namespace studio
-

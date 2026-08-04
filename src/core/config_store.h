@@ -32,8 +32,8 @@ enum class ConfigLoadStatus : uint8_t {
 
 class ConfigStore {
  public:
-  static constexpr uint16_t kSchemaVersion = 1;
-  static constexpr size_t kMaxBlobSize = 1024;
+  static constexpr uint16_t kSchemaVersion = 2;
+  static constexpr size_t kMaxBlobSize = 2560;
 
   explicit ConfigStore(IConfigBackend& backend) : backend_(backend) {}
 
@@ -45,4 +45,3 @@ class ConfigStore {
 };
 
 }  // namespace studio
-

@@ -22,6 +22,7 @@ class SceneService {
   SceneRegistryStatus replace(const SceneRecord& record);
   SceneValidationStatus validate(const SceneRecord& record) const;
   SceneValidationStatus validate(SceneId sceneId) const;
+  bool referencesInstance(InstanceId instanceId) const;
 
   bool seedPressRecord(SceneId& outId);
 

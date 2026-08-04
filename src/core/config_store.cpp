@@ -8,8 +8,10 @@ namespace {
 
 constexpr uint8_t kMagic[] = {'S', 'T', 'D', 'V'};
 constexpr size_t kHeaderSize = 12;
-constexpr size_t kEncodedRecordSize =
+constexpr size_t kEncodedV1RecordSize =
     4 + 2 + 1 + 1 + kDeviceNameCapacity + kBleAddressCapacity + kBleNameCapacity;
+constexpr size_t kEncodedRecordSize =
+    kEncodedV1RecordSize + 1 + kHomeAssistantEntityIdCapacity;
 constexpr size_t kChecksumSize = 4;
 
 uint32_t checksum(const uint8_t* data, size_t length) {
@@ -72,9 +74,12 @@ ConfigLoadStatus ConfigStore::load(DeviceRegistry& registry) {
   const bool initialized = *cursor++ != 0;
   const uint8_t count = *cursor++;
   const InstanceId nextInstanceId = getU32(cursor);
+  const size_t encodedRecordSize =
+      version == 1 ? kEncodedV1RecordSize : kEncodedRecordSize;
   const size_t expectedLength =
-      kHeaderSize + static_cast<size_t>(count) * kEncodedRecordSize + kChecksumSize;
-  if (version != kSchemaVersion || count > CONFIG_MAX_DEVICE_INSTANCES ||
+      kHeaderSize + static_cast<size_t>(count) * encodedRecordSize + kChecksumSize;
+  if ((version != 1 && version != kSchemaVersion) ||
+      count > CONFIG_MAX_DEVICE_INSTANCES ||
       length != expectedLength) {
     return ConfigLoadStatus::Corrupt;
   }
@@ -97,6 +102,10 @@ ConfigLoadStatus ConfigStore::load(DeviceRegistry& registry) {
     decodeText(record.displayName, cursor);
     decodeText(record.bleAddress, cursor);
     decodeText(record.bleName, cursor);
+    if (version >= 2) {
+      record.homeAssistantDomain = static_cast<HomeAssistantDomain>(*cursor++);
+      decodeText(record.homeAssistantEntityId, cursor);
+    }
   }
 
   if (!registry.restore(records, count, nextInstanceId, initialized)) {
@@ -134,6 +143,10 @@ bool ConfigStore::save(const DeviceRegistry& registry) {
     cursor += sizeof(record->bleAddress);
     std::memcpy(cursor, record->bleName, sizeof(record->bleName));
     cursor += sizeof(record->bleName);
+    *cursor++ = static_cast<uint8_t>(record->homeAssistantDomain);
+    std::memcpy(cursor, record->homeAssistantEntityId,
+                sizeof(record->homeAssistantEntityId));
+    cursor += sizeof(record->homeAssistantEntityId);
   }
 
   putU32(cursor, checksum(blob, length - kChecksumSize));
@@ -141,4 +154,3 @@ bool ConfigStore::save(const DeviceRegistry& registry) {
 }
 
 }  // namespace studio
-

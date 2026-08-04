@@ -14,6 +14,7 @@
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
+#include "portal_service.h"
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
 #endif
@@ -27,8 +28,13 @@
 #if CONFIG_DRIVER_TASCAM_X8
 #include "devices/tascam_x8/ui.h"
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+#include "devices/home_assistant/ui.h"
+#endif
 
 namespace ui {
+
+void showPortal();
 
 namespace {
 
@@ -43,18 +49,25 @@ constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr lv_coord_t kRoundBackX = 40;
 constexpr lv_coord_t kRoundBackY = 36;
 
-enum class Screen : uint8_t { Home, Devices };
+enum class Screen : uint8_t { Home, Devices, Portal };
 
 Screen screen = Screen::Home;
 lv_obj_t* scrHome = nullptr;
 lv_obj_t* scrDevices = nullptr;
+lv_obj_t* scrPortal = nullptr;
 lv_obj_t* homeStatus = nullptr;
 lv_obj_t* deviceList = nullptr;
 lv_obj_t* addButton = nullptr;
+lv_obj_t* portalStatus = nullptr;
+lv_obj_t* portalSsid = nullptr;
+lv_obj_t* portalPassword = nullptr;
+lv_obj_t* portalAddress = nullptr;
+lv_obj_t* portalExit = nullptr;
 
 lv_obj_t* deviceModal = nullptr;
 lv_obj_t* deviceModalTitle = nullptr;
 lv_obj_t* enabledSwitch = nullptr;
+lv_obj_t* disconnectButton = nullptr;
 lv_obj_t* removeButton = nullptr;
 lv_obj_t* renameOverlay = nullptr;
 lv_obj_t* renameText = nullptr;
@@ -65,6 +78,7 @@ lv_obj_t* renameCaseLabel = nullptr;
 studio::InstanceId managedInstance = studio::kInvalidInstanceId;
 uint32_t lastRefreshMs = 0;
 bool removeArmed = false;
+bool disconnectArmed = false;
 uint8_t renamePage = 0;
 bool renameUpperCase = true;
 RenameDoneFn renameDoneCallback = nullptr;
@@ -156,10 +170,12 @@ void destroyOverlay(lv_obj_t*& overlay) {
 
 void closeDeviceModal() {
   removeArmed = false;
+  disconnectArmed = false;
   managedInstance = studio::kInvalidInstanceId;
   destroyOverlay(deviceModal);
   deviceModalTitle = nullptr;
   enabledSwitch = nullptr;
+  disconnectButton = nullptr;
   removeButton = nullptr;
 }
 
@@ -198,7 +214,7 @@ size_t instanceCount(studio::DriverId driverId) {
 }
 
 bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
-  return descriptor != nullptr &&
+  return descriptor != nullptr && descriptor->id != studio::DriverId::HomeAssistant &&
          instanceCount(descriptor->id) < descriptor->maxInstances;
 }
 
@@ -251,7 +267,14 @@ void onOpenManage(lv_event_t* event) {
   }
   lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
+  disconnectArmed = false;
   lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
+  lv_label_set_text(lv_obj_get_child(disconnectButton, 0), "Disconnect");
+  if (studio::devices().isActive(managedInstance)) {
+    lv_obj_clear_state(disconnectButton, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(disconnectButton, LV_STATE_DISABLED);
+  }
   if (record->enabled) {
     lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
   } else {
@@ -325,6 +348,11 @@ void refreshDevices() {
 void onShowDevices(lv_event_t*) { showDevices(); }
 void onShowHome(lv_event_t*) { showHome(); }
 void onShowScenes(lv_event_t*) { scene_ui::show(); }
+void onShowPortal(lv_event_t*) { showPortal(); }
+void onExitPortal(lv_event_t*) {
+  portal::stop();
+  showHome();
+}
 void onCloseModal(lv_event_t*) { closeDeviceModal(); }
 
 void onDriverChosen(studio::DriverId driverId) {
@@ -363,6 +391,27 @@ void onRepair(lv_event_t*) {
   }
   closeDeviceModal();
   refreshDevices();
+}
+
+void onDisconnect(lv_event_t*) {
+  if (managedInstance == studio::kInvalidInstanceId) {
+    return;
+  }
+  const studio::CommandStatus status =
+      studio::devices().disconnect(managedInstance, disconnectArmed);
+  if (status == studio::CommandStatus::ConfirmationRequired) {
+    disconnectArmed = true;
+    lv_label_set_text(deviceModalTitle, "Recording active?");
+    lv_label_set_text(lv_obj_get_child(disconnectButton, 0), "Confirm");
+    return;
+  }
+  if (status == studio::CommandStatus::Busy) {
+    lv_label_set_text(deviceModalTitle, "Device busy");
+    return;
+  }
+  closeDeviceModal();
+  refreshDevices();
+  refreshHome();
 }
 
 void onRemove(lv_event_t*) {
@@ -504,7 +553,7 @@ void buildHome() {
   makeModeTile(grid, &ui_icon_devices, "Devices", true, onShowDevices);
   makeModeTile(grid, &ui_icon_groups, "Groups", false, nullptr);
   makeModeTile(grid, &ui_icon_scenes, "Scenes", true, onShowScenes);
-  makeModeTile(grid, &ui_icon_portal, "Portal", false, nullptr);
+  makeModeTile(grid, &ui_icon_portal, "Portal", true, onShowPortal);
 
   homeStatus = lv_label_create(scrHome);
   lv_obj_set_style_text_font(homeStatus, UI_FONT_14, 0);
@@ -539,6 +588,57 @@ void buildDevices() {
   addButton = makeButton(scrDevices, "+ Add device", onAddDevice, kColAccent);
   lv_obj_set_size(addButton, 140, 34);
   lv_obj_align(addButton, LV_ALIGN_BOTTOM_MID, 0, -14);
+}
+
+void buildPortal() {
+  if (scrPortal != nullptr) return;
+  scrPortal = lv_obj_create(nullptr);
+  styleScreen(scrPortal);
+  lv_obj_t* title = lv_label_create(scrPortal);
+  lv_label_set_text(title, "PORTAL / LINK");
+  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(kColAccent), 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+  portalStatus = lv_label_create(scrPortal);
+  lv_obj_set_width(portalStatus, 184);
+  lv_obj_set_style_text_align(portalStatus, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(portalStatus, UI_FONT_14, 0);
+  lv_obj_align(portalStatus, LV_ALIGN_TOP_MID, 0, 57);
+  portalSsid = lv_label_create(scrPortal);
+  lv_obj_set_width(portalSsid, 188);
+  lv_obj_set_style_text_align(portalSsid, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(portalSsid, UI_FONT_14, 0);
+  lv_obj_align(portalSsid, LV_ALIGN_TOP_MID, 0, 88);
+  portalPassword = lv_label_create(scrPortal);
+  lv_obj_set_width(portalPassword, 188);
+  lv_obj_set_style_text_align(portalPassword, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(portalPassword, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(portalPassword, lv_color_hex(kColMuted), 0);
+  lv_obj_align(portalPassword, LV_ALIGN_TOP_MID, 0, 113);
+  portalAddress = lv_label_create(scrPortal);
+  lv_label_set_text(portalAddress, "http://192.168.4.1");
+  lv_obj_set_style_text_font(portalAddress, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(portalAddress, lv_color_hex(kColAccent), 0);
+  lv_obj_align(portalAddress, LV_ALIGN_TOP_MID, 0, 143);
+  portalExit = makeButton(scrPortal, "EXIT PORTAL", onExitPortal, kColDanger);
+  lv_obj_set_size(portalExit, 126, 34);
+  lv_obj_align(portalExit, LV_ALIGN_BOTTOM_MID, 0, -25);
+}
+
+void refreshPortal() {
+  if (scrPortal == nullptr) return;
+  lv_label_set_text(portalStatus, portal::statusText());
+  char text[64];
+  std::snprintf(text, sizeof(text), "SSID  %s", portal::ssid());
+  lv_label_set_text(portalSsid, text);
+  std::snprintf(text, sizeof(text), "PASS  %s", portal::password());
+  if (portal::password()[0] == '\0') {
+    std::strncpy(text, "SAME LOCAL WI-FI", sizeof(text) - 1);
+    text[sizeof(text) - 1] = '\0';
+  }
+  lv_label_set_text(portalPassword, text);
+  lv_label_set_text(portalAddress, portal::url());
+  lv_obj_invalidate(portalExit);
 }
 
 void buildDeviceModal() {
@@ -576,9 +676,13 @@ void buildDeviceModal() {
   lv_obj_align(enabledSwitch, LV_ALIGN_TOP_RIGHT, -42, 96);
   lv_obj_add_event_cb(enabledSwitch, onEnabledChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t* repair = makeButton(deviceModal, "Forget pairing", onRepair);
-  lv_obj_set_size(repair, 124, 30);
-  lv_obj_align(repair, LV_ALIGN_TOP_MID, 0, 132);
+  lv_obj_t* repair = makeButton(deviceModal, "Forget", onRepair);
+  lv_obj_set_size(repair, 94, 30);
+  lv_obj_align(repair, LV_ALIGN_TOP_MID, -50, 132);
+
+  disconnectButton = makeButton(deviceModal, "Disconnect", onDisconnect);
+  lv_obj_set_size(disconnectButton, 94, 30);
+  lv_obj_align(disconnectButton, LV_ALIGN_TOP_MID, 50, 132);
 
   removeButton = makeButton(deviceModal, "Remove", onRemove, kColDanger);
   lv_obj_set_size(removeButton, 66, 30);
@@ -675,11 +779,15 @@ void releaseDeviceUis() {
 #if CONFIG_DRIVER_TASCAM_X8
   tascam_x8_ui::release();
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  home_assistant_ui::release();
+#endif
 }
 
 void init() {
   buildHome();
   buildDevices();
+  buildPortal();
   refreshHome();
   refreshDevices();
   lv_scr_load(scrHome);
@@ -710,6 +818,12 @@ void tick() {
     return;
   }
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  if (home_assistant_ui::active()) {
+    home_assistant_ui::tick();
+    return;
+  }
+#endif
   if (scene_ui::active()) {
     scene_ui::tick();
     return;
@@ -721,6 +835,8 @@ void tick() {
   lastRefreshMs = now;
   if (screen == Screen::Home) {
     refreshHome();
+  } else if (screen == Screen::Portal) {
+    refreshPortal();
   }
 }
 
@@ -746,6 +862,12 @@ void handleShortPress() {
 #if CONFIG_DRIVER_TASCAM_X8
   if (tascam_x8_ui::active()) {
     tascam_x8_ui::handleShortPress();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  if (home_assistant_ui::active()) {
+    home_assistant_ui::handleShortPress();
     return;
   }
 #endif
@@ -780,6 +902,12 @@ void handleLongPress() {
     return;
   }
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  if (home_assistant_ui::active()) {
+    home_assistant_ui::handleLongPress();
+    return;
+  }
+#endif
   if (scene_ui::active()) {
     scene_ui::handleLongPress();
     return;
@@ -793,10 +921,15 @@ void handleLongPress() {
     closeDeviceModal();
   } else if (screen == Screen::Devices) {
     showHome();
+  } else if (screen == Screen::Portal) {
+    onExitPortal(nullptr);
   }
 }
 
 void showHome() {
+  if (portal::active()) {
+    portal::stop();
+  }
   if (scene_ui::active()) {
     scene_ui::hide();
   }
@@ -818,6 +951,11 @@ void showHome() {
 #if CONFIG_DRIVER_TASCAM_X8
   if (tascam_x8_ui::active()) {
     tascam_x8_ui::hide();
+  }
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  if (home_assistant_ui::active()) {
+    home_assistant_ui::hide();
   }
 #endif
   closeDeviceModal();
@@ -853,6 +991,11 @@ void showDevices() {
     tascam_x8_ui::hide();
   }
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  if (home_assistant_ui::active()) {
+    home_assistant_ui::hide();
+  }
+#endif
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -862,31 +1005,49 @@ void showDevices() {
   releaseDeviceUis();
 }
 
-void showDevice(studio::InstanceId instanceId, DeviceControlMode mode) {
+void showPortal() {
+  closeDeviceModal();
+  closeRename();
+  closeAddPicker();
+  if (!portal::begin()) {
+    refreshHome();
+    return;
+  }
+  screen = Screen::Portal;
+  refreshPortal();
+  lv_scr_load(scrPortal);
+  releaseDeviceUis();
+}
+
+void showDevice(studio::InstanceId instanceId) {
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
   if (record == nullptr || !record->enabled) {
     return;
   }
-  const bool preserve = mode == DeviceControlMode::PreserveActivation;
   switch (record->driverId) {
 #if CONFIG_DRIVER_SHARK_NANO_II
     case studio::DriverId::SharkNanoII:
-      shark_ui::show(instanceId, preserve);
+      shark_ui::show(instanceId);
       break;
 #endif
 #if CONFIG_DRIVER_CANON_TRIGGER
     case studio::DriverId::CanonTrigger:
-      canon_trigger_ui::show(instanceId, preserve);
+      canon_trigger_ui::show(instanceId);
       break;
 #endif
 #if CONFIG_DRIVER_CANON_BLE
     case studio::DriverId::CanonBle:
-      canon_ble_ui::show(instanceId, preserve);
+      canon_ble_ui::show(instanceId);
       break;
 #endif
 #if CONFIG_DRIVER_TASCAM_X8
     case studio::DriverId::TascamX8:
-      tascam_x8_ui::show(instanceId, preserve);
+      tascam_x8_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+    case studio::DriverId::HomeAssistant:
+      home_assistant_ui::show(instanceId);
       break;
 #endif
     default:
@@ -953,7 +1114,14 @@ void simShowManage(studio::InstanceId instanceId) {
   }
   lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
+  disconnectArmed = false;
   lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
+  lv_label_set_text(lv_obj_get_child(disconnectButton, 0), "Disconnect");
+  if (studio::devices().isActive(managedInstance)) {
+    lv_obj_clear_state(disconnectButton, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(disconnectButton, LV_STATE_DISABLED);
+  }
   if (record->enabled) {
     lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
   } else {
@@ -970,6 +1138,8 @@ void simShowRename(studio::InstanceId instanceId) {
   }
   promptRename(record->displayName, onDeviceRenameDone);
 }
+
+void simRequestManagedDisconnect() { onDisconnect(nullptr); }
 #endif
 
 }  // namespace ui

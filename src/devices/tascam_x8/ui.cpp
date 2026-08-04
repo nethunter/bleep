@@ -17,7 +17,6 @@ constexpr auto kOwner = recorder_shell::Owner::TascamX8;
 
 studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
-bool borrowedActivation = false;
 uint32_t lastRefreshMs = 0;
 
 void enqueue(studio::CommandType type) {
@@ -146,14 +145,11 @@ void refresh() {
 
 void init() {}
 
-void show(studio::InstanceId id, bool preserveActivation) {
+void show(studio::InstanceId id) {
   ensureShell();
   instanceId = id;
-  borrowedActivation = preserveActivation;
-  visible = preserveActivation ? studio::devices().isActive(id)
-                               : studio::devices().activate(id);
+  visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) {
-    borrowedActivation = false;
     instanceId = studio::kInvalidInstanceId;
     return;
   }
@@ -164,11 +160,10 @@ void show(studio::InstanceId id, bool preserveActivation) {
 }
 
 void hide() {
-  if (visible && !borrowedActivation) {
-    studio::devices().deactivate();
+  if (visible) {
+    studio::devices().release(instanceId, studio::ConnectionOwner::Foreground);
   }
   visible = false;
-  borrowedActivation = false;
   instanceId = studio::kInvalidInstanceId;
 }
 

@@ -4,54 +4,63 @@
 
 namespace studio {
 
-void TascamX8Driver::activate(const DeviceRecord& record) {
-  activeInstance_ = record.instanceId;
-  active_ = true;
-  client_.activate(record.bleAddress, record.bleAddressType,
-                   record.bleName[0] != '\0' ? record.bleName
-                                             : record.displayName,
-                   record.paired);
+bool TascamX8Driver::activate(const DeviceRecord& record) {
+  if (session_.instanceId == record.instanceId) {
+    return true;
+  }
+  if (session_.instanceId != kInvalidInstanceId) {
+    return false;
+  }
+  session_.instanceId = record.instanceId;
+  session_.client.activate(record.bleAddress, record.bleAddressType,
+                           record.bleName[0] != '\0' ? record.bleName
+                                                     : record.displayName,
+                           record.paired);
+  return true;
 }
 
-void TascamX8Driver::deactivate() {
-  if (active_) {
-    client_.deactivate();
+void TascamX8Driver::deactivate(InstanceId instanceId) {
+  if (session_.instanceId == instanceId) {
+    session_.client.deactivate();
+    session_.instanceId = kInvalidInstanceId;
   }
-  active_ = false;
-  activeInstance_ = kInvalidInstanceId;
 }
 
 void TascamX8Driver::loop() {
-  if (active_) {
-    client_.loop();
+  if (session_.instanceId != kInvalidInstanceId) {
+    session_.client.loop();
   }
 }
 
 CommandStatus TascamX8Driver::dispatch(const DeviceCommand& command) {
-  if (!active_ || command.instanceId != activeInstance_) {
+  if (command.instanceId != session_.instanceId) {
     return CommandStatus::Unavailable;
   }
   switch (command.type) {
     case CommandType::Connect:
-      client_.startScan();
+      session_.client.startScan();
       return CommandStatus::Succeeded;
     case CommandType::ForgetPairing:
-      client_.forgetDevice();
+      session_.client.forgetDevice();
       return CommandStatus::Succeeded;
     case CommandType::RecordStart:
-      return client_.startRecording() ? CommandStatus::Succeeded
-                                      : CommandStatus::Unavailable;
+      return session_.client.startRecording() ? CommandStatus::Succeeded
+                                              : CommandStatus::Unavailable;
     case CommandType::RecordStop:
-      return client_.stopRecording() ? CommandStatus::Succeeded
-                                     : CommandStatus::Unavailable;
+      return session_.client.stopRecording() ? CommandStatus::Succeeded
+                                             : CommandStatus::Unavailable;
     default:
       return CommandStatus::Unsupported;
   }
 }
 
-DeviceRuntimeState TascamX8Driver::runtimeState() const {
+DeviceRuntimeState TascamX8Driver::runtimeState(InstanceId instanceId) const {
   DeviceRuntimeState state;
-  switch (client_.state().link) {
+  if (instanceId != session_.instanceId) {
+    return state;
+  }
+  const tascam_x8::TascamX8State& clientState = session_.client.state();
+  switch (clientState.link) {
     case tascam_x8::TascamX8State::Link::Disconnected:
       state.link = LinkState::Disconnected;
       break;
@@ -65,20 +74,30 @@ DeviceRuntimeState TascamX8Driver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
-  state.protocolReady = client_.protocolReady();
-  state.quality = client_.state().recordingConfirmed
-                      ? StateQuality::Confirmed
-                      : StateQuality::Unknown;
+  state.protocolReady = session_.client.protocolReady();
+  state.quality = clientState.recordingConfirmed ? StateQuality::Confirmed
+                                                 : StateQuality::Unknown;
+  state.commandPending = clientState.commandPending;
+  state.commandFailed = clientState.lastCommandFailed;
+  state.recordingConfirmed = clientState.recordingConfirmed;
+  state.recording =
+      clientState.recording == tascam_x8::TascamX8State::Recording::Recording;
   return state;
 }
 
-bool TascamX8Driver::consumePairingUpdate(DeviceRecord& record) {
+const void* TascamX8Driver::specializedState(InstanceId instanceId) const {
+  return instanceId == session_.instanceId ? &session_.client.state() : nullptr;
+}
+
+bool TascamX8Driver::consumePairingUpdate(InstanceId instanceId,
+                                          DeviceRecord& record) {
   char address[kBleAddressCapacity] = "";
   char name[kBleNameCapacity] = "";
   uint8_t addressType = 0;
   bool paired = false;
-  if (!client_.consumePairingUpdate(address, sizeof(address), addressType, name,
-                                    sizeof(name), paired)) {
+  if (instanceId != session_.instanceId ||
+      !session_.client.consumePairingUpdate(address, sizeof(address), addressType,
+                                            name, sizeof(name), paired)) {
     return false;
   }
   record.paired = paired;

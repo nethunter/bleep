@@ -33,6 +33,9 @@ class DeviceRegistry {
   RegistryStatus updatePairing(InstanceId instanceId, const char* address, uint8_t addressType,
                                const char* advertisedName);
   RegistryStatus clearPairing(InstanceId instanceId);
+  RegistryStatus configureHomeAssistant(InstanceId instanceId,
+                                        HomeAssistantDomain domain,
+                                        const char* entityId);
 
   void clear(bool initialized = true);
   bool restore(const DeviceRecord* records, size_t count, InstanceId nextInstanceId,
@@ -46,4 +49,3 @@ class DeviceRegistry {
 };
 
 }  // namespace studio
-

@@ -9,6 +9,7 @@
 #include "core/device_manager.h"
 #include "core/scene_service.h"
 #include "ui.h"
+#include "portal_service.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define DEBUG_PORT Serial0
@@ -129,7 +130,9 @@ static uint8_t touchChipId = 0;
 static uint8_t ioOutputState = 0;
 
 studio::LinkState currentLink() {
-  return studio::devices().runtimeState(studio::devices().activeInstance()).link;
+  return studio::devices()
+      .runtimeState(studio::devices().foregroundInstance())
+      .link;
 }
 
 const char* linkLabel(studio::LinkState link) {
@@ -417,6 +420,7 @@ void loop() {
   studio::ble::loopBleRuntime(now);
   studio::devices().loop();
   studio::scenes().loop(now);
+  portal::loop();
   const studio::LinkState link = currentLink();
   if (link != lastLink) {
     lastLink = link;

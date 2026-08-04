@@ -10,6 +10,7 @@
 #include "devices/canon_trigger/state.h"
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/state.h"
+#include "devices/home_assistant/driver.h"
 
 namespace studio {
 namespace {
@@ -54,7 +55,8 @@ class SimSharkDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::SharkNanoII; }
 
-  void activate(const DeviceRecord& record) override {
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
     active_ = true;
     std::strncpy(state_.deviceName, record.bleName[0] != '\0' ? record.bleName : record.displayName,
                  sizeof(state_.deviceName) - 1);
@@ -63,10 +65,13 @@ class SimSharkDriver : public DeviceDriver {
     if (state_.link == shark::SharkState::Link::Disconnected) {
       state_.link = shark::SharkState::Link::Scanning;
     }
+    return true;
   }
 
-  void deactivate() override {
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId != activeInstance_) return;
     active_ = false;
+    activeInstance_ = kInvalidInstanceId;
     state_.link = shark::SharkState::Link::Disconnected;
   }
 
@@ -89,8 +94,9 @@ class SimSharkDriver : public DeviceDriver {
     }
   }
 
-  DeviceRuntimeState runtimeState() const override {
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
     switch (state_.link) {
       case shark::SharkState::Link::Scanning:
         runtime.link = LinkState::Scanning;
@@ -110,27 +116,34 @@ class SimSharkDriver : public DeviceDriver {
     return runtime;
   }
 
-  const void* specializedState() const override { return &state_; }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
 
-  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
 
   shark::SharkState& state() { return state_; }
 
  private:
   bool active_ = false;
+  InstanceId activeInstance_ = kInvalidInstanceId;
   shark::SharkState state_;
 };
 
 class SimCanonDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::CanonBle; }
-  void activate(const DeviceRecord& record) override {
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
     state_.hasSavedDevice = record.paired;
     state_.link = canon_ble::CanonBleState::Link::Scanning;
     std::strncpy(state_.deviceName, record.displayName,
                  sizeof(state_.deviceName) - 1);
+    return true;
   }
-  void deactivate() override {
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId != activeInstance_) return;
+    activeInstance_ = kInvalidInstanceId;
     state_.link = canon_ble::CanonBleState::Link::Disconnected;
     canon_ble::resetTransientState(state_);
   }
@@ -171,8 +184,9 @@ class SimCanonDriver : public DeviceDriver {
     }
     return CommandStatus::Succeeded;
   }
-  DeviceRuntimeState runtimeState() const override {
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
     switch (state_.link) {
       case canon_ble::CanonBleState::Link::Scanning:
         runtime.link = LinkState::Scanning;
@@ -192,27 +206,38 @@ class SimCanonDriver : public DeviceDriver {
         state_.phase == canon_ble::CanonBleState::Phase::Ready;
     runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
                                                 : StateQuality::Unknown;
+    runtime.commandPending = state_.commandPending;
+    runtime.recordingConfirmed = state_.recordingConfirmed;
+    runtime.recording =
+        state_.recording == canon_ble::CanonBleState::Recording::Recording;
     return runtime;
   }
-  const void* specializedState() const override { return &state_; }
-  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
   canon_ble::CanonBleState& state() { return state_; }
 
  private:
+  InstanceId activeInstance_ = kInvalidInstanceId;
   canon_ble::CanonBleState state_;
 };
 
 class SimCanonTriggerDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::CanonTrigger; }
-  void activate(const DeviceRecord& record) override {
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
     state_.hasSavedDevice = record.paired;
     state_.link = canon_trigger::CanonTriggerState::Link::Scanning;
     std::strncpy(state_.deviceName, record.displayName,
                  sizeof(state_.deviceName) - 1);
     state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+    return true;
   }
-  void deactivate() override {
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId != activeInstance_) return;
+    activeInstance_ = kInvalidInstanceId;
     state_.link = canon_trigger::CanonTriggerState::Link::Disconnected;
     canon_trigger::resetTransientState(state_);
   }
@@ -226,8 +251,9 @@ class SimCanonTriggerDriver : public DeviceDriver {
     }
     return CommandStatus::Succeeded;
   }
-  DeviceRuntimeState runtimeState() const override {
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
     switch (state_.link) {
       case canon_trigger::CanonTriggerState::Link::Scanning:
         runtime.link = LinkState::Scanning;
@@ -244,27 +270,35 @@ class SimCanonTriggerDriver : public DeviceDriver {
     }
     runtime.protocolReady = runtime.link == LinkState::Connected;
     runtime.quality = StateQuality::Unknown;
+    runtime.commandPending = state_.triggerPending;
     return runtime;
   }
-  const void* specializedState() const override { return &state_; }
-  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
   canon_trigger::CanonTriggerState& state() { return state_; }
 
  private:
+  InstanceId activeInstance_ = kInvalidInstanceId;
   canon_trigger::CanonTriggerState state_;
 };
 
 class SimTascamDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::TascamX8; }
-  void activate(const DeviceRecord& record) override {
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
     state_.hasSavedDevice = record.paired;
     state_.link = tascam_x8::TascamX8State::Link::Scanning;
     std::strncpy(state_.deviceName, record.displayName,
                  sizeof(state_.deviceName) - 1);
     state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+    return true;
   }
-  void deactivate() override {
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId != activeInstance_) return;
+    activeInstance_ = kInvalidInstanceId;
     state_.link = tascam_x8::TascamX8State::Link::Disconnected;
     tascam_x8::resetTransientState(state_);
   }
@@ -292,8 +326,9 @@ class SimTascamDriver : public DeviceDriver {
     }
     return CommandStatus::Succeeded;
   }
-  DeviceRuntimeState runtimeState() const override {
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
     switch (state_.link) {
       case tascam_x8::TascamX8State::Link::Scanning:
         runtime.link = LinkState::Scanning;
@@ -311,13 +346,20 @@ class SimTascamDriver : public DeviceDriver {
     runtime.protocolReady = runtime.link == LinkState::Connected;
     runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
                                                 : StateQuality::Unknown;
+    runtime.commandPending = state_.commandPending;
+    runtime.recordingConfirmed = state_.recordingConfirmed;
+    runtime.recording =
+        state_.recording == tascam_x8::TascamX8State::Recording::Recording;
     return runtime;
   }
-  const void* specializedState() const override { return &state_; }
-  bool consumePairingUpdate(DeviceRecord&) override { return false; }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
   tascam_x8::TascamX8State& state() { return state_; }
 
  private:
+  InstanceId activeInstance_ = kInvalidInstanceId;
   tascam_x8::TascamX8State state_;
 };
 
@@ -328,9 +370,10 @@ SimSharkDriver gSharkDriver;
 SimCanonTriggerDriver gCanonTriggerDriver;
 SimCanonDriver gCanonDriver;
 SimTascamDriver gTascamDriver;
+HomeAssistantDriver gHomeAssistantDriver;
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
-                            &gTascamDriver};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 4);
+                            &gTascamDriver, &gHomeAssistantDriver};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 5);
 SceneService gScenes(gScenesBackend, gManager);
 
 }  // namespace

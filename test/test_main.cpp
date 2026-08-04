@@ -9,6 +9,7 @@
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
+#include "core/home_assistant_config.h"
 #include "core/scene_service.h"
 #include "core/scene_store.h"
 #include "devices/canon_ble/ble_match.h"
@@ -23,6 +24,7 @@
 #include "devices/tascam_x8/ble_match.h"
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
+#include "devices/home_assistant/protocol.h"
 
 using namespace shark;
 
@@ -68,8 +70,74 @@ class MemoryBackend : public studio::IConfigBackend {
     }
   }
 
+  bool containsText(const char* text) const {
+    const size_t textLength = std::strlen(text);
+    if (textLength == 0 || textLength > length_) return false;
+    for (size_t i = 0; i + textLength <= length_; ++i) {
+      if (std::memcmp(data_ + i, text, textLength) == 0) return true;
+    }
+    return false;
+  }
+
  private:
   uint8_t data_[studio::ConfigStore::kMaxBlobSize] = {};
+  size_t length_ = 0;
+};
+
+class V1DeviceBackend : public studio::IConfigBackend {
+ public:
+  V1DeviceBackend() {
+    uint8_t* out = data_;
+    const uint8_t magic[] = {'S', 'T', 'D', 'V'};
+    std::memcpy(out, magic, sizeof(magic));
+    out += sizeof(magic);
+    putU16(out, 1);
+    *out++ = 1;
+    *out++ = 1;
+    putU32(out, 43);
+    putU32(out, 42);
+    putU16(out, static_cast<uint16_t>(studio::DriverId::CanonBle));
+    *out++ = 0x03;
+    *out++ = 1;
+    copyFixed(out, studio::kDeviceNameCapacity, "Legacy camera");
+    copyFixed(out, studio::kBleAddressCapacity, "11:22:33:44:55:66");
+    copyFixed(out, studio::kBleNameCapacity, "EOS legacy");
+    const uint32_t crc = checksum(data_, static_cast<size_t>(out - data_));
+    putU32(out, crc);
+    length_ = static_cast<size_t>(out - data_);
+  }
+
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (capacity < length_) return 0;
+    std::memcpy(destination, data_, length_);
+    return length_;
+  }
+  bool write(const uint8_t*, size_t) override { return false; }
+
+ private:
+  static void putU16(uint8_t*& out, uint16_t value) {
+    *out++ = static_cast<uint8_t>(value);
+    *out++ = static_cast<uint8_t>(value >> 8);
+  }
+  static void putU32(uint8_t*& out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) {
+      *out++ = static_cast<uint8_t>(value >> shift);
+    }
+  }
+  static void copyFixed(uint8_t*& out, size_t capacity, const char* value) {
+    std::memset(out, 0, capacity);
+    std::strncpy(reinterpret_cast<char*>(out), value, capacity - 1);
+    out += capacity;
+  }
+  static uint32_t checksum(const uint8_t* bytes, size_t length) {
+    uint32_t value = 2166136261u;
+    for (size_t i = 0; i < length; ++i) {
+      value = (value ^ bytes[i]) * 16777619u;
+    }
+    return value;
+  }
+
+  uint8_t data_[128] = {};
   size_t length_ = 0;
 };
 
@@ -93,15 +161,42 @@ class FakeDriver : public studio::DeviceDriver {
       studio::DriverId id = studio::DriverId::SharkNanoII)
       : id_(id) {}
   studio::DriverId driverId() const override { return id_; }
-  void activate(const studio::DeviceRecord& record) override {
-    active = true;
-    activeInstance = record.instanceId;
-    ++activationCount;
+  bool activate(const studio::DeviceRecord& record) override {
+    for (studio::InstanceId id : activeInstances) {
+      if (id == record.instanceId) {
+        return true;
+      }
+    }
+    for (studio::InstanceId& id : activeInstances) {
+      if (id != studio::kInvalidInstanceId) {
+        continue;
+      }
+      id = record.instanceId;
+      active = true;
+      activeInstance = record.instanceId;
+      ++activationCount;
+      return true;
+    }
+    return false;
   }
-  void deactivate() override {
+  void deactivate(studio::InstanceId instanceId) override {
+    for (studio::InstanceId& id : activeInstances) {
+      if (id != instanceId) {
+        continue;
+      }
+      id = studio::kInvalidInstanceId;
+      ++deactivationCount;
+      break;
+    }
     active = false;
     activeInstance = studio::kInvalidInstanceId;
-    ++deactivationCount;
+    for (studio::InstanceId id : activeInstances) {
+      if (id != studio::kInvalidInstanceId) {
+        active = true;
+        activeInstance = id;
+        break;
+      }
+    }
   }
   void loop() override { ++loopCount; }
   studio::CommandStatus dispatch(const studio::DeviceCommand& command) override {
@@ -109,21 +204,34 @@ class FakeDriver : public studio::DeviceDriver {
     ++dispatchCount;
     return studio::CommandStatus::Succeeded;
   }
-  studio::DeviceRuntimeState runtimeState() const override {
+  studio::DeviceRuntimeState runtimeState(studio::InstanceId instanceId) const override {
     studio::DeviceRuntimeState state;
-    state.link = active ? studio::LinkState::Connected : studio::LinkState::Disconnected;
-    state.protocolReady = active && ready;
+    bool found = false;
+    for (studio::InstanceId id : activeInstances) {
+      found = found || id == instanceId;
+    }
+    state.link = found ? studio::LinkState::Connected
+                       : studio::LinkState::Disconnected;
+    state.protocolReady = found && ready;
+    state.commandPending = commandPending;
+    state.recordingConfirmed = recordingConfirmed;
+    state.recording = recording;
     return state;
   }
-  const void* specializedState() const override { return nullptr; }
+  const void* specializedState(studio::InstanceId) const override { return nullptr; }
   void forgetPairing(const studio::DeviceRecord&) override {
     ++forgetPairingCount;
   }
-  bool consumePairingUpdate(studio::DeviceRecord&) override { return false; }
+  bool consumePairingUpdate(studio::InstanceId,
+                            studio::DeviceRecord&) override { return false; }
 
   bool active = false;
   bool ready = true;
+  bool commandPending = false;
+  bool recordingConfirmed = false;
+  bool recording = false;
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
+  studio::InstanceId activeInstances[studio::DeviceManager::kMaxActiveLinks] = {};
   int activationCount = 0;
   int deactivationCount = 0;
   int loopCount = 0;
@@ -546,7 +654,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(4, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(5, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -585,6 +693,10 @@ void test_driver_catalog_exposes_shark_and_canon() {
                             studio::capabilityBit(studio::Capability::RecordStop) |
                             studio::capabilityBit(studio::Capability::RecordingState),
                         tascam->capabilities);
+  const studio::DriverDescriptor* homeAssistant =
+      studio::DriverCatalog::find(studio::DriverId::HomeAssistant);
+  TEST_ASSERT_NOT_NULL(homeAssistant);
+  TEST_ASSERT_EQUAL_UINT8(4, homeAssistant->maxInstances);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -643,6 +755,173 @@ void test_config_round_trip_preserves_dormant_records_and_detects_corruption() {
       static_cast<int>(store.load(rejected)));
 }
 
+void test_home_assistant_config_is_separate_checksummed_and_local_only() {
+  MemoryBackend deviceBackend;
+  MemoryBackend secretBackend;
+  studio::ConfigStore deviceStore(deviceBackend);
+  studio::HomeAssistantConfigStore secretStore(secretBackend);
+  studio::DeviceRegistry registry;
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.add(studio::DriverId::HomeAssistant,
+                                    "Key Light", 4, id)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.configureHomeAssistant(
+          id, studio::HomeAssistantDomain::Light, "light.key_light")));
+  TEST_ASSERT_TRUE(deviceStore.save(registry));
+
+  studio::HomeAssistantConfig config;
+  config.configured = true;
+  std::strcpy(config.wifiSsid, "StudioNet");
+  std::strcpy(config.wifiPassword, "wifi-secret");
+  std::strcpy(config.baseUrl, "http://homeassistant.local:8123");
+  std::strcpy(config.token, "long-lived-secret-token");
+  TEST_ASSERT_TRUE(secretStore.save(config));
+  TEST_ASSERT_FALSE(deviceBackend.containsText("wifi-secret"));
+  TEST_ASSERT_FALSE(deviceBackend.containsText("long-lived-secret-token"));
+
+  studio::HomeAssistantConfig restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(secretStore.load(restored)));
+  TEST_ASSERT_EQUAL_STRING(config.wifiSsid, restored.wifiSsid);
+  TEST_ASSERT_EQUAL_STRING(config.baseUrl, restored.baseUrl);
+  TEST_ASSERT_EQUAL_STRING(config.token, restored.token);
+  secretBackend.corruptLastByte();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Corrupt),
+      static_cast<int>(secretStore.load(restored)));
+  TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("https://ha.local"));
+  TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("ws://ha.local"));
+  TEST_ASSERT_TRUE(studio::validLocalHomeAssistantUrl("http://10.0.0.5:8123"));
+}
+
+void test_v1_device_blob_migrates_without_changing_ble_identity() {
+  V1DeviceBackend backend;
+  studio::ConfigStore store(backend);
+  studio::DeviceRegistry registry;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(registry)));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.count());
+  const studio::DeviceRecord* record = registry.at(0);
+  TEST_ASSERT_NOT_NULL(record);
+  TEST_ASSERT_EQUAL_UINT32(42, record->instanceId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DriverId::CanonBle),
+                        static_cast<int>(record->driverId));
+  TEST_ASSERT_TRUE(record->enabled);
+  TEST_ASSERT_TRUE(record->paired);
+  TEST_ASSERT_EQUAL_STRING("Legacy camera", record->displayName);
+  TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
+  TEST_ASSERT_EQUAL_UINT8(1, record->bleAddressType);
+  TEST_ASSERT_EQUAL_STRING("EOS legacy", record->bleName);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::HomeAssistantDomain::None),
+                        static_cast<int>(record->homeAssistantDomain));
+  TEST_ASSERT_EQUAL_STRING("", record->homeAssistantEntityId);
+}
+
+void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver haDriver(studio::DriverId::HomeAssistant);
+  studio::DeviceDriver* drivers[] = {&haDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  const studio::HomeAssistantDomain domains[] = {
+      studio::HomeAssistantDomain::Light,
+      studio::HomeAssistantDomain::InputBoolean,
+      studio::HomeAssistantDomain::Button,
+      studio::HomeAssistantDomain::Scene};
+  const char* ids[] = {"light.key", "input_boolean.live", "button.slate",
+                       "scene.ready"};
+  studio::InstanceId entityIds[4] = {};
+  for (size_t i = 0; i < 4; ++i) {
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::RegistryStatus::Ok),
+        static_cast<int>(devices.addHomeAssistantEntity(
+            domains[i], ids[i], ids[i], entityIds[i])));
+  }
+  studio::InstanceId overflow = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::DuplicateDriver),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::Script, "script.extra", "Extra",
+          overflow)));
+
+  const studio::InstanceProfile light = devices.profile(entityIds[0]);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Light),
+                        static_cast<int>(light.type));
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::TurnOn) |
+          studio::capabilityBit(studio::Capability::TurnOff),
+      light.capabilities);
+  const studio::InstanceProfile inputBoolean = devices.profile(entityIds[1]);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::TurnOn) |
+          studio::capabilityBit(studio::Capability::TurnOff),
+      inputBoolean.capabilities);
+  const studio::InstanceProfile button = devices.profile(entityIds[2]);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Action),
+                        static_cast<int>(button.type));
+  TEST_ASSERT_BITS_HIGH(studio::capabilityBit(studio::Capability::Press),
+                        button.capabilities);
+  TEST_ASSERT_BITS_LOW(studio::capabilityBit(studio::Capability::Activate),
+                       button.capabilities);
+
+  TEST_ASSERT_TRUE(home_assistant::supportedEntityId("input_boolean.live"));
+  TEST_ASSERT_FALSE(home_assistant::supportedEntityId("sensor.temperature"));
+  TEST_ASSERT_TRUE(home_assistant::commandSupported(
+      studio::HomeAssistantDomain::Scene, studio::CommandType::Activate));
+  TEST_ASSERT_FALSE(home_assistant::commandSupported(
+      studio::HomeAssistantDomain::Scene, studio::CommandType::TurnOn));
+  char payload[256];
+  TEST_ASSERT_TRUE(home_assistant::buildAuth(payload, sizeof(payload), "token"));
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"type\":\"auth\",\"access_token\":\"token\"}", payload);
+  TEST_ASSERT_TRUE(home_assistant::buildServiceCall(
+      payload, sizeof(payload), 17, studio::HomeAssistantDomain::Button,
+      studio::CommandType::Press, "button.slate"));
+  TEST_ASSERT_NOT_NULL(std::strstr(payload, "\"service\":\"press\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(payload, "\"entity_id\":\"button.slate\""));
+  TEST_ASSERT_TRUE(home_assistant::buildServiceCall(
+      payload, sizeof(payload), 18, studio::HomeAssistantDomain::InputBoolean,
+      studio::CommandType::TurnOn, "input_boolean.live"));
+  TEST_ASSERT_NOT_NULL(std::strstr(payload, "\"domain\":\"input_boolean\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(payload, "\"service\":\"turn_on\""));
+  TEST_ASSERT_TRUE(home_assistant::buildServiceCall(
+      payload, sizeof(payload), 19, studio::HomeAssistantDomain::InputBoolean,
+      studio::CommandType::TurnOff, "input_boolean.live"));
+  TEST_ASSERT_NOT_NULL(std::strstr(payload, "\"service\":\"turn_off\""));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneRecord scene;
+  std::strcpy(scene.name, "HA actions");
+  scene.startCount = 3;
+  scene.startSteps[0] =
+      studio::makeActionStep(entityIds[0], studio::CommandType::TurnOn);
+  scene.startSteps[1] =
+      studio::makeActionStep(entityIds[2], studio::CommandType::Press);
+  scene.startSteps[2] =
+      studio::makeActionStep(entityIds[1], studio::CommandType::TurnOn);
+  scene.stopCount = 2;
+  scene.stopSteps[0] =
+      studio::makeActionStep(entityIds[0], studio::CommandType::TurnOff);
+  scene.stopSteps[1] =
+      studio::makeActionStep(entityIds[1], studio::CommandType::TurnOff);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneValidationStatus::Ok),
+                        static_cast<int>(scenes.validate(scene)));
+  scene.startSteps[1] =
+      studio::makeActionStep(entityIds[3], studio::CommandType::TurnOn);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneValidationStatus::MissingCapability),
+      static_cast<int>(scenes.validate(scene)));
+}
+
 void test_manager_migrates_legacy_without_boot_activation() {
   MemoryBackend backend;
   LegacyBackend legacy;
@@ -658,7 +937,7 @@ void test_manager_migrates_legacy_without_boot_activation() {
   TEST_ASSERT_TRUE(manager.begin());
   TEST_ASSERT_EQUAL_UINT32(1, manager.count());
   TEST_ASSERT_EQUAL_INT(0, driver.activationCount);
-  TEST_ASSERT_EQUAL(studio::kInvalidInstanceId, manager.activeInstance());
+  TEST_ASSERT_EQUAL(studio::kInvalidInstanceId, manager.foregroundInstance());
   const studio::DeviceRecord* record = manager.at(0);
   TEST_ASSERT_TRUE(record->paired);
   TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
@@ -672,7 +951,7 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
   studio::DeviceManager manager(backend, legacy, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   const studio::InstanceId instanceId = manager.at(0)->instanceId;
-  TEST_ASSERT_TRUE(manager.activate(instanceId));
+  TEST_ASSERT_TRUE(manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(1, driver.activationCount);
 
   studio::DeviceCommand command;
@@ -715,7 +994,7 @@ void test_manager_routes_to_canon_driver() {
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(
           manager.add(studio::DriverId::CanonBle, "R6 Mark III", canonId)));
-  TEST_ASSERT_TRUE(manager.activate(canonId));
+  TEST_ASSERT_TRUE(manager.acquire(canonId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(0, sharkDriver.activationCount);
   TEST_ASSERT_EQUAL_INT(1, canonDriver.activationCount);
   TEST_ASSERT_EQUAL_INT(0, triggerDriver.activationCount);
@@ -765,7 +1044,8 @@ void test_manager_routes_to_canon_driver() {
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(manager.add(studio::DriverId::CanonTrigger,
                                    "R6 Trigger", triggerId)));
-  TEST_ASSERT_TRUE(manager.activate(triggerId));
+  manager.release(canonId, studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_TRUE(manager.acquire(triggerId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(1, triggerDriver.activationCount);
   TEST_ASSERT_FALSE(canonDriver.active);
   command.instanceId = triggerId;
@@ -793,7 +1073,7 @@ void test_manager_routes_explicit_tascam_record_commands() {
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(
           manager.add(studio::DriverId::TascamX8, "Recorder", id)));
-  TEST_ASSERT_TRUE(manager.activate(id));
+  TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
 
   studio::DeviceCommand command;
   command.instanceId = id;
@@ -851,8 +1131,8 @@ void test_manager_holds_concurrent_active_links() {
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(
           manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
-  TEST_ASSERT_TRUE(manager.activateHeld(canonId));
-  TEST_ASSERT_TRUE(manager.activateHeld(tascamId));
+  TEST_ASSERT_TRUE(manager.acquire(canonId, studio::ConnectionOwner::Sequence));
+  TEST_ASSERT_TRUE(manager.acquire(tascamId, studio::ConnectionOwner::Sequence));
   TEST_ASSERT_EQUAL_UINT32(2, manager.activeCount());
   TEST_ASSERT_TRUE(manager.isActive(canonId));
   TEST_ASSERT_TRUE(manager.isActive(tascamId));
@@ -879,6 +1159,114 @@ void test_manager_holds_concurrent_active_links() {
   TEST_ASSERT_EQUAL_UINT32(0, manager.activeCount());
   TEST_ASSERT_FALSE(canonDriver.active);
   TEST_ASSERT_FALSE(tascamDriver.active);
+}
+
+void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver sharkDriver;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver, &tascamDriver,
+                                     &homeAssistantDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 4);
+  TEST_ASSERT_TRUE(manager.begin());
+  const studio::InstanceId sharkId = manager.at(0)->instanceId;
+  studio::InstanceId canonIds[3] = {};
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  for (studio::InstanceId& id : canonIds) {
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::RegistryStatus::Ok),
+        static_cast<int>(manager.add(studio::DriverId::CanonBle, "Camera", id)));
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
+  studio::InstanceId haIds[4] = {};
+  for (size_t i = 0; i < 4; ++i) {
+    char entityId[32];
+    std::snprintf(entityId, sizeof(entityId), "switch.test_%u",
+                  static_cast<unsigned>(i));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::RegistryStatus::Ok),
+        static_cast<int>(manager.addHomeAssistantEntity(
+            studio::HomeAssistantDomain::Switch, entityId, "HA switch",
+            haIds[i])));
+  }
+
+  const studio::InstanceId initial[] = {
+      sharkId, canonIds[0], canonIds[1], tascamId,
+      haIds[0], haIds[1], haIds[2], haIds[3]};
+  for (studio::InstanceId id : initial) {
+    TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+    manager.loop();
+    manager.release(id, studio::ConnectionOwner::Foreground);
+    TEST_ASSERT_TRUE(manager.isRetained(id));
+  }
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_ACTIVE_INSTANCES, manager.activeCount());
+
+  // The oldest retained-idle session is evicted for a fifth device, while
+  // multiple instances backed by the same driver remain active together.
+  TEST_ASSERT_TRUE(
+      manager.acquire(canonIds[2], studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_FALSE(manager.isActive(sharkId));
+  TEST_ASSERT_TRUE(manager.isActive(canonIds[0]));
+  TEST_ASSERT_TRUE(manager.isActive(canonIds[1]));
+  TEST_ASSERT_TRUE(manager.isActive(canonIds[2]));
+  TEST_ASSERT_EQUAL_INT(3, canonDriver.activationCount);
+  manager.loop();
+  manager.release(canonIds[2], studio::ConnectionOwner::Foreground);
+
+  // Make the recorder oldest, then protect it with confirmed recording. The
+  // next acquisition must evict the oldest safe camera instead.
+  tascamDriver.recordingConfirmed = true;
+  tascamDriver.recording = true;
+  for (studio::InstanceId id : canonIds) {
+    TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+    manager.release(id, studio::ConnectionOwner::Foreground);
+  }
+  TEST_ASSERT_TRUE(
+      manager.acquire(sharkId, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_TRUE(manager.isActive(tascamId));
+  TEST_ASSERT_FALSE(manager.isActive(haIds[0]));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandStatus::ConfirmationRequired),
+      static_cast<int>(manager.disconnect(tascamId)));
+  TEST_ASSERT_TRUE(manager.isActive(tascamId));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
+                        static_cast<int>(manager.disconnect(tascamId, true)));
+  TEST_ASSERT_FALSE(manager.isActive(tascamId));
+}
+
+void test_manager_cancels_unready_release_and_reuses_ready_session() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::CanonBle, "Camera", id)));
+
+  driver.ready = false;
+  TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+  manager.release(id, studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_FALSE(manager.isActive(id));
+  TEST_ASSERT_EQUAL_INT(1, driver.deactivationCount);
+
+  driver.ready = true;
+  TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+  manager.loop();
+  manager.release(id, studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_TRUE(manager.isRetained(id));
+  const int activations = driver.activationCount;
+  TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_INT(activations, driver.activationCount);
+  manager.release(id, studio::ConnectionOwner::Foreground);
 }
 
 void test_scene_store_round_trip_and_corruption() {
@@ -1000,7 +1388,9 @@ void test_press_record_start_and_authored_stop() {
   TEST_ASSERT_TRUE(devices.isActive(canonId));
   TEST_ASSERT_TRUE(devices.isActive(tascamId));
   scenes.cancel();
-  TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
+  TEST_ASSERT_EQUAL_UINT32(2, devices.activeCount());
+  TEST_ASSERT_FALSE(devices.ownedBy(canonId, studio::ConnectionOwner::Sequence));
+  TEST_ASSERT_FALSE(devices.ownedBy(tascamId, studio::ConnectionOwner::Sequence));
 }
 
 void test_prepare_ready_then_start_from_held_links() {
@@ -1076,7 +1466,9 @@ void test_prepare_ready_then_start_from_held_links() {
       static_cast<int>(studio::SceneRegistryStatus::Ok),
       static_cast<int>(scenes.replace(cameraOnly)));
   TEST_ASSERT_TRUE(devices.isActive(canonId));
-  TEST_ASSERT_FALSE(devices.isActive(tascamId));
+  TEST_ASSERT_TRUE(devices.isActive(tascamId));
+  TEST_ASSERT_FALSE(
+      devices.ownedBy(tascamId, studio::ConnectionOwner::Sequence));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::SceneRegistryStatus::Ok),
       static_cast<int>(scenes.replace(original)));
@@ -1100,7 +1492,7 @@ void test_prepare_ready_then_start_from_held_links() {
 
   scenes.cancel();
   TEST_ASSERT_FALSE(scenes.holdsLinks());
-  TEST_ASSERT_EQUAL_UINT32(0, devices.activeCount());
+  TEST_ASSERT_EQUAL_UINT32(2, devices.activeCount());
 }
 
 class BleTestDelegate : public studio::ble::BleCentralDelegate {
@@ -1396,12 +1788,17 @@ int main(int, char**) {
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
+  RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
+  RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
+  RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
   RUN_TEST(test_manager_holds_concurrent_active_links);
+  RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
+  RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_press_record_start_and_authored_stop);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);

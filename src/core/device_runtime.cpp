@@ -14,6 +14,9 @@
 #if CONFIG_DRIVER_TASCAM_X8
 #include "devices/tascam_x8/driver.h"
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+#include "devices/home_assistant/driver.h"
+#endif
 
 namespace studio {
 
@@ -32,6 +35,9 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_TASCAM_X8
   static TascamX8Driver tascamX8Driver;
 #endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+  static HomeAssistantDriver homeAssistantDriver;
+#endif
   static DeviceDriver* drivers[] = {
 #if CONFIG_DRIVER_SHARK_NANO_II
       &sharkDriver,
@@ -44,6 +50,9 @@ DeviceManager& devices() {
 #endif
 #if CONFIG_DRIVER_TASCAM_X8
       &tascamX8Driver,
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+      &homeAssistantDriver,
 #endif
       nullptr,
   };

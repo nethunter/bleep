@@ -4,86 +4,95 @@
 
 namespace studio {
 
-void SharkDriver::activate(const DeviceRecord& record) {
-  activeInstance_ = record.instanceId;
-  active_ = true;
-  client_.activate(record.bleAddress, record.bleAddressType,
+bool SharkDriver::activate(const DeviceRecord& record) {
+  if (session_.instanceId == record.instanceId) {
+    return true;
+  }
+  if (session_.instanceId != kInvalidInstanceId) {
+    return false;
+  }
+  session_.instanceId = record.instanceId;
+  session_.client.activate(record.bleAddress, record.bleAddressType,
                    record.bleName[0] != '\0' ? record.bleName : record.displayName,
                    record.paired);
+  return true;
 }
 
-void SharkDriver::deactivate() {
-  if (active_) {
-    client_.deactivate();
+void SharkDriver::deactivate(InstanceId instanceId) {
+  if (session_.instanceId == instanceId) {
+    session_.client.deactivate();
+    session_.instanceId = kInvalidInstanceId;
   }
-  active_ = false;
-  activeInstance_ = kInvalidInstanceId;
 }
 
 void SharkDriver::loop() {
-  if (active_) {
-    client_.loop();
+  if (session_.instanceId != kInvalidInstanceId) {
+    session_.client.loop();
   }
 }
 
 CommandStatus SharkDriver::dispatch(const DeviceCommand& command) {
-  if (!active_ || command.instanceId != activeInstance_) {
+  if (command.instanceId != session_.instanceId) {
     return CommandStatus::Unavailable;
   }
 
   switch (command.type) {
     case CommandType::Connect:
-      client_.startScan();
+      session_.client.startScan();
       return CommandStatus::Succeeded;
     case CommandType::Disconnect:
-      deactivate();
+      deactivate(command.instanceId);
       return CommandStatus::Succeeded;
     case CommandType::ForgetPairing:
-      client_.forgetDevice();
+      session_.client.forgetDevice();
       return CommandStatus::Succeeded;
     case CommandType::Refresh:
-      client_.refreshAll();
-      return client_.connected() ? CommandStatus::Succeeded : CommandStatus::Unavailable;
+      session_.client.refreshAll();
+      return session_.client.connected() ? CommandStatus::Succeeded
+                                         : CommandStatus::Unavailable;
     case CommandType::KeypointSet:
-      client_.keypointSet(command.value0);
+      session_.client.keypointSet(command.value0);
       return CommandStatus::Succeeded;
     case CommandType::KeypointGo:
-      client_.keypointGo(command.value0);
+      session_.client.keypointGo(command.value0);
       return CommandStatus::Succeeded;
     case CommandType::KeypointDelete:
-      client_.keypointDelete(command.value0);
+      session_.client.keypointDelete(command.value0);
       return CommandStatus::Succeeded;
     case CommandType::SetSpeed:
-      client_.setSpeed(command.value0, command.value1);
+      session_.client.setSpeed(command.value0, command.value1);
       return CommandStatus::Succeeded;
     case CommandType::SetHold:
-      client_.setHold(command.value0, command.value1);
+      session_.client.setHold(command.value0, command.value1);
       return CommandStatus::Succeeded;
     case CommandType::SetRunState:
-      client_.setRunState(static_cast<uint8_t>(command.value0));
+      session_.client.setRunState(static_cast<uint8_t>(command.value0));
       return CommandStatus::Succeeded;
     case CommandType::SetLoop:
-      client_.setLoop(command.value0 != 0);
+      session_.client.setLoop(command.value0 != 0);
       return CommandStatus::Succeeded;
     case CommandType::SetDirection:
-      client_.setDirection(command.value0 != 0);
+      session_.client.setDirection(command.value0 != 0);
       return CommandStatus::Succeeded;
     case CommandType::SetManualTracking:
-      client_.setManualTracking(command.value0 != 0);
+      session_.client.setManualTracking(command.value0 != 0);
       return CommandStatus::Succeeded;
     case CommandType::SetMotionVector:
-      client_.setMotionVector(command.value0, command.value1);
+      session_.client.setMotionVector(command.value0, command.value1);
       return CommandStatus::Succeeded;
     case CommandType::StopMotion:
-      client_.stopMotion();
+      session_.client.stopMotion();
       return CommandStatus::Succeeded;
   }
   return CommandStatus::Unsupported;
 }
 
-DeviceRuntimeState SharkDriver::runtimeState() const {
+DeviceRuntimeState SharkDriver::runtimeState(InstanceId instanceId) const {
   DeviceRuntimeState state;
-  switch (client_.state().link) {
+  if (instanceId != session_.instanceId) {
+    return state;
+  }
+  switch (session_.client.state().link) {
     case shark::SharkClient::Link::Disconnected:
       state.link = LinkState::Disconnected;
       break;
@@ -97,19 +106,25 @@ DeviceRuntimeState SharkDriver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
-  state.protocolReady = client_.protocolReady();
+  state.protocolReady = session_.client.protocolReady();
   state.quality = state.link == LinkState::Connected ? StateQuality::Confirmed
                                                      : StateQuality::Unknown;
   return state;
 }
 
-bool SharkDriver::consumePairingUpdate(DeviceRecord& record) {
+const void* SharkDriver::specializedState(InstanceId instanceId) const {
+  return instanceId == session_.instanceId ? &session_.client.state() : nullptr;
+}
+
+bool SharkDriver::consumePairingUpdate(InstanceId instanceId,
+                                       DeviceRecord& record) {
   char address[kBleAddressCapacity] = "";
   char name[kBleNameCapacity] = "";
   uint8_t addressType = 0;
   bool paired = false;
-  if (!client_.consumePairingUpdate(address, sizeof(address), addressType, name,
-                                    sizeof(name), paired)) {
+  if (instanceId != session_.instanceId ||
+      !session_.client.consumePairingUpdate(address, sizeof(address), addressType,
+                                            name, sizeof(name), paired)) {
     return false;
   }
   record.paired = paired;

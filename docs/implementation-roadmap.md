@@ -35,9 +35,45 @@ ADR-017 authorizes a BLE-only Camera Connect experiment as `Canon (Smart)`
 beside the verified BR-E1 `Canon (Trigger)` driver. It tests captured pairing,
 setup, explicit movie commands, shooting-state notifications, and lifecycle
 controls without claiming the Smart Wi-Fi/CCAPI workflow. Both drivers may be
-compiled together; only one transport is active at a time. ADR-018 makes wake
+compiled together; ADR-022 supersedes the original single-transport limit.
+ADR-018 makes wake
 automatic on screen activation, keeps power-down explicit, and preserves
 non-destructive Back behavior.
+
+ADR-022 replaces screen-scoped teardown with a bounded four-session retained
+pool. Protocol-ready manual and sequence sessions survive navigation, multiple
+instances of one Canon driver may coexist, and safe LRU eviction protects
+foreground, sequence, pending-command, and confirmed-recording sessions.
+
+ADR-023 authorizes a bounded local Home Assistant client on top of that
+multi-instance baseline. The software tranche includes AP Wi-Fi bootstrap and
+screen-scoped LAN Portal setup,
+schema-v2 entity records, separate secret storage, four dynamic HA profiles, a
+shared REST/WebSocket runtime, entity controls, and safe authored scene actions.
+It remains `Experimental`: do not mark the tranche complete until the target
+passes ten Portal and ten runtime lifecycle cycles with correct AP-to-LAN handoff,
+responsive LVGL, authenticated subscription, correct actions/state, and
+recovered sockets/tasks/heap. TLS, cloud/OAuth, HA devices/areas, additional
+domains, and exposing Ble(e)p devices to HA remain deferred.
+
+### Home Assistant feasibility gate
+
+Status: `Software implemented; hardware gate open`.
+
+Required target evidence:
+
+- the setup AP accepts only Wi-Fi provisioning, hands off cleanly to the LAN
+  listener, reports scan/join/failure state without blocking LVGL, and the
+  displayed numeric address remains reachable only while Portal is open;
+- REST `/api/`, bounded `/api/states` discovery, WebSocket authentication,
+  selected-entity subscription, and state/service round trips all succeed;
+- four entities persist across reboot while neutral Home boot starts no Wi-Fi;
+- wrong token, missing entity, HA restart, Wi-Fi loss, reconnect, rebind, and
+  explicit unlink recover without UI stalls;
+- mixed HA/Canon/Tascam sequences prepare one shared HA session and execute in
+  order;
+- ten Portal and ten runtime connect/disconnect cycles recover heap, sockets,
+  and tasks. If not, record the measured constraint and stop this tranche.
 
 ## Planned UI memory optimization
 
@@ -97,9 +133,11 @@ events, free heap, and repeated connect/disconnect stability.
 
 Prove:
 
-- transition from studio Wi-Fi/device control into a temporary WPA2 SoftAP;
-- a bounded HTTP page reachable only through the temporary AP;
-- per-session credentials displayed on the panel;
+- Wi-Fi-only bootstrap through a temporary WPA2 SoftAP;
+- clean handoff to a station-bound HTTP page at the displayed DHCP address,
+  with `bleep.local` as a best-effort alias;
+- the fixed initial setup password and active URL displayed on the panel;
+- LAN reachability only while the Portal screen remains active;
 - explicit Exit and inactivity-timeout teardown;
 - return to Home and later device reconnection;
 - full recovery of server tasks, sockets, buffers, and heap after repeated
@@ -147,7 +185,8 @@ Completion gate:
 Work:
 
 - boot to Home without scanning, pairing, re-pairing, or reconnecting Shark;
-- request device connections only from a device screen or scene;
+- request the first device connection only from a device screen or scene, then
+  retain protocol-ready sessions until safe eviction or explicit release;
 - add versioned persistence and migrations;
 - create, rename, enable, disable, configure, and remove device instances;
 - create groups and validate their shared capabilities;

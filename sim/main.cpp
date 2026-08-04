@@ -11,6 +11,9 @@
 #include "devices/canon_trigger/ui.h"
 #include "devices/shark_nano_ii/ui.h"
 #include "devices/tascam_x8/ui.h"
+#include "devices/home_assistant/ui.h"
+#include "devices/home_assistant/client.h"
+#include "portal_service.h"
 #include "scene_ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
@@ -152,10 +155,30 @@ int main() {
                         canonTriggerId);
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::TascamX8, "Recorder A", tascamId);
+  studio::InstanceId haLight = studio::kInvalidInstanceId;
+  studio::devices().addHomeAssistantEntity(studio::HomeAssistantDomain::Light,
+                                           "light.key_light", "Key Light",
+                                           haLight);
+  studio::InstanceId haInputBoolean = studio::kInvalidInstanceId;
+  studio::devices().addHomeAssistantEntity(
+      studio::HomeAssistantDomain::InputBoolean,
+      "input_boolean.live", "Studio Live", haInputBoolean);
+  studio::InstanceId haButton = studio::kInvalidInstanceId;
+  studio::devices().addHomeAssistantEntity(studio::HomeAssistantDomain::Button,
+                                           "button.slate", "Slate",
+                                           haButton);
+  studio::InstanceId haScene = studio::kInvalidInstanceId;
+  studio::devices().addHomeAssistantEntity(studio::HomeAssistantDomain::Scene,
+                                           "scene.studio_ready", "Studio Ready",
+                                           haScene);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
       canonTriggerId == studio::kInvalidInstanceId ||
-      tascamId == studio::kInvalidInstanceId) {
+      tascamId == studio::kInvalidInstanceId ||
+      haLight == studio::kInvalidInstanceId ||
+      haInputBoolean == studio::kInvalidInstanceId ||
+      haButton == studio::kInvalidInstanceId ||
+      haScene == studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
     return 1;
   }
@@ -371,6 +394,25 @@ int main() {
     return 1;
   }
 
+  ui::simShowManage(tascamId);
+  pump(100);
+  if (!capture("20b_tascam_manage_recording")) {
+    return 1;
+  }
+  ui::simRequestManagedDisconnect();
+  pump(50);
+  if (!capture("20c_tascam_disconnect_confirm")) {
+    return 1;
+  }
+  ui::showHome();
+  tascam_x8_ui::show(tascamId);
+  pump(100);
+  if (studio::simTascamState().recording !=
+      tascam_x8::TascamX8State::Recording::Recording) {
+    std::fprintf(stderr, "Retained Tascam session was not reused\n");
+    return 1;
+  }
+
   ui::handleShortPress();
   pump(20);
   if (studio::simTascamState().recording !=
@@ -420,6 +462,9 @@ int main() {
   if (!capture("23b_scenes_settings")) {
     return 1;
   }
+  // Exercise the initially-disconnected preparation and timeout path even
+  // though earlier device screenshots now leave protocol-ready links retained.
+  studio::devices().deactivateAll();
   scene_ui::simShowRun(sceneId);
   pump(200);
   if (!capture("24a_scenes_run_connecting")) {
@@ -542,12 +587,86 @@ int main() {
   }
   scene_ui::simDeleteCurrentScene();
   if (studio::scenes().find(sceneId) != nullptr ||
-      studio::scenes().holdsLinks() || studio::devices().activeCount() != 0) {
+      studio::scenes().holdsLinks() ||
+      studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||
+      studio::devices().ownedBy(tascamId, studio::ConnectionOwner::Sequence)) {
     std::fprintf(stderr,
                  "Delete did not cancel preparation and remove sequence\n");
     return 1;
   }
   scene_ui::hide();
+  ui::showHome();
+
+  home_assistant_ui::show(haLight);
+  if (!capture("28_ha_light")) {
+    return 1;
+  }
+  auto* haState = const_cast<home_assistant::EntityState*>(
+      static_cast<const home_assistant::EntityState*>(
+          studio::devices().specializedState(haLight)));
+  if (haState == nullptr) return 1;
+  haState->stateKnown = false;
+  if (!capture("28b_ha_unknown")) return 1;
+  haState->available = false;
+  if (!capture("28c_ha_unavailable")) return 1;
+  haState->available = true;
+  haState->commandPending = true;
+  if (!capture("28d_ha_pending")) return 1;
+  haState->commandPending = false;
+  haState->commandAttempted = true;
+  haState->lastCommand = studio::CommandStatus::QueueFull;
+  if (!capture("28e_ha_error")) return 1;
+  home_assistant_ui::hide();
+  home_assistant_ui::show(haInputBoolean);
+  if (!capture("28f_ha_input_boolean")) {
+    return 1;
+  }
+  auto* inputBooleanState = const_cast<home_assistant::EntityState*>(
+      static_cast<const home_assistant::EntityState*>(
+          studio::devices().specializedState(haInputBoolean)));
+  if (inputBooleanState == nullptr) return 1;
+  home_assistant_ui::hide();
+  ui::showHome();
+  inputBooleanState->on = true;
+  std::strcpy(inputBooleanState->stateText, "on");
+  home_assistant_ui::show(haInputBoolean);
+  if (!capture("28g_ha_input_boolean_on")) {
+    return 1;
+  }
+  home_assistant_ui::hide();
+  home_assistant_ui::show(haButton);
+  if (!capture("29_ha_button")) {
+    return 1;
+  }
+  home_assistant_ui::hide();
+  ui::showPortal();
+  if (!capture("30_portal")) {
+    return 1;
+  }
+  portal::stop();
+  ui::showHome();
+  ui::showPortal();
+  portal::simSetWifiFeedback(portal::Status::Testing, "Joining studio Wi-Fi");
+  if (!capture("30a_portal_connecting")) {
+    return 1;
+  }
+  portal::stop();
+  ui::showHome();
+  ui::showPortal();
+  portal::simSetWifiFeedback(portal::Status::Ready, "Wi-Fi failed - retry");
+  pump(600);
+  lv_obj_invalidate(lv_scr_act());
+  pump(20);
+  if (!capture("30aa_portal_wifi_failed")) {
+    return 1;
+  }
+  portal::stop();
+  ui::showHome();
+  ui::showPortal();
+  portal::simSetLan(true);
+  if (!capture("30b_portal_lan")) {
+    return 1;
+  }
   ui::showHome();
 
   if (studio::devices().remove(canonTriggerId) != studio::RegistryStatus::Ok) {
