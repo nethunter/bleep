@@ -265,18 +265,34 @@ int main() {
   }
   shark_ui::hide();
   canon_ble_ui::show(canonId);
-  studio::simSetCanonConnectedState();
+  studio::simSetCanonConnectedState(false);
   pump(250);
-  if (!capture("12_canon_record_trigger")) {
+  if (!capture("12_canon_ready")) {
     return 1;
   }
 
-  const uint32_t triggerCount = studio::simCanonState().triggerCount;
   ui::handleShortPress();
   pump(20);
-  if (studio::simCanonState().triggerCount != triggerCount + 1 ||
+  if (studio::simCanonState().recording !=
+          canon_ble::CanonBleState::Recording::Recording ||
       !canon_ble_ui::active()) {
-    std::fprintf(stderr, "Hardware trigger did not activate Canon record CTA\n");
+    std::fprintf(stderr, "Hardware trigger did not start Canon recording\n");
+    return 1;
+  }
+  if (!capture("13_canon_recording")) {
+    return 1;
+  }
+
+  ui::handleShortPress();
+  pump(20);
+  if (studio::simCanonState().recording !=
+      canon_ble::CanonBleState::Recording::Stopped) {
+    std::fprintf(stderr, "Hardware trigger did not stop Canon recording\n");
+    return 1;
+  }
+  studio::simSetCanonConnectedState(false, false);
+  pump(250);
+  if (!capture("14_canon_unknown")) {
     return 1;
   }
 
@@ -284,7 +300,7 @@ int main() {
   tascam_x8_ui::show(tascamId);
   studio::simSetTascamConnectedState(false);
   pump(250);
-  if (!capture("13_tascam_ready")) {
+  if (!capture("15_tascam_ready")) {
     return 1;
   }
 
@@ -296,7 +312,7 @@ int main() {
     std::fprintf(stderr, "Hardware trigger did not start Tascam recording\n");
     return 1;
   }
-  if (!capture("14_tascam_recording")) {
+  if (!capture("16_tascam_recording")) {
     return 1;
   }
 

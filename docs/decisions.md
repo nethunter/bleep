@@ -152,13 +152,12 @@ the replacement.
   record start/stop and confirmed state. A Smart failure may fall back to a
   separately configured Trigger instance only when the user selects that
   policy.
-- Research status: The EOS R6 Mark III smartphone-mode pairing flow is
-  partially described by public reverse-engineering, but the Camera Connect
-  command that starts Wi-Fi and returns SSID/security data is not documented in
-  the available implementations. `Canon (Smart)` is blocked until that handoff
-  is captured and labeled with request/response bytes, characteristic UUIDs,
-  ordering, timing, and camera UI state. Do not infer the missing protocol from
-  successful Smart pairing alone.
+- Research status: Sanitized EOS R6 Mark III host-HCI fixtures identify the
+  Camera Connect request that starts Wi-Fi, its response indications, and the
+  SSID-like and credential-like characteristics. `Canon (Smart)` remains
+  blocked until network-side capture identifies security mode, DHCP behavior,
+  the camera HTTP endpoint, and the first successful CCAPI request. Do not infer
+  those missing details from successful BLE handoff alone.
 
 ## ADR-016: Tascam X8 record-control tranche
 
@@ -182,6 +181,36 @@ the replacement.
 - Roadmap deviation: This tranche advances a future recorder driver while the
   Phase 0/foundation and Canon verification gates remain open. It does not
   begin dependent scene or group work and retains one active transport.
+
+## ADR-017: Canon smartphone BLE experiment replaces Trigger on its branch
+
+- Status: Experimental
+- Decision: On the `spike/canon-smartphone-ble` branch, replace the compiled
+  BR-E1 `Canon (Trigger)` implementation with Canon's smartphone-mode BLE
+  pairing and shooting service. Preserve the verified BR-E1 implementation on
+  the main branch until the smartphone protocol passes its hardware gate.
+- Evidence: Public EOS M6 Camera Connect reverse-engineering documents the
+  `00010000-...` handshake service and `00030000-...` shooting service. The
+  sanitized EOS R6 Mark III host-HCI fixtures in `docs/protocols/dumps/`
+  confirm confirmation-first pairing, explicit movie start/stop writes,
+  shooting-state notifications, and the `00020002-...` Wi-Fi handoff request
+  with `00020003-...` responses. The handoff fixture excludes serial,
+  controller, SSID-like, credential-like, and SMP key material.
+- Consequence: This branch exposes explicit `RecordStart`, `RecordStop`, and
+  recording-state capability, but reports state as unknown until a
+  camera-originated `00030031-...` notification is observed. ATT write success
+  is not recording confirmation. Existing BR-E1 bonds and saved records must be
+  forgotten before pairing through the camera's smartphone workflow.
+- Relationship to ADR-015: This is a bounded BLE-only experiment, not the
+  production `Canon (Smart)` BLE-to-Wi-Fi CCAPI workflow. It does not start a
+  camera access point, join Wi-Fi, or implement CCAPI.
+- Research boundary: Camera Connect's BLE handoff is captured, but the camera
+  network's DHCP/endpoint details and first successful CCAPI request are not.
+  `Canon (Smart)` remains blocked on that network-side evidence.
+- Roadmap deviation: This experiment advances smartphone-mode pairing and
+  BLE-only record control while the Phase 0/foundation and Canon Smart handoff
+  gates remain open. It retains one active transport and does not begin scene
+  or group work.
 
 ## Open decisions
 

@@ -20,9 +20,15 @@ state, concurrent Shark/Canon links, CCAPI support, or completion of Phase 1 or
 Phase 5.
 
 ADR-015 names the production-facing choices `Canon (Trigger)` and
-`Canon (Smart)`. Smart is blocked until an EOS R6 Mark III capture identifies
-the smartphone BLE command and responses used to start and join the camera
-Wi-Fi access point.
+`Canon (Smart)`. An EOS R6 Mark III host-HCI capture now identifies the
+smartphone BLE request, responses, and credential-bearing characteristics used
+for Wi-Fi handoff. Smart remains blocked on network-side DHCP/endpoint evidence
+and the first successful CCAPI request.
+
+ADR-017 authorizes `spike/canon-smartphone-ble` to replace Trigger on that
+branch with a BLE-only Camera Connect experiment. It tests public explicit
+movie commands and shooting-state notifications without claiming the Smart
+Wi-Fi/CCAPI workflow or changing the main-branch BR-E1 fallback.
 
 ## Phase 0: Preserve and baseline the Shark remote
 
@@ -155,7 +161,8 @@ Work:
   point;
 - expose `Canon (Trigger)`, `Canon (Smart)`, and explicit Smart-to-Trigger
   fallback selection;
-- leave BLE-only recording state unknown and report CCAPI state as confirmed.
+- leave BR-E1 recording state unknown; report smartphone BLE or CCAPI state as
+  confirmed only after device-originated readback.
 
 Completion gate:
 

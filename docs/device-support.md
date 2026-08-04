@@ -51,23 +51,35 @@ Reference research:
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
 
-- `Canon (Trigger)` status: EOS R6 Mark II and Mark III implemented and under
-  extended hardware verification; EOS R6 remains `Planned`.
-- `Canon (Trigger)` transport: BR-E1-compatible BLE with a stateless movie
-  record trigger.
-- `Canon (Smart)` status: `Blocked` pending an EOS R6 Mark III Camera Connect
-  BLE-to-Wi-Fi handoff capture.
+- Branch status: `Research`. ADR-017 replaces the compiled `Canon (Trigger)`
+  driver with a BLE-only smartphone-mode experiment on
+  `spike/canon-smartphone-ble`; the verified BR-E1 implementation remains on
+  the main branch.
+- Experimental transport: Camera Connect smartphone-mode BLE pairing and
+  shooting services without starting Wi-Fi.
+- `Canon (Smart)` status: `Blocked` on network-side DHCP/endpoint and CCAPI
+  evidence. The EOS R6 Mark III Camera Connect BLE-to-Wi-Fi handoff is now
+  captured.
 - `Canon (Smart)` transport: smartphone-mode BLE pairing and Wi-Fi handoff,
   followed by CCAPI HTTP over the camera's direct access point.
-- Trigger capability: record trigger.
-- Hardware trigger: while connected, invokes the same stateless record trigger
-  as the touch CTA.
+- Experimental capabilities: explicit record start, record stop, and
+  camera-notification recording state.
+- Capture-backed future capabilities: wake from Bluetooth standby with mode
+  `03` and power down after shooting with mode `05`. These are not implemented
+  by the current experiment.
+- Hardware trigger: starts from Ready/Unknown and stops from a
+  camera-confirmed Recording state. Touch exposes both commands while state is
+  unknown.
 - Planned Smart capabilities: record start, record stop, and confirmed
   recording state.
 
-CCAPI can confirm recording state. BR-E1-style Bluetooth uses the same trigger
-for start and stop and does not provide equivalent state readback, so the panel
-leaves Bluetooth-only recording state unknown rather than inferring it.
+Public EOS M6 reverse-engineering reports `00 10` start, `00 11` stop, and
+`01 01 02`/`01 01 01` recording-state notifications on the smartphone shooting
+service. Sanitized Pixel 9 Pro XL host-HCI captures confirm those values, the
+confirmation-first handshake, and mode command `03` with result `05` on the EOS
+R6 Mark III. The panel still leaves state unknown until a matching camera
+notification is observed and never promotes a GATT write ACK to confirmed
+state.
 
 The first bounded hardware tranche targeted the EOS R6 Mark III. Public
 reverse-engineering supplied the pairing UUIDs and candidate command bytes.
@@ -77,25 +89,25 @@ bonded reconnect on the EOS R6 Mark II. EOS R6 support is not yet claimed.
 EOS R6 Mark II and Mark III pairing, bonded reconnect, and the BR-E1
 movie-mode `0x88`/`0x08` press/release trigger have been functionally verified.
 Extended cycle, forget/re-pair, latency, heap, and coexistence checks remain
-open.
+open on the main branch. Smartphone-mode pairing, explicit movie control, state
+notifications, and reconnect remain unverified on all EOS R6-family models.
 
 ### Camera Connect handoff capture
 
-The public Canon Smart implementations found during research cover
-smartphone-mode pairing and BLE shutter control, but not the command that asks
-the camera to start its Wi-Fi access point and returns the connection data.
-Implementation of `Canon (Smart)` requires a capture containing:
+The host-HCI handoff fixture now covers:
 
 1. advertisement and pairing mode used by the EOS R6 Mark III;
 2. ordered GATT reads, writes, indications, and notifications after pairing;
-3. the exact request that starts Wi-Fi;
-4. SSID, BSSID, security mode, credential, IP, and port responses;
-5. timing, reconnect behavior, and camera-screen prompts;
-6. the transition from BLE handoff to the first successful CCAPI request.
+3. Wi-Fi handoff request `01` on `00020002-...`;
+4. handoff indications `01 03` and `02 03` on `00020003-...`;
+5. SSID-like and credential-like characteristic reads, with their values
+   removed from the repository fixture.
 
-Until that capture exists, direct Camera Access Point setup plus CCAPI Auto
-Connect is a valid manual research path, but it is not equivalent to the
-automatic `Canon (Smart)` workflow.
+Implementation still requires network-side evidence for security mode, DHCP,
+camera IP and port, and the transition to the first successful CCAPI request.
+Direct Camera Access Point setup plus CCAPI Auto Connect remains a valid manual
+research path, but it is not equivalent to the automatic `Canon (Smart)`
+workflow.
 
 Reference research:
 

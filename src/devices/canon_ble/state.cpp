@@ -3,20 +3,42 @@
 namespace canon_ble {
 
 void resetTransientState(CanonBleState& state) {
-  state.triggerPending = false;
-  state.lastTriggerSucceeded = false;
+  state.phase = CanonBleState::Phase::Idle;
+  state.recording = CanonBleState::Recording::Unknown;
+  state.recordingConfirmed = false;
+  state.commandPending = false;
+  state.lastCommandFailed = false;
+  state.pairingRejected = false;
 }
 
-void markTriggerQueued(CanonBleState& state) {
-  state.triggerPending = true;
-  state.lastTriggerSucceeded = false;
+void markCommandQueued(CanonBleState& state, bool start) {
+  state.recording = start ? CanonBleState::Recording::Starting
+                          : CanonBleState::Recording::Stopping;
+  state.recordingConfirmed = false;
+  state.commandPending = true;
+  state.lastCommandFailed = false;
 }
 
-void markTriggerComplete(CanonBleState& state, bool succeeded) {
-  state.triggerPending = false;
-  state.lastTriggerSucceeded = succeeded;
-  if (succeeded) {
-    ++state.triggerCount;
+void markCommandWriteFailed(CanonBleState& state) {
+  state.recording = CanonBleState::Recording::Unknown;
+  state.recordingConfirmed = false;
+  state.commandPending = false;
+  state.lastCommandFailed = true;
+}
+
+void reduceRecordNotification(CanonBleState& state, const uint8_t* data,
+                              size_t len) {
+  const RecordEvent event = parseRecordEvent(data, len);
+  if (event == RecordEvent::Started) {
+    state.recording = CanonBleState::Recording::Recording;
+    state.recordingConfirmed = true;
+    state.commandPending = false;
+    state.lastCommandFailed = false;
+  } else if (event == RecordEvent::Stopped) {
+    state.recording = CanonBleState::Recording::Stopped;
+    state.recordingConfirmed = true;
+    state.commandPending = false;
+    state.lastCommandFailed = false;
   }
 }
 

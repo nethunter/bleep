@@ -276,28 +276,79 @@ void test_reset_preserves_link_identity_and_preferences() {
   TEST_ASSERT_FALSE(state.present[0]);
 }
 
-void test_canon_pairing_and_record_trigger_protocol() {
-  const canon_ble::PairingName identity =
-      canon_ble::buildPairingName("StudioRemote");
-  TEST_ASSERT_EQUAL_UINT32(13, identity.len);
-  TEST_ASSERT_EQUAL_HEX8(0x03, identity.bytes[0]);
-  TEST_ASSERT_EQUAL_UINT8_ARRAY("StudioRemote", &identity.bytes[1], 12);
-  TEST_ASSERT_EQUAL_HEX8(0x88, canon_ble::kRecordTriggerPress);
-  TEST_ASSERT_EQUAL_HEX8(0x08, canon_ble::kRecordTriggerRelease);
-  TEST_ASSERT_EQUAL_UINT32(200, canon_ble::kTriggerHoldMs);
+void test_canon_smartphone_handshake_and_record_protocol() {
+  const canon_ble::CommandBytes request =
+      canon_ble::buildHandshakeRequest("StudioRemote");
+  TEST_ASSERT_EQUAL_UINT32(13, request.len);
+  TEST_ASSERT_EQUAL_HEX8(0x01, request.bytes[0]);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY("StudioRemote", &request.bytes[1], 12);
+
+  uint8_t controllerId[16];
+  for (size_t i = 0; i < sizeof(controllerId); ++i) {
+    controllerId[i] = static_cast<uint8_t>(i + 1);
+  }
+  const canon_ble::CommandBytes id = canon_ble::buildControllerId(controllerId);
+  TEST_ASSERT_EQUAL_UINT32(17, id.len);
+  TEST_ASSERT_EQUAL_HEX8(0x03, id.bytes[0]);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(controllerId, &id.bytes[1],
+                                sizeof(controllerId));
+
+  const canon_ble::CommandBytes name =
+      canon_ble::buildDeviceName("StudioRemote");
+  TEST_ASSERT_EQUAL_HEX8(0x04, name.bytes[0]);
+  const canon_ble::CommandBytes type = canon_ble::buildAndroidDeviceType();
+  const uint8_t expectedType[] = {0x05, 0x02};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedType, type.bytes, sizeof(expectedType));
+  const uint8_t confirmed[] = {0x02};
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::PairingResponse::Confirmed),
+      static_cast<int>(
+          canon_ble::parsePairingResponse(confirmed, sizeof(confirmed))));
+  const uint8_t shootingMode[] = {0x04};
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::ModeEvent::Shooting),
+      static_cast<int>(
+          canon_ble::parseModeEvent(shootingMode, sizeof(shootingMode))));
+  const uint8_t recordingMode[] = {0x05};
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::ModeEvent::RecordingSession),
+      static_cast<int>(
+          canon_ble::parseModeEvent(recordingMode, sizeof(recordingMode))));
+
+  const uint8_t expectedStart[] = {0x00, 0x10};
+  const uint8_t expectedStop[] = {0x00, 0x11};
+  const canon_ble::CommandBytes start = canon_ble::buildRecordCommand(true);
+  const canon_ble::CommandBytes stop = canon_ble::buildRecordCommand(false);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStart, start.bytes,
+                                sizeof(expectedStart));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.bytes, sizeof(expectedStop));
 }
 
-void test_canon_state_never_infers_recording() {
+void test_canon_state_requires_camera_notifications() {
   canon_ble::CanonBleState state;
-  canon_ble::markTriggerQueued(state);
-  TEST_ASSERT_TRUE(state.triggerPending);
-  canon_ble::markTriggerComplete(state, true);
-  TEST_ASSERT_FALSE(state.triggerPending);
-  TEST_ASSERT_TRUE(state.lastTriggerSucceeded);
-  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
-  canon_ble::resetTransientState(state);
-  TEST_ASSERT_FALSE(state.lastTriggerSucceeded);
-  TEST_ASSERT_EQUAL_UINT32(1, state.triggerCount);
+  canon_ble::markCommandQueued(state, true);
+  TEST_ASSERT_TRUE(state.commandPending);
+  TEST_ASSERT_FALSE(state.recordingConfirmed);
+
+  const uint8_t pressed[] = {0x10, 0x10, 0x10};
+  canon_ble::reduceRecordNotification(state, pressed, sizeof(pressed));
+  TEST_ASSERT_TRUE(state.commandPending);
+  TEST_ASSERT_FALSE(state.recordingConfirmed);
+
+  const uint8_t recording[] = {0x01, 0x01, 0x02};
+  canon_ble::reduceRecordNotification(state, recording, sizeof(recording));
+  TEST_ASSERT_FALSE(state.commandPending);
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::CanonBleState::Recording::Recording),
+      static_cast<int>(state.recording));
+
+  const uint8_t stopped[] = {0x01, 0x01, 0x01};
+  canon_ble::reduceRecordNotification(state, stopped, sizeof(stopped));
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::CanonBleState::Recording::Stopped),
+      static_cast<int>(state.recording));
 }
 
 void test_tascam_cobs_commands_match_capture() {
@@ -416,8 +467,12 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_NOT_NULL(canon);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Camera),
                         static_cast<int>(canon->type));
-  TEST_ASSERT_BITS_HIGH(studio::capabilityBit(studio::Capability::RecordTrigger),
-                        canon->capabilities);
+  TEST_ASSERT_EQUAL_STRING("canon.eos_r6.smartphone_ble", canon->stableId);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::RecordStart) |
+          studio::capabilityBit(studio::Capability::RecordStop) |
+          studio::capabilityBit(studio::Capability::RecordingState),
+      canon->capabilities);
   const studio::DriverDescriptor* tascam =
       studio::DriverCatalog::find(studio::DriverId::TascamX8);
   TEST_ASSERT_NOT_NULL(tascam);
@@ -563,7 +618,7 @@ void test_manager_routes_to_canon_driver() {
 
   studio::DeviceCommand command;
   command.instanceId = canonId;
-  command.type = studio::CommandType::RecordTrigger;
+  command.type = studio::CommandType::RecordStart;
   TEST_ASSERT_TRUE(manager.enqueue(command));
   manager.loop();
   studio::CommandResult result;
@@ -571,7 +626,14 @@ void test_manager_routes_to_canon_driver() {
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
                         static_cast<int>(result.status));
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(studio::CommandType::RecordTrigger),
+      static_cast<int>(studio::CommandType::RecordStart),
+      static_cast<int>(canonDriver.lastCommand));
+  command.type = studio::CommandType::RecordStop;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::RecordStop),
       static_cast<int>(canonDriver.lastCommand));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
@@ -642,8 +704,8 @@ int main(int, char**) {
   RUN_TEST(test_command_builders_and_timing_patch);
   RUN_TEST(test_state_reducer_decodes_snapshots_and_progress);
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
-  RUN_TEST(test_canon_pairing_and_record_trigger_protocol);
-  RUN_TEST(test_canon_state_never_infers_recording);
+  RUN_TEST(test_canon_smartphone_handshake_and_record_protocol);
+  RUN_TEST(test_canon_state_requires_camera_notifications);
   RUN_TEST(test_tascam_cobs_commands_match_capture);
   RUN_TEST(test_tascam_scanner_and_confirmed_state);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);

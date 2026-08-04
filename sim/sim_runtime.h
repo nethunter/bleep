@@ -12,7 +12,7 @@ canon_ble::CanonBleState& simCanonState();
 tascam_x8::TascamX8State& simTascamState();
 void simSetConnectedDemoState();
 void simSetScanningState();
-void simSetCanonConnectedState();
+void simSetCanonConnectedState(bool recording, bool confirmed = true);
 void simSetTascamConnectedState(bool recording);
 
 }  // namespace studio

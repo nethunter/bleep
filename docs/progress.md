@@ -5,13 +5,14 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: ADR-014 Canon Trigger extended verification, ADR-015 Canon
-  Smart handoff research, and the combined Phase 0/foundation physical
-  regression gates.
+- Current phase: ADR-017 Canon smartphone-mode BLE experiment on
+  `spike/canon-smartphone-ble`, ADR-015 Canon Smart handoff research, and the
+  combined Phase 0/foundation physical regression gates.
 - Firmware state: Home-first, persistent device registry, on-demand Shark and
-  Canon BLE, asynchronous on-demand Tascam X8/AK-BT1 record control with
-  reconnect-state restoration, and device-specific hardware-trigger CTA
-  routing built, host-tested, simulator-tested, and flashed.
+  experimental smartphone-mode Canon BLE, asynchronous on-demand Tascam
+  X8/AK-BT1 record control with reconnect-state restoration, and
+  device-specific hardware-trigger CTA routing built, host-tested,
+  simulator-tested, and flashed.
 - Universal driver framework: Bounded routing supports compiled Shark and Canon
   BLE and Tascam X8 drivers while preserving one active device instance at a
   time.
@@ -39,18 +40,22 @@ short, factual, and reproducible.
 
 ## Next task
 
-Complete the Canon BLE and combined Phase 0/foundation hardware gates:
+Complete the Canon smartphone BLE and combined Phase 0/foundation hardware
+gates:
 
-1. Capture the EOS R6 Mark III Camera Connect handoff from smartphone-mode BLE
-   pairing through Wi-Fi AP startup and the first network request.
-2. Annotate characteristic UUIDs, request/response bytes, timing, SSID/security
-   data, camera prompts, and reconnect behavior.
-3. Verify Trigger forget/re-pair and repeated screen entry/exit; record
+1. Clear the camera and panel's BR-E1 pairing, select **Connect to smartphone**,
+   and verify the ADR-017 first-pair handshake and camera confirmation.
+2. Verify explicit Start/Stop, camera-button-originated state, reconnect while
+   recording/stopped, Back during pairing, and forget/re-pair. Record observed
+   notification values rather than treating write ACKs as state.
+3. Capture the complete Camera Connect BLE-to-Wi-Fi handoff for ADR-015 and
+   annotate request/response bytes, timing, credentials, and camera prompts.
+4. Verify repeated screen entry/exit; record
    connection/command latency and free/minimum heap.
-4. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
+5. Visually verify Home, Devices, rename keyboard, enable/disable, remove/add,
    and persistence across a power cycle.
-5. Verify that boot and Home perform no BLE scan or connection.
-6. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
+6. Verify that boot and Home perform no BLE scan or connection.
+7. Exercise on-demand Shark pairing, controls, safe Back, and sleep/wake.
 
 ## Measurements
 
@@ -197,6 +202,27 @@ Record values with the exact build environment and commit/worktree state.
   not completed.
 - Scope: This does not verify EOS R6/R6 II, concurrent links, CCAPI, fallback,
   or the full Phase 1 gate.
+
+### Canon smartphone-mode BLE experiment
+
+- Date: 2026-08-03.
+- Branch: `spike/canon-smartphone-ble`.
+- PlatformIO environments: `native`, `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, and `canon_ble`.
+- Default firmware flash usage: 875,214 / 3,145,728 bytes (27.8%); static RAM:
+  167,836 / 327,680 bytes (51.2%).
+- Roboto firmware flash usage: 844,742 bytes; static RAM: 167,836 bytes.
+- Canon profile flash usage: 876,014 bytes; static RAM: 166,524 bytes.
+- Host tests: 18/18 passed.
+- Simulator: Ready, Recording, and Unknown Canon screens captured; Unknown
+  exposes separate Start and Stop controls. The maximum-device run completed
+  with 8,072 bytes free after initialization and 10,048 bytes after removal.
+- Build result: all affected environments succeeded.
+- Flash result: `crowpanel_128` succeeded on
+  `/dev/cu.usbserial-211240`.
+- Hardware result: smartphone-mode pairing, explicit movie control,
+  camera-originated state, and reconnect restoration remain operator-pending.
+  No EOS R6-family protocol value is marked confirmed by this build/flash.
 
 ### Dedicated Portal mode spike
 
@@ -530,4 +556,74 @@ Record values with the exact build environment and commit/worktree state.
   Smart remains blocked on its BLE-to-Wi-Fi handoff capture, and the exact
   extended Canon/combined foundation checks listed above remain open until
   individually measured or confirmed.
+
+### 2026-08-03: Canon smartphone-mode BLE replacement experiment
+
+- Created `spike/canon-smartphone-ble`, preserving the verified BR-E1 driver on
+  the main branch, and recorded ADR-017 plus protocol confidence boundaries.
+- Replaced the branch's Canon protocol with encrypted smartphone pairing,
+  camera confirmation, stable controller identity, shooting-session
+  subscriptions, explicit `00 10`/`00 11` movie commands, and
+  camera-notification-only state reduction.
+- Added asynchronous connect/security/setup phases and a loop-owned
+  notification queue. NimBLE callbacks do not parse, mutate state, issue GATT
+  writes, or access LVGL.
+- Replaced the stateless trigger screen with Ready, Recording, transitional,
+  and Unknown states. Unknown provides separate Start and Stop touch controls;
+  the hardware button starts unless recording is camera-confirmed.
+- Native tests passed 18/18. Simulator, default, Roboto, and Canon profile
+  builds passed with the measurements above. The default profile flashed
+  successfully to `/dev/cu.usbserial-211240`.
+- Hardware pairing and camera behavior remain unverified. The branch must not
+  replace the main BR-E1 implementation until the ADR-017 hardware gate passes.
+
+### 2026-08-03: Canon R6 pairing-order correction
+
+- First hardware attempt reached the camera confirmation screen and displayed
+  `StudioRemote`, but the camera then reported `Connection target not found`.
+- Comparison with newer Canon Camera Connect/furble/EOS RP research found that
+  the implementation used the older EOS M6 ordering: it waited for camera
+  confirmation before sending controller ID, name, and type. Newer clients send
+  those identity records before waiting for the accept indication.
+- Changed first-pair setup to subscribe with indications when supported, write
+  the handshake request, immediately send stable ID/name/Android type, wait for
+  `02`, and only then send the finish marker and open the shooting session.
+- Native tests passed 18/18. `crowpanel_128`, `crowpanel_128_roboto`, and
+  `canon_ble` rebuilt successfully with the updated measurements above.
+- The corrected flash could not be uploaded because
+  `/dev/cu.usbserial-211240` was no longer present. PlatformIO detected the
+  unrelated nRF BLE sniffer at `/dev/cu.usbmodem101`, and the upload failed
+  without modifying the panel. Reflash and hardware retry remain pending.
+
+### 2026-08-03: Canon Camera Connect pairing and Wi-Fi handoff captures
+
+- Analyzed Pixel 9 Pro XL host-HCI captures of fresh EOS R6 Mark III
+  smartphone pairing, BLE movie control, bonded reconnect, and successful
+  Camera Connect Wi-Fi offload.
+- Added sanitized ATT-only fixtures
+  `docs/protocols/dumps/canon-camera-connect-pairing.pcapng`
+  (`fac58a7277072f25b45c91f5051dae9c335d71ca9323e9388b69f6e3399cd08c`)
+  and `docs/protocols/dumps/canon-camera-connect-wifi-handoff.pcapng`
+  (`25e59aca42f47a9ca554fd85273f8bfe5b9f5577d96c9d59051838e407bf17ad`).
+  SMP keys, camera serial number, controller ID, SSID-like value, and
+  credential-like value are excluded.
+- Camera Connect waits for pairing indication `02` before writing controller
+  ID, name, and Android type, disproving the branch's identity-first ordering.
+  The camera accepts bonded legacy Just Works rather than the Secure
+  Connections/MITM requested by Android.
+- Confirmed shooting-session command/result `03`/`05`, movie commands
+  `00 10`/`00 11`, and recording states `01 01 02`/`01 01 01`. The current
+  branch's `02` then `06` session strategy does not match Camera Connect.
+- Identified Wi-Fi handoff as write `01` to `00020002-...`, followed by
+  indications `01 03` and `02 03` on `00020003-...`. Camera Connect acquired
+  `camera_connect:CCBleHandOverWakeLock` at the same time.
+- Confirmed camera power/session controls after shooting: `03` wakes from
+  Bluetooth standby and receives `05`; `04` leaves shooting and receives `01`;
+  `05` powers down and receives `01`, followed by camera-side BLE disconnects
+  approximately 147-154 ms later.
+- Network security mode, DHCP behavior, camera IP/port, and the first CCAPI
+  request remain uncaptured. No build or flash was run because this session
+  changed only protocol fixtures and documentation. The next safe task is to
+  align the experimental BLE client with the captured confirmation-first
+  handshake and `03` session command before another hardware retry.
 

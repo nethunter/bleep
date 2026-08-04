@@ -38,8 +38,11 @@ CommandStatus CanonBleDriver::dispatch(const DeviceCommand& command) {
     case CommandType::ForgetPairing:
       client_.forgetDevice();
       return CommandStatus::Succeeded;
-    case CommandType::RecordTrigger:
-      return client_.triggerRecord() ? CommandStatus::Succeeded
+    case CommandType::RecordStart:
+      return client_.startRecording() ? CommandStatus::Succeeded
+                                      : CommandStatus::Unavailable;
+    case CommandType::RecordStop:
+      return client_.stopRecording() ? CommandStatus::Succeeded
                                      : CommandStatus::Unavailable;
     default:
       return CommandStatus::Unsupported;
@@ -62,7 +65,9 @@ DeviceRuntimeState CanonBleDriver::runtimeState() const {
       state.link = LinkState::Connected;
       break;
   }
-  state.quality = StateQuality::Unknown;
+  state.quality = client_.state().recordingConfirmed
+                      ? StateQuality::Confirmed
+                      : StateQuality::Unknown;
   return state;
 }
 

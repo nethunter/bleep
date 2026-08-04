@@ -3,8 +3,8 @@
 A multi-device studio remote foundation running on the ESP32-C3 CrowPanel 1.28"
 round display (240x240 GC9A01 + CST816D touch). The current build includes the
 **iFootage Shark Nano II** driver and a research-stage **Canon EOS R6 family
-BR-E1 BLE** driver plus research-stage **Tascam Portacapture X8** record
-control through the AK-BT1 adapter.
+smartphone-mode BLE** experiment plus research-stage **Tascam Portacapture
+X8** record control through the AK-BT1 adapter.
 
 ## What it does
 
@@ -24,14 +24,16 @@ control through the AK-BT1 adapter.
   scan/connect for service `0xFFF0` or a `Nano`/`Shark` advertised name and
   remembers the pairing in NVS. Reconnect continues while the Shark screen is
   active; Back releases the connection and returns to Devices.
-- **Canon BR-E1 record trigger (research).** Opening a Canon device scans for
-  the BR-E1-compatible service, bonds as a remote, remembers the camera, and
-  exposes one movie record trigger. The control screen uses the configured
-  device name as its title. The camera must be in movie mode with remote
-  control enabled. BLE cannot distinguish start from stop or read recording
-  state, so the panel deliberately shows neither. Pairing, bonded reconnect,
-  and the movie trigger are verified on the EOS R6 Mark II and Mark III;
-  extended stability checks remain open.
+- **Canon smartphone BLE record control (experimental branch).** Opening a
+  Canon device scans for the Camera Connect pairing service, completes bonded
+  smartphone handshaking, subscribes to shooting state, and sends explicit
+  movie Start/Stop commands. Use the camera's **Connect to smartphone** menu,
+  not BR-E1 Remote mode, and clear the previous BR-E1 bond before testing.
+  Camera-originated notifications are the only source of confirmed Ready or
+  Recording state. Unknown state exposes both Start and Stop. Public vectors
+  are documented in
+  [`docs/protocols/canon-smartphone-ble.md`](docs/protocols/canon-smartphone-ble.md);
+  EOS R6-family behavior remains hardware-unverified.
 - **Tascam X8 record control (research).** Opening a Tascam recorder scans for
   the `Portacapture X8` advertisement and connects through the required AK-BT1
   adapter without blocking screen navigation. The control screen sends distinct
@@ -66,9 +68,9 @@ control through the AK-BT1 adapter.
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run
     from Keypoints, then advances Standby / Start / Stop on the Run screen. In
-    connected Canon Trigger control it sends the record trigger. In connected
-    Tascam control it explicitly starts from Ready/Unknown and stops from a
-    recorder-confirmed Recording state.
+    connected Canon smartphone control it starts from Ready/Unknown and stops
+    from camera-confirmed Recording. In connected Tascam control it explicitly
+    starts from Ready/Unknown and stops from recorder-confirmed Recording.
   - Long press: power off the remote. When off, hold the button again to wake it;
     a short tap wakes briefly and goes back to sleep.
 
@@ -79,7 +81,7 @@ control through the AK-BT1 adapter.
 | `src/core/*` | Driver catalog, typed commands/results, persistent device registry, and loop-owned device manager. |
 | `src/devices/<device>/*` | Per-device protocol, state, transport client, generic-driver adapter, and specialized UI. |
 | `src/devices/shark_nano_ii/*` | Shark frame protocol, host-testable state reduction, on-demand NimBLE client, driver adapter, and specialized controls. |
-| `src/devices/canon_ble/*` | Research-stage BR-E1 pairing/trigger protocol, on-demand NimBLE client, driver adapter, and camera screen. |
+| `src/devices/canon_ble/*` | Experimental smartphone pairing/session protocol, explicit movie control, notification state reducer, on-demand NimBLE client, driver adapter, and camera screen. |
 | `src/devices/tascam_x8/*` | Captured AK-BT1 protocol, COBS state parser, on-demand NimBLE client, driver adapter, and recorder screen. |
 | `src/ui.*` | Home, Devices, and application navigation. |
 | `src/main.cpp` | Display/touch/IO bring-up, button, and the main loop. |

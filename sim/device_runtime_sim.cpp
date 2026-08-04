@@ -129,13 +129,23 @@ class SimCanonDriver : public DeviceDriver {
   }
   void deactivate() override {
     state_.link = canon_ble::CanonBleState::Link::Disconnected;
+    canon_ble::resetTransientState(state_);
   }
   void loop() override {}
   CommandStatus dispatch(const DeviceCommand& command) override {
-    if (command.type == CommandType::RecordTrigger &&
+    if (command.type == CommandType::RecordStart &&
         state_.link == canon_ble::CanonBleState::Link::Connected) {
-      canon_ble::markTriggerQueued(state_);
-      canon_ble::markTriggerComplete(state_, true);
+      canon_ble::markCommandQueued(state_, true);
+      const uint8_t recording[] = {0x01, 0x01, 0x02};
+      canon_ble::reduceRecordNotification(state_, recording,
+                                          sizeof(recording));
+      return CommandStatus::Succeeded;
+    }
+    if (command.type == CommandType::RecordStop &&
+        state_.link == canon_ble::CanonBleState::Link::Connected) {
+      canon_ble::markCommandQueued(state_, false);
+      const uint8_t stopped[] = {0x01, 0x01, 0x01};
+      canon_ble::reduceRecordNotification(state_, stopped, sizeof(stopped));
       return CommandStatus::Succeeded;
     }
     return CommandStatus::Succeeded;
@@ -156,7 +166,8 @@ class SimCanonDriver : public DeviceDriver {
         runtime.link = LinkState::Disconnected;
         break;
     }
-    runtime.quality = StateQuality::Unknown;
+    runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
+                                                : StateQuality::Unknown;
     return runtime;
   }
   const void* specializedState() const override { return &state_; }
@@ -285,14 +296,21 @@ void simSetScanningState() {
   state.deviceName[sizeof(state.deviceName) - 1] = '\0';
 }
 
-void simSetCanonConnectedState() {
+void simSetCanonConnectedState(bool recording, bool confirmed) {
   canon_ble::CanonBleState& state = gCanonDriver.state();
   state.link = canon_ble::CanonBleState::Link::Connected;
+  state.phase = canon_ble::CanonBleState::Phase::Ready;
   state.hasSavedDevice = true;
-  state.triggerPending = false;
-  state.lastTriggerSucceeded = false;
+  state.commandPending = false;
+  state.lastCommandFailed = false;
+  state.recordingConfirmed = confirmed;
+  state.recording =
+      confirmed ? (recording ? canon_ble::CanonBleState::Recording::Recording
+                             : canon_ble::CanonBleState::Recording::Stopped)
+                : canon_ble::CanonBleState::Recording::Unknown;
   std::strncpy(state.deviceName, "EOS R6 Mark III",
                sizeof(state.deviceName) - 1);
+  state.deviceName[sizeof(state.deviceName) - 1] = '\0';
 }
 
 void simSetTascamConnectedState(bool recording) {
