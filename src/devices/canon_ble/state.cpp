@@ -10,6 +10,7 @@ void resetTransientState(CanonBleState& state) {
   state.lastCommandFailed = false;
   state.powerOffFailed = false;
   state.pairingRejected = false;
+  state.claimedPeerVisible = false;
 }
 
 void markCommandQueued(CanonBleState& state, bool start) {

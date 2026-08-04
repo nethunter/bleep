@@ -66,7 +66,9 @@ Reference research:
   camera-notification recording state.
 - Capture-backed experimental capabilities: automatic wake from Bluetooth
   standby with mode `03` and explicit power down after shooting with mode `05`.
-  Back only releases the panel connection and does not power down the camera.
+  The power control reconnects and wakes a camera powered down from that
+  screen. Back only releases the panel connection and does not power down the
+  camera.
 - Hardware trigger: starts from Ready/Unknown and stops from a
   camera-confirmed Recording state. Touch exposes both commands while state is
   unknown.
@@ -89,8 +91,11 @@ bonded reconnect on the EOS R6 Mark II. EOS R6 support is not yet claimed.
 EOS R6 Mark II and Mark III pairing, bonded reconnect, and the BR-E1
 movie-mode `0x88`/`0x08` press/release trigger have been functionally verified.
 Extended cycle, forget/re-pair, latency, heap, and coexistence checks remain
-open on the main branch. Smartphone-mode pairing, explicit movie control, state
-notifications, and reconnect remain unverified on all EOS R6-family models.
+open on the main branch. Smartphone-mode pairing, explicit movie control, state notifications, and
+reconnect are verified on the EOS R6 Mark III for the ADR-017 branch. The EOS
+R6 Mark II still needs a fresh camera-side **Add a device** pair; reconnecting
+a body that still points at an old smartphone registration produces Canon's
+**Connection target not found** error even when the panel is scanning.
 
 ### Camera Connect handoff capture
 

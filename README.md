@@ -29,14 +29,17 @@ X8** record control through the AK-BT1 adapter.
   confirmation-first smartphone handshaking, runs the captured setup queries,
   wakes the camera from Bluetooth standby, subscribes to shooting state, and
   sends explicit movie Start/Stop commands. The camera screen has a separate
-  power button that requests camera power-down; Back only releases the panel's
-  BLE connection. Use the camera's **Connect to smartphone** menu, not BR-E1
-  Remote mode, and clear the previous BR-E1 bond before testing.
-  Camera-originated notifications are the only source of confirmed Ready or
-  Recording state. Unknown state exposes both Start and Stop. Captured vectors
-  are documented in
-  [`docs/protocols/canon-smartphone-ble.md`](docs/protocols/canon-smartphone-ble.md);
-  EOS R6-family behavior remains hardware-unverified.
+  power button that requests camera power-down and reconnects to wake it again
+  while the screen remains open; Back only releases the panel's BLE connection.
+  Use the camera's **Connect to smartphone → Add a device to connect to**
+  path, not BR-E1 Remote mode and not a previously saved phone entry. If the
+  camera shows **Connection target not found**, it is looking for an old
+  smartphone registration: delete that connection on the camera, Forget pairing
+  on the panel when switching bodies, then pair again while the Canon screen is
+  open and scanning. Captured vectors are documented in
+  [`docs/protocols/canon-smartphone-ble.md`](docs/protocols/canon-smartphone-ble.md).
+  EOS R6 Mark III smartphone control is hardware-verified for the current
+  branch; EOS R6 Mark II still needs a fresh Add-a-device pair.
 - **Tascam X8 record control (research).** Opening a Tascam recorder scans for
   the `Portacapture X8` advertisement and connects through the required AK-BT1
   adapter without blocking screen navigation. The control screen sends distinct
@@ -67,7 +70,7 @@ X8** record control through the AK-BT1 adapter.
 
 - **Touch:** Home, Devices and device management, connect, Keypoints, joystick
   positioning, Run, per-keypoint settings, and explicit Canon camera
-  power-down.
+  power-down / wake.
 - **Button (GPIO 1):**
   - Short press: navigate back outside device control or activate the active
     device's primary action. In Shark control it closes an open modal, opens Run

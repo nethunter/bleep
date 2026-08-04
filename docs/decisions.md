@@ -217,8 +217,9 @@ the replacement.
 - Status: Experimental
 - Decision: Opening the Canon smartphone screen automatically sends captured
   wake mode `03` after setup. Camera power-down is available only through an
-  explicit on-screen power control using mode `05`; Back only releases the
-  panel's BLE connection.
+  explicit on-screen power control using mode `05`. After confirmed power-down,
+  the same control reconnects and runs the captured wake sequence; Back only
+  releases the panel's BLE connection.
 - Safety: Power-down is unavailable while recording is camera-confirmed or a
   record command is pending. Result `01` is only protocol acknowledgement; the
   expected camera-side disconnect is required before the panel reports

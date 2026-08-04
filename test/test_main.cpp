@@ -336,6 +336,11 @@ void test_canon_smartphone_handshake_and_record_protocol() {
       static_cast<int>(canon_ble::ModeEvent::SessionReady),
       static_cast<int>(
           canon_ble::parseModeEvent(sessionReady, sizeof(sessionReady))));
+  const uint8_t shootingReady[] = {0x04};
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(canon_ble::ModeEvent::SessionReady),
+      static_cast<int>(
+          canon_ble::parseModeEvent(shootingReady, sizeof(shootingReady))));
 
   const uint8_t expectedStart[] = {0x00, 0x10};
   const uint8_t expectedStop[] = {0x00, 0x11};
@@ -681,6 +686,13 @@ void test_manager_routes_to_canon_driver() {
   TEST_ASSERT_TRUE(manager.popResult(result));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::CommandType::CameraPowerOff),
+      static_cast<int>(canonDriver.lastCommand));
+  command.type = studio::CommandType::CameraPowerOn;
+  TEST_ASSERT_TRUE(manager.enqueue(command));
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.popResult(result));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::CameraPowerOn),
       static_cast<int>(canonDriver.lastCommand));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),

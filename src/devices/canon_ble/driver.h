@@ -15,6 +15,7 @@ class CanonBleDriver : public DeviceDriver {
   DeviceRuntimeState runtimeState() const override;
   const void* specializedState() const override { return &client_.state(); }
   void forgetPairing(const DeviceRecord& record) override;
+  void preferSkipPeer(const char* bleAddress) override;
   bool consumePairingUpdate(DeviceRecord& record) override;
 
  private:

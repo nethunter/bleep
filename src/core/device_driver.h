@@ -19,6 +19,10 @@ class DeviceDriver {
   // Explicit user action; transports may remove controller-side bond data.
   virtual void forgetPairing(const DeviceRecord&) {}
 
+  // Hint used while pairing a new instance: skip peers already claimed by
+  // another saved record so a second body can be discovered.
+  virtual void preferSkipPeer(const char* /*bleAddress*/) {}
+
   // Returns true when pairing identity changed and should be persisted.
   virtual bool consumePairingUpdate(DeviceRecord& record) = 0;
 };

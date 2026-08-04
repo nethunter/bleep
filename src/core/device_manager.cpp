@@ -96,6 +96,14 @@ RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
 }
 
 RegistryStatus DeviceManager::remove(InstanceId instanceId) {
+  DeviceRecord* record = registry_.find(instanceId);
+  if (record != nullptr) {
+    DeviceDriver* driver = driverFor(record->driverId);
+    if (driver != nullptr) {
+      // Drop controller-side bonds before the registry forgets the address.
+      driver->forgetPairing(*record);
+    }
+  }
   if (instanceId == activeInstance_) {
     deactivate();
   }
@@ -158,6 +166,16 @@ bool DeviceManager::activate(InstanceId instanceId) {
   }
   activeInstance_ = instanceId;
   driver->activate(*record);
+  // Never latch onto a body already claimed by another record of this driver.
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    const DeviceRecord* other = registry_.at(i);
+    if (other == nullptr || other->instanceId == instanceId ||
+        other->driverId != record->driverId || !other->paired ||
+        other->bleAddress[0] == '\0') {
+      continue;
+    }
+    driver->preferSkipPeer(other->bleAddress);
+  }
   return true;
 }
 

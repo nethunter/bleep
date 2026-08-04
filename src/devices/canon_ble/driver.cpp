@@ -81,6 +81,10 @@ void CanonBleDriver::forgetPairing(const DeviceRecord& record) {
   client_.forgetBond(record.bleAddress, record.bleAddressType);
 }
 
+void CanonBleDriver::preferSkipPeer(const char* bleAddress) {
+  client_.ignorePeerAddress(bleAddress);
+}
+
 bool CanonBleDriver::consumePairingUpdate(DeviceRecord& record) {
   char address[kBleAddressCapacity] = "";
   char name[kBleNameCapacity] = "";

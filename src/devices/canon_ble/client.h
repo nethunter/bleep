@@ -30,6 +30,7 @@ class CanonBleClient {
   void startScan();
   void forgetDevice();
   void forgetBond(const char* address, uint8_t addressType);
+  void ignorePeerAddress(const char* address);
   bool startRecording();
   bool stopRecording();
   bool powerOn();
@@ -41,8 +42,8 @@ class CanonBleClient {
   // NimBLE host-task callbacks only set flags or queue raw notification bytes.
   void onScanMatch(const NimBLEAdvertisedDevice* device);
   void onLinkConnected();
-  void onConnectFailed();
-  void onLinkDisconnected();
+  void onConnectFailed(int reason);
+  void onLinkDisconnected(int reason);
   void onSecurityComplete(bool succeeded);
   void onPairingNotification(const uint8_t* data, size_t len);
   void onPairingInfoNotification(const uint8_t* data, size_t len);
@@ -70,6 +71,12 @@ class CanonBleClient {
                     const CommandBytes& command);
   void markReady();
   void scheduleRetry(uint32_t delayMs);
+  void clearIgnoredAddresses();
+  bool isIgnoredAddress(const char* address) const;
+  void ignoreAddress(const char* address);
+  void considerScanCandidate(const char* address, uint8_t addressType,
+                             const char* name, bool hasService, bool hasMfg);
+  int candidateScore(const char* name, bool hasService, bool hasMfg) const;
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* pairingCommandChar_ = nullptr;
@@ -93,7 +100,9 @@ class CanonBleClient {
   bool powerOffRequested_ = false;
   bool setupPending_ = false;
   bool bondRecoveryPending_ = false;
+  bool openingShootRequested_ = false;
   volatile bool scanHit_ = false;
+  volatile bool claimedPeerSeen_ = false;
   volatile bool connectedFlag_ = false;
   volatile bool connectFailedFlag_ = false;
   volatile bool disconnectedFlag_ = false;
@@ -103,17 +112,35 @@ class CanonBleClient {
   char targetAddr_[20] = "";
   uint8_t targetAddrType_ = 0;
   char targetName_[40] = "";
+  // When set, reconnect/scan may only use this address (per-instance lock).
+  char lockedAddr_[20] = "";
   char scanHitAddr_[20] = "";
   uint8_t scanHitType_ = 0;
   char scanHitName_[40] = "";
+  bool scanHitHasService_ = false;
+  bool scanHitHasMfg_ = false;
+  static constexpr size_t kMaxIgnoredAddresses = 4;
+  char ignoredAddrs_[kMaxIgnoredAddresses][20] = {};
+  uint8_t ignoredCount_ = 0;
+  bool scanCandidatePending_ = false;
+  char scanCandidateAddr_[20] = "";
+  uint8_t scanCandidateType_ = 0;
+  char scanCandidateName_[40] = "";
+  bool scanCandidateHasService_ = false;
+  bool scanCandidateHasMfg_ = false;
+  int scanCandidateScore_ = -1;
 
   uint32_t retryAtMs_ = 0;
   uint32_t setupAtMs_ = 0;
+  uint32_t scanDwellUntilMs_ = 0;
+  uint32_t connectWatchdogMs_ = 0;
   uint32_t phaseDeadlineMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
   uint8_t postPairStep_ = 0;
   int connectFails_ = 0;
   int securityFails_ = 0;
+  int lastDisconnectReason_ = 0;
+  int lastConnectFailReason_ = 0;
 };
 
 }  // namespace canon_ble

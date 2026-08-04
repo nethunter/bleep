@@ -44,6 +44,9 @@ struct CanonBleState {
   bool lastCommandFailed = false;
   bool powerOffFailed = false;
   bool pairingRejected = false;
+  // True while scanning if the only visible Canon bodies are already claimed by
+  // other device records (so a new instance cannot pair them).
+  bool claimedPeerVisible = false;
   char deviceName[40] = "";
 };
 

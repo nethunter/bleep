@@ -66,7 +66,11 @@ Shooting-state notifications on `00030031-...` include:
 
 On the EOS R6 Mark III, Camera Connect writes `03` to `00030010-...` and
 receives `05` from `00030011-...` when waking the camera from Bluetooth standby
-and opening the BLE shooting session. It writes `04` to leave shooting while
+and opening the BLE shooting session. The EOS R6 Mark II notifies `04` for the
+same wake (aligned with public EOS M6 shooting-ready results); the panel treats
+either `04` or `05` as session-ready. The R6 II handshake service exposes
+`00010005` / `00010006` / `0001000a` / `0001000b` and does not present
+`0001000c`, so Camera Connect post-pair queries are skipped on that body. It writes `04` to leave shooting while
 keeping the camera available, receiving `01`. It writes `05` to power the
 camera down after shooting, receives `01`, and the camera disconnects. Values
 `02` and `06` are not used in these fixtures.
@@ -82,13 +86,20 @@ The capture identifies camera `7c:b8:da:2a:c8:75` advertising as
 `EOSR6m3_2AC874`. Unencrypted discovery confirms the smartphone pairing service
 and characteristics `00010005`, `00010006`, `0001000a`, and `0001000b`.
 The primary advertisement carries `00010000-...`; its separate scan response
-carries the `EOSR6m3_...` name. Panel discovery accepts either the pairing
-service or an `EOS`/`PowerShot` name so host-stack handling of split advertising
-reports cannot hide a discoverable Canon camera.
+carries the `EOSR6m3_...` name and Canon manufacturer data (`0x01A9`). Panel
+discovery accepts the pairing service, Canon manufacturer data, or a name
+containing `EOS`, `R6`, or `PowerShot`, so host-stack handling of split
+advertising reports cannot hide a discoverable Canon body.
 If a saved camera fails encryption twice, the panel treats its local bond as
 stale, removes it, and returns to pairing discovery instead of retrying the
-invalid bonded connection indefinitely. The operator must still put the camera
-in **Connect to smartphone** pairing mode.
+invalid bonded connection indefinitely. After one failed direct reconnect the
+panel also falls back to scanning so a different nearby Canon body can pair.
+
+The operator must put the camera in **Connect to smartphone → Add a device to
+connect to**. Selecting a previously registered smartphone makes the camera
+look for that phone and report **Connection target not found** even while the
+panel is scanning; the panel is a BLE central and does not advertise for the
+camera to rediscover.
 Secure Connections with MITM protection and bonding begins before the command
 exchange. The capture does not contain the keys required to decrypt the
 remaining ATT traffic.
@@ -165,8 +176,9 @@ Two captured `05` sequences disconnect approximately 147 ms and 154 ms after
 the result notification. A later bonded connection followed by `03` wakes the
 camera again. These are camera power/session controls, not recording-state
 notifications. The ADR-017 panel experiment now wakes automatically on screen
-activation and exposes `05` only through an explicit power button; hardware
-behavior remains unverified.
+activation and exposes `05` only through an explicit power button. Once the
+camera disconnects and is shown as off, that button remains enabled and starts
+a bonded reconnect; the normal setup path sends `03` to wake it again.
 
 ## State and safety rules
 

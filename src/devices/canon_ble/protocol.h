@@ -30,6 +30,9 @@ constexpr uint8_t kWakeMode = 0x03;
 constexpr uint8_t kLeaveShootingMode = 0x04;
 constexpr uint8_t kPowerOffMode = 0x05;
 constexpr uint8_t kModeAcknowledged = 0x01;
+// EOS M6 / some bodies notify 0x04 after wake/enter-shooting; R6 III Camera
+// Connect notifies 0x05. Both mean the BLE shooting session is usable.
+constexpr uint8_t kShootingModeReady = 0x04;
 constexpr uint8_t kSessionReady = 0x05;
 constexpr uint8_t kPostPairCommands[] = {0x06, 0x07, 0x08, 0x0c};
 

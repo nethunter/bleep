@@ -89,8 +89,13 @@ void refresh() {
       status = "CAMERA OFF";
       detail = "PRESS POWER TO WAKE";
     } else if (runtime.link == studio::LinkState::Scanning) {
-      status = "PAIRING...";
-      detail = "SELECT OK ON CAMERA";
+      if (state != nullptr && state->claimedPeerVisible) {
+        status = "ALREADY ADDED";
+        detail = "OPEN EXISTING DEVICE";
+      } else {
+        status = "PAIRING...";
+        detail = "SELECT OK ON CAMERA";
+      }
     } else if (runtime.link == studio::LinkState::Connecting) {
       status = "CONNECTING...";
       detail = "SECURE HANDSHAKE";
@@ -115,9 +120,19 @@ void refresh() {
     return;
   }
 
+  if (state->phase == canon_ble::CanonBleState::Phase::AwaitingConfirmation ||
+      state->phase == canon_ble::CanonBleState::Phase::Handshaking ||
+      state->phase == canon_ble::CanonBleState::Phase::PostPairSetup) {
+    lv_label_set_text(statusLabel, "PAIRING...");
+    lv_label_set_text(qualityLabel, "SELECT OK ON CAMERA");
+    setPowerEnabled(false);
+    setAction("WAIT", kAccent, false);
+    return;
+  }
+
   if (state->phase != canon_ble::CanonBleState::Phase::Ready) {
     lv_label_set_text(statusLabel, "OPENING...");
-    lv_label_set_text(qualityLabel, "REQUESTING CAMERA STATE");
+    lv_label_set_text(qualityLabel, "WAITING FOR SHOOTING MODE");
     setPowerEnabled(false);
     setAction("WAIT", kAccent, false);
     return;

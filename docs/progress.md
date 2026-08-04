@@ -701,3 +701,62 @@ Record values with the exact build environment and commit/worktree state.
   `/dev/cu.usbserial-211240`. Correct Ready/Recording display immediately after
   connection remains operator-pending and is not yet marked verified.
 
+### 2026-08-03: Canon power button wakes after power-off
+
+- Confirmed the Canon power control stays enabled while the camera is powered
+  off and routes `CameraPowerOn`, which reconnects and runs the captured wake
+  sequence instead of leaving the control disabled.
+- Native tests passed 18/18. Simulator captures include
+  `15_canon_powered_off.png` and `16_canon_powered_on.png`.
+- Firmware builds passed and the default profile flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical power-off then power-on wake remains
+  operator-pending.
+
+### 2026-08-03: Canon R6 Mark II connection-target note
+
+- Operator report: EOS R6 Mark II shows **Connection target not found** while
+  the same panel build pairs and controls the EOS R6 Mark III. Removing the
+  panel device record and the Mark III entry did not clear the Mark II error.
+- Canon documentation treats that message as the camera failing to find its
+  previously registered smartphone/app target. The panel is a BLE central and
+  does not advertise, so the R6 II must use **Add a device to connect to**
+  rather than a saved phone entry; camera-side smartphone registrations may
+  still need deletion even after the panel forgets a body.
+- Hardened discovery further: match Canon manufacturer ID `0x01A9` and names
+  containing `EOS`/`R6`/`PowerShot`, not only an `EOS` prefix or service UUID.
+  Device removal now also drops controller-side bonds. Scan hits log to serial
+  as `canon scan hit ...` for the next hardware retry.
+- Shortened failed bonded-reconnect retries so the client falls back to scan
+  after one miss instead of repeatedly targeting a powered-down or different
+  body.
+
+### 2026-08-03: EOS R6 Mark II reaches Ready on mode `04`
+
+- Serial on `EOSR6m2_D4D530` showed the panel bonding and opening the core
+  session, then stalling in `OpeningSession` because the client only treated
+  wake result `05` (R6 III Camera Connect) as Ready. The R6 II notifies `04`,
+  matching public EOS M6 shooting-mode/wake behavior.
+- `parseModeEvent` now accepts `04` and `05` as session-ready. Core subscribe
+  prefers indications when offered; OpeningSession will retry shooting mode
+  `02` if wake `03` times out. Multi-camera scan dwell prefers `m2` names and
+  ignores bodies that remotely terminate during bonding.
+- Native tests passed 18/18. Default firmware flashed to
+  `/dev/cu.usbserial-211240`. Capture confirmed
+  `canon mode notify ... byte0=04` then `canon session ready` with
+  `link=connected`. Operator should verify record start/stop on the R6 II.
+- R6 II GATT lacks pairing-info `0001000c` (has read-only `0001000b`); post-pair
+  queries remain skipped on that body.
+
+### 2026-08-03: Canon multi-instance address lock
+
+- Operator report: controlling the second Canon instance (R6 III) sent record
+  commands to the first body (R6 II). Root cause: bonded reconnect fell back to
+  an open scan and could adopt a sibling camera, then persisted that address
+  onto the active instance.
+- Bonded instances now lock to their saved BLE address, skip other paired peer
+  addresses, and do not rewrite pairing identity on ordinary reconnect.
+  Confirmation timeouts still rotate during fresh pairing only.
+- Native tests passed 18/18; default firmware flashed to
+  `/dev/cu.usbserial-211240`. If an R6 III record was already overwritten with
+  the R6 II address, Forget that instance and re-pair on Add-a-device.
+

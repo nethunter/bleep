@@ -118,7 +118,7 @@ ModeEvent parseModeEvent(const uint8_t* data, size_t len) {
   if (data[0] == kModeAcknowledged) {
     return ModeEvent::Acknowledged;
   }
-  if (data[0] == kSessionReady) {
+  if (data[0] == kSessionReady || data[0] == kShootingModeReady) {
     return ModeEvent::SessionReady;
   }
   return ModeEvent::None;
