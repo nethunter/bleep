@@ -342,14 +342,12 @@ int main() {
     return 1;
   }
 
-  studio::DeviceCommand powerOn;
-  powerOn.instanceId = canonId;
-  powerOn.type = studio::CommandType::CameraPowerOn;
-  studio::devices().enqueue(powerOn);
+  canon_ble_ui::hide();
+  canon_ble_ui::show(canonId);
   pump(20);
   if (studio::simCanonState().phase !=
       canon_ble::CanonBleState::Phase::Ready) {
-    std::fprintf(stderr, "Canon power-on command was not routed\n");
+    std::fprintf(stderr, "Reopening powered-off Canon did not wake it\n");
     return 1;
   }
   if (!capture("16_canon_powered_on")) {
@@ -573,6 +571,19 @@ int main() {
   pump(200);
   printLvglMemory("after sequence stop settings");
   if (!capture("27b_scenes_settings_after_stop")) {
+    return 1;
+  }
+  // First hold closes Settings; the next mirrors the run screen's touch Back,
+  // returns to the sequence list, and releases retained sequence ownership.
+  ui::handleLongPress();
+  ui::handleLongPress();
+  pump(200);
+  if (!scene_ui::simShowingList() || studio::scenes().holdsLinks() ||
+      studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||
+      studio::devices().ownedBy(tascamId,
+                                studio::ConnectionOwner::Sequence)) {
+    std::fprintf(stderr,
+                 "Sequence long press did not navigate Back and unlink\n");
     return 1;
   }
   scene_ui::hide();

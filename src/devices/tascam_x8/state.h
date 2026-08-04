@@ -34,6 +34,7 @@ struct TascamX8State {
 void resetTransientState(TascamX8State& state);
 void markCommandQueued(TascamX8State& state, bool start);
 void markCommandWriteFailed(TascamX8State& state);
+bool completeStopIfAlreadyStopped(TascamX8State& state);
 void reduceFrame(TascamX8State& state, const ParsedFrame& frame);
 
 }  // namespace tascam_x8

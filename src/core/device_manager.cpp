@@ -375,6 +375,12 @@ bool DeviceManager::acquire(InstanceId instanceId, ConnectionOwner owner) {
     }
   }
   if (isActive(instanceId)) {
+    // Retained sessions may need to resume device-specific work when a new
+    // owner arrives (for example, waking a Canon camera that this session
+    // previously powered off).
+    if (!driver->resume(*record)) {
+      return false;
+    }
     return addActive(instanceId, owner);
   }
   if (activeCount_ >= kMaxActiveInstances && !evictOldestIdle()) {

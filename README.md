@@ -61,7 +61,8 @@ principles:
   reconnect automatically until safely evicted or explicitly disconnected.
 - On-device sequences with separately authored Start and Stop steps, waits,
   persistent storage, concurrent device preparation, and a hardware-button
-  trigger.
+  trigger. A partial Start failure can run Stop for cleanup and then retry
+  Start; devices already confirmed stopped do not abort that cleanup.
 - Experimental local Home Assistant control for four selected lights, switches,
   input booleans, buttons, scenes, or scripts through a temporary setup Portal
   and one shared on-demand Wi-Fi session.
@@ -84,7 +85,7 @@ experimental bounded tranche whose target-server lifecycle gate is still open. S
 | --- | --- | --- |
 | iFootage Shark Nano II | Current | Pair/reconnect, battery, keypoints, manual movement, timing, loop/direction, and run control. |
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
-| Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, wake, and explicit power-down through `Canon (Smart)`. |
+| Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
 | Amaran Pano/Ace lights | Research / planned | Power, brightness, CCT, and HSI are planned after Bluetooth Mesh feasibility work. |
@@ -111,7 +112,8 @@ values shown on the Shark screen come from the slider.
 
 - **Touch:** Home, device management, sequences, connection, keypoints,
   positioning, run controls, per-keypoint settings, and explicit Canon camera
-  power-down/wake.
+  power-down. Reopening or preparing a Canon Smart camera that Ble(e)p powered
+  off automatically reconnects and attempts the captured wake sequence.
 - **Button (GPIO 1):** A short press activates the current primary action. On a
   sequence run screen it starts from Ready and stops once armed or while Start
   is running. Device screens similarly dispatch their primary Shark, Canon, or

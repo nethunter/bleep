@@ -182,6 +182,11 @@ class FakeDriver : public studio::DeviceDriver {
     }
     return false;
   }
+  bool resume(const studio::DeviceRecord& record) override {
+    ++resumeCount;
+    lastResumedInstance = record.instanceId;
+    return resumeSucceeds;
+  }
   void deactivate(studio::InstanceId instanceId) override {
     for (studio::InstanceId& id : activeInstances) {
       if (id != instanceId) {
@@ -205,6 +210,10 @@ class FakeDriver : public studio::DeviceDriver {
   studio::CommandStatus dispatch(const studio::DeviceCommand& command) override {
     lastCommand = command.type;
     ++dispatchCount;
+    if (failCommandCount > 0 && command.type == failCommand) {
+      --failCommandCount;
+      return studio::CommandStatus::Unavailable;
+    }
     return studio::CommandStatus::Succeeded;
   }
   studio::DeviceRuntimeState runtimeState(studio::InstanceId instanceId) const override {
@@ -236,11 +245,16 @@ class FakeDriver : public studio::DeviceDriver {
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
   studio::InstanceId activeInstances[studio::DeviceManager::kMaxActiveLinks] = {};
   int activationCount = 0;
+  int resumeCount = 0;
+  bool resumeSucceeds = true;
+  studio::InstanceId lastResumedInstance = studio::kInvalidInstanceId;
   int* activationSequence = nullptr;
   int firstActivationOrder = 0;
   int deactivationCount = 0;
   int loopCount = 0;
   int dispatchCount = 0;
+  studio::CommandType failCommand = studio::CommandType::Refresh;
+  int failCommandCount = 0;
   int forgetPairingCount = 0;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
 
@@ -543,6 +557,8 @@ void test_canon_state_requires_camera_notifications() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(canon_ble::CanonBleState::Recording::Stopped),
       static_cast<int>(state.recording));
+  TEST_ASSERT_TRUE(canon_ble::completeStopIfAlreadyStopped(state));
+  TEST_ASSERT_FALSE(state.lastCommandFailed);
 
   canon_ble::markCommandQueued(state, false);
   canon_ble::reduceRecordNotification(state, recording, sizeof(recording));
@@ -656,6 +672,9 @@ void test_tascam_scanner_and_confirmed_state() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(tascam_x8::TascamX8State::Recording::Stopped),
       static_cast<int>(state.recording));
+  state.lastCommandFailed = true;
+  TEST_ASSERT_TRUE(tascam_x8::completeStopIfAlreadyStopped(state));
+  TEST_ASSERT_FALSE(state.lastCommandFailed);
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
@@ -1333,8 +1352,19 @@ void test_manager_cancels_unready_release_and_reuses_ready_session() {
   manager.release(id, studio::ConnectionOwner::Foreground);
   TEST_ASSERT_TRUE(manager.isRetained(id));
   const int activations = driver.activationCount;
+  driver.resumeSucceeds = false;
+  TEST_ASSERT_FALSE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_FALSE(
+      manager.ownedBy(id, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_INT(activations, driver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, driver.resumeCount);
+  TEST_ASSERT_EQUAL_INT(id, driver.lastResumedInstance);
+
+  driver.resumeSucceeds = true;
   TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(activations, driver.activationCount);
+  TEST_ASSERT_EQUAL_INT(2, driver.resumeCount);
+  TEST_ASSERT_EQUAL_INT(id, driver.lastResumedInstance);
   manager.release(id, studio::ConnectionOwner::Foreground);
 }
 
@@ -1460,6 +1490,68 @@ void test_press_record_start_and_authored_stop() {
   TEST_ASSERT_EQUAL_UINT32(2, devices.activeCount());
   TEST_ASSERT_FALSE(devices.ownedBy(canonId, studio::ConnectionOwner::Sequence));
   TEST_ASSERT_FALSE(devices.ownedBy(tascamId, studio::ConnectionOwner::Sequence));
+}
+
+void test_partial_start_failure_can_stop_and_restart() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::CanonBle, "R6 II", canonId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::TascamX8, "X8", tascamId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_TRUE(scenes.seedPressRecord(sceneId));
+
+  tascamDriver.failCommand = studio::CommandType::RecordStart;
+  tascamDriver.failCommandCount = 1;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  for (uint32_t t = 1; t < 700; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Failed),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::ActionFailed),
+                        static_cast<int>(scenes.progress().lastStatus));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.stop()));
+  for (uint32_t t = 700; t < 730; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Completed),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(canonDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(tascamDriver.lastCommand));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  for (uint32_t t = 730; t < 1400; ++t) {
+    devices.loop();
+    scenes.loop(t);
+  }
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::IdleArmed),
+                        static_cast<int>(scenes.progress().phase));
 }
 
 void test_prepare_ready_then_start_from_held_links() {
@@ -1871,6 +1963,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_press_record_start_and_authored_stop);
+  RUN_TEST(test_partial_start_failure_can_stop_and_restart);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);

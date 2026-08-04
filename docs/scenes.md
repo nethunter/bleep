@@ -60,10 +60,20 @@ stay disabled while any stable-phase target is not ready.
 The compact run status uses blue for connection/transitions, green for
 Ready/Done, red for Recording/failure/disconnection, and muted text for Idle.
 
-While a sequence run screen is open, the panel's hardware action button mirrors
-the enabled run action: Start when the sequence is ready (or restartable), and
-Stop when it is armed or Start is in flight. It does nothing while preparation
-or Stop is already in progress; leaving or unlinking remains a touch action.
+A partial Start action failure keeps sequence ownership and exposes the authored
+Stop action. Stop still visits every authored target. Canon Smart and Tascam
+treat Stop as a successful no-op when that device already confirms `Stopped`,
+so a target that never began recording cannot abort cleanup before another
+target is stopped. Unknown or recording targets still receive the protocol Stop
+command and require their normal device-originated confirmation. A successful
+Stop reaches `Completed`, where Start is enabled for another attempt.
+
+While a sequence run screen is open, a short hardware-button press mirrors the
+enabled run action: Start when the sequence is ready (or restartable), and Stop
+when it is armed or Start is in flight. It does nothing while preparation or
+Stop is already in progress. A long press mirrors the visible Back control:
+Settings closes first, the step editor returns to Run, Run returns to the
+sequence list and releases sequence ownership, and the list returns Home.
 
 ## Data model
 

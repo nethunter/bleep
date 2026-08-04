@@ -113,11 +113,14 @@ Reference research:
 - Planned Smart transport: smartphone-mode BLE pairing and Wi-Fi handoff,
   followed by CCAPI HTTP over the camera's direct access point.
 - Smart experimental capabilities: explicit record start, record stop, and
-  camera-notification recording state.
+  camera-notification recording state. Record Stop is idempotent when the camera
+  already confirms `Stopped`, which lets sequence cleanup continue after a
+  partial Start failure.
 - Capture-backed Smart capabilities: automatic wake from Bluetooth standby
   with mode `03` and explicit power down after shooting with mode `05`. The
-  power control reconnects and wakes a camera powered down from that screen.
-  Back retains the panel connection and does not power down the camera.
+  power control, reopening the saved device, or preparing it for a sequence
+  reconnects and wakes a camera powered down from that screen. Back retains the
+  panel connection and does not power down the camera.
 - Smart hardware trigger: starts from Ready/Unknown and stops from a
   camera-confirmed Recording state. Touch exposes both commands while state is
   unknown.
@@ -191,7 +194,9 @@ Reference research:
   behavior, battery, and media fields remain unverified.
 - Hardware status: start/stop, persisted reconnect, state restoration after
   remote restart, stopping an existing recording, and media-file creation are
-  verified on the target panel with the X8/AK-BT1.
+  verified on the target panel with the X8/AK-BT1. Record Stop is idempotent
+  when the recorder already confirms `Stopped`, so a partial sequence Start can
+  clean up other targets and become restartable.
 - Evidence and golden vectors:
   [protocols/tascam-x8.md](protocols/tascam-x8.md).
 

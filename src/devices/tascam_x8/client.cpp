@@ -214,10 +214,11 @@ bool TascamX8Client::startRecording() {
 }
 
 bool TascamX8Client::stopRecording() {
-  if (!connected() || state_.commandPending ||
-      (state_.recordingConfirmed &&
-       state_.recording == State::Recording::Stopped)) {
+  if (!connected() || state_.commandPending) {
     return false;
+  }
+  if (completeStopIfAlreadyStopped(state_)) {
+    return true;
   }
   markCommandQueued(state_, false);
   if (!sendData(buildRecordStop())) {

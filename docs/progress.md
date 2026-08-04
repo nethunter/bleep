@@ -1503,3 +1503,60 @@ Record values with the exact build environment and commit/worktree state.
   (53.2% / 49.1%). The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`. One mixed run passes; the required ten-cycle
   teardown and heap-recovery gate remains open, so ADR-023 stays Experimental.
+
+### 2026-08-04: Canon Smart automatic wake on retained-session acquire
+
+- Added a driver resume hook for already-active retained instances. Acquiring a
+  Canon Smart session in `PoweredOff` now starts its existing reconnect path,
+  which sends captured wake mode `03` after BLE setup. This applies when the
+  saved device is reopened or prepared as a sequence target; other retained
+  drivers remain unchanged.
+- The simulator now powers Canon off, closes its screen, reopens the retained
+  instance, and requires it to return to Ready without an explicit Power
+  command. The complete simulator capture run passed. Native tests passed
+  36/36, including successful and rejected retained-session resume ownership.
+- All firmware profiles built successfully: `crowpanel_128` used 1,680,742
+  bytes flash / 164,068 bytes RAM; `crowpanel_128_roboto` 1,650,286 / 164,068;
+  `canon_ble` 1,678,876 / 162,444; `canon_trigger` 1,675,426 / 161,436;
+  `tascam_x8` 1,676,848 / 161,348; and `home_assistant` 1,672,272 / 160,956.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical power-off, reopen, reconnect, and wake
+  remain operator-pending and are not marked hardware-verified.
+
+### 2026-08-04: Sequence recovery after partial Start failure
+
+- Fixed authored Stop aborting when it reached a Canon Smart or Tascam target
+  that already confirmed `Stopped`. Both clients now treat that Stop as a
+  successful idempotent no-op and clear a stale command-failure indicator.
+  Unknown or recording targets still receive the real Stop command and retain
+  device-originated confirmation requirements.
+- Added an end-to-end native regression that fails Tascam's first Record Start
+  after Canon starts, verifies the sequence enters `Failed`, runs both authored
+  Stop steps to `Completed`, and successfully starts the same sequence again.
+  Native tests passed 37/37; the full `ui_sim` build and capture run passed.
+- All firmware profiles built successfully: `crowpanel_128` used 1,680,778
+  bytes flash / 164,068 bytes RAM; `crowpanel_128_roboto` 1,650,322 / 164,068;
+  `canon_ble` 1,678,912 / 162,444; `canon_trigger` 1,675,462 / 161,436;
+  `tascam_x8` 1,676,884 / 161,348; and `home_assistant` 1,672,308 / 160,956.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. The exact partial-failure Stop/restart workflow
+  remains operator-pending on live Canon and Tascam hardware.
+
+### 2026-08-04: Sequence long-press Back correction
+
+- Corrected the sequence run-screen long press, which incorrectly invoked the
+  enabled Start or Stop action. It now mirrors the visible Back button: Run
+  returns to the sequence list, cancels the held run state, and releases
+  sequence ownership. Settings still closes first, Edit returns to Run, and a
+  long press from the sequence list returns Home.
+- Added a simulator regression that closes sequence Settings, long-presses Back
+  from Run, verifies the list is visible, and verifies Canon/Tascam sequence
+  ownership was released. The complete `ui_sim` build and capture run passed;
+  native tests passed 37/37.
+- All firmware profiles built successfully: `crowpanel_128` used 1,680,616
+  bytes flash / 164,068 bytes RAM; `crowpanel_128_roboto` 1,650,160 / 164,068;
+  `canon_ble` 1,678,750 / 162,444; `canon_trigger` 1,675,300 / 161,436;
+  `tascam_x8` 1,676,722 / 161,348; and `home_assistant` 1,672,146 / 160,956.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical 700 ms sequence Back behavior remains
+  operator-pending.

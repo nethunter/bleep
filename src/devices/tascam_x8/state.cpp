@@ -25,6 +25,15 @@ void markCommandWriteFailed(TascamX8State& state) {
   state.lastCommandFailed = true;
 }
 
+bool completeStopIfAlreadyStopped(TascamX8State& state) {
+  if (!state.recordingConfirmed ||
+      state.recording != TascamX8State::Recording::Stopped) {
+    return false;
+  }
+  state.lastCommandFailed = false;
+  return true;
+}
+
 void reduceFrame(TascamX8State& state, const ParsedFrame& frame) {
   const RecordEvent event = parseRecordEvent(frame);
   if (event == RecordEvent::Started) {

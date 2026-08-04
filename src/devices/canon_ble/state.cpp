@@ -28,6 +28,15 @@ void markCommandWriteFailed(CanonBleState& state) {
   state.lastCommandFailed = true;
 }
 
+bool completeStopIfAlreadyStopped(CanonBleState& state) {
+  if (!state.recordingConfirmed ||
+      state.recording != CanonBleState::Recording::Stopped) {
+    return false;
+  }
+  state.lastCommandFailed = false;
+  return true;
+}
+
 void reduceRecordNotification(CanonBleState& state, const uint8_t* data,
                               size_t len) {
   const RecordEvent event = parseRecordEvent(data, len);

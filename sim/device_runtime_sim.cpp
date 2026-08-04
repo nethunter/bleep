@@ -141,6 +141,17 @@ class SimCanonDriver : public DeviceDriver {
                  sizeof(state_.deviceName) - 1);
     return true;
   }
+  bool resume(const DeviceRecord& record) override {
+    if (activeInstance_ != record.instanceId) return false;
+    if (state_.phase == canon_ble::CanonBleState::Phase::PoweredOff) {
+      canon_ble::resetTransientState(state_);
+      state_.link = canon_ble::CanonBleState::Link::Connected;
+      state_.phase = canon_ble::CanonBleState::Phase::Ready;
+      const uint8_t stopped[] = {0x01, 0x01, 0x01};
+      canon_ble::reduceRecordNotification(state_, stopped, sizeof(stopped));
+    }
+    return true;
+  }
   void deactivate(InstanceId instanceId) override {
     if (instanceId != activeInstance_) return;
     activeInstance_ = kInvalidInstanceId;

@@ -357,10 +357,11 @@ bool CanonBleClient::startRecording() {
 }
 
 bool CanonBleClient::stopRecording() {
-  if (!connected() || state_.commandPending ||
-      (state_.recordingConfirmed &&
-       state_.recording == State::Recording::Stopped)) {
+  if (!connected() || state_.commandPending) {
     return false;
+  }
+  if (completeStopIfAlreadyStopped(state_)) {
+    return true;
   }
   markCommandQueued(state_, false);
   if (!writeCommand(shootingCommandChar_, buildRecordCommand(false))) {

@@ -225,8 +225,10 @@ the replacement.
 - Decision: Opening the Canon smartphone screen automatically sends captured
   wake mode `03` after setup. Camera power-down is available only through an
   explicit on-screen power control using mode `05`. After confirmed power-down,
-  the same control reconnects and runs the captured wake sequence; Back only
-  releases the panel's BLE connection.
+  the same control reconnects and runs the captured wake sequence. Reacquiring
+  the retained powered-off session from a device screen or sequence also starts
+  that reconnect-and-wake attempt; Back only releases the panel's BLE
+  connection.
 - Safety: Power-down is unavailable while recording is camera-confirmed or a
   record command is pending. Result `01` is only protocol acknowledgement; the
   expected camera-side disconnect is required before the panel reports
@@ -247,7 +249,10 @@ the replacement.
 - Consequence: Press Record and Press Stop may differ in order, waits, and
   targets. Validation requires at least one non-empty list and capability-safe
   action targets. No inverse journal is required for Stop generation in this
-  tranche; per-step progress is still tracked for the UI.
+  tranche; per-step progress is still tracked for the UI. Authored Stop remains
+  available after a partial Start failure. A Stop action against a target that
+  already confirms `Stopped` succeeds as an idempotent no-op, allowing cleanup
+  to reach later targets and a completed Stop to make Start retryable.
 - First scenario: Start sends Canon `RecordStart`, waits 500 ms, then Tascam
   `RecordStart`. Stop sends Canon `RecordStop`, then Tascam `RecordStop`.
 
@@ -271,7 +276,9 @@ the replacement.
   on the run screen. Device screens opened outside the sequence remain blocked
   while it holds links. Sequence-owned target controls are disabled during
   Start/Stop execution, and Start/Stop remain unavailable while any target is
-  not protocol-ready. Shark motion remains outside sequences.
+  not protocol-ready. A short hardware-button press invokes the enabled
+  Start/Stop action; a long press follows the same Back path as touch and never
+  dispatches Start or Stop. Shark motion remains outside sequences.
 - Roadmap deviation: This advances a bounded Phase 6/7 panel-scene tranche
   ahead of groups, Portal HTTP editing, lights, and generated reverse-Stop.
 

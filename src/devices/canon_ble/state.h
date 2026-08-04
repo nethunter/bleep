@@ -53,6 +53,7 @@ struct CanonBleState {
 void resetTransientState(CanonBleState& state);
 void markCommandQueued(CanonBleState& state, bool start);
 void markCommandWriteFailed(CanonBleState& state);
+bool completeStopIfAlreadyStopped(CanonBleState& state);
 void reduceRecordNotification(CanonBleState& state, const uint8_t* data,
                               size_t len);
 

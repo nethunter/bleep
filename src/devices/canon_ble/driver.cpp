@@ -41,6 +41,18 @@ bool CanonBleDriver::activate(const DeviceRecord& record) {
   return false;
 }
 
+bool CanonBleDriver::resume(const DeviceRecord& record) {
+  Session* session = sessionFor(record.instanceId);
+  if (session == nullptr) {
+    return false;
+  }
+  if (session->client.state().phase ==
+      canon_ble::CanonBleState::Phase::PoweredOff) {
+    return session->client.powerOn();
+  }
+  return true;
+}
+
 void CanonBleDriver::deactivate(InstanceId instanceId) {
   Session* session = sessionFor(instanceId);
   if (session != nullptr) {

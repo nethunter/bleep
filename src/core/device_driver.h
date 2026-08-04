@@ -10,6 +10,9 @@ class DeviceDriver {
 
   virtual DriverId driverId() const = 0;
   virtual bool activate(const DeviceRecord& record) = 0;
+  // Called when an already-active retained instance gains another owner.
+  // Drivers may resume device-specific work without rebuilding the session.
+  virtual bool resume(const DeviceRecord&) { return true; }
   virtual void deactivate(InstanceId instanceId) = 0;
   virtual void loop() = 0;
   virtual CommandStatus dispatch(const DeviceCommand& command) = 0;

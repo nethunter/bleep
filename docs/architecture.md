@@ -129,6 +129,10 @@ already-held activation to open full device controls, then returns without
 tearing down that device or its peers. Once a session reaches protocol readiness,
 removing its last owner parks it in the retained pool and bounded reconnect
 continues after unexpected drops. Attempts that never became ready are canceled.
+When a retained instance gains a new owner, `DeviceManager` invokes the
+driver's bounded resume hook before attaching that owner. Canon Smart uses this
+hook to reconnect and wake a session that the panel previously powered off;
+other drivers leave their retained transport unchanged.
 The active-instance pool evicts only the least-recently-used idle and
 unprotected session; it
 never evicts sequence/foreground owners, pending commands, or confirmed

@@ -1103,16 +1103,7 @@ void handleLongPress() {
     return;
   }
   if (view == View::Run) {
-    const studio::SceneRecord* record = studio::scenes().find(currentScene);
-    if (record == nullptr) {
-      return;
-    }
-    const studio::SceneProgress& progress = studio::scenes().progress();
-    if (canStopSequence(*record, progress)) {
-      onStop(nullptr);
-    } else if (canStartSequence(*record, progress)) {
-      onStart(nullptr);
-    }
+    onBackToList(nullptr);
     return;
   }
   hide();
@@ -1160,6 +1151,8 @@ void simOpenDeviceControl(studio::InstanceId instanceId) {
 }
 
 void simDeleteCurrentScene() { onDeleteScene(nullptr); }
+
+bool simShowingList() { return visible && view == View::List; }
 
 void simShowAddStepCategory(studio::SceneId sceneId) {
   visible = true;
