@@ -55,7 +55,6 @@ Screen screen = Screen::Home;
 lv_obj_t* scrHome = nullptr;
 lv_obj_t* scrDevices = nullptr;
 lv_obj_t* scrPortal = nullptr;
-lv_obj_t* homeStatus = nullptr;
 lv_obj_t* deviceList = nullptr;
 lv_obj_t* addButton = nullptr;
 lv_obj_t* portalStatus = nullptr;
@@ -218,14 +217,6 @@ bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
          instanceCount(descriptor->id) < descriptor->maxInstances;
 }
 
-void refreshHome() {
-  char status[40];
-  snprintf(status, sizeof(status), "%u devices · %u scenes",
-           static_cast<unsigned>(studio::devices().count()),
-           static_cast<unsigned>(studio::scenes().count()));
-  lv_label_set_text(homeStatus, status);
-}
-
 const char* linkText(studio::LinkState link) {
   switch (link) {
     case studio::LinkState::Scanning:
@@ -364,7 +355,6 @@ void onDriverChosen(studio::DriverId driverId) {
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   studio::devices().add(descriptor->id, descriptor->model, instanceId);
   refreshDevices();
-  refreshHome();
 }
 
 void onAddDevice(lv_event_t*) {
@@ -411,7 +401,6 @@ void onDisconnect(lv_event_t*) {
   }
   closeDeviceModal();
   refreshDevices();
-  refreshHome();
 }
 
 void onRemove(lv_event_t*) {
@@ -426,7 +415,6 @@ void onRemove(lv_event_t*) {
   }
   closeDeviceModal();
   refreshDevices();
-  refreshHome();
 }
 
 const char** renamePageMap() {
@@ -554,11 +542,6 @@ void buildHome() {
   makeModeTile(grid, &ui_icon_groups, "Groups", false, nullptr);
   makeModeTile(grid, &ui_icon_scenes, "Scenes", true, onShowScenes);
   makeModeTile(grid, &ui_icon_portal, "Portal", true, onShowPortal);
-
-  homeStatus = lv_label_create(scrHome);
-  lv_obj_set_style_text_font(homeStatus, UI_FONT_14, 0);
-  lv_obj_set_style_text_color(homeStatus, lv_color_hex(kColMuted), 0);
-  lv_obj_align(homeStatus, LV_ALIGN_BOTTOM_MID, 0, -16);
 }
 
 void buildDevices() {
@@ -788,7 +771,6 @@ void init() {
   buildHome();
   buildDevices();
   buildPortal();
-  refreshHome();
   refreshDevices();
   lv_scr_load(scrHome);
 }
@@ -833,9 +815,7 @@ void tick() {
     return;
   }
   lastRefreshMs = now;
-  if (screen == Screen::Home) {
-    refreshHome();
-  } else if (screen == Screen::Portal) {
+  if (screen == Screen::Portal) {
     refreshPortal();
   }
 }
@@ -962,7 +942,6 @@ void showHome() {
   closeRename();
   closeAddPicker();
   screen = Screen::Home;
-  refreshHome();
   lv_scr_load(scrHome);
   releaseDeviceUis();
 }
@@ -1010,7 +989,6 @@ void showPortal() {
   closeRename();
   closeAddPicker();
   if (!portal::begin()) {
-    refreshHome();
     return;
   }
   screen = Screen::Portal;

@@ -1560,3 +1560,20 @@ Record values with the exact build environment and commit/worktree state.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`. Physical 700 ms sequence Back behavior remains
   operator-pending.
+
+### 2026-08-04: Home count footer removal
+
+- Removed the Home footer that displayed device and sequence counts. Its
+  middle-dot separator was unavailable in the embedded font and rendered as a
+  square, while the count text extended into the round panel's cropped edge.
+  Home now contains only the title and four mode tiles.
+- The complete `ui_sim` capture run passed, and visual inspection of
+  `01_home.png` confirmed the footer is absent with clear circular margins.
+  Native tests passed 37/37.
+- All firmware profiles built successfully: `crowpanel_128` used 1,680,404
+  bytes flash / 164,068 bytes RAM; `crowpanel_128_roboto` 1,649,948 / 164,068;
+  `canon_ble` 1,678,542 / 162,444; `canon_trigger` 1,675,092 / 161,436;
+  `tascam_x8` 1,676,514 / 161,348; and `home_assistant` 1,671,938 / 160,956.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`. Physical Home-screen inspection remains
+  operator-pending.
