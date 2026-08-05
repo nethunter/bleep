@@ -531,6 +531,9 @@ void SceneRunner::dispatchCurrentAction() {
   DeviceCommand command;
   command.instanceId = step->targetId;
   command.type = step->command;
+  command.value0 = step->value0;
+  command.value1 = step->value1;
+  command.value2 = step->value2;
   if (!devices_.enqueue(command)) {
     fail(SceneRunStatus::ActionFailed, "Queue full");
     return;

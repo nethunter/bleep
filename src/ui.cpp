@@ -31,6 +31,9 @@
 #if CONFIG_DRIVER_HOME_ASSISTANT
 #include "devices/home_assistant/ui.h"
 #endif
+#if CONFIG_DRIVER_AMARAN_LIGHT
+#include "devices/amaran_light/ui.h"
+#endif
 
 namespace ui {
 
@@ -213,7 +216,8 @@ size_t instanceCount(studio::DriverId driverId) {
 }
 
 bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
-  return descriptor != nullptr && descriptor->id != studio::DriverId::HomeAssistant &&
+  return descriptor != nullptr && descriptor->discoverable &&
+         descriptor->id != studio::DriverId::HomeAssistant &&
          instanceCount(descriptor->id) < descriptor->maxInstances;
 }
 
@@ -750,6 +754,9 @@ void buildRenameOverlay() {
 }  // namespace
 
 void releaseDeviceUis() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  amaran_light_ui::release();
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   shark_ui::release();
 #endif
@@ -776,6 +783,12 @@ void init() {
 }
 
 void tick() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  if (amaran_light_ui::active()) {
+    amaran_light_ui::tick();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::tick();
@@ -821,6 +834,12 @@ void tick() {
 }
 
 void handleShortPress() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  if (amaran_light_ui::active()) {
+    amaran_light_ui::handleShortPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleShortPress();
@@ -858,6 +877,12 @@ void handleShortPress() {
 }
 
 void handleLongPress() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  if (amaran_light_ui::active()) {
+    amaran_light_ui::handleLongPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleLongPress();
@@ -907,6 +932,11 @@ void handleLongPress() {
 }
 
 void showHome() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  if (amaran_light_ui::active()) {
+    amaran_light_ui::hide();
+  }
+#endif
   if (portal::active()) {
     portal::stop();
   }
@@ -947,6 +977,11 @@ void showHome() {
 }
 
 void showDevices() {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+  if (amaran_light_ui::active()) {
+    amaran_light_ui::hide();
+  }
+#endif
   if (scene_ui::active()) {
     scene_ui::hide();
   }
@@ -1003,6 +1038,13 @@ void showDevice(studio::InstanceId instanceId) {
     return;
   }
   switch (record->driverId) {
+#if CONFIG_DRIVER_AMARAN_LIGHT
+    case studio::DriverId::AmaranLight:
+    case studio::DriverId::AmaranPano120c:
+    case studio::DriverId::AmaranAce25c:
+      amaran_light_ui::show(instanceId);
+      break;
+#endif
 #if CONFIG_DRIVER_SHARK_NANO_II
     case studio::DriverId::SharkNanoII:
       shark_ui::show(instanceId);

@@ -206,24 +206,32 @@ Completion gate:
 
 ## Phase 4: Amaran light driver
 
-Initial models:
+Status: Experimental bounded panel-owned-mesh tranche implemented under
+ADR-024; target-light completion gate remains open.
 
-- amaran Pano 60c;
-- amaran Pano 120c;
-- amaran Ace 25c.
+Initial catalog entry: one generic `Amaran Light`. Pano 60c, Pano 120c, and
+Ace 25c are validation fixtures, not choices the operator must make before
+provisioning. Any compatible factory-reset fixture advertising Mesh
+Provisioning may be added; support claims remain limited to hardware that has
+passed this phase's completion gate.
 
 Work:
 
 - implement Telink opcode `0x26` commands;
-- support power, brightness, CCT, and HSI with model limits;
+- support power, brightness, CCT/tint, and RGB with validated 2300-10000 K
+  model limits;
 - provision factory-reset lights into a panel-owned mesh;
-- import an existing Sidus/amaran mesh through Portal mode;
+- persist pending configuration and reserve replay-safe sequence blocks;
 - implement best-available state readback and mark optimistic state explicitly.
+
+Deferred from this tranche: existing Sidus mesh import, native groups, HSIC,
+interpolation, and confirmed readback.
 
 Completion gate:
 
-- both onboarding paths work on real target lights;
-- commands can target individual lights and compatible groups;
+- PB-GATT onboarding, interrupted configuration recovery, proxy fallback, and
+  verified reset work on all three real target lights;
+- commands and mixed-device sequences target individual lights;
 - credentials never leak into normal logs or unprotected exports.
 
 ## Phase 5: Canon camera drivers

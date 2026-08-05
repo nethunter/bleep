@@ -14,7 +14,7 @@
 
 #define LV_MEM_CUSTOM 0
 #ifndef LV_MEM_SIZE
-#define LV_MEM_SIZE (76U * 1024U)
+#define LV_MEM_SIZE (96U * 1024U)
 #endif
 
 #define LV_TICK_CUSTOM 0
@@ -91,7 +91,7 @@
 
 #define LV_USE_CALENDAR 0
 #define LV_USE_CHART 0
-#define LV_USE_COLORWHEEL 0
+#define LV_USE_COLORWHEEL 1
 #define LV_USE_ANIMIMG 0
 #define LV_USE_IMGBTN 0
 #define LV_USE_KEYBOARD 1
@@ -101,7 +101,7 @@
 #define LV_USE_MSGBOX 1
 #define LV_USE_SPAN 0
 #define LV_USE_SPINBOX 1
-#define LV_USE_SPINNER 0
+#define LV_USE_SPINNER 1
 #define LV_USE_TABVIEW 0
 #define LV_USE_TILEVIEW 0
 #define LV_USE_WIN 0

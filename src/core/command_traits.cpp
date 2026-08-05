@@ -10,6 +10,8 @@ constexpr CommandTrait kTraits[] = {
     {CommandType::TurnOff, Capability::TurnOff, true},
     {CommandType::Press, Capability::Press, true},
     {CommandType::Activate, Capability::Activate, true},
+    {CommandType::SetLightCct, Capability::SetLightCct, true},
+    {CommandType::SetLightRgb, Capability::SetLightRgb, true},
 };
 
 }  // namespace

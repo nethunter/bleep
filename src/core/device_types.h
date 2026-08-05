@@ -17,6 +17,10 @@ enum class DriverId : uint16_t {
   TascamX8 = 3,
   CanonTrigger = 4,   // Canon (Trigger) BR-E1-compatible BLE
   HomeAssistant = 5,
+  AmaranLight = 6,
+  AmaranPano60c = 6,
+  AmaranPano120c = 7,
+  AmaranAce25c = 8,
 };
 
 enum class DeviceType : uint8_t {
@@ -71,6 +75,8 @@ enum class Capability : uint32_t {
   TurnOff = 1u << 14,
   Press = 1u << 15,
   Activate = 1u << 16,
+  SetLightCct = 1u << 17,
+  SetLightRgb = 1u << 18,
 };
 
 constexpr uint32_t capabilityBit(Capability capability) {
@@ -102,6 +108,8 @@ enum class CommandType : uint8_t {
   TurnOff,
   Press,
   Activate,
+  SetLightCct,
+  SetLightRgb,
 };
 
 struct DeviceCommand {
@@ -110,6 +118,7 @@ struct DeviceCommand {
   CommandType type = CommandType::Refresh;
   int value0 = 0;
   int value1 = 0;
+  int value2 = 0;
 };
 
 enum class CommandStatus : uint8_t {
@@ -190,19 +199,21 @@ struct DriverDescriptor {
   DeviceType type = DeviceType::Unknown;
   uint32_t capabilities = 0;
   uint8_t maxInstances = 0;
+  bool discoverable = true;
 
   constexpr DriverDescriptor() = default;
   constexpr DriverDescriptor(DriverId driverId, const char* stableDriverId,
                              const char* driverBrand, const char* driverModel,
                              DeviceType deviceType, uint32_t capabilityMask,
-                             uint8_t instanceLimit)
+                             uint8_t instanceLimit, bool showInPicker = true)
       : id(driverId),
         stableId(stableDriverId),
         brand(driverBrand),
         model(driverModel),
         type(deviceType),
         capabilities(capabilityMask),
-        maxInstances(instanceLimit) {}
+        maxInstances(instanceLimit),
+        discoverable(showInPicker) {}
 };
 
 }  // namespace studio

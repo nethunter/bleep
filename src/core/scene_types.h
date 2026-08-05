@@ -17,6 +17,9 @@ struct SceneStep {
   InstanceId targetId = kInvalidInstanceId;
   CommandType command = CommandType::Refresh;
   uint32_t waitMs = 0;
+  int32_t value0 = 0;
+  int32_t value1 = 0;
+  int32_t value2 = 0;
 
   SceneStep() = default;
   SceneStep(SceneStepType stepType, InstanceId target, CommandType commandType,
@@ -29,6 +32,16 @@ struct SceneStep {
 
 inline SceneStep makeActionStep(InstanceId target, CommandType command) {
   return SceneStep(SceneStepType::Action, target, command, 0);
+}
+
+inline SceneStep makeActionStep(InstanceId target, CommandType command,
+                                int32_t value0, int32_t value1,
+                                int32_t value2 = 0) {
+  SceneStep step(SceneStepType::Action, target, command, 0);
+  step.value0 = value0;
+  step.value1 = value1;
+  step.value2 = value2;
+  return step;
 }
 
 inline SceneStep makeWaitStep(uint32_t milliseconds) {

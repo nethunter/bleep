@@ -413,11 +413,42 @@ the replacement.
   HA/Canon/Tascam hardware run reached all-targets-ready in 8.6 seconds. The
   ten-cycle teardown/heap-recovery gate remains open.
 
+## ADR-024: Userspace PB-GATT and Mesh Proxy for the first Amaran tranche
+
+- Status: Experimental; target-light hardware gate open
+- Decision: the picker exposes one generic `Amaran Light`. The first nearby
+  factory-reset fixture advertising Mesh Provisioning is added; Pano 60c,
+  Pano 120c, and Ace 25c are validation targets rather than separate user
+  choices. Compatible fixtures use Bluetooth Mesh PB-GATT for no-OOB
+  provisioning and Mesh Proxy GATT for control. Ble(e)p creates one
+  panel-owned mesh and does not depend on ESP-IDF's mesh host, Sidus Link,
+  Home Assistant, or Python at runtime. Existing-mesh import remains deferred.
+- Runtime: One Amaran runtime owns one physical proxy link shared by all active
+  logical fixtures. It uses the same lazy NimBLE central as the existing GATT
+  drivers. Host-task callbacks only enqueue bounded raw notifications; all
+  provisioning, cryptography, persistence, configuration, writes, state
+  mutation, and LVGL work stays in `loop()`.
+- Persistence and replay safety: A separate checksummed NVS record contains the
+  mesh identity, keys, IV index, addresses, node device keys, and configuration
+  phase. Sequence numbers are durably reserved in blocks of 256 and commands
+  stop before the 24-bit space can be reused. A provisioned node is persisted
+  as pending configuration before the provisioning link is released.
+- Commands and state: This tranche exposes explicit power, CCT/tint/brightness,
+  and RGB/brightness actions using captured Telink opcode `0x26` payloads.
+  Successful writes are optimistic, never confirmed. Native groups, HSIC,
+  interpolation, and decoded fixture readback remain deferred.
+- Safety gate: AppKey/model/subscription configuration uses segmented lower
+  transport where required. Promotion requires status-response decoding and
+  real-fixture evidence for the initial validation set, interrupted configuration,
+  fallback proxy selection, reboot recovery, sequence-number continuity, and
+  verified node reset. Until verified reset is implemented, ordinary local
+  record removal is not a claim that the fixture left the mesh.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
 
-- ESP-IDF Bluetooth backend and exact GATT/Mesh coexistence design;
+- whether hardware evidence justifies reliable Amaran state readback or native groups;
 - whether to add a user-configurable setup password or captive-portal discovery;
 - execution-journal persistence and power-loss recovery policy;
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4

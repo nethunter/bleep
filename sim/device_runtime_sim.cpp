@@ -11,6 +11,7 @@
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/state.h"
 #include "devices/home_assistant/driver.h"
+#include "devices/amaran_light/driver.h"
 
 namespace studio {
 namespace {
@@ -382,9 +383,13 @@ SimCanonTriggerDriver gCanonTriggerDriver;
 SimCanonDriver gCanonDriver;
 SimTascamDriver gTascamDriver;
 HomeAssistantDriver gHomeAssistantDriver;
+AmaranLightDriver gAmaranPano60(DriverId::AmaranLight);
+AmaranLightDriver gAmaranPano120(DriverId::AmaranPano120c);
+AmaranLightDriver gAmaranAce25(DriverId::AmaranAce25c);
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
-                            &gTascamDriver, &gHomeAssistantDriver};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 5);
+                            &gTascamDriver, &gHomeAssistantDriver,
+                            &gAmaranPano60, &gAmaranPano120, &gAmaranAce25};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 8);
 SceneService gScenes(gScenesBackend, gManager);
 
 }  // namespace

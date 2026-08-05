@@ -45,14 +45,16 @@ ADR-013 advances a bounded subset of this architecture before the transport
 feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
-  Canon Smart, Tascam X8, and Home Assistant; smaller profiles compile selected
-  drivers out;
+  Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Amaran
+  Light entry; hidden legacy Amaran model IDs remain resolvable for persisted
+  records;
+  smaller profiles compile selected drivers out;
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, a
   four-session retained connection pool, per-owner lifecycle, and persistence;
 - schema version 2 stores up to twelve device records in the `studio` NVS
   namespace, migrates v1 BLE records unchanged, and retains records for
-  unavailable driver IDs. HA credentials and token use a separate checksummed
-  `ha_config` record;
+  unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
+  separate checksummed records;
 - the catalog permits one Shark, up to three Canon Trigger instances, up to
   three Canon Smart instances, and one Tascam X8 within the eight-record
   registry;
@@ -64,9 +66,9 @@ feasibility spikes:
   address claims, security serialization, bonds, and teardown for all four BLE
   clients. Panel Scenes (ADR-019/020) provide authored Start/Stop
   sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
-  Portal provisioning and four local HA entities; its target hardware gate is
-  still open. Generated reverse-Stop, groups, and native BLE lights remain
-  deferred.
+  Portal provisioning and four local HA entities. ADR-024 adds an experimental
+  userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
+  open; generated reverse-Stop and groups remain deferred.
 
 ## Compile-time driver catalog
 
@@ -315,13 +317,15 @@ rejected during scene validation.
 
 GATT is accessed through a transport facade:
 
-- GATT-only builds use NimBLE to minimize memory;
-- Amaran-enabled builds require an ESP-IDF Bluetooth Mesh/GATT backend;
-- Shark and Canon BR-E1 use GATT;
-- Amaran uses PB-ADV provisioning and mesh traffic.
+- all current BLE builds use one lazy NimBLE central;
+- Shark, Canon, and Tascam use their device-specific GATT services;
+- Amaran uses userspace PB-GATT provisioning and Mesh Proxy GATT over that same
+  central, with one proxy connection shared by its logical lights;
+- callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
+  persistence, and writes remain on the main loop.
 
-Direct Amaran provisioning plus concurrent Shark/Canon GATT is a feasibility
-gate. It must be proven on the ESP32-C3 before the main refactor depends on it.
+Concurrent Amaran proxy, Shark/Canon/Tascam GATT, provisioning recovery, and
+post-teardown heap remain an ESP32-C3 hardware feasibility gate.
 
 ## Dedicated Portal mode
 

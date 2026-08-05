@@ -66,6 +66,10 @@ principles:
 - Experimental local Home Assistant control for four selected lights, switches,
   input booleans, buttons, scenes, or scripts through a temporary setup Portal
   and one shared on-demand Wi-Fi session.
+- Experimental native `Amaran Light` support with panel-owned PB-GATT
+  provisioning, one shared Mesh Proxy connection, power,
+  independently remembered CCT/tint/brightness and RGB/saturation/brightness
+  looks, plus a unified parameterized `Set color` sequence action.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -73,9 +77,9 @@ principles:
 - Native tests for protocol parsing, state reducers, device/scene registries,
   command routing, persistence, and shared BLE scheduling.
 
-Groups, Amaran lighting, generated reverse-Stop sequences, and full Canon
-Wi-Fi/CCAPI control are roadmap work. Home Assistant is implemented as an
-experimental bounded tranche whose target-server lifecycle gate is still open. See
+Groups, existing Amaran mesh import, generated reverse-Stop sequences, and full
+Canon Wi-Fi/CCAPI control are roadmap work. Home Assistant and native Amaran
+are experimental bounded tranches whose hardware gates remain open. See
 [project progress](docs/progress.md) for the exact current gates and
 [the implementation roadmap](docs/implementation-roadmap.md) for sequencing.
 
@@ -88,7 +92,7 @@ experimental bounded tranche whose target-server lifecycle gate is still open. S
 | Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
-| Amaran Pano/Ace lights | Research / planned | Power, brightness, CCT, and HSI are planned after Bluetooth Mesh feasibility work. |
+| Amaran Light | Experimental | Adds the first nearby factory-reset Amaran fixture advertising Mesh Provisioning to a panel-owned mesh; optimistic power, CCT/tint/brightness, RGB/brightness, and sequence actions use one shared proxy. Pano 60c/120c and Ace 25c are the initial validation fixtures; real-fixture verification remains open. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
 Compatibility claims are deliberately narrow. Read

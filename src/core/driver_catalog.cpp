@@ -74,6 +74,46 @@ constexpr DriverDescriptor kDrivers[] = {
         4,
     },
 #endif
+#if CONFIG_DRIVER_AMARAN_LIGHT
+    {
+        DriverId::AmaranLight,
+        "amaran.light",
+        "amaran",
+        "Amaran Light",
+        DeviceType::Light,
+        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
+            capabilityBit(Capability::TurnOff) |
+            capabilityBit(Capability::SetLightCct) |
+            capabilityBit(Capability::SetLightRgb),
+        4,
+    },
+    {
+        DriverId::AmaranPano120c,
+        "amaran.pano_120c",
+        "amaran",
+        "Pano 120c",
+        DeviceType::Light,
+        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
+            capabilityBit(Capability::TurnOff) |
+            capabilityBit(Capability::SetLightCct) |
+            capabilityBit(Capability::SetLightRgb),
+        4,
+        false,
+    },
+    {
+        DriverId::AmaranAce25c,
+        "amaran.ace_25c",
+        "amaran",
+        "Ace 25c",
+        DeviceType::Light,
+        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
+            capabilityBit(Capability::TurnOff) |
+            capabilityBit(Capability::SetLightCct) |
+            capabilityBit(Capability::SetLightRgb),
+        4,
+        false,
+    },
+#endif
     {},
 };
 constexpr size_t kDriverCount = (sizeof(kDrivers) / sizeof(kDrivers[0])) - 1;

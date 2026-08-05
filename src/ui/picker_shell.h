@@ -14,7 +14,8 @@ enum class Mode : uint8_t {
 struct Callbacks {
   void (*onDriverChosen)(studio::DriverId driverId) = nullptr;
   void (*onSceneAction)(studio::InstanceId instanceId,
-                        studio::CommandType command) = nullptr;
+                        studio::CommandType command, int32_t value0,
+                        int32_t value1, int32_t value2) = nullptr;
   void (*onWaitChosen)() = nullptr;
   void (*onClosed)() = nullptr;
 };
@@ -29,6 +30,7 @@ bool handleBack();
 void simShowCategory(Mode mode);
 void simShowDeviceList(Mode mode, studio::DeviceType category);
 void simShowActions(Mode mode, studio::InstanceId instanceId);
+void simShowLightColor(Mode mode, studio::InstanceId instanceId, bool rgb);
 #endif
 
 }  // namespace picker_shell

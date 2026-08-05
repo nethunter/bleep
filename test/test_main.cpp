@@ -25,6 +25,10 @@
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
 #include "devices/home_assistant/protocol.h"
+#include "devices/amaran_light/crypto.h"
+#include "devices/amaran_light/protocol.h"
+#include "devices/amaran_light/state.h"
+#include "devices/amaran_light/store.h"
 
 using namespace shark;
 
@@ -138,6 +142,50 @@ class V1DeviceBackend : public studio::IConfigBackend {
   }
 
   uint8_t data_[128] = {};
+  size_t length_ = 0;
+};
+
+class V1SceneBackend : public studio::IConfigBackend {
+ public:
+  V1SceneBackend() {
+    uint8_t* out = data_;
+    std::memcpy(out, "SCN1", 4); out += 4;
+    put32(out, 0x01010001);  // version 1, initialized, one scene
+    put32(out, 2);           // next scene id
+    put32(out, 1);           // scene id
+    *out++ = 1;
+    std::memset(out, 0, studio::kDeviceNameCapacity);
+    std::memcpy(out, "Legacy scene", 12); out += studio::kDeviceNameCapacity;
+    *out++ = 1; *out++ = 0;
+    for (size_t list = 0; list < 2; ++list) {
+      for (size_t step = 0; step < CONFIG_MAX_SCENE_STEPS; ++step) {
+        *out++ = static_cast<uint8_t>(step == 0 && list == 0
+            ? studio::SceneStepType::Action : studio::SceneStepType::Wait);
+        put32(out, step == 0 && list == 0 ? 7 : 0);
+        *out++ = static_cast<uint8_t>(step == 0 && list == 0
+            ? studio::CommandType::TurnOn : studio::CommandType::Refresh);
+        put32(out, 0);
+      }
+    }
+    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
+    length_ = static_cast<size_t>(out - data_);
+  }
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (capacity < length_) return 0;
+    std::memcpy(destination, data_, length_); return length_;
+  }
+  bool write(const uint8_t*, size_t) override { return false; }
+
+ private:
+  static void put32(uint8_t*& out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
+  }
+  static uint32_t checksum(const uint8_t* bytes, size_t length) {
+    uint32_t value = 2166136261u;
+    for (size_t i = 0; i < length; ++i) value = (value ^ bytes[i]) * 16777619u;
+    return value;
+  }
+  uint8_t data_[512] = {};
   size_t length_ = 0;
 };
 
@@ -678,7 +726,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(5, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(8, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -721,6 +769,21 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::DriverCatalog::find(studio::DriverId::HomeAssistant);
   TEST_ASSERT_NOT_NULL(homeAssistant);
   TEST_ASSERT_EQUAL_UINT8(4, homeAssistant->maxInstances);
+  const studio::DriverDescriptor* amaran =
+      studio::DriverCatalog::find(studio::DriverId::AmaranLight);
+  TEST_ASSERT_NOT_NULL(amaran);
+  TEST_ASSERT_EQUAL_STRING("Amaran Light", amaran->model);
+  TEST_ASSERT_TRUE(amaran->discoverable);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Light),
+                        static_cast<int>(amaran->type));
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::SetLightCct) |
+          studio::capabilityBit(studio::Capability::SetLightRgb),
+      amaran->capabilities);
+  TEST_ASSERT_FALSE(studio::DriverCatalog::find(
+      studio::DriverId::AmaranPano120c)->discoverable);
+  TEST_ASSERT_FALSE(studio::DriverCatalog::find(
+      studio::DriverId::AmaranAce25c)->discoverable);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -1380,7 +1443,7 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_NOT_NULL(record);
   record->startCount = 3;
   record->startSteps[0] =
-      studio::makeActionStep(2, studio::CommandType::RecordStart);
+      studio::makeActionStep(2, studio::CommandType::SetLightCct, 5600, 72, -125);
   record->startSteps[1] = studio::makeWaitStep(500);
   record->startSteps[2] =
       studio::makeActionStep(3, studio::CommandType::RecordStart);
@@ -1400,12 +1463,30 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_EQUAL_UINT8(3, restored.at(0)->startCount);
   TEST_ASSERT_EQUAL_UINT8(2, restored.at(0)->stopCount);
   TEST_ASSERT_EQUAL_UINT32(500, restored.at(0)->startSteps[1].waitMs);
+  TEST_ASSERT_EQUAL_INT32(5600, restored.at(0)->startSteps[0].value0);
+  TEST_ASSERT_EQUAL_INT32(72, restored.at(0)->startSteps[0].value1);
+  TEST_ASSERT_EQUAL_INT32(-125, restored.at(0)->startSteps[0].value2);
 
   backend.corruptLastByte();
   studio::SceneRegistry rejected;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Corrupt),
       static_cast<int>(store.load(rejected)));
+}
+
+void test_scene_v1_migration_zeroes_action_arguments() {
+  V1SceneBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry restored;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
+  const studio::SceneStep& step = restored.at(0)->startSteps[0];
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOn),
+                        static_cast<int>(step.command));
+  TEST_ASSERT_EQUAL_INT32(0, step.value0);
+  TEST_ASSERT_EQUAL_INT32(0, step.value1);
+  TEST_ASSERT_EQUAL_INT32(0, step.value2);
 }
 
 void test_press_record_start_and_authored_stop() {
@@ -1912,6 +1993,9 @@ void test_ble_device_advertisement_matchers() {
   const studio::ble::Advertisement tascamAdvertisement =
       bleAdvertisement("22:33:44:55:66:77", tascam_x8::kDeviceName, 0x1800);
   TEST_ASSERT_TRUE(tascam_x8::matchesAdvertisement(tascamAdvertisement));
+  const studio::ble::Advertisement unprovisionedAmaran =
+      bleAdvertisement("44:55:66:77:88:99", "Amaran", 0x1827);
+  TEST_ASSERT_TRUE(studio::ble::advertisesService(unprovisionedAmaran, "1827"));
 
   const uint8_t triggerUuid[16] = {
       0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
@@ -1928,6 +2012,108 @@ void test_ble_device_advertisement_matchers() {
   canonAdvertisement.payloadLength = 4;
   TEST_ASSERT_TRUE(
       canon_ble::matchesAdvertisement(canonAdvertisement));
+}
+
+void test_amaran_crypto_and_network_vectors() {
+  const uint8_t aesKey[16] = {0x2b,0x7e,0x15,0x16,0x28,0xae,0xd2,0xa6,
+      0xab,0xf7,0x15,0x88,0x09,0xcf,0x4f,0x3c};
+  const uint8_t aesInput[16] = {0x6b,0xc1,0xbe,0xe2,0x2e,0x40,0x9f,0x96,
+      0xe9,0x3d,0x7e,0x11,0x73,0x93,0x17,0x2a};
+  const uint8_t aesExpected[16] = {0x3a,0xd7,0x7b,0xb4,0x0d,0x7a,0x36,0x60,
+      0xa8,0x9e,0xca,0xf3,0x24,0x66,0xef,0x97};
+  uint8_t block[16];
+  amaran_light::aes128EncryptBlock(aesKey, aesInput, block);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(aesExpected, block, 16);
+
+  const uint8_t cmacExpected[16] = {0xbb,0x1d,0x69,0x29,0xe9,0x59,0x37,0x28,
+      0x7f,0xa3,0x7d,0x12,0x9b,0x75,0x67,0x46};
+  uint8_t cmac[16];
+  amaran_light::aesCmac(aesKey, nullptr, 0, cmac);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(cmacExpected, cmac, 16);
+
+  const uint8_t networkKey[16] = {0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
+      0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff};
+  const uint8_t appKey[16] = {0xff,0xee,0xdd,0xcc,0xbb,0xaa,0x99,0x88,
+      0x77,0x66,0x55,0x44,0x33,0x22,0x11,0x00};
+  amaran_light::AccessPayload blue;
+  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0x0000ff, 0, blue));
+  // Lock the exact captured blue payload independently of the brightness-aware path.
+  const uint8_t blueAccess[11] = {0x26,0xd3,0xa0,0,0,0,0xa0,0x0f,0,0,0x84};
+  amaran_light::NetworkPdu network;
+  TEST_ASSERT_TRUE(amaran_light::encodeAccessMessage(
+      networkKey, appKey, blueAccess, sizeof(blueAccess), 1, 1, 0xc000, 0,
+      network));
+  const uint8_t expectedNetwork[] = {0x1e,0x72,0xa3,0xec,0xac,0x74,0x86,0xe5,
+      0xfa,0x7f,0xf4,0x21,0x57,0xd4,0x22,0xd0,0xe9,0x15,0x35,0x5a,0x48,0x70,
+      0xd9,0xfc,0xce,0xd7,0xc1,0xe3,0xba};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedNetwork), network.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedNetwork, network.bytes, network.length);
+}
+
+void test_amaran_access_payloads_and_validation() {
+  amaran_light::AccessPayload payload;
+  TEST_ASSERT_TRUE(amaran_light::buildPowerAccess(true, payload));
+  const uint8_t powerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOn, payload.bytes, sizeof(powerOn));
+  TEST_ASSERT_TRUE(amaran_light::buildCctAccess(5000, 0, 89, payload));
+  const uint8_t cct[] = {0x26,0x80,0,0,0,0,0x40,0x41,0x9f,0xde,0x82};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(cct, payload.bytes, sizeof(cct));
+  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0xff0000, 50, payload));
+  const uint8_t rgb[] = {0x26,0xdd,0x40,0x1f,0,0,0,0,0,0xfa,0x84};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(rgb, payload.bytes, sizeof(rgb));
+  TEST_ASSERT_TRUE(amaran_light::validCctCommand(2300, 0, -1000));
+  TEST_ASSERT_FALSE(amaran_light::validCctCommand(2299, 50, 0));
+  TEST_ASSERT_TRUE(amaran_light::validRgbCommand(0xffffff, 100));
+  TEST_ASSERT_FALSE(amaran_light::validRgbCommand(0x1000000, 50));
+
+  const uint8_t networkKey[16] = {};
+  const uint8_t deviceKey[16] = {1};
+  uint8_t appKeyAdd[20] = {};
+  const uint32_t sequences[] = {0x123, 0x124};
+  amaran_light::NetworkPduBatch segmented;
+  TEST_ASSERT_TRUE(amaran_light::encodeSegmentedDeviceMessage(
+      networkKey, deviceKey, appKeyAdd, sizeof(appKeyAdd), sequences, 2,
+      1, 2, 0, segmented));
+  TEST_ASSERT_EQUAL_UINT8(2, segmented.count);
+  TEST_ASSERT_TRUE(segmented.pdus[0].length > 0);
+  TEST_ASSERT_TRUE(segmented.pdus[1].length > 0);
+  TEST_ASSERT_FALSE(amaran_light::encodeDeviceMessage(
+      networkKey, deviceKey, appKeyAdd, sizeof(appKeyAdd), sequences[0],
+      1, 2, 0, segmented.pdus[0]));
+}
+
+void test_amaran_store_and_sequence_reservation_survive_restart() {
+  MemoryBackend backend;
+  amaran_light::MeshStore store(backend);
+  amaran_light::MeshStoreData data;
+  data.network.initialized = true;
+  for (uint8_t i = 0; i < 16; ++i) {
+    data.network.networkKey[i] = i;
+    data.network.applicationKey[i] = static_cast<uint8_t>(0xff - i);
+  }
+  amaran_light::MeshNodeRecord node;
+  node.instanceId = 42;
+  node.model = studio::DriverId::AmaranLight;
+  node.unicastAddress = 2;
+  node.configured = true;
+  TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
+  TEST_ASSERT_TRUE(store.save(data));
+  amaran_light::MeshStoreData loaded;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(loaded)));
+  TEST_ASSERT_NOT_NULL(amaran_light::findNode(loaded, 42));
+  amaran_light::SequenceAllocator first;
+  TEST_ASSERT_TRUE(first.begin(store, loaded));
+  uint32_t sequence = 99;
+  TEST_ASSERT_TRUE(first.next(sequence));
+  TEST_ASSERT_EQUAL_UINT32(0, sequence);
+  amaran_light::MeshStoreData restarted;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(restarted)));
+  amaran_light::SequenceAllocator second;
+  TEST_ASSERT_TRUE(second.begin(store, restarted));
+  TEST_ASSERT_TRUE(second.next(sequence));
+  TEST_ASSERT_EQUAL_UINT32(amaran_light::kSequenceBlockSize, sequence);
 }
 
 }  // namespace
@@ -1962,6 +2148,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
+  RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
   RUN_TEST(test_press_record_start_and_authored_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
@@ -1971,5 +2158,8 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
   RUN_TEST(test_ble_device_advertisement_matchers);
+  RUN_TEST(test_amaran_crypto_and_network_vectors);
+  RUN_TEST(test_amaran_access_payloads_and_validation);
+  RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
   return UNITY_END();
 }

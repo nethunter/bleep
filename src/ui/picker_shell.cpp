@@ -20,7 +20,7 @@ constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr uint32_t kColOk = 0x3DDC97;
 
-enum class Level : uint8_t { Category, DeviceList, Action };
+enum class Level : uint8_t { Category, DeviceList, Action, LightColor };
 
 Mode mode = Mode::AddDriver;
 Level level = Level::Category;
@@ -33,6 +33,17 @@ lv_obj_t* titleLabel = nullptr;
 lv_obj_t* closeButton = nullptr;
 lv_obj_t* backButton = nullptr;
 lv_obj_t* body = nullptr;
+lv_obj_t* parameter0 = nullptr;
+lv_obj_t* parameter1 = nullptr;
+lv_obj_t* parameter2 = nullptr;
+lv_obj_t* colorWheel = nullptr;
+bool lightEditorRgb = false;
+int32_t draftCctKelvin = 5600;
+int32_t draftCctBrightness = 50;
+int32_t draftCctTint = 0;
+uint16_t draftRgbHue = 0;
+int32_t draftRgbSaturation = 100;
+int32_t draftRgbBrightness = 50;
 
 lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t callback,
                      uint32_t color = kColPanel) {
@@ -121,14 +132,15 @@ size_t instanceCount(studio::DriverId driverId) {
 }
 
 bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
-  return descriptor != nullptr &&
+  return descriptor != nullptr && descriptor->discoverable &&
          instanceCount(descriptor->id) < descriptor->maxInstances;
 }
 
 bool categoryHasDrivers(studio::DeviceType type) {
   for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
     const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
-    if (descriptor != nullptr && descriptor->id != studio::DriverId::HomeAssistant &&
+    if (descriptor != nullptr && descriptor->discoverable &&
+        descriptor->id != studio::DriverId::HomeAssistant &&
         descriptor->type == type) {
       return true;
     }
@@ -146,6 +158,8 @@ bool deviceSupportsSceneActions(const studio::DeviceRecord& record,
          (caps & studio::capabilityBit(studio::Capability::RecordStop)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::TurnOn)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::TurnOff)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::SetLightCct)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::SetLightRgb)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::Press)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::Activate)) != 0;
 }
@@ -219,8 +233,39 @@ void onChooseDevice(lv_event_t* event) {
 void onChooseAction(lv_event_t* event) {
   const auto command = static_cast<studio::CommandType>(
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+  if (command == studio::CommandType::SetLightCct ||
+      command == studio::CommandType::SetLightRgb) {
+    level = Level::LightColor;
+    lightEditorRgb = false;
+    draftCctKelvin = 5600;
+    draftCctBrightness = 50;
+    draftCctTint = 0;
+    draftRgbHue = 0;
+    draftRgbSaturation = 100;
+    draftRgbBrightness = 50;
+    refresh();
+    return;
+  }
   if (callbacks.onSceneAction != nullptr) {
-    callbacks.onSceneAction(selectedDevice, command);
+    callbacks.onSceneAction(selectedDevice, command, 0, 0, 0);
+  }
+  hide();
+}
+
+void onSaveLightParameters(lv_event_t*) {
+  if (callbacks.onSceneAction == nullptr) return;
+  if (!lightEditorRgb) {
+    callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightCct,
+                            lv_slider_get_value(parameter0),
+                            lv_slider_get_value(parameter1),
+                            lv_slider_get_value(parameter2));
+  } else {
+    const lv_color_hsv_t hsv = lv_colorwheel_get_hsv(colorWheel);
+    const uint32_t rgb = lv_color_to32(lv_color_hsv_to_rgb(
+        hsv.h, lv_slider_get_value(parameter0), 100)) & 0xffffff;
+    callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightRgb,
+                            static_cast<int32_t>(rgb),
+                            lv_slider_get_value(parameter1), 0);
   }
   hide();
 }
@@ -235,6 +280,11 @@ void onChooseWait(lv_event_t*) {
 void onClose(lv_event_t*) { hide(); }
 
 void onBack(lv_event_t*) {
+  if (level == Level::LightColor) {
+    level = Level::Action;
+    refresh();
+    return;
+  }
   if (level == Level::Action) {
     level = Level::DeviceList;
     selectedDevice = studio::kInvalidInstanceId;
@@ -245,6 +295,114 @@ void onBack(lv_event_t*) {
     level = Level::Category;
     refresh();
   }
+}
+
+void captureLightEditorDraft() {
+  if (lightEditorRgb && colorWheel != nullptr && parameter0 != nullptr &&
+      parameter1 != nullptr) {
+    draftRgbHue = lv_colorwheel_get_hsv(colorWheel).h;
+    draftRgbSaturation = lv_slider_get_value(parameter0);
+    draftRgbBrightness = lv_slider_get_value(parameter1);
+  } else if (!lightEditorRgb && parameter0 != nullptr && parameter1 != nullptr &&
+             parameter2 != nullptr) {
+    draftCctKelvin = lv_slider_get_value(parameter0);
+    draftCctBrightness = lv_slider_get_value(parameter1);
+    draftCctTint = lv_slider_get_value(parameter2);
+  }
+}
+
+void onLightMode(lv_event_t* event) {
+  captureLightEditorDraft();
+  lightEditorRgb = reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)) != 0;
+  refresh();
+}
+
+lv_obj_t* labeledParameter(lv_obj_t* parent, const char* label, int minimum,
+                           int maximum, int value, lv_obj_t*& slider) {
+  lv_obj_t* row = lv_obj_create(parent);
+  lv_obj_set_size(row, 158, 25);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(row, 0, 0);
+  lv_obj_set_style_pad_all(row, 0, 0);
+  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* text = lv_label_create(row);
+  lv_label_set_text(text, label);
+  lv_obj_set_style_text_font(text, UI_FONT_14, 0);
+  lv_obj_align(text, LV_ALIGN_LEFT_MID, 0, 0);
+  slider = lv_slider_create(row);
+  lv_obj_set_size(slider, 105, 8);
+  lv_obj_align(slider, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_slider_set_range(slider, minimum, maximum);
+  lv_slider_set_value(slider, value, LV_ANIM_OFF);
+  return row;
+}
+
+void refreshLightParameters() {
+  lv_label_set_text(titleLabel, "Set color");
+  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(body, 3, 0);
+  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_t* modes = lv_obj_create(body);
+  lv_obj_set_size(modes, 132, 27);
+  lv_obj_set_style_bg_opa(modes, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(modes, 0, 0);
+  lv_obj_set_style_pad_all(modes, 0, 0);
+  lv_obj_clear_flag(modes, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* cct = makeButton(modes, "CCT", onLightMode,
+                             lightEditorRgb ? kColPanel : kColAccent);
+  lv_obj_set_size(cct, 62, 27);
+  lv_obj_align(cct, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_t* rgb = makeButton(modes, "RGB", onLightMode,
+                             lightEditorRgb ? kColAccent : kColPanel);
+  lv_obj_set_size(rgb, 62, 27);
+  lv_obj_align(rgb, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_remove_event_cb(rgb, onLightMode);
+  lv_obj_add_event_cb(rgb, onLightMode, LV_EVENT_CLICKED,
+                      reinterpret_cast<void*>(1));
+  if (lightEditorRgb) {
+    lv_obj_t* row = lv_obj_create(body);
+    lv_obj_set_size(row, 158, 67);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    colorWheel = lv_colorwheel_create(row, true);
+    lv_obj_set_size(colorWheel, 62, 62);
+    lv_obj_align(colorWheel, LV_ALIGN_LEFT_MID, 2, 0);
+    lv_colorwheel_set_hsv(colorWheel,
+                          lv_color_hsv_t{draftRgbHue, 100, 100});
+    lv_obj_t* controls = lv_obj_create(row);
+    lv_obj_set_size(controls, 88, 67);
+    lv_obj_align(controls, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_bg_opa(controls, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(controls, 0, 0);
+    lv_obj_set_style_pad_all(controls, 0, 0);
+    lv_obj_t* sat = lv_label_create(controls);
+    lv_label_set_text(sat, "Sat");
+    lv_obj_set_style_text_font(sat, UI_FONT_14, 0);
+    lv_obj_align(sat, LV_ALIGN_TOP_LEFT, 0, 2);
+    parameter0 = lv_slider_create(controls);
+    lv_obj_set_size(parameter0, 55, 8);
+    lv_obj_align(parameter0, LV_ALIGN_TOP_RIGHT, -1, 7);
+    lv_slider_set_range(parameter0, 0, 100);
+    lv_slider_set_value(parameter0, draftRgbSaturation, LV_ANIM_OFF);
+    lv_obj_t* bri = lv_label_create(controls);
+    lv_label_set_text(bri, "Bri");
+    lv_obj_set_style_text_font(bri, UI_FONT_14, 0);
+    lv_obj_align(bri, LV_ALIGN_BOTTOM_LEFT, 0, -7);
+    parameter1 = lv_slider_create(controls);
+    lv_obj_set_size(parameter1, 55, 8);
+    lv_obj_align(parameter1, LV_ALIGN_BOTTOM_RIGHT, -1, -9);
+    lv_slider_set_range(parameter1, 0, 100);
+    lv_slider_set_value(parameter1, draftRgbBrightness, LV_ANIM_OFF);
+  } else {
+    labeledParameter(body, "K", 2300, 10000, draftCctKelvin, parameter0);
+    labeledParameter(body, "Bri", 0, 100, draftCctBrightness, parameter1);
+    labeledParameter(body, "Tint", -1000, 1000, draftCctTint, parameter2);
+  }
+  lv_obj_t* save = makeButton(body, "Add color", onSaveLightParameters, kColAccent);
+  lv_obj_set_size(save, 110, 28);
 }
 
 lv_obj_t* makeCategoryTile(lv_obj_t* parent, studio::DeviceType type,
@@ -347,7 +505,8 @@ void refreshDriverList() {
   bool any = false;
   for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
     const studio::DriverDescriptor* descriptor = studio::DriverCatalog::at(i);
-    if (descriptor == nullptr || descriptor->id == studio::DriverId::HomeAssistant ||
+    if (descriptor == nullptr || !descriptor->discoverable ||
+        descriptor->id == studio::DriverId::HomeAssistant ||
         descriptor->type != category) {
       continue;
     }
@@ -482,6 +641,17 @@ void refreshActions() {
     lv_obj_remove_event_cb(button, onChooseAction);
     lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
   }
+  const uint32_t colorCaps =
+      studio::capabilityBit(studio::Capability::SetLightCct) |
+      studio::capabilityBit(studio::Capability::SetLightRgb);
+  if ((profile.capabilities & colorCaps) != 0) {
+    void* userData = reinterpret_cast<void*>(
+        static_cast<uintptr_t>(studio::CommandType::SetLightCct));
+    lv_obj_t* button = makeButton(body, "Set color", onChooseAction, kColAccent);
+    lv_obj_set_size(button, lv_pct(100), 36);
+    lv_obj_remove_event_cb(button, onChooseAction);
+    lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
+  }
 }
 
 void refresh() {
@@ -490,6 +660,7 @@ void refresh() {
   }
   setChrome();
   lv_obj_clean(body);
+  parameter0 = parameter1 = parameter2 = colorWheel = nullptr;
   if (level == Level::Category) {
     refreshCategory();
   } else if (level == Level::DeviceList) {
@@ -498,8 +669,10 @@ void refresh() {
     } else {
       refreshDeviceList();
     }
-  } else {
+  } else if (level == Level::Action) {
     refreshActions();
+  } else {
+    refreshLightParameters();
   }
 }
 
@@ -621,6 +794,19 @@ void simShowActions(Mode showMode, studio::InstanceId instanceId) {
                  : studio::DeviceType::Camera;
   selectedDevice = instanceId;
   level = Level::Action;
+  refresh();
+}
+
+void simShowLightColor(Mode showMode, studio::InstanceId instanceId, bool rgb) {
+  simShowActions(showMode, instanceId);
+  level = Level::LightColor;
+  lightEditorRgb = rgb;
+  draftCctKelvin = 5600;
+  draftCctBrightness = 50;
+  draftCctTint = 0;
+  draftRgbHue = 220;
+  draftRgbSaturation = 80;
+  draftRgbBrightness = 50;
   refresh();
 }
 #endif

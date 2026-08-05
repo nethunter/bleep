@@ -7,10 +7,13 @@ namespace {
 
 constexpr uint8_t kMagic[] = {'S', 'C', 'N', '1'};
 constexpr size_t kHeaderSize = 12;
-constexpr size_t kEncodedStepSize = 1 + 4 + 1 + 4;
-constexpr size_t kEncodedSceneSize =
+constexpr size_t kEncodedV1StepSize = 1 + 4 + 1 + 4;
+constexpr size_t kEncodedStepSize = kEncodedV1StepSize + 4 + 4 + 4;
+constexpr size_t encodedSceneSize(size_t stepSize) {
+  return
     4 + 1 + kDeviceNameCapacity + 1 + 1 +
-    CONFIG_MAX_SCENE_STEPS * kEncodedStepSize * 2;
+    CONFIG_MAX_SCENE_STEPS * stepSize * 2;
+}
 constexpr size_t kChecksumSize = 4;
 
 uint32_t checksum(const uint8_t* data, size_t length) {
@@ -60,14 +63,22 @@ void encodeStep(uint8_t*& out, const SceneStep& step) {
   putU32(out, step.targetId);
   *out++ = static_cast<uint8_t>(step.command);
   putU32(out, step.waitMs);
+  putU32(out, static_cast<uint32_t>(step.value0));
+  putU32(out, static_cast<uint32_t>(step.value1));
+  putU32(out, static_cast<uint32_t>(step.value2));
 }
 
-SceneStep decodeStep(const uint8_t*& in) {
+SceneStep decodeStep(const uint8_t*& in, bool hasValues) {
   SceneStep step;
   step.type = static_cast<SceneStepType>(*in++);
   step.targetId = getU32(in);
   step.command = static_cast<CommandType>(*in++);
   step.waitMs = getU32(in);
+  if (hasValues) {
+    step.value0 = static_cast<int32_t>(getU32(in));
+    step.value1 = static_cast<int32_t>(getU32(in));
+    step.value2 = static_cast<int32_t>(getU32(in));
+  }
   return step;
 }
 
@@ -89,9 +100,11 @@ ConfigLoadStatus SceneStore::load(SceneRegistry& registry) {
   const bool initialized = *cursor++ != 0;
   const uint8_t count = *cursor++;
   const SceneId nextSceneId = getU32(cursor);
-  const size_t expectedLength =
-      kHeaderSize + static_cast<size_t>(count) * kEncodedSceneSize + kChecksumSize;
-  if (version != kSchemaVersion || count > CONFIG_MAX_SCENES ||
+  const bool v1 = version == 1;
+  const size_t stepSize = v1 ? kEncodedV1StepSize : kEncodedStepSize;
+  const size_t expectedLength = kHeaderSize + static_cast<size_t>(count) *
+      encodedSceneSize(stepSize) + kChecksumSize;
+  if ((!v1 && version != kSchemaVersion) || count > CONFIG_MAX_SCENES ||
       length != expectedLength) {
     return ConfigLoadStatus::Corrupt;
   }
@@ -115,10 +128,10 @@ ConfigLoadStatus SceneStore::load(SceneRegistry& registry) {
       return ConfigLoadStatus::Corrupt;
     }
     for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
-      record.startSteps[s] = decodeStep(cursor);
+      record.startSteps[s] = decodeStep(cursor, !v1);
     }
     for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
-      record.stopSteps[s] = decodeStep(cursor);
+      record.stopSteps[s] = decodeStep(cursor, !v1);
     }
   }
 
@@ -130,7 +143,7 @@ ConfigLoadStatus SceneStore::load(SceneRegistry& registry) {
 
 bool SceneStore::save(const SceneRegistry& registry) {
   const size_t length =
-      kHeaderSize + registry.count() * kEncodedSceneSize + kChecksumSize;
+      kHeaderSize + registry.count() * encodedSceneSize(kEncodedStepSize) + kChecksumSize;
   if (length > kMaxBlobSize || registry.count() > 255) {
     return false;
   }

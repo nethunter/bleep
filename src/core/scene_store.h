@@ -7,8 +7,8 @@ namespace studio {
 
 class SceneStore {
  public:
-  static constexpr uint16_t kSchemaVersion = 1;
-  static constexpr size_t kMaxBlobSize = 1536;
+  static constexpr uint16_t kSchemaVersion = 2;
+  static constexpr size_t kMaxBlobSize = 2048;
 
   explicit SceneStore(IConfigBackend& backend) : backend_(backend) {}
 

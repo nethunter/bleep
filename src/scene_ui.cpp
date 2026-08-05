@@ -191,7 +191,17 @@ void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
   const char* command =
       step.command == studio::CommandType::RecordStart
           ? "Rec"
-          : (step.command == studio::CommandType::RecordStop ? "Stop" : "Cmd");
+          : (step.command == studio::CommandType::RecordStop
+                 ? "Stop"
+                 : (step.command == studio::CommandType::SetLightCct
+                        ? "Set color"
+                        : (step.command == studio::CommandType::SetLightRgb
+                               ? "Set color"
+                               : (step.command == studio::CommandType::TurnOn
+                                      ? "On"
+                                      : (step.command == studio::CommandType::TurnOff
+                                             ? "Off"
+                                             : "Cmd")))));
   std::snprintf(buffer, capacity, "%s %s", command, name);
 }
 
@@ -528,8 +538,10 @@ void appendSceneStep(const studio::SceneStep& step) {
 void onSceneWaitChosen() { appendSceneStep(studio::makeWaitStep(500)); }
 
 void onSceneActionChosen(studio::InstanceId instanceId,
-                         studio::CommandType command) {
-  appendSceneStep(studio::makeActionStep(instanceId, command));
+                         studio::CommandType command, int32_t value0,
+                         int32_t value1, int32_t value2) {
+  appendSceneStep(studio::makeActionStep(instanceId, command, value0, value1,
+                                         value2));
 }
 
 void onOpenAddStep(lv_event_t*) {

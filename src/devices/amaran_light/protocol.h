@@ -1,0 +1,59 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace amaran_light {
+
+constexpr uint16_t kCctMinKelvin = 2300;
+constexpr uint16_t kCctMaxKelvin = 10000;
+constexpr size_t kAccessPayloadSize = 11;
+constexpr size_t kMaxNetworkPduSize = 64;
+
+struct AccessPayload {
+  uint8_t bytes[kAccessPayloadSize] = {};
+  size_t length = 0;
+};
+
+struct NetworkPdu {
+  uint8_t bytes[kMaxNetworkPduSize] = {};
+  size_t length = 0;
+};
+
+struct NetworkPduBatch {
+  NetworkPdu pdus[4] = {};
+  uint8_t count = 0;
+};
+
+bool buildPowerAccess(bool on, AccessPayload& output);
+bool buildCctAccess(uint16_t kelvin, int16_t tintPermille,
+                    uint8_t brightness, AccessPayload& output);
+bool buildRgbAccess(uint32_t rgb, uint8_t brightness,
+                    AccessPayload& output);
+bool buildNodeResetAccess(AccessPayload& output);
+
+bool encodeAccessMessage(const uint8_t networkKey[16],
+                         const uint8_t applicationKey[16],
+                         const uint8_t* access, size_t accessLength,
+                         uint32_t sequence, uint16_t source,
+                         uint16_t destination, uint32_t ivIndex,
+                         NetworkPdu& output, uint8_t ttl = 6);
+bool encodeDeviceMessage(const uint8_t networkKey[16],
+                         const uint8_t deviceKey[16],
+                         const uint8_t* access, size_t accessLength,
+                         uint32_t sequence, uint16_t source,
+                         uint16_t destination, uint32_t ivIndex,
+                         NetworkPdu& output, uint8_t ttl = 6);
+bool encodeSegmentedDeviceMessage(const uint8_t networkKey[16],
+                                  const uint8_t deviceKey[16],
+                                  const uint8_t* access, size_t accessLength,
+                                  const uint32_t* sequences,
+                                  size_t sequenceCount, uint16_t source,
+                                  uint16_t destination, uint32_t ivIndex,
+                                  NetworkPduBatch& output, uint8_t ttl = 6);
+bool wrapProxyPdu(const NetworkPdu& network, uint8_t* output,
+                  size_t capacity, size_t& outputLength);
+
+uint8_t vendorChecksum(const uint8_t tail[9]);
+
+}  // namespace amaran_light

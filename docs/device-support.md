@@ -73,23 +73,33 @@ of successful movement.
 
 ## Amaran lights
 
-### Pano 60c, Pano 120c, and Ace 25c
+### Generic Amaran Light
 
-- Status: `Research` then `Planned`.
-- Transport: Sidus/Telink Bluetooth Mesh.
-- Initial capabilities: power, brightness, CCT, and HSI.
+- Status: `Experimental`; compiled implementation, real-fixture gate open.
+- Transport: PB-GATT provisioning and Mesh Proxy GATT over the shared NimBLE
+  central, with one proxy link shared by logical lights.
+- Initial capabilities: power, independently remembered 2300-10000 K
+  CCT/tint/brightness and RGB/saturation/brightness looks. Sequence authoring
+  exposes one `Set color` action with CCT and RGB modes.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Onboarding:
-  - provision factory-reset fixtures into a panel-owned mesh;
-  - import an existing Sidus/amaran mesh through dedicated Portal mode.
+- Onboarding: choose `Amaran Light`; the first nearby factory-reset fixture
+  advertising Mesh Provisioning is provisioned into the panel-owned mesh. The
+  fixture model is not selected because onboarding and the supported Telink
+  command family are mesh/protocol concerns rather than catalog concerns.
+  Pano 60c, Pano 120c, and Ace 25c remain the initial validation set. Existing
+  Sidus/amaran mesh import remains deferred.
 
-The first release maintains one active studio mesh. Imported keys are secrets.
-State may be optimistic where reliable readback is unavailable.
+The first release maintains one active studio mesh. Keys live in a separate
+checksummed NVS record and are not logged or exported. Writes update optimistic
+state only. Hardware verification is still required for provisioning and
+configuration status responses, proxy fallback, reboot recovery, and safe
+node reset before this becomes Current.
 
 Reference research:
 
 - <https://github.com/wesbos/amaran-BLE-control>
+- `studio-lighter` working tree under the local research workspace
 - <https://amarancreators.com/pages/amaran-pano-60c>
 - <https://amarancreators.com/pages/amaran-pano-120c>
 

@@ -5,9 +5,8 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: bounded on-device Scenes tranche (ADR-019/020) with the
-  shared BLE central tranche (ADR-021), beside remaining Phase 0/foundation
-  hardware gates.
+- Current phase: experimental bounded Amaran Phase 4 tranche (ADR-024), beside
+  the existing Scenes/shared-central work and remaining hardware gates.
 - Firmware state: Home-first, persistent device registry, retained on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
   lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
@@ -17,7 +16,12 @@ short, factual, and reproducible.
   sequence sessions, including multiple instances of one Canon driver. All four GATT
   clients now share one lazy NimBLE scanner/runtime and async link slots,
   targeted discovery, explicit protocol readiness, and BLE timing telemetry.
-- Last updated: 2026-08-04.
+- One discoverable generic `Amaran Light` entry now uses the shared userspace
+  PB-GATT/Mesh Proxy runtime; prior model IDs remain hidden compatibility
+  aliases for persisted records. Crypto, persistence, parameterized
+  scenes, and UI are implemented; real-fixture configuration status and safe
+  reset gates remain open.
+- Last updated: 2026-08-05.
 
 ## Completed planning
 
@@ -41,23 +45,30 @@ short, factual, and reproducible.
 
 ## Next task
 
-Exercise the ADR-021 transport and Press Record / Press Stop on hardware, then
-remaining Canon/foundation gates:
+Exercise ADR-024 on target fixtures before promoting native Amaran support:
 
-1. With paired Canon Smart (R6 II or III) and Tascam X8 configured and initially
+1. Provision one Pano 60c, Pano 120c, and Ace 25c through the generic entry; capture configuration status
+   responses and require each step to acknowledge before marking Ready.
+2. Verify power, CCT/tint/RGB at several brightness levels, reboot recovery,
+   interrupted configuration, preferred/fallback proxy selection, and durable
+   sequence continuity.
+3. Implement and verify reset followed by the fixture returning to PB-GATT
+   advertisements before deleting node secrets; retain a separately confirmed
+   local-record fallback for unreachable factory-reset fixtures.
+4. With paired Canon Smart (R6 II or III) and Tascam X8 configured and initially
    disconnected, open a sequence; confirm the shared scanner discovers both,
    both async links reach Ready without starvation, Start records with the
    authored gap, and Stop confirms both stopped.
-2. Confirm device screens refuse open while a sequence owns links; Back/Done
+5. Confirm device screens refuse open while a sequence owns links; Back/Done
    releases sequence ownership while protocol-ready sessions remain connected.
-3. Confirm scene persistence across power cycle.
-4. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
-5. Run ten initially disconnected cycles per driver and ten Canon Smart +
+6. Confirm scene persistence across power cycle.
+7. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
+8. Run ten initially disconnected cycles per driver and ten Canon Smart +
    Tascam sequence opens; record median/p95 readiness, per-stage blocking GATT,
    scan drops, retries, post-init heap, and post-teardown heap. Trigger the
    asynchronous GATT executor only if blocking GATT reaches the 25% gate.
-6. Keep groups, lights, Portal scene editing, and generated reverse-Stop
-   deferred.
+9. Keep groups, existing-mesh import, Portal scene editing, and generated
+   reverse-Stop deferred.
 
 ## Measurements
 
@@ -1577,3 +1588,52 @@ Record values with the exact build environment and commit/worktree state.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`. Physical Home-screen inspection remains
   operator-pending.
+
+### 2026-08-05: Experimental native Amaran light tranche and pairing follow-up
+
+- Added one discoverable generic `Amaran Light` driver backed by one shared
+  runtime and one shared Mesh Proxy link. Hidden Pano 120c/Ace 25c IDs remain
+  only so records created by the initial implementation can still load.
+- Fixed first-use discovery: Mesh Provisioning and Mesh Proxy are advertised as
+  16-bit service UUIDs (`0x1827`/`0x1828`), but discovery had compared them as
+  full 128-bit GATT UUIDs and therefore never selected an advertisement.
+- Extracted one round Bluetooth pairing screen for Shark and Amaran with a
+  spinner, explicit scanning/connecting/error copy, Back, and Retry/Re-pair.
+  Amaran now provisions the first nearby factory-reset Mesh Provisioning
+  advertiser instead of asking the operator to identify a model.
+- Split the live light draft into independent CCT and RGB look memories, added
+  explicit RGB saturation, and made switching modes recall and apply the saved
+  look without overwriting the inactive mode. Sequence authoring now presents
+  one `Set color` action with CCT/RGB tabs; RGB saturation remains encoded in
+  the existing packed RGB scene argument.
+- Ported PB-GATT P-256/no-OOB provisioning, AES-CMAC mesh derivations, AES-CCM,
+  privacy obfuscation, proxy framing, Telink opcode `0x26` power/CCT/RGB
+  payloads, and segmented device-key configuration traffic from the working
+  `studio-lighter` reference. Reference Python suite: 88 passed, 2 skipped.
+- Added a separate checksummed mesh store, pending-configuration persistence,
+  per-node metadata, and durable 256-number sequence reservations. Scene schema
+  v2 carries three signed action arguments and loads v1 arguments as zero.
+- Added parameterized CCT/RGB sequence authoring and a lazy CCT/tint/brightness
+  plus RGB color-wheel screen with 350 ms coalescing and optimistic state.
+- Native tests: 41/41 passed in `native`, including exact AES/CMAC/network and
+  opcode vectors, segmentation, bounds, v1 scene migration, store corruption,
+  and sequence restart reservation.
+- UI simulator: `ui_sim` built and the complete capture program passed,
+  including shared Shark pairing, `20d_amaran_pairing.png`,
+  `20e_amaran_cct_optimistic.png`, `20f_amaran_rgb.png`, and the unified CCT/RGB
+  sequence editors in `22e_scenes_set_color_cct.png` and
+  `22f_scenes_set_color_rgb.png`. With 12
+  seeded devices, 128 KiB simulator LVGL memory started with 86,592 bytes free;
+  the measured sequence-settings high-water point retained 60,784 bytes free.
+- A 76 KiB LVGL pool exhausted while constructing an existing Shark modal at
+  the new maximum-device count. The target pool is now 96 KiB. Main firmware
+  build: 188,556 / 327,680 bytes RAM (57.5%), 1,717,170 / 3,145,728 bytes flash
+  (54.6%). Roboto: same RAM and 1,686,714 bytes flash. Amaran-only: 180,220
+  bytes RAM (55.0%) and 1,673,138 bytes flash (53.2%). Native 41/41, `ui_sim`,
+  `crowpanel_128`, `crowpanel_128_roboto`, and `amaran_light` all passed.
+- Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image hash
+  verification passed and the panel hard-reset.
+- Hardware gate remains open: no target light was provisioned in this session.
+  Configuration status-response decoding and reset-advertisement verification
+  are not yet implemented, so support stays Experimental and local removal is
+  not evidence that a fixture left the mesh.
