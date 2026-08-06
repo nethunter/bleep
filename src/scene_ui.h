@@ -23,6 +23,8 @@ void simShowSettings(studio::SceneId sceneId);
 void simOpenDeviceControl(studio::InstanceId instanceId);
 void simDeleteCurrentScene();
 bool simShowingList();
+bool simShowingEdit();
+bool simAddStepAtListEnd();
 void simShowAddStepCategory(studio::SceneId sceneId);
 void simShowAddStepDevice(studio::SceneId sceneId, studio::DeviceType category);
 void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId);

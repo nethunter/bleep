@@ -249,6 +249,7 @@ void onOpenDevice(lv_event_t* event) {
 
 void buildDeviceModal();
 void buildRenameOverlay();
+void onAddDevice(lv_event_t*);
 
 void onOpenManage(lv_event_t* event) {
   managedInstance = eventInstance(event);
@@ -280,6 +281,7 @@ void onOpenManage(lv_event_t* event) {
 
 void refreshDevices() {
   lv_obj_clean(deviceList);
+  addButton = nullptr;
   for (size_t i = 0; i < studio::devices().count(); ++i) {
     const studio::DeviceRecord* record = studio::devices().at(i);
     if (record == nullptr) {
@@ -333,16 +335,23 @@ void refreshDevices() {
       break;
     }
   }
-  if (!canAdd) {
-    lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_clear_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  if (canAdd) {
+    lv_obj_t* addRow = lv_obj_create(deviceList);
+    lv_obj_set_size(addRow, lv_pct(100), studio::devices().count() > 0 ? 42 : 34);
+    lv_obj_set_style_bg_opa(addRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(addRow, 0, 0);
+    lv_obj_set_style_pad_all(addRow, 0, 0);
+    lv_obj_clear_flag(addRow, LV_OBJ_FLAG_SCROLLABLE);
+    addButton = makeButton(addRow, "+ Add device", onAddDevice, kColAccent);
+    lv_obj_set_size(addButton, 140, 34);
+    lv_obj_align(addButton, LV_ALIGN_BOTTOM_MID, 0, 0);
   }
 }
 
 void releaseDeviceRows() {
   if (deviceList != nullptr) {
     lv_obj_clean(deviceList);
+    addButton = nullptr;
   }
 }
 
@@ -371,7 +380,9 @@ void onAddDevice(lv_event_t*) {
   picker_shell::Callbacks callbacks;
   callbacks.onDriverChosen = onDriverChosen;
   callbacks.onClosed = onAddPickerClosed;
-  lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  if (addButton != nullptr) {
+    lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  }
   picker_shell::show(picker_shell::Mode::AddDriver, callbacks);
 }
 
@@ -568,7 +579,7 @@ void buildDevices() {
   lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
 
   deviceList = lv_obj_create(scrDevices);
-  lv_obj_set_size(deviceList, 200, 122);
+  lv_obj_set_size(deviceList, 200, 158);
   lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 68);
   lv_obj_set_style_bg_opa(deviceList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(deviceList, 0, 0);
@@ -578,9 +589,6 @@ void buildDevices() {
   lv_obj_set_scroll_dir(deviceList, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(deviceList, LV_SCROLLBAR_MODE_OFF);
 
-  addButton = makeButton(scrDevices, "+ Add device", onAddDevice, kColAccent);
-  lv_obj_set_size(addButton, 140, 34);
-  lv_obj_align(addButton, LV_ALIGN_BOTTOM_MID, 0, -14);
 }
 
 void buildPortal() {
@@ -1121,9 +1129,27 @@ bool renamePromptActive() {
 }
 
 #ifdef UI_SIMULATOR
+bool simAddDeviceAtListEnd() {
+  if (addButton == nullptr || lv_obj_get_parent(addButton) == nullptr) {
+    return false;
+  }
+  lv_obj_t* addRow = lv_obj_get_parent(addButton);
+  if (lv_obj_get_parent(addRow) != deviceList) {
+    return false;
+  }
+  const uint32_t count = lv_obj_get_child_cnt(deviceList);
+  const bool centered =
+      lv_obj_get_x(addButton) + lv_obj_get_width(addButton) / 2 ==
+      lv_obj_get_width(addRow) / 2;
+  return count > 0 && lv_obj_get_child(deviceList, count - 1) == addRow &&
+         centered;
+}
+
 void simShowAddDevice() {
   showDevices();
-  lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  if (addButton != nullptr) {
+    lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
+  }
   picker_shell::Callbacks callbacks;
   callbacks.onClosed = onAddPickerClosed;
   picker_shell::show(picker_shell::Mode::AddDriver, callbacks);

@@ -1754,3 +1754,25 @@ Record values with the exact build environment and commit/worktree state.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240` with image hash verification. Physical touch
   editing of wait and color values remains operator-pending.
+
+### 2026-08-06: Sequence/device list-space and step-row follow-up
+
+- Increased sequence steps from 34 px single-line rows to 58 px bordered cards.
+  The full-width editable action label sits above Up/Down controls grouped on
+  the left and Delete anchored on the right, so action names are no longer
+  covered by those buttons.
+- Moved `Add step` into the step list as its final scrollable row and moved
+  `Add device` into the Devices list after every configured device. Both lists
+  now use the vertical area previously reserved for fixed bottom buttons. The
+  add buttons remain horizontally centered with a small gap above them.
+- Back from an existing step's wait/action/color editor now closes the picker
+  directly to the Start/Stop step list. The category/device drill-down remains
+  available only while adding a new step.
+- Simulator regressions assert both Add controls are centered in their list's
+  final row and that Back closes existing-step settings without leaving the
+  step editor.
+  The complete `ui_sim` capture run passed; `22_scenes_edit_start.png` and
+  `23_scenes_edit_stop.png` were visually checked on the 240x240 layout.
+- Native tests passed 43/43. `ui_sim` and all seven firmware profiles built
+  successfully. `crowpanel_128` uses 1,732,622 bytes flash / 163,348 bytes RAM
+  (55.1% / 49.8%). Physical touch scrolling and Back remain operator-pending.

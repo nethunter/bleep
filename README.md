@@ -218,7 +218,10 @@ Open **Scenes** to create ordered Start and Stop lists. A scene reaches `Ready`
 only when every target has both a physical link and completed protocol setup.
 In either step list, tap an existing step to change its action or settings;
 waits open a millisecond duration editor and light-color steps reopen with their
-saved CCT/RGB parameters.
+saved CCT/RGB parameters. Step rows place their reorder/delete controls below
+the action name, and the scrollable list ends with **Add step**. Back from an
+existing step's settings returns directly to that Start/Stop list. The Devices
+list similarly places **Add device** after the configured devices.
 The panel owns those links while the run screen is open. Circular target chips
 show connection readiness and open each device's full controls without dropping
 the other sequence links. Back or Done releases sequence ownership while ready
