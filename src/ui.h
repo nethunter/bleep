@@ -31,6 +31,7 @@ void closeRenamePrompt();
 bool renamePromptActive();
 
 #ifdef UI_SIMULATOR
+bool simAddDeviceAtListEnd();
 void simShowAddDevice();
 void simShowManage(studio::InstanceId instanceId);
 void simRequestManagedDisconnect();

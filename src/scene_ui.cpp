@@ -882,44 +882,55 @@ void refreshEdit() {
     char text[48];
     formatStep(text, sizeof(text), steps[i]);
     lv_obj_t* row = lv_obj_create(editBody);
-    lv_obj_set_size(row, lv_pct(100), 34);
+    lv_obj_set_size(row, lv_pct(100), 58);
     lv_obj_set_style_bg_color(row, lv_color_hex(kColPanel), 0);
-    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(kColMuted), 0);
+    lv_obj_set_style_border_opa(row, LV_OPA_60, 0);
     lv_obj_set_style_radius(row, 7, 0);
     lv_obj_set_style_pad_all(row, 2, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(i));
     lv_obj_t* edit = makeButton(row, text, onEditStep);
-    lv_obj_set_size(edit, 94, 28);
-    lv_obj_align(edit, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_border_width(edit, 1, 0);
-    lv_obj_set_style_border_color(edit, lv_color_hex(kColMuted), 0);
+    lv_obj_set_size(edit, lv_pct(100), 24);
+    lv_obj_align(edit, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_border_width(edit, 0, 0);
     lv_obj_t* editLabel = lv_obj_get_child(edit, 0);
     lv_label_set_long_mode(editLabel, LV_LABEL_LONG_DOT);
-    lv_obj_set_size(editLabel, 86, 18);
+    lv_obj_set_size(editLabel, 160, 18);
     lv_obj_set_style_text_align(editLabel, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_center(editLabel);
     lv_obj_remove_event_cb(edit, onEditStep);
     lv_obj_add_event_cb(edit, onEditStep, LV_EVENT_CLICKED, userData);
 
     lv_obj_t* up = makeButton(row, LV_SYMBOL_UP, onMoveUp);
-    lv_obj_set_size(up, 28, 28);
-    lv_obj_align(up, LV_ALIGN_RIGHT_MID, -60, 0);
+    lv_obj_set_size(up, 28, 26);
+    lv_obj_align(up, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_remove_event_cb(up, onMoveUp);
     lv_obj_add_event_cb(up, onMoveUp, LV_EVENT_CLICKED, userData);
 
     lv_obj_t* down = makeButton(row, LV_SYMBOL_DOWN, onMoveDown);
-    lv_obj_set_size(down, 28, 28);
-    lv_obj_align(down, LV_ALIGN_RIGHT_MID, -30, 0);
+    lv_obj_set_size(down, 28, 26);
+    lv_obj_align(down, LV_ALIGN_BOTTOM_LEFT, 30, 0);
     lv_obj_remove_event_cb(down, onMoveDown);
     lv_obj_add_event_cb(down, onMoveDown, LV_EVENT_CLICKED, userData);
 
     lv_obj_t* del = makeButton(row, LV_SYMBOL_TRASH, onDeleteStep, kColDanger);
-    lv_obj_set_size(del, 28, 28);
-    lv_obj_align(del, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_size(del, 28, 26);
+    lv_obj_align(del, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
     lv_obj_remove_event_cb(del, onDeleteStep);
     lv_obj_add_event_cb(del, onDeleteStep, LV_EVENT_CLICKED, userData);
   }
+  lv_obj_t* addRow = lv_obj_create(editBody);
+  lv_obj_set_size(addRow, lv_pct(100), count > 0 ? 34 : 28);
+  lv_obj_set_style_bg_opa(addRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(addRow, 0, 0);
+  lv_obj_set_style_pad_all(addRow, 0, 0);
+  lv_obj_clear_flag(addRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* add = makeButton(addRow, "+ Add step", onOpenAddStep, kColAccent);
+  lv_obj_set_size(add, 120, 28);
+  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
 void buildList() {
@@ -1012,18 +1023,16 @@ void buildEdit() {
   lv_obj_align(editTitle, LV_ALIGN_TOP_MID, 12, 42);
 
   editBody = lv_obj_create(scrEdit);
-  lv_obj_set_size(editBody, 188, 118);
+  lv_obj_set_size(editBody, 188, 158);
   lv_obj_align(editBody, LV_ALIGN_TOP_MID, 0, 68);
   lv_obj_set_style_bg_opa(editBody, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(editBody, 0, 0);
+  lv_obj_set_style_pad_all(editBody, 2, 0);
   lv_obj_set_style_pad_row(editBody, 3, 0);
   lv_obj_set_flex_flow(editBody, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scroll_dir(editBody, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(editBody, LV_SCROLLBAR_MODE_OFF);
 
-  lv_obj_t* add = makeButton(scrEdit, "+ Step", onOpenAddStep, kColAccent);
-  lv_obj_set_size(add, 90, 28);
-  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, -16);
 }
 
 void ensureScreens() {
@@ -1222,6 +1231,29 @@ void simOpenDeviceControl(studio::InstanceId instanceId) {
 void simDeleteCurrentScene() { onDeleteScene(nullptr); }
 
 bool simShowingList() { return visible && view == View::List; }
+
+bool simShowingEdit() { return visible && view == View::Edit; }
+
+bool simAddStepAtListEnd() {
+  const uint32_t count = editBody != nullptr ? lv_obj_get_child_cnt(editBody) : 0;
+  if (count == 0) {
+    return false;
+  }
+  lv_obj_t* last = lv_obj_get_child(editBody, count - 1);
+  if (last == nullptr || lv_obj_get_child_cnt(last) == 0) {
+    return false;
+  }
+  lv_obj_t* button = lv_obj_get_child(last, 0);
+  if (button == nullptr || lv_obj_get_child_cnt(button) == 0) {
+    return false;
+  }
+  const bool centered =
+      lv_obj_get_x(button) + lv_obj_get_width(button) / 2 ==
+      lv_obj_get_width(last) / 2;
+  return centered &&
+         std::strcmp(lv_label_get_text(lv_obj_get_child(button, 0)),
+                     "+ Add step") == 0;
+}
 
 void simShowAddStepCategory(studio::SceneId sceneId) {
   visible = true;

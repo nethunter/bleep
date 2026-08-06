@@ -40,7 +40,11 @@ Each existing Start/Stop row opens a prefilled step editor. Wait rows expose a
 bounded millisecond duration control, parameterized light rows preserve and
 edit their saved CCT/RGB values, and ordinary action rows reopen the target's
 capability-safe action picker. Saving replaces that row in place rather than
-appending another step. Adding a Wait uses the same duration editor.
+appending another step. Back from this existing-step editor returns directly to
+the step list; changing target or action is done by adding a replacement step
+and reordering it. Taller two-tier rows keep the action label above the
+reorder/delete buttons. `Add step` is the final scrollable row rather than fixed
+screen chrome, and adding a Wait uses the same duration editor.
 
 Editing a prepared scene reconciles its target set in place. Links for targets
 that remain in the edited Start/Stop lists stay held, removed targets are

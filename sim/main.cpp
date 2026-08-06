@@ -212,6 +212,11 @@ int main() {
     std::fprintf(stderr, "Failed to prepare add-device picker screenshot\n");
     return 1;
   }
+  ui::showDevices();
+  if (!ui::simAddDeviceAtListEnd()) {
+    std::fprintf(stderr, "Add device is not the final device-list row\n");
+    return 1;
+  }
   ui::simShowAddDevice();
   if (!capture("03_add_device")) {
     return 1;
@@ -522,6 +527,10 @@ int main() {
   }
   scene_ui::simShowEditStart(sceneId);
   pump(200);
+  if (!scene_ui::simAddStepAtListEnd()) {
+    std::fprintf(stderr, "Add step is not the final step-list row\n");
+    return 1;
+  }
   if (!capture("22_scenes_edit_start")) {
     return 1;
   }
@@ -536,6 +545,13 @@ int main() {
       editedScene->startSteps[1].type != studio::SceneStepType::Wait ||
       editedScene->startSteps[1].waitMs != 750) {
     std::fprintf(stderr, "Sequence wait editor did not replace the step\n");
+    return 1;
+  }
+  scene_ui::simEditStep(sceneId, true, 0);
+  if (!picker_shell::handleBack() || picker_shell::active() ||
+      !scene_ui::simShowingEdit()) {
+    std::fprintf(stderr,
+                 "Back from step settings did not return to the step list\n");
     return 1;
   }
   studio::SceneRecord colorEditScene = *editedScene;

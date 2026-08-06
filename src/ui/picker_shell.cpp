@@ -303,6 +303,10 @@ void onChooseWait(lv_event_t*) {
 void onClose(lv_event_t*) { hide(); }
 
 void onBack(lv_event_t*) {
+  if (editingSceneStep) {
+    hide();
+    return;
+  }
   if (level == Level::Wait) {
     level = Level::Category;
     refresh();
