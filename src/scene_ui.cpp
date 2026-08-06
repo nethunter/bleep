@@ -36,6 +36,8 @@ bool visible = false;
 bool borrowedDeviceOpen = false;
 studio::SceneId currentScene = studio::kInvalidSceneId;
 bool editingStart = true;
+constexpr uint8_t kNoStepIndex = 0xff;
+uint8_t editingStepIndex = kNoStepIndex;
 uint32_t lastRefreshMs = 0;
 
 lv_obj_t* scrList = nullptr;
@@ -522,35 +524,69 @@ void closeAddOverlay() {
   }
 }
 
-void appendSceneStep(const studio::SceneStep& step) {
+void saveSceneStep(const studio::SceneStep& step) {
   studio::SceneRecord record;
   if (!loadEditable(record)) {
     return;
   }
   studio::SceneStep* steps = editingStart ? record.startSteps : record.stopSteps;
   uint8_t& count = editingStart ? record.startCount : record.stopCount;
-  if (count >= CONFIG_MAX_SCENE_STEPS) {
-    return;
+  if (editingStepIndex == kNoStepIndex) {
+    if (count >= CONFIG_MAX_SCENE_STEPS) {
+      return;
+    }
+    steps[count++] = step;
+  } else {
+    if (editingStepIndex >= count) {
+      return;
+    }
+    steps[editingStepIndex] = step;
   }
-  steps[count++] = step;
   studio::scenes().replace(record);
   refreshEdit();
 }
 
-void onSceneWaitChosen() { appendSceneStep(studio::makeWaitStep(500)); }
+void onSceneWaitChosen(uint32_t waitMs) {
+  saveSceneStep(studio::makeWaitStep(waitMs));
+}
 
 void onSceneActionChosen(studio::InstanceId instanceId,
                          studio::CommandType command, int32_t value0,
                          int32_t value1, int32_t value2) {
-  appendSceneStep(studio::makeActionStep(instanceId, command, value0, value1,
-                                         value2));
+  saveSceneStep(studio::makeActionStep(instanceId, command, value0, value1,
+                                       value2));
 }
 
-void onOpenAddStep(lv_event_t*) {
+void onScenePickerClosed() { editingStepIndex = kNoStepIndex; }
+
+picker_shell::Callbacks scenePickerCallbacks() {
   picker_shell::Callbacks callbacks;
   callbacks.onSceneAction = onSceneActionChosen;
   callbacks.onWaitChosen = onSceneWaitChosen;
-  picker_shell::show(picker_shell::Mode::SceneStep, callbacks);
+  callbacks.onClosed = onScenePickerClosed;
+  return callbacks;
+}
+
+void onOpenAddStep(lv_event_t*) {
+  editingStepIndex = kNoStepIndex;
+  picker_shell::show(picker_shell::Mode::SceneStep, scenePickerCallbacks());
+}
+
+void onEditStep(lv_event_t* event) {
+  const uint8_t index = static_cast<uint8_t>(
+      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
+  if (record == nullptr) {
+    return;
+  }
+  const studio::SceneStep* steps =
+      editingStart ? record->startSteps : record->stopSteps;
+  const uint8_t count = editingStart ? record->startCount : record->stopCount;
+  if (index >= count) {
+    return;
+  }
+  editingStepIndex = index;
+  picker_shell::showSceneStep(steps[index], scenePickerCallbacks());
 }
 
 void onMoveUp(lv_event_t* event) {
@@ -853,14 +889,19 @@ void refreshEdit() {
     lv_obj_set_style_pad_all(row, 2, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* label = lv_label_create(row);
-    lv_label_set_text(label, text);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(label, 96);
-    lv_obj_set_style_text_font(label, UI_FONT_14, 0);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 2, 0);
-
     void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(i));
+    lv_obj_t* edit = makeButton(row, text, onEditStep);
+    lv_obj_set_size(edit, 94, 28);
+    lv_obj_align(edit, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_border_width(edit, 1, 0);
+    lv_obj_set_style_border_color(edit, lv_color_hex(kColMuted), 0);
+    lv_obj_t* editLabel = lv_obj_get_child(edit, 0);
+    lv_label_set_long_mode(editLabel, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(editLabel, 86, 18);
+    lv_obj_set_style_text_align(editLabel, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_remove_event_cb(edit, onEditStep);
+    lv_obj_add_event_cb(edit, onEditStep, LV_EVENT_CLICKED, userData);
+
     lv_obj_t* up = makeButton(row, LV_SYMBOL_UP, onMoveUp);
     lv_obj_set_size(up, 28, 28);
     lv_obj_align(up, LV_ALIGN_RIGHT_MID, -60, 0);
@@ -1198,6 +1239,14 @@ void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId
   visible = true;
   showEditView(sceneId, true);
   picker_shell::simShowActions(picker_shell::Mode::SceneStep, instanceId);
+}
+
+void simEditStep(studio::SceneId sceneId, bool startList, uint8_t index) {
+  visible = true;
+  showEditView(sceneId, startList);
+  lv_event_t event{};
+  event.user_data = reinterpret_cast<void*>(static_cast<uintptr_t>(index));
+  onEditStep(&event);
 }
 #endif
 
