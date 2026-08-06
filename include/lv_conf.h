@@ -64,7 +64,7 @@
 #define LV_USE_BAR 1
 #define LV_USE_BTN 1
 #define LV_USE_BTNMATRIX 1
-#define LV_USE_CANVAS 0
+#define LV_USE_CANVAS 1
 #define LV_USE_CHECKBOX 0
 #define LV_USE_DROPDOWN 0
 #define LV_USE_IMG 1
@@ -117,7 +117,7 @@
 #define LV_USE_FS_STDIO 0
 #define LV_USE_GIF 0
 #define LV_USE_PNG 0
-#define LV_USE_QRCODE 0
+#define LV_USE_QRCODE 1
 #define LV_USE_RLOTTIE 0
 #define LV_USE_SJPG 0
 #define LV_USE_TINY_TTF 0

@@ -27,6 +27,10 @@ const char* statusText() { return running ? simulatedMessage : "Portal off"; }
 const char* ssid() { return lan ? "Studio-WiFi" : "Bleep-Setup-SIM"; }
 const char* password() { return lan ? "" : "12345678"; }
 const char* url() { return lan ? "http://192.168.1.84" : "http://192.168.4.1"; }
+const char* qrPayload() {
+  return lan ? "http://192.168.1.84"
+             : "WIFI:T:WPA;S:Bleep-Setup-SIM;P:12345678;;";
+}
 void simSetLan(bool connected) {
   lan = connected;
   simulatedStatus = Status::Ready;
@@ -41,6 +45,7 @@ void simSetWifiFeedback(Status status, const char* message) {
 #else
 
 #include <ArduinoJson.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
@@ -69,6 +74,7 @@ constexpr const char* kSetupPassword = "12345678";
 enum class WifiJoinState : uint8_t { Idle, Connecting, Connected, Failed };
 
 WebServer* server = nullptr;
+DNSServer* dnsServer = nullptr;
 Status currentStatus = Status::Inactive;
 uint32_t lastActivity = 0;
 bool lanMode = false;
@@ -83,6 +89,7 @@ char pendingWifiPassword[studio::kWifiPasswordCapacity] = "";
 char wifiJoinMessage[64] = "Ready to connect";
 char statusMessage[48] = "Portal off";
 char portalUrl[32] = "http://192.168.4.1";
+char qrPayloadValue[96] = "";
 
 const char kStyle[] PROGMEM = R"HTML(<style>
 :root{color-scheme:dark;--bg:#05070a;--panel:#12161d;--ink:#f3f4f6;--muted:#8a94a6;--cyan:#35c7f2}
@@ -487,10 +494,24 @@ bool startServer(IPAddress address) {
 }
 
 void destroyServer() {
+  if (dnsServer != nullptr) {
+    dnsServer->stop();
+    delete dnsServer;
+    dnsServer = nullptr;
+  }
   if (server == nullptr) return;
   server->stop();
   delete server;
   server = nullptr;
+}
+
+bool startCaptiveDns(IPAddress address) {
+  dnsServer = new (std::nothrow) DNSServer();
+  if (dnsServer == nullptr) return false;
+  if (dnsServer->start(53, "*", address)) return true;
+  delete dnsServer;
+  dnsServer = nullptr;
+  return false;
 }
 
 bool startSetupAp() {
@@ -504,7 +525,9 @@ bool startSetupAp() {
   if (!WiFi.softAP(apSsid, kSetupPassword)) return false;
   std::strncpy(activeSsid, apSsid, sizeof(activeSsid) - 1);
   std::strncpy(portalUrl, "http://192.168.4.1", sizeof(portalUrl) - 1);
-  if (!startServer(WiFi.softAPIP())) {
+  const IPAddress setupAddress = WiFi.softAPIP();
+  if (!startServer(setupAddress) || !startCaptiveDns(setupAddress)) {
+    destroyServer();
     WiFi.softAPdisconnect(true);
     return false;
   }
@@ -571,6 +594,7 @@ bool begin() {
 
 void loop() {
   if (currentStatus == Status::Inactive || currentStatus == Status::Error) return;
+  if (dnsServer != nullptr) dnsServer->processNextRequest();
   if (server != nullptr) server->handleClient();
   if (!lanMode && wifiJoinState == WifiJoinState::Connecting) {
     const wl_status_t status = WiFi.status();
@@ -646,6 +670,12 @@ const char* password() {
   return (lanMode || wifiJoinState == WifiJoinState::Connected) ? "" : kSetupPassword;
 }
 const char* url() { return portalUrl; }
+const char* qrPayload() {
+  if (lanMode) return portalUrl;
+  std::snprintf(qrPayloadValue, sizeof(qrPayloadValue),
+                "WIFI:T:WPA;S:%s;P:%s;;", apSsid, kSetupPassword);
+  return qrPayloadValue;
+}
 
 }  // namespace portal
 

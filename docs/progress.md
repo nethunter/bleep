@@ -1776,3 +1776,27 @@ Record values with the exact build environment and commit/worktree state.
 - Native tests passed 43/43. `ui_sim` and all seven firmware profiles built
   successfully. `crowpanel_128` uses 1,732,622 bytes flash / 163,348 bytes RAM
   (55.1% / 49.8%). Physical touch scrolling and Back remain operator-pending.
+
+### 2026-08-06: Portal QR join and phone sign-on discovery
+
+- Added a 96 px on-panel QR code. During temporary-AP setup it contains the
+  standard WPA2 `WIFI:` payload for the generated `Bleep-Setup-…` SSID and the
+  fixed setup password; after LAN handoff it changes to the authoritative
+  numeric Portal URL. The SSID, password or same-Wi-Fi hint, numeric address,
+  and Exit action remain visible on the round display.
+- Added AP-scoped wildcard DNS and unknown-path redirects so iOS, Android, and
+  other clients can detect the temporary network as captive and offer the Wi-Fi
+  setup page in their sign-on UI. DNS is serviced from the main loop and is
+  destroyed with the AP before the LAN listener starts.
+- `ui_sim` built and completed every capture. Payload assertions passed for the
+  setup Wi-Fi QR and LAN URL QR; `30_portal.png` and `30b_portal_lan.png` were
+  visually checked. The simulator finished with 11,424 bytes free and 1%
+  fragmentation after its full regression run. Native tests passed 43/43.
+- All seven firmware profiles built successfully. `crowpanel_128` uses
+  1,739,896 bytes flash / 163,876 bytes RAM (55.3% / 50.0%); Roboto uses
+  1,709,432 / 163,876; `canon_ble` 1,738,062 / 162,228; `canon_trigger`
+  1,734,568 / 161,236; `tascam_x8` 1,736,000 / 161,140; `home_assistant`
+  1,731,442 / 160,756; and `amaran_light` 1,695,532 / 155,548.
+  `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240` with image
+  hash verification and a hard reset. Scanning the displayed QR and confirming
+  the phone's automatic sign-on sheet remain operator-pending hardware checks.

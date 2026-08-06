@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 
 #include "Arduino.h"
@@ -809,6 +810,11 @@ int main() {
   }
   home_assistant_ui::hide();
   ui::showPortal();
+  if (std::strcmp(portal::qrPayload(),
+                  "WIFI:T:WPA;S:Bleep-Setup-SIM;P:12345678;;") != 0) {
+    std::fprintf(stderr, "Portal setup QR does not contain Wi-Fi credentials\n");
+    return 1;
+  }
   if (!capture("30_portal")) {
     return 1;
   }
@@ -833,6 +839,10 @@ int main() {
   ui::showHome();
   ui::showPortal();
   portal::simSetLan(true);
+  if (std::strcmp(portal::qrPayload(), "http://192.168.1.84") != 0) {
+    std::fprintf(stderr, "LAN Portal QR does not contain its numeric URL\n");
+    return 1;
+  }
   if (!capture("30b_portal_lan")) {
     return 1;
   }

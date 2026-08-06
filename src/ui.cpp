@@ -64,7 +64,9 @@ lv_obj_t* portalStatus = nullptr;
 lv_obj_t* portalSsid = nullptr;
 lv_obj_t* portalPassword = nullptr;
 lv_obj_t* portalAddress = nullptr;
+lv_obj_t* portalQr = nullptr;
 lv_obj_t* portalExit = nullptr;
+char portalQrData[96] = "";
 
 lv_obj_t* deviceModal = nullptr;
 lv_obj_t* deviceModalTitle = nullptr;
@@ -599,46 +601,60 @@ void buildPortal() {
   lv_label_set_text(title, "PORTAL / LINK");
   lv_obj_set_style_text_font(title, UI_FONT_16, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(kColAccent), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
   portalStatus = lv_label_create(scrPortal);
   lv_obj_set_width(portalStatus, 184);
   lv_obj_set_style_text_align(portalStatus, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(portalStatus, UI_FONT_14, 0);
-  lv_obj_align(portalStatus, LV_ALIGN_TOP_MID, 0, 57);
+  lv_obj_align(portalStatus, LV_ALIGN_TOP_MID, 0, 47);
+
+  portalQr = lv_qrcode_create(scrPortal, 96, lv_color_hex(kColBg),
+                              lv_color_hex(kColText));
+  lv_obj_align(portalQr, LV_ALIGN_TOP_LEFT, 28, 72);
+
   portalSsid = lv_label_create(scrPortal);
-  lv_obj_set_width(portalSsid, 188);
-  lv_obj_set_style_text_align(portalSsid, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(portalSsid, 82);
+  lv_obj_set_style_text_align(portalSsid, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_set_style_text_font(portalSsid, UI_FONT_14, 0);
-  lv_obj_align(portalSsid, LV_ALIGN_TOP_MID, 0, 88);
+  lv_obj_set_style_text_color(portalSsid, lv_color_hex(kColText), 0);
+  lv_obj_align(portalSsid, LV_ALIGN_TOP_LEFT, 134, 76);
   portalPassword = lv_label_create(scrPortal);
-  lv_obj_set_width(portalPassword, 188);
-  lv_obj_set_style_text_align(portalPassword, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(portalPassword, 82);
+  lv_obj_set_style_text_align(portalPassword, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_set_style_text_font(portalPassword, UI_FONT_14, 0);
   lv_obj_set_style_text_color(portalPassword, lv_color_hex(kColMuted), 0);
-  lv_obj_align(portalPassword, LV_ALIGN_TOP_MID, 0, 113);
+  lv_obj_align(portalPassword, LV_ALIGN_TOP_LEFT, 134, 124);
   portalAddress = lv_label_create(scrPortal);
   lv_label_set_text(portalAddress, "http://192.168.4.1");
+  lv_obj_set_width(portalAddress, 180);
+  lv_obj_set_style_text_align(portalAddress, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(portalAddress, UI_FONT_14, 0);
   lv_obj_set_style_text_color(portalAddress, lv_color_hex(kColAccent), 0);
-  lv_obj_align(portalAddress, LV_ALIGN_TOP_MID, 0, 143);
+  lv_obj_align(portalAddress, LV_ALIGN_TOP_MID, 0, 173);
   portalExit = makeButton(scrPortal, "EXIT PORTAL", onExitPortal, kColDanger);
-  lv_obj_set_size(portalExit, 126, 34);
-  lv_obj_align(portalExit, LV_ALIGN_BOTTOM_MID, 0, -25);
+  lv_obj_set_size(portalExit, 112, 30);
+  lv_obj_align(portalExit, LV_ALIGN_BOTTOM_MID, 0, -8);
 }
 
 void refreshPortal() {
   if (scrPortal == nullptr) return;
   lv_label_set_text(portalStatus, portal::statusText());
   char text[64];
-  std::snprintf(text, sizeof(text), "SSID  %s", portal::ssid());
+  std::snprintf(text, sizeof(text), "SSID\n%s", portal::ssid());
   lv_label_set_text(portalSsid, text);
-  std::snprintf(text, sizeof(text), "PASS  %s", portal::password());
+  std::snprintf(text, sizeof(text), "PASS\n%s", portal::password());
   if (portal::password()[0] == '\0') {
-    std::strncpy(text, "SAME LOCAL WI-FI", sizeof(text) - 1);
+    std::strncpy(text, "SAME LOCAL\nWI-FI", sizeof(text) - 1);
     text[sizeof(text) - 1] = '\0';
   }
   lv_label_set_text(portalPassword, text);
   lv_label_set_text(portalAddress, portal::url());
+  const char* qrPayload = portal::qrPayload();
+  if (std::strncmp(portalQrData, qrPayload, sizeof(portalQrData)) != 0) {
+    std::strncpy(portalQrData, qrPayload, sizeof(portalQrData) - 1);
+    portalQrData[sizeof(portalQrData) - 1] = '\0';
+    lv_qrcode_update(portalQr, portalQrData, std::strlen(portalQrData));
+  }
   lv_obj_invalidate(portalExit);
 }
 

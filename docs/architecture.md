@@ -223,7 +223,10 @@ network runtime and do not consume the four physical BLE link slots.
 Portal suspends scenes and physical links. If studio Wi-Fi is not configured or
 cannot be joined, it starts a temporary WPA2 SoftAP and a SoftAP-bound page that
 offers a bounded asynchronous Wi-Fi scan and manual SSID/password entry. The
-join is a main-loop state machine, leaving HTTP and LVGL responsive while the
+panel's QR code contains the temporary WPA2 network credentials. While the AP
+is active, wildcard DNS and unknown-path redirects provide best-effort captive
+portal discovery so phones can present the setup page as a sign-on screen.
+The join is a main-loop state machine, leaving HTTP and LVGL responsive while the
 browser and panel report scanning, connecting, success, timeout, missing SSID,
 or rejected credentials. A successful join saves those credentials, exposes
 the assigned numeric LAN address during a bounded handoff, destroys the AP,
@@ -345,9 +348,11 @@ Entering Portal mode:
 1. refuses entry or requests confirmation if a scene is active;
 2. suspends device connections;
 3. joins saved studio Wi-Fi, or starts a temporary WPA2 SoftAP whose page
-   collects only Wi-Fi credentials;
+   collects only Wi-Fi credentials, with an on-panel Wi-Fi QR code and
+   AP-scoped captive-portal discovery;
 4. after joining, shows the numeric station address, closes the AP, and binds
-   the bounded HTTP server there with `bleep.local` as best-effort discovery;
+   the bounded HTTP server there with `bleep.local` as best-effort discovery,
+   and changes the QR code to the numeric Portal URL;
 5. displays the active network, URL, timeout, and Exit on the panel.
 
 Exiting Portal mode, reaching the inactivity timeout, or rebooting destroys the

@@ -15,6 +15,7 @@ const char* statusText();
 const char* ssid();
 const char* password();
 const char* url();
+const char* qrPayload();
 
 #ifdef UI_SIMULATOR
 void simSetLan(bool connected);

@@ -358,8 +358,11 @@ the replacement.
   access, OAuth, devices/areas, and other domains remain deferred.
 - Provisioning boundary: First-time Portal setup creates a WPA2 SoftAP with
   password `12345678`, performs a bounded nearby-network scan, and collects only
-  studio Wi-Fi credentials. Manual SSID entry remains available for hidden
-  networks. During the non-blocking join it uses AP+STA while the listener
+  studio Wi-Fi credentials. The panel exposes the setup AP credentials as a
+  standard Wi-Fi QR code. Wildcard DNS and HTTP redirects trigger the phone's
+  captive-network sign-on UI on a best-effort basis while that AP is active;
+  both are destroyed before LAN Portal startup. Manual SSID entry remains
+  available for hidden networks. During the non-blocking join it uses AP+STA while the listener
   remains bound to SoftAP and both the browser and panel report progress or a
   bounded failure reason.
   After a successful join, it destroys the AP listener and AP, then binds a new
@@ -483,7 +486,7 @@ the replacement.
 These remain unresolved until their roadmap spikes complete:
 
 - whether hardware evidence justifies reliable Amaran state readback or native groups;
-- whether to add a user-configurable setup password or captive-portal discovery;
+- whether to add a user-configurable setup password;
 - execution-journal persistence and power-loss recovery policy;
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;

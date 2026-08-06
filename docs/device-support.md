@@ -40,7 +40,9 @@ first-time attempts stop when their last owner leaves.
   scope.
 - Provisioning: the temporary WPA2 SoftAP scans nearby networks and collects
   only studio Wi-Fi, with manual SSID entry for hidden networks and visible
-  connection progress/failure. After joining, the AP closes and the full Portal
+  connection progress/failure. Its on-panel QR code joins the setup AP, whose
+  scoped wildcard DNS and redirects provide best-effort phone sign-on-screen
+  discovery. After joining, the AP closes and the full Portal
   is reachable at the displayed numeric LAN address only while the panel remains
   on its Portal screen. `http://bleep.local` is a best-effort mDNS alias.
   Wi-Fi credentials and token are stored separately from ordinary device

@@ -192,9 +192,12 @@ then open that device to begin scanning or reconnecting. Pairing mode matters:
   app connection.
 
 For first-time Home Assistant setup, open **Portal** from Home. Join the
-temporary `Bleep-Setup-…` WPA2 network using password `12345678`, browse to the
+temporary `Bleep-Setup-…` WPA2 network by scanning the on-panel QR code, or join
+it manually using password `12345678`, then browse to the
 setup address shown on the panel, scan for or manually enter the studio Wi-Fi,
-and supply its password. The browser and panel show scanning, joining, and
+and supply its password. Phones normally open this setup page as a captive
+network sign-on screen after joining; the numeric address remains the fallback.
+The browser and panel show scanning, joining, and
 failure feedback. After Ble(e)p joins, note the numeric LAN address, let the
 setup AP close, and rejoin the normal local Wi-Fi. Open that numeric address
 while the Portal screen remains active; `http://bleep.local` is also advertised
@@ -203,6 +206,8 @@ as a convenience but may not resolve on every client or network. Enter the local
 four supported entities. Exit Portal on the panel after saving; this stops the
 LAN server and turns Wi-Fi off. Later Portal sessions join saved Wi-Fi directly
 and show their current numeric LAN address; normal Home boot remains network-free.
+In LAN mode, the on-panel QR code changes from the temporary Wi-Fi credentials
+to the current numeric Portal URL.
 
 Lights and switches expose explicit On/Off controls. Home Assistant
 `input_boolean` entities use one context-sensitive action button: it shows ON
