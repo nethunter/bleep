@@ -1698,3 +1698,39 @@ Record values with the exact build environment and commit/worktree state.
   protected seven-day battery endurance run remain operator-pending. Firmware
   reduces load but is not electrical protection for D1, inrush, or USB reverse
   current.
+
+### 2026-08-06: Sequence target status-ring layering
+
+- Moved each sequence target's animated status ring from the icon button's
+  parent border to a transparent foreground overlay. LVGL draws a parent's
+  border before its children, so the square Home Assistant/category artwork
+  could cover the ring corners while transparent Canon and Tascam artwork hid
+  the same layering error.
+- Added a simulator scene containing Canon Smart, Tascam, and Home Assistant
+  targets. The complete `ui_sim` capture run passed, and
+  `20g_sequence_ha_switch_status_ring.png` shows the connecting ring
+  continuously above all three icons.
+- `crowpanel_128` built with 163,308 / 327,680 bytes RAM (49.8%) and 1,718,124 /
+  3,145,728 bytes flash (54.6%). It flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Opening a real mixed-device sequence for physical display inspection remains
+  operator-pending.
+
+### 2026-08-06: Home Assistant switch category icon
+
+- Added `icon_cat_switches.png`, a cyan/yellow toggle-switch illustration, and
+  regenerated the 48x48 LVGL icon arrays. `DeviceType::Switch` now uses the
+  dedicated icon in shared category pickers and sequence target chips;
+  `DeviceType::Action` retains the generic Devices artwork.
+- The source asset was generated with the built-in image tool using the
+  repository's documented playful glossy icon recipe, then normalized to
+  1024x1024 before `tools/gen_icons.py --size 48` embedded it.
+- The complete `ui_sim` run passed. Its mixed Canon/Tascam/HA regression now
+  targets an HA `input_boolean`; `20g_sequence_ha_switch_status_ring.png`
+  confirms the toggle remains readable at chip size with an uninterrupted
+  foreground status ring.
+- `crowpanel_128` built with 163,308 / 327,680 bytes RAM (49.8%) and 1,725,076 /
+  3,145,728 bytes flash (54.8%). It flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Physical inspection of the configured `HML Shooting` sequence remains
+  operator-pending.

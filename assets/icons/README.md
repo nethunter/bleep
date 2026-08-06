@@ -43,6 +43,9 @@ Device-category icons (Add device / Add scene step grids):
   lens eye and a tiny smiling face, coral red and cyan accents, glossy body.`
 - **Recorders:** `Subject: a cute cartoon portable audio recorder with chunky
   knobs and a smiling VU meter face, mint green and gold accents.`
+- **Switches:** `Subject: a cute chunky rounded ON/OFF toggle switch with the
+  knob visibly switched on and a tiny friendly face, turquoise and electric
+  cyan track, sunny yellow knob, and coral accents.`
 
 For a new mode or category, preserve the shared block and append a similarly
 concrete subject sentence. Specify recognizable objects, a small palette, and

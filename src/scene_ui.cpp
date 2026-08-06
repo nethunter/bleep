@@ -65,6 +65,7 @@ struct RunChip {
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   lv_obj_t* button = nullptr;
   lv_obj_t* icon = nullptr;
+  lv_obj_t* ring = nullptr;
   ChipState state = ChipState::Unknown;
 };
 
@@ -115,6 +116,7 @@ const lv_img_dsc_t* categoryIcon(studio::DeviceType type) {
     case studio::DeviceType::Recorder:
       return &ui_icon_cat_recorders;
     case studio::DeviceType::Switch:
+      return &ui_icon_cat_switches;
     case studio::DeviceType::Action:
       return &ui_icon_devices;
     case studio::DeviceType::Unknown:
@@ -129,8 +131,8 @@ void setChipBorderOpacity(void* object, int32_t value) {
 }
 
 void stopChipAnimation(RunChip& chip) {
-  if (chip.button != nullptr) {
-    lv_anim_del(chip.button, setChipBorderOpacity);
+  if (chip.ring != nullptr) {
+    lv_anim_del(chip.ring, setChipBorderOpacity);
   }
 }
 
@@ -694,7 +696,7 @@ void refreshRun() {
       lv_obj_set_style_radius(chip.button, LV_RADIUS_CIRCLE, 0);
       lv_obj_set_style_bg_color(chip.button, lv_color_hex(kColPanel), 0);
       lv_obj_set_style_shadow_width(chip.button, 0, 0);
-      lv_obj_set_style_border_width(chip.button, 2, 0);
+      lv_obj_set_style_border_width(chip.button, 0, 0);
       lv_obj_set_style_pad_all(chip.button, 0, 0);
       void* userData = reinterpret_cast<void*>(
           static_cast<uintptr_t>(chip.instanceId));
@@ -706,6 +708,20 @@ void refreshRun() {
                      categoryIcon(profile.type));
       lv_img_set_zoom(chip.icon, 176);
       lv_obj_center(chip.icon);
+
+      // Draw the status ring after the icon. A parent border is rendered
+      // before its children, so square icon artwork can otherwise cover the
+      // ring at the corners even though transparent camera/recorder art does
+      // not expose the layering error.
+      chip.ring = lv_obj_create(chip.button);
+      lv_obj_set_size(chip.ring, 40, 40);
+      lv_obj_center(chip.ring);
+      lv_obj_set_style_radius(chip.ring, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_opa(chip.ring, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(chip.ring, 2, 0);
+      lv_obj_set_style_pad_all(chip.ring, 0, 0);
+      lv_obj_clear_flag(chip.ring, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(chip.ring, LV_OBJ_FLAG_SCROLLABLE);
 
       lv_obj_t* name = lv_label_create(item);
       lv_label_set_text(name, device != nullptr ? device->displayName : "?");
@@ -746,19 +762,19 @@ void refreshRun() {
     if (nextState != chip.state) {
       stopChipAnimation(chip);
       chip.state = nextState;
-      lv_obj_set_style_border_opa(chip.button, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_opa(chip.ring, LV_OPA_COVER, 0);
       if (nextState == ChipState::Ready) {
-        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColOk), 0);
+        lv_obj_set_style_border_color(chip.ring, lv_color_hex(kColOk), 0);
       } else if (nextState == ChipState::Failed) {
-        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColDanger), 0);
+        lv_obj_set_style_border_color(chip.ring, lv_color_hex(kColDanger), 0);
       } else if (nextState == ChipState::Disconnected) {
-        lv_obj_set_style_border_color(chip.button, lv_color_hex(kColMuted), 0);
+        lv_obj_set_style_border_color(chip.ring, lv_color_hex(kColMuted), 0);
       } else {
-        lv_obj_set_style_border_color(chip.button,
+        lv_obj_set_style_border_color(chip.ring,
                                       lv_color_hex(kColConnecting), 0);
         lv_anim_t animation;
         lv_anim_init(&animation);
-        lv_anim_set_var(&animation, chip.button);
+        lv_anim_set_var(&animation, chip.ring);
         lv_anim_set_exec_cb(&animation, setChipBorderOpacity);
         lv_anim_set_values(&animation, LV_OPA_30, LV_OPA_COVER);
         lv_anim_set_time(&animation, 600);

@@ -114,6 +114,7 @@ const lv_img_dsc_t* categoryIcon(studio::DeviceType type) {
     case studio::DeviceType::Recorder:
       return &ui_icon_cat_recorders;
     case studio::DeviceType::Switch:
+      return &ui_icon_cat_switches;
     case studio::DeviceType::Action:
       return &ui_icon_devices;
     case studio::DeviceType::Unknown:

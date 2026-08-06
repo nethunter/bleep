@@ -488,6 +488,33 @@ int main() {
     std::fprintf(stderr, "Failed to seed Press Record sequence\n");
     return 1;
   }
+  const studio::SceneRecord* seededScene = studio::scenes().find(sceneId);
+  if (seededScene == nullptr) {
+    std::fprintf(stderr, "Seeded sequence is missing\n");
+    return 1;
+  }
+  const studio::SceneRecord originalScene = *seededScene;
+  studio::SceneRecord haVisualScene = originalScene;
+  haVisualScene.startSteps[haVisualScene.startCount++] =
+      studio::makeActionStep(haInputBoolean, studio::CommandType::TurnOn);
+  haVisualScene.stopSteps[haVisualScene.stopCount++] =
+      studio::makeActionStep(haInputBoolean, studio::CommandType::TurnOff);
+  if (studio::scenes().replace(haVisualScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to add HA visual-regression target\n");
+    return 1;
+  }
+  scene_ui::simShowRun(sceneId);
+  pump(200);
+  if (!capture("20g_sequence_ha_switch_status_ring")) {
+    return 1;
+  }
+  studio::scenes().cancel();
+  if (studio::scenes().replace(originalScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to restore seeded sequence\n");
+    return 1;
+  }
   scene_ui::simShowList();
   pump(200);
   if (!capture("21_scenes_list")) {

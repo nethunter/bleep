@@ -146,6 +146,7 @@ def main() -> None:
       ("icon_cat_lights", "ui_icon_cat_lights"),
       ("icon_cat_cameras", "ui_icon_cat_cameras"),
       ("icon_cat_recorders", "ui_icon_cat_recorders"),
+      ("icon_cat_switches", "ui_icon_cat_switches"),
   ]
 
   parts = [HEADER]

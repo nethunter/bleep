@@ -12,3 +12,4 @@ extern const lv_img_dsc_t ui_icon_cat_motion;
 extern const lv_img_dsc_t ui_icon_cat_lights;
 extern const lv_img_dsc_t ui_icon_cat_cameras;
 extern const lv_img_dsc_t ui_icon_cat_recorders;
+extern const lv_img_dsc_t ui_icon_cat_switches;
