@@ -56,6 +56,12 @@ responsive LVGL, authenticated subscription, correct actions/state, and
 recovered sockets/tasks/heap. TLS, cloud/OAuth, HA devices/areas, additional
 domains, and exposing Ble(e)p devices to HA remain deferred.
 
+ADR-025 authorizes a battery-safety mitigation tranche without changing the
+required BLE/Home Assistant concurrency or healthy retained-link behavior. It
+adds conservative radio settings, parks ownerless dropped sessions, and enables
+station modem sleep. Electrical protection of the
+CrowPanel battery-input path remains a separate hardware requirement.
+
 ### Home Assistant feasibility gate
 
 Status: `Software implemented; hardware gate open`.

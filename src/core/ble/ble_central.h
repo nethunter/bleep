@@ -88,6 +88,8 @@ class BleCentral {
   LinkHandle claimOwners_[CONFIG_MAX_ACTIVE_LINKS] = {};
   bool begun_ = false;
   bool scanRunning_ = false;
+  uint32_t scanBurstEndsMs_ = 0;
+  uint32_t scanResumeAtMs_ = 0;
   uint32_t nowMs_ = 0;
 };
 

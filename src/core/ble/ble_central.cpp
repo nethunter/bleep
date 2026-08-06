@@ -6,6 +6,15 @@
 
 namespace studio::ble {
 
+namespace {
+constexpr uint32_t kScanBurstMs = 4000;
+constexpr uint32_t kScanPauseMs = 1500;
+
+bool deadlineReached(uint32_t nowMs, uint32_t deadlineMs) {
+  return static_cast<int32_t>(nowMs - deadlineMs) >= 0;
+}
+}  // namespace
+
 BleCentral::BleCentral(IBleCentralBackend& backend) : backend_(backend) {}
 
 size_t BleCentral::indexFor(LinkHandle link) {
@@ -88,6 +97,8 @@ void BleCentral::release(LinkHandle link) {
     backend_.shutdown();
     begun_ = false;
     scanRunning_ = false;
+    scanBurstEndsMs_ = 0;
+    scanResumeAtMs_ = 0;
   }
 }
 
@@ -352,11 +363,33 @@ void BleCentral::updateScan() {
   for (const Slot& slot : slots_) {
     wanted = wanted || (slot.delegate != nullptr && slot.scanRequested);
   }
-  if (wanted && (!scanRunning_ || !backend_.scanRunning())) {
-    scanRunning_ = backend_.startScan();
-  } else if (!wanted && scanRunning_) {
+  if (!wanted) {
+    if (scanRunning_) {
+      backend_.stopScan();
+    }
+    scanRunning_ = false;
+    scanBurstEndsMs_ = 0;
+    scanResumeAtMs_ = 0;
+    return;
+  }
+
+  if (scanRunning_ && !backend_.scanRunning()) {
+    scanRunning_ = false;
+    scanResumeAtMs_ = nowMs_ + kScanPauseMs;
+  }
+  if (scanRunning_ && deadlineReached(nowMs_, scanBurstEndsMs_)) {
     backend_.stopScan();
     scanRunning_ = false;
+    scanResumeAtMs_ = nowMs_ + kScanPauseMs;
+    return;
+  }
+  if (!scanRunning_ &&
+      (scanResumeAtMs_ == 0 || deadlineReached(nowMs_, scanResumeAtMs_))) {
+    scanRunning_ = backend_.startScan();
+    if (scanRunning_) {
+      scanBurstEndsMs_ = nowMs_ + kScanBurstMs;
+      scanResumeAtMs_ = 0;
+    }
   }
 }
 
@@ -380,6 +413,7 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
   }
   if (event.type == EventType::ScanEnded) {
     scanRunning_ = false;
+    scanResumeAtMs_ = nowMs + kScanPauseMs;
     return;
   }
 

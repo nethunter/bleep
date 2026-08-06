@@ -129,8 +129,10 @@ every target is physically connected and its driver reports protocol readiness.
 The run screen shows one category-icon chip per target. A chip borrows the
 already-held activation to open full device controls, then returns without
 tearing down that device or its peers. Once a session reaches protocol readiness,
-removing its last owner parks it in the retained pool and bounded reconnect
-continues after unexpected drops. Attempts that never became ready are canceled.
+removing its last owner parks a healthy link in the retained pool. If that
+ownerless link later drops unexpectedly, its transport is deactivated instead
+of continuing background reconnect; acquiring it again starts the normal
+bounded connection path. Attempts that never became ready are canceled.
 When a retained instance gains a new owner, `DeviceManager` invokes the
 driver's bounded resume hook before attaching that owner. Canon Smart uses this
 hook to reconnect and wake a session that the panel previously powered off;
@@ -147,8 +149,10 @@ NimBLE backend. Device clients acquire one link handle and retain only their
 protocol policy: advertisement matching, candidate choice, GATT discovery,
 subscriptions, handshakes, commands, and notification parsing.
 
-One physical active scanner fans fixed-size advertisement observations to every
-interested link. Selecting a peer removes only that subscriber's scan demand;
+One physical scanner fans fixed-size advertisement observations to every
+interested link. It runs in four-second bursts separated by 1.5-second pauses,
+with a 20/100 scan window/interval while active. Selecting a peer removes only
+that subscriber's scan demand;
 other preparing devices continue to receive observations. Address claims keep
 two clients from selecting the same peer. Connects are asynchronous and use
 independent slots with a bounded watchdog and `1500 * min(failures, 4)` retry
@@ -168,8 +172,12 @@ handshake, and initial refresh has succeeded. Connection setup is scheduled on
 the next main-loop pass so queued link events can drain first. Drivers request
 targeted service/characteristic/descriptor discovery rather than full attribute
 walks. The backend also makes best-effort connection-parameter requests: 7.5–15
-ms during setup and 15–30 ms after protocol readiness; rejection is diagnostic
+ms during setup and 30–50 ms after protocol readiness; rejection is diagnostic
 and non-fatal.
+
+The NimBLE controller is initialized at 0 dBm rather than its +3 dBm default.
+These radio policies reduce average and peak demand but are not electrical
+protection for the CrowPanel battery-input path.
 
 Serial-only `ble_timing` records cover activation, scan/direct connect, link,
 security, GATT setup, protocol readiness, retries, teardown, and total sequence

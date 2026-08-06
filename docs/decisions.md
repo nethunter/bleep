@@ -444,6 +444,40 @@ the replacement.
   verified node reset. Until verified reset is implemented, ordinary local
   record removal is not a claim that the fixture left the mesh.
 
+## ADR-025: Battery-conscious runtime policy does not replace input protection
+
+- Status: Accepted; target endurance gate open
+- Context: Three user-reported CrowPanels stopped running from battery after a
+  few days while continuing to work from USB. On one failed board, the battery
+  measured about 4.0 V and D1 measured about 4.0 V on one side and 2.4 V on the
+  other. This is evidence of a battery-input-path fault, but the exact failed
+  component and electrical cause remain a `Hardware hypothesis` until board
+  schematics, part identification, current waveforms, and destructive analysis
+  are available.
+- Decision: Initialize BLE at 0 dBm; use a 20/100 active scan window/interval
+  in four-second bursts with 1.5-second pauses; request 30-50 ms connection
+  intervals after protocol setup; and enable Wi-Fi station modem sleep for the
+  retained Home Assistant session. Healthy protocol-ready sessions remain
+  retained across navigation. If an ownerless retained session drops
+  unexpectedly, deactivate it instead of running background reconnect. Canon
+  Smart's intentional `PoweredOff` state remains retained so acquiring it can
+  run the accepted wake path.
+- Display: Keep the screen and backlight on continuously. The PI4IOE5V6408
+  exposes the backlight as a plain GPIO with no hardware brightness level, and
+  the operator prefers immediate input without dimming or wake suppression.
+  This does not reintroduce software power-off or deep sleep; the SPDT switch
+  remains the only controller power control.
+- Safety boundary: Firmware can reduce average draw, radio peaks, and needless
+  retry activity. It cannot limit inrush, block reverse current from USB,
+  correct an underspecified diode/MOSFET, or guarantee that D1 will survive.
+  New boards still require external battery-path protection or replacement
+  power hardware before a multi-day endurance result can be treated as safe.
+- Gate: On a protected new board, verify scan/connect latency, command and
+  notification reliability, Canon powered-off reacquire, mixed BLE/HA sequence
+  concurrency, and battery-path voltage/temperature over at least a seven-day
+  powered endurance run. Do not claim the D1 failure is fixed from builds or
+  short functional tests.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

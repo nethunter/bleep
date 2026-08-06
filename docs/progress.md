@@ -1665,3 +1665,36 @@ Record values with the exact build environment and commit/worktree state.
   failing image. No sequence was opened during the post-flash monitor window,
   so the exact Canon + Tascam + HA readiness/command run and physical review of
   the 15-row display flush remain operator-pending hardware checks.
+
+### 2026-08-06: Battery-conscious radio, reconnect, Wi-Fi, and display policy
+
+- Added ADR-025 after three user-reported CrowPanels lost battery operation
+  while still operating from USB. One failed board was reported at about 4.0 V
+  on the battery side of D1 and 2.4 V on the board side. This remains a
+  hardware-fault hypothesis, not proof that firmware or BLE damaged D1.
+- Set NimBLE transmit power to 0 dBm, reduced the active scan window from
+  80/100 to 20/100, and bounded shared discovery to four-second bursts with
+  1.5-second pauses. Protocol-ready links now request 30-50 ms connection
+  intervals rather than 15-30 ms.
+- Preserved healthy retained links across navigation and Canon Smart's
+  intentional `PoweredOff` wake path. An ownerless retained session that drops
+  unexpectedly is now deactivated instead of continuing background reconnect.
+  Foreground and sequence-owned links, pending commands, confirmed recording,
+  and required BLE/Home Assistant concurrency remain protected.
+- Enabled Wi-Fi station modem sleep for the retained Home Assistant client.
+  The screen and backlight remain continuously on by operator choice; the
+  PI4IOE5V6408 output has no hardware brightness level. No dimming, input wake
+  suppression, deep sleep, or software power-off is added.
+- Native tests passed 43/43, including bounded scan scheduling and ownerless
+  drop parking while preserving intentional offline retention. All firmware
+  profiles built: `crowpanel_128` used 1,718,036 bytes flash / 163,276 bytes
+  RAM; `crowpanel_128_roboto` 1,687,572 / 163,276; `canon_ble` 1,716,214 /
+  161,628; `canon_trigger` 1,712,738 / 160,636; `tascam_x8` 1,714,152 /
+  160,548; `home_assistant` 1,709,620 / 160,156; and `amaran_light` 1,673,734 /
+  154,940.
+- Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image
+  hash verification passed and the panel hard-reset. Physical scan latency,
+  peripheral command/notification reliability, mixed BLE/HA operation, and a
+  protected seven-day battery endurance run remain operator-pending. Firmware
+  reduces load but is not electrical protection for D1, inrush, or USB reverse
+  current.

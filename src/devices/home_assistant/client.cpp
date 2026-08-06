@@ -217,6 +217,9 @@ bool HomeAssistantClient::connectRuntime() {
                 static_cast<unsigned long>(ESP.getFreeHeap()),
                 static_cast<unsigned long>(ESP.getMaxAllocHeap()));
   WiFi.mode(WIFI_STA);
+  // Keep the retained HA socket responsive while allowing the station radio
+  // to enter modem sleep between access-point beacons.
+  WiFi.setSleep(true);
   WiFi.begin(config_.wifiSsid, config_.wifiPassword);
   wifiStarted_ = true;
   connectionStarted_ = nowMs();

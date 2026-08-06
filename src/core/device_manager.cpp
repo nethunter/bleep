@@ -175,6 +175,13 @@ void DeviceManager::loop() {
                                            *activeRecord)) {
       save();
     }
+    if (slot.owners == 0 && slot.retained &&
+        runtime.link == LinkState::Disconnected &&
+        !runtime.commandPending &&
+        !(runtime.recordingConfirmed && runtime.recording) &&
+        !activeDriver->retainWhileDisconnected(activeRecord->instanceId)) {
+      deactivate(activeRecord->instanceId);
+    }
   }
 
   DeviceCommand command;

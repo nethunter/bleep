@@ -235,6 +235,9 @@ class FakeDriver : public studio::DeviceDriver {
     lastResumedInstance = record.instanceId;
     return resumeSucceeds;
   }
+  bool retainWhileDisconnected(studio::InstanceId) const override {
+    return intentionalOffline;
+  }
   void deactivate(studio::InstanceId instanceId) override {
     for (studio::InstanceId& id : activeInstances) {
       if (id != instanceId) {
@@ -270,9 +273,9 @@ class FakeDriver : public studio::DeviceDriver {
     for (studio::InstanceId id : activeInstances) {
       found = found || id == instanceId;
     }
-    state.link = found ? studio::LinkState::Connected
-                       : studio::LinkState::Disconnected;
-    state.protocolReady = found && ready;
+    state.link = found && !forceDisconnected ? studio::LinkState::Connected
+                                             : studio::LinkState::Disconnected;
+    state.protocolReady = found && ready && !forceDisconnected;
     state.commandPending = commandPending;
     state.recordingConfirmed = recordingConfirmed;
     state.recording = recording;
@@ -287,6 +290,8 @@ class FakeDriver : public studio::DeviceDriver {
 
   bool active = false;
   bool ready = true;
+  bool forceDisconnected = false;
+  bool intentionalOffline = false;
   bool commandPending = false;
   bool recordingConfirmed = false;
   bool recording = false;
@@ -1431,6 +1436,34 @@ void test_manager_cancels_unready_release_and_reuses_ready_session() {
   manager.release(id, studio::ConnectionOwner::Foreground);
 }
 
+void test_manager_parks_ownerless_drop_but_keeps_intentional_offline() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::CanonBle, "Camera", id)));
+
+  TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+  manager.loop();
+  manager.release(id, studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_TRUE(manager.isRetained(id));
+
+  driver.forceDisconnected = true;
+  driver.intentionalOffline = true;
+  manager.loop();
+  TEST_ASSERT_TRUE(manager.isActive(id));
+
+  driver.intentionalOffline = false;
+  manager.loop();
+  TEST_ASSERT_FALSE(manager.isActive(id));
+  TEST_ASSERT_EQUAL_INT(1, driver.deactivationCount);
+}
+
 void test_scene_store_round_trip_and_corruption() {
   MemoryBackend backend;
   studio::SceneStore store(backend);
@@ -1927,7 +1960,7 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   central.markProtocolReady(firstLink);
   TEST_ASSERT_TRUE(central.protocolReady(firstLink));
   TEST_ASSERT_EQUAL_UINT32(2, backend.parameterUpdateCalls(firstLink));
-  TEST_ASSERT_EQUAL_UINT16(12, backend.lastParameters(firstLink).minInterval);
+  TEST_ASSERT_EQUAL_UINT16(24, backend.lastParameters(firstLink).minInterval);
 
   studio::ble::Event failed;
   failed.type = studio::ble::EventType::ConnectFailed;
@@ -1962,6 +1995,28 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   central.release(firstLink);
   TEST_ASSERT_FALSE(central.protocolReady(firstLink));
   central.release(secondLink);
+}
+
+void test_ble_central_uses_bounded_scan_bursts() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  const studio::ble::LinkHandle link = central.acquire(delegate, {});
+  central.loop(100);
+  TEST_ASSERT_TRUE(central.requestScan(link));
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.scanStarts());
+
+  central.loop(4099);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(4100);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(5599);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(5600);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(2, backend.scanStarts());
+  central.release(link);
 }
 
 void test_ble_central_parser_bonds_and_queue_overflow() {
@@ -2147,6 +2202,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_holds_concurrent_active_links);
   RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
+  RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
   RUN_TEST(test_press_record_start_and_authored_stop);
@@ -2156,6 +2212,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
+  RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
   RUN_TEST(test_ble_device_advertisement_matchers);
   RUN_TEST(test_amaran_crypto_and_network_vectors);

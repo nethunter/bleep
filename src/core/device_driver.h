@@ -13,6 +13,10 @@ class DeviceDriver {
   // Called when an already-active retained instance gains another owner.
   // Drivers may resume device-specific work without rebuilding the session.
   virtual bool resume(const DeviceRecord&) { return true; }
+  // Intentional offline states (for example Canon PoweredOff) may remain in
+  // the retained pool. Other ownerless retained sessions are parked after an
+  // unexpected disconnect instead of spending power reconnecting forever.
+  virtual bool retainWhileDisconnected(InstanceId) const { return false; }
   virtual void deactivate(InstanceId instanceId) = 0;
   virtual void loop() = 0;
   virtual CommandStatus dispatch(const DeviceCommand& command) = 0;

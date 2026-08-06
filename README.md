@@ -58,7 +58,12 @@ principles:
   records, enable/disable, rename, forget/re-pair, and delete.
 - On-demand Bluetooth LE connections through one shared NimBLE central. Up to
   four protocol-ready device sessions stay connected across navigation and
-  reconnect automatically until safely evicted or explicitly disconnected.
+  remain immediately reusable while healthy. An ownerless retained session is
+  parked after an unexpected drop instead of reconnecting indefinitely.
+- A battery-conscious runtime policy uses 0 dBm BLE transmit power, bounded
+  low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem
+  sleep, and ownerless reconnect suppression. The screen and backlight remain
+  on continuously.
 - On-device sequences with separately authored Start and Stop steps, waits,
   persistent storage, concurrent device preparation, and a hardware-button
   trigger. A partial Start failure can run Stop for cleanup and then retry

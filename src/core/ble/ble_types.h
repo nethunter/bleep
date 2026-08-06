@@ -88,7 +88,9 @@ struct ConnectPolicy {
   uint8_t directAttemptsBeforeScan = 3;
   bool alwaysDirect = false;
   ConnectionParameters setupParameters = {6, 12, 0, 200};
-  ConnectionParameters readyParameters = {12, 24, 0, 400};
+  // Once protocol setup is complete, favor a calmer 30-50 ms interval. This
+  // remains responsive for controller commands while reducing radio wakeups.
+  ConnectionParameters readyParameters = {24, 40, 0, 400};
   const char* diagnosticTag = "ble";
 };
 

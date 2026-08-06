@@ -53,6 +53,12 @@ bool CanonBleDriver::resume(const DeviceRecord& record) {
   return true;
 }
 
+bool CanonBleDriver::retainWhileDisconnected(InstanceId instanceId) const {
+  const Session* session = sessionFor(instanceId);
+  return session != nullptr && session->client.state().phase ==
+                                   canon_ble::CanonBleState::Phase::PoweredOff;
+}
+
 void CanonBleDriver::deactivate(InstanceId instanceId) {
   Session* session = sessionFor(instanceId);
   if (session != nullptr) {
