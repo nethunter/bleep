@@ -230,7 +230,7 @@ Opening an HA screen or preparing an HA scene target acquires the shared
 `HomeAssistantRuntime`. It joins Wi-Fi, authenticates `/api/websocket`, fetches
 each active entity's initial state through REST, and installs a
 `subscribe_trigger` state subscription containing only active entity IDs.
-Callbacks copy at most two 4096-byte frames; the main loop parses them with
+Callbacks copy at most two 2048-byte frames; the main loop parses them with
 ArduinoJson, mutates state, sends service calls, and updates LVGL. Malformed,
 oversized, or dropped frames mark state unknown and schedule a bounded REST
 refresh. When a subscribed confirmation has not arrived after five seconds,
@@ -248,7 +248,7 @@ Before that ordering pass, preparation evicts every idle retained HA session so
 navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
 Pending HA work makes preparation fail safely. Action execution still follows
 the authored order after all targets prepare. The LVGL pool is held to 76 KiB
-and the target keeps two 20-row DMA display strips, returning 42.5 KiB of
+and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
 static SRAM compared with the earlier 96 KiB/40-row configuration. The full
 simulator flow is the regression gate for the LVGL allocation budget. HA keeps
 two 2 KiB WebSocket frame slots; oversized state events intentionally become
@@ -266,8 +266,9 @@ extend the common motion UI without leaking into other drivers.
 
 ### UI allocation optimization
 
-Home and Devices remain resident. Device screens, management overlays, and
-keyboards are created on entry and deleted after navigation leaves them.
+Home and the Devices shell remain resident. Device rows, device screens,
+management overlays, and keyboards are created on entry and deleted after
+navigation leaves them.
 Device and transport state remains owned outside LVGL so destroying a view
 never discards protocol state.
 

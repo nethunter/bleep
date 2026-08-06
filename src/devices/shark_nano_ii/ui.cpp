@@ -351,6 +351,7 @@ void cancelPositioning() { closeSetOverlay(false); }
 
 void ensureScrim();
 void buildSetOverlay();
+void showConnectedMain(int nextMain);
 
 void openSetOverlay(int slot) {
   if (slot < 0 || slot >= shark::kKeypointCount) {
@@ -386,13 +387,11 @@ void onScreenGesture(lv_event_t* e) {
   lv_obj_t* scr = lv_event_get_current_target(e);
   if (scr == scrKeys && dir == LV_DIR_RIGHT) {
     cancelPositioning();
-    currentMain = 1;
     lastSwipeMs = millis();
-    lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+    showConnectedMain(1);
   } else if (scr == scrRun && dir == LV_DIR_LEFT) {
-    currentMain = 0;
     lastSwipeMs = millis();
-    lv_scr_load_anim(scrKeys, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+    showConnectedMain(0);
   }
 }
 
@@ -1190,14 +1189,7 @@ void refreshModal(const shark::SharkClient::State& s) {
   lv_label_set_text(modalPresence, s.present[modalSlot] ? "configured" : "not set");
 }
 
-void ensureConnectedScreens() {
-  buildKeysScreen();
-  buildRunScreen();
-}
-
-void clearScreenPointers() {
-  scrConnect = nullptr;
-
+void clearKeysPointers() {
   scrKeys = nullptr;
   keysHeader = nullptr;
   keyList = nullptr;
@@ -1207,7 +1199,9 @@ void clearScreenPointers() {
     keyLabels[i] = nullptr;
     gearButtons[i] = nullptr;
   }
+}
 
+void clearRunPointers() {
   scrRun = nullptr;
   runHeader = nullptr;
   runBar = nullptr;
@@ -1218,6 +1212,43 @@ void clearScreenPointers() {
   dirBtn = nullptr;
   loopLabel = nullptr;
   dirLabel = nullptr;
+}
+
+void destroyKeysScreen() {
+  if (scrKeys != nullptr && lv_scr_act() != scrKeys) {
+    lv_obj_del(scrKeys);
+    clearKeysPointers();
+  }
+}
+
+void destroyRunScreen() {
+  if (scrRun != nullptr && lv_scr_act() != scrRun) {
+    lv_obj_del(scrRun);
+    clearRunPointers();
+  }
+}
+
+void showConnectedMain(int nextMain) {
+  currentMain = nextMain == 1 ? 1 : 0;
+  if (currentMain == 1) {
+    buildRunScreen();
+    lv_scr_load(scrRun);
+    destroyKeysScreen();
+  } else {
+    buildKeysScreen();
+    lv_scr_load(scrKeys);
+    destroyRunScreen();
+  }
+  if (scrConnect != nullptr && lv_scr_act() != scrConnect) {
+    pairingScreen.destroy();
+    scrConnect = nullptr;
+  }
+}
+
+void clearScreenPointers() {
+  scrConnect = nullptr;
+  clearKeysPointers();
+  clearRunPointers();
 }
 
 void destroyIdleScreens() {
@@ -1246,10 +1277,9 @@ void destroyIdleScreens() {
 
 void showScreenForState(const shark::SharkClient::State& s) {
   if (s.link == Link::Connected) {
-    ensureConnectedScreens();
     lv_obj_t* target = (currentMain == 1) ? scrRun : scrKeys;
     if (lv_scr_act() != target) {
-      lv_scr_load(target);
+      showConnectedMain(currentMain);
     }
   } else {
     if (modalOpen) {
@@ -1261,6 +1291,8 @@ void showScreenForState(const shark::SharkClient::State& s) {
     buildConnectScreen();
     if (lv_scr_act() != scrConnect) {
       lv_scr_load(scrConnect);
+      destroyKeysScreen();
+      destroyRunScreen();
     }
   }
 }
@@ -1345,9 +1377,7 @@ void handleShortPress() {
     advanceRunState();
     return;
   }
-  ensureConnectedScreens();
-  currentMain = 1;
-  lv_scr_load_anim(scrRun, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+  showConnectedMain(1);
 }
 
 void handleLongPress() {
@@ -1365,9 +1395,7 @@ void handleLongPress() {
 
 #ifdef UI_SIMULATOR
 void simShowKeypoints() {
-  ensureConnectedScreens();
-  currentMain = 0;
-  lv_scr_load(scrKeys);
+  showConnectedMain(0);
 }
 
 void simShowKeypointSettings(int slot) { openModal(slot); }

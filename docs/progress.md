@@ -1637,3 +1637,31 @@ Record values with the exact build environment and commit/worktree state.
   Configuration status-response decoding and reset-advertisement verification
   are not yet implemented, so support stays Experimental and local removal is
   not evidence that a fixture left the mesh.
+
+### 2026-08-05: Mixed BLE/Home Assistant SRAM recovery
+
+- Reproduced the Amaran-era mixed-sequence regression under UART. Starting
+  Canon Smart, Tascam X8, and Home Assistant logged `BLE_INIT: Malloc failed`,
+  timed Wi-Fi out, and reached only 2,972 bytes minimum free heap. The failure
+  was SRAM exhaustion, not the four-link BLE slot limit.
+- Restored the 76 KiB LVGL pool and changed the simulator to use that exact
+  target allocation. Device rows now exist only while Devices is visible, and
+  Shark creates only its active Keys or Run screen and destroys its inactive
+  pairing/main view. The maximum twelve-device simulator completed every
+  capture at 76 KiB, including all Shark overlays and sequence/device-control
+  paths; sequence Stop settings retained 35,584 bytes free.
+- Reduced the two DMA display strips from 20 to 15 rows, preserving double
+  buffering and dividing the 240-line panel into sixteen equal flushes. The
+  combined static SRAM recovery is 25,208 bytes: `crowpanel_128` fell from
+  188,484 to 163,276 bytes RAM. Its flash use is 1,717,284 bytes.
+- Native tests passed 41/41. `ui_sim`, `crowpanel_128`,
+  `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, `tascam_x8`,
+  `home_assistant`, and `amaran_light` all built. Their RAM results were
+  163,276, 163,276, 161,628, 160,636, 160,548, 160,156, and 154,940 bytes,
+  respectively.
+- Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image
+  hash verification passed. The optimized image booted at 130,372 bytes free
+  heap with a 127,896-byte initial minimum, versus about 105 KiB free on the
+  failing image. No sequence was opened during the post-flash monitor window,
+  so the exact Canon + Tascam + HA readiness/command run and physical review of
+  the 15-row display flush remain operator-pending hardware checks.

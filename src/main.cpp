@@ -66,8 +66,9 @@ constexpr uint32_t i2cFreq = 400000;
 constexpr uint16_t screenWidth = 240;
 constexpr uint16_t screenHeight = 240;
 // Keep DMA double buffering, but use narrow partial-render strips so the
-// ESP32-C3 can initialize Wi-Fi while two BLE links remain active.
-constexpr uint16_t drawBufferRows = 20;
+// ESP32-C3 can initialize Wi-Fi while concurrent BLE links remain active.
+// Fifteen rows divides the 240-line panel evenly into 16 flushes.
+constexpr uint16_t drawBufferRows = 15;
 constexpr uint32_t buttonDebounceMs = 35;
 constexpr uint32_t buttonLongPressMs = 700;
 }  // namespace board

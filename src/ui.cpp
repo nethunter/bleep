@@ -340,6 +340,12 @@ void refreshDevices() {
   }
 }
 
+void releaseDeviceRows() {
+  if (deviceList != nullptr) {
+    lv_obj_clean(deviceList);
+  }
+}
+
 void onShowDevices(lv_event_t*) { showDevices(); }
 void onShowHome(lv_event_t*) { showHome(); }
 void onShowScenes(lv_event_t*) { scene_ui::show(); }
@@ -778,7 +784,6 @@ void init() {
   buildHome();
   buildDevices();
   buildPortal();
-  refreshDevices();
   lv_scr_load(scrHome);
 }
 
@@ -971,6 +976,7 @@ void showHome() {
   closeDeviceModal();
   closeRename();
   closeAddPicker();
+  releaseDeviceRows();
   screen = Screen::Home;
   lv_scr_load(scrHome);
   releaseDeviceUis();
@@ -1026,6 +1032,7 @@ void showPortal() {
   if (!portal::begin()) {
     return;
   }
+  releaseDeviceRows();
   screen = Screen::Portal;
   refreshPortal();
   lv_scr_load(scrPortal);
@@ -1037,6 +1044,7 @@ void showDevice(studio::InstanceId instanceId) {
   if (record == nullptr || !record->enabled) {
     return;
   }
+  releaseDeviceRows();
   switch (record->driverId) {
 #if CONFIG_DRIVER_AMARAN_LIGHT
     case studio::DriverId::AmaranLight:
