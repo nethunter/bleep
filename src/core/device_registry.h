@@ -27,6 +27,8 @@ class DeviceRegistry {
 
   RegistryStatus add(DriverId driverId, const char* displayName, uint8_t maxForDriver,
                      InstanceId& outId);
+  RegistryStatus commitPrepared(const DeviceRecord& record,
+                                uint8_t maxForDriver);
   RegistryStatus remove(InstanceId instanceId);
   RegistryStatus rename(InstanceId instanceId, const char* displayName);
   RegistryStatus setEnabled(InstanceId instanceId, bool enabled);

@@ -79,6 +79,33 @@ RegistryStatus DeviceRegistry::add(DriverId driverId, const char* displayName,
   return RegistryStatus::Ok;
 }
 
+RegistryStatus DeviceRegistry::commitPrepared(const DeviceRecord& record,
+                                              uint8_t maxForDriver) {
+  if (record.instanceId == kInvalidInstanceId ||
+      record.driverId == DriverId::Unknown || record.displayName[0] == '\0' ||
+      maxForDriver == 0) {
+    return RegistryStatus::Invalid;
+  }
+  if (count_ >= capacity()) {
+    return RegistryStatus::Full;
+  }
+  if (find(record.instanceId) != nullptr ||
+      countByDriver(record.driverId) >= maxForDriver) {
+    return RegistryStatus::DuplicateDriver;
+  }
+  records_[count_++] = record;
+  if (nextInstanceId_ <= record.instanceId) {
+    nextInstanceId_ = record.instanceId + 1;
+    if (nextInstanceId_ == kInvalidInstanceId) {
+      --count_;
+      records_[count_] = DeviceRecord{};
+      return RegistryStatus::Invalid;
+    }
+  }
+  initialized_ = true;
+  return RegistryStatus::Ok;
+}
+
 RegistryStatus DeviceRegistry::remove(InstanceId instanceId) {
   for (size_t i = 0; i < count_; ++i) {
     if (records_[i].instanceId != instanceId) {

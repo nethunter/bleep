@@ -63,6 +63,14 @@ void refresh() {
   const auto* state = static_cast<const canon_trigger::CanonTriggerState*>(
       studio::devices().specializedState(instanceId));
 
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    lv_label_set_text(statusLabel, "COULDN'T SAVE");
+    lv_obj_clear_state(triggerButton, LV_STATE_DISABLED);
+    lv_obj_set_style_bg_color(triggerButton, lv_color_hex(kAccent), 0);
+    lv_label_set_text(triggerLabel, "RETRY");
+    return;
+  }
+
   char text[64];
   if (state != nullptr && state->triggerPending) {
     std::snprintf(text, sizeof(text), "SENDING TRIGGER...");
@@ -92,6 +100,10 @@ void onBack(lv_event_t*) {
 }
 
 void triggerRecord() {
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    studio::devices().retryPendingAdd(instanceId);
+    return;
+  }
   if (studio::devices().runtimeState(instanceId).link !=
       studio::LinkState::Connected) {
     return;

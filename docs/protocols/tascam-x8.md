@@ -28,7 +28,11 @@ These describe the Bluetooth module, not the recorder firmware.
 
 ## Discovery and connection
 
-- The scan response name is `Portacapture X8`.
+- The original capture's scan response name is `Portacapture X8`. A live
+  2026-08-06 AK-BT1 advertisement instead used the module-derived local name
+  `ANNA-B1-BC5A07` while still advertising the custom primary service below.
+  Discovery therefore treats the service UUID as authoritative and retains the
+  product name only as a compatibility fallback.
 - The captured address is public, but implementations must retain the
   advertised address type rather than assume it.
 - No Security Manager Protocol exchange or encrypted ATT traffic appears in

@@ -419,7 +419,13 @@ void advanceRunState() {
 
 void onRunAction(lv_event_t*) { advanceRunState(); }
 
-void onRepair(lv_event_t*) { gShark.forgetDevice(); }
+void onRepair(lv_event_t*) {
+  if (studio::devices().pendingAddCommitFailed(activeInstance)) {
+    studio::devices().retryPendingAdd(activeInstance);
+    return;
+  }
+  gShark.forgetDevice();
+}
 void onBack(lv_event_t*) {
   hide();
   ui::showDeviceParent();
@@ -1276,7 +1282,16 @@ void destroyIdleScreens() {
 }
 
 void showScreenForState(const shark::SharkClient::State& s) {
-  if (s.link == Link::Connected) {
+  if (studio::devices().pendingAddCommitFailed(activeInstance)) {
+    buildConnectScreen();
+    pairingScreen.setStatus("Couldn't save", "Retry to add this device",
+                            false, true, "Retry");
+    if (lv_scr_act() != scrConnect) {
+      lv_scr_load(scrConnect);
+      destroyKeysScreen();
+      destroyRunScreen();
+    }
+  } else if (s.link == Link::Connected) {
     lv_obj_t* target = (currentMain == 1) ? scrRun : scrKeys;
     if (lv_scr_act() != target) {
       showConnectedMain(currentMain);

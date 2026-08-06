@@ -89,6 +89,12 @@ const void* TascamX8Driver::specializedState(InstanceId instanceId) const {
   return instanceId == session_.instanceId ? &session_.client.state() : nullptr;
 }
 
+void TascamX8Driver::cancelOnboarding(const DeviceRecord& record) {
+  if (session_.instanceId == record.instanceId) {
+    session_.client.forgetDevice();
+  }
+}
+
 bool TascamX8Driver::consumePairingUpdate(InstanceId instanceId,
                                           DeviceRecord& record) {
   char address[kBleAddressCapacity] = "";

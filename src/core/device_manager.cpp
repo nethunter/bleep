@@ -158,7 +158,7 @@ void DeviceManager::loop() {
 
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
     ActiveSlot& slot = activeSlots_[i];
-    DeviceRecord* activeRecord = registry_.find(slot.instanceId);
+    DeviceRecord* activeRecord = mutableRecord(slot.instanceId);
     if (activeRecord == nullptr) {
       continue;
     }
@@ -171,9 +171,14 @@ void DeviceManager::loop() {
     if (runtime.protocolReady) {
       slot.retained = true;
     }
-    if (activeDriver->consumePairingUpdate(activeRecord->instanceId,
-                                           *activeRecord)) {
+    const bool pairingChanged = activeDriver->consumePairingUpdate(
+        activeRecord->instanceId, *activeRecord);
+    if (pairingChanged && !isPendingAdd(activeRecord->instanceId)) {
       save();
+    }
+    if (isPendingAdd(activeRecord->instanceId) && activeRecord->paired &&
+        runtime.protocolReady && !pendingCommitFailed_) {
+      commitPendingAdd();
     }
     if (slot.owners == 0 && slot.retained &&
         runtime.link == LinkState::Disconnected &&
@@ -197,6 +202,10 @@ void DeviceManager::loop() {
 
 RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
                                   InstanceId& outId) {
+  if (pendingAdd() != kInvalidInstanceId) {
+    outId = kInvalidInstanceId;
+    return RegistryStatus::Invalid;
+  }
   const DriverDescriptor* descriptor = DriverCatalog::find(driverId);
   if (descriptor == nullptr) {
     outId = kInvalidInstanceId;
@@ -210,6 +219,85 @@ RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
     return RegistryStatus::Invalid;
   }
   return status;
+}
+
+RegistryStatus DeviceManager::beginAdd(DriverId driverId,
+                                       const char* displayName,
+                                       InstanceId& outId) {
+  outId = kInvalidInstanceId;
+  if (pendingAdd() != kInvalidInstanceId || displayName == nullptr ||
+      displayName[0] == '\0') {
+    return RegistryStatus::Invalid;
+  }
+  const DriverDescriptor* descriptor = DriverCatalog::find(driverId);
+  if (descriptor == nullptr || !descriptor->discoverable ||
+      driverId == DriverId::HomeAssistant) {
+    return RegistryStatus::Invalid;
+  }
+  if (registry_.count() >= registry_.capacity()) {
+    return RegistryStatus::Full;
+  }
+  if (registry_.countByDriver(driverId) >= descriptor->maxInstances) {
+    return RegistryStatus::DuplicateDriver;
+  }
+  pendingRecord_ = DeviceRecord{};
+  pendingRecord_.instanceId = registry_.nextInstanceId();
+  pendingRecord_.driverId = driverId;
+  pendingRecord_.enabled = true;
+  std::strncpy(pendingRecord_.displayName, displayName,
+               sizeof(pendingRecord_.displayName) - 1);
+  outId = pendingRecord_.instanceId;
+  pendingCommitFailed_ = false;
+  return RegistryStatus::Ok;
+}
+
+bool DeviceManager::retryPendingAdd(InstanceId instanceId) {
+  if (!isPendingAdd(instanceId) || !pendingCommitFailed_) {
+    return false;
+  }
+  pendingCommitFailed_ = false;
+  return commitPendingAdd();
+}
+
+RegistryStatus DeviceManager::cancelPendingAdd(InstanceId instanceId) {
+  if (!isPendingAdd(instanceId)) {
+    return RegistryStatus::NotFound;
+  }
+  DeviceDriver* driver = driverFor(pendingRecord_.driverId);
+  if (driver != nullptr) {
+    driver->cancelOnboarding(pendingRecord_);
+  }
+  if (isActive(instanceId)) {
+    deactivate(instanceId);
+  }
+  pendingRecord_ = DeviceRecord{};
+  pendingCommitFailed_ = false;
+  return RegistryStatus::Ok;
+}
+
+bool DeviceManager::commitPendingAdd() {
+  if (pendingAdd() == kInvalidInstanceId || !pendingRecord_.paired ||
+      !runtimeState(pendingRecord_.instanceId).protocolReady) {
+    return false;
+  }
+  const DriverDescriptor* descriptor =
+      DriverCatalog::find(pendingRecord_.driverId);
+  if (descriptor == nullptr) {
+    return false;
+  }
+  const DeviceRegistry previous = registry_;
+  if (registry_.commitPrepared(pendingRecord_, descriptor->maxInstances) !=
+      RegistryStatus::Ok) {
+    return false;
+  }
+  if (!save()) {
+    registry_ = previous;
+    pendingCommitFailed_ = true;
+    return false;
+  }
+  pendingRecord_ = DeviceRecord{};
+  pendingCommitFailed_ = false;
+  return true;
 }
 
 RegistryStatus DeviceManager::remove(InstanceId instanceId) {
@@ -367,7 +455,7 @@ RegistryStatus DeviceManager::replaceHomeAssistantEntities(
 }
 
 bool DeviceManager::acquire(InstanceId instanceId, ConnectionOwner owner) {
-  DeviceRecord* record = registry_.find(instanceId);
+  DeviceRecord* record = mutableRecord(instanceId);
   if (record == nullptr || !record->enabled) {
     return false;
   }
@@ -462,11 +550,12 @@ void DeviceManager::deactivate(InstanceId instanceId) {
   if (!isActive(instanceId)) {
     return;
   }
-  DeviceRecord* record = registry_.find(instanceId);
+  DeviceRecord* record = mutableRecord(instanceId);
   if (record != nullptr) {
     DeviceDriver* driver = driverFor(record->driverId);
     if (driver != nullptr) {
-      if (driver->consumePairingUpdate(instanceId, *record)) {
+      if (driver->consumePairingUpdate(instanceId, *record) &&
+          !isPendingAdd(instanceId)) {
         save();
       }
       driver->deactivate(instanceId);
@@ -491,7 +580,7 @@ bool DeviceManager::enqueue(DeviceCommand command) {
 }
 
 DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
-  const DeviceRecord* record = registry_.find(instanceId);
+  const DeviceRecord* record = find(instanceId);
   if (record == nullptr || !isActive(instanceId)) {
     return DeviceRuntimeState{};
   }
@@ -501,7 +590,7 @@ DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
 }
 
 InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
-  const DeviceRecord* record = registry_.find(instanceId);
+  const DeviceRecord* record = find(instanceId);
   if (record == nullptr) {
     return {};
   }
@@ -545,7 +634,7 @@ InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
 }
 
 const void* DeviceManager::specializedState(InstanceId instanceId) const {
-  const DeviceRecord* record = registry_.find(instanceId);
+  const DeviceRecord* record = find(instanceId);
   if (record == nullptr || !isActive(instanceId)) {
     return nullptr;
   }
@@ -562,10 +651,15 @@ DeviceDriver* DeviceManager::driverFor(DriverId driverId) const {
   return nullptr;
 }
 
+DeviceRecord* DeviceManager::mutableRecord(InstanceId instanceId) {
+  return isPendingAdd(instanceId) ? &pendingRecord_
+                                  : registry_.find(instanceId);
+}
+
 bool DeviceManager::save() { return store_.save(registry_); }
 
 CommandStatus DeviceManager::dispatch(const DeviceCommand& command) {
-  DeviceRecord* record = registry_.find(command.instanceId);
+  DeviceRecord* record = mutableRecord(command.instanceId);
   if (record == nullptr) {
     return CommandStatus::InvalidInstance;
   }

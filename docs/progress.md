@@ -21,7 +21,7 @@ short, factual, and reproducible.
   aliases for persisted records. Crypto, persistence, parameterized
   scenes, and UI are implemented; real-fixture configuration status and safe
   reset gates remain open.
-- Last updated: 2026-08-05.
+- Last updated: 2026-08-06.
 
 ## Completed planning
 
@@ -1800,3 +1800,51 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240` with image
   hash verification and a hard reset. Scanning the displayed QR and confirming
   the phone's automatic sign-on sheet remain operator-pending hardware checks.
+
+### 2026-08-06: Transactional Add-device pairing
+
+- Added ADR-026 and changed **Add device** so choosing a driver immediately
+  opens its pairing UI. The candidate record remains outside registry
+  enumeration and the checked NVS blob until pairing identity exists, the
+  driver is protocol-ready, and persistence succeeds. Back or hardware
+  long-press cancels the candidate and runs driver-specific bond/peer/mesh
+  cleanup; pairing and save errors remain retryable.
+- Added native coverage for identity-before-readiness, successful commit,
+  cancellation and restart, simultaneous-draft rejection, persistence-write
+  failure, and retry. Native passed 45/45.
+- The target-sized `ui_sim` build and complete capture program passed. Its new
+  Canon Trigger regression verifies picker-to-pairing navigation, unchanged
+  registry count during pairing, long-press cancellation, and protocol-ready
+  commit into controls. `03a_add_device_pairing.png` and
+  `03b_add_device_ready.png` were visually checked on the 240x240 round layout;
+  the full run ended with 11,424 bytes free and 1% fragmentation.
+- All seven firmware profiles built successfully. Flash/RAM bytes were:
+  `crowpanel_128` 1,742,260 / 164,052; `crowpanel_128_roboto` 1,711,796 /
+  164,052; `canon_ble` 1,740,030 / 162,420; `canon_trigger` 1,736,462 /
+  161,412; `tascam_x8` 1,737,848 / 161,332; `home_assistant` 1,733,092 /
+  160,932; and `amaran_light` 1,697,174 / 155,740.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Physical add/pair/success, pairing-error Retry, Back cleanup, and reboot
+  during pairing remain operator-pending hardware checks.
+
+### 2026-08-06: Tascam AK-BT1 service-based discovery fix
+
+- Reproduced Add-device Tascam onboarding on the flashed panel. UART showed the
+  Tascam client remaining in `scanning`; a simultaneous CoreBluetooth scan
+  found the nearby adapter as `ANNA-B1-BC5A07` with primary service
+  `2456e1b9-26e2-8f83-e744-f34f01e9d701`. The name-only matcher therefore
+  ignored the real AK-BT1 advertisement.
+- Changed Tascam discovery to accept that exact custom service UUID as the
+  authoritative identity while retaining `Portacapture X8` as a compatibility
+  name fallback. Added a native advertisement-vector regression; native passed
+  45/45.
+- `crowpanel_128` built at 1,742,276 bytes flash / 164,052 bytes RAM and
+  `tascam_x8` at 1,737,864 / 161,332. The main image flashed successfully to
+  `/dev/cu.usbserial-211240` with hash verification and a hard reset.
+- Live post-flash onboarding discovered the adapter, queued a connection, and
+  reached physical connection, successful GATT setup, session initialization,
+  and `protocol_ready` in 4,304 ms. Three preceding controller connection
+  attempts failed and recovered automatically. This verifies real Tascam
+  Add-device pairing and transactional commit; pairing-error Retry, Back
+  cleanup, and reboot-during-pairing checks remain open.

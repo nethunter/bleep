@@ -919,6 +919,14 @@ bool handleBack() {
 }
 
 #ifdef UI_SIMULATOR
+void simChooseDriver(studio::DriverId driverId) {
+  if (mode != Mode::AddDriver || callbacks.onDriverChosen == nullptr) {
+    return;
+  }
+  callbacks.onDriverChosen(driverId);
+  hide();
+}
+
 void simShowCategory(Mode showMode) {
   Callbacks empty{};
   show(showMode, empty);

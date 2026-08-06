@@ -30,12 +30,17 @@ void enqueue(studio::CommandType type) {
 }
 
 void performPrimaryAction() {
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    studio::devices().retryPendingAdd(instanceId);
+    return;
+  }
   if (studio::devices().runtimeState(instanceId).link !=
       studio::LinkState::Connected) {
     return;
   }
   const auto* state = static_cast<const tascam_x8::TascamX8State*>(
       studio::devices().specializedState(instanceId));
+
   if (state == nullptr || state->commandPending) {
     return;
   }
@@ -84,6 +89,16 @@ void refresh() {
       studio::devices().runtimeState(instanceId);
   const auto* state = static_cast<const tascam_x8::TascamX8State*>(
       studio::devices().specializedState(instanceId));
+
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    view.status = "COULDN'T SAVE";
+    view.detail = "RETRY TO ADD DEVICE";
+    view.actionLabel = "RETRY";
+    view.actionColor = kReady;
+    view.actionEnabled = true;
+    recorder_shell::apply(view);
+    return;
+  }
 
   if (runtime.link != studio::LinkState::Connected || state == nullptr) {
     view.status = "DISCONNECTED";

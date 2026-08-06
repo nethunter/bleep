@@ -30,12 +30,24 @@ void enqueue(studio::CommandType type) {
 }
 
 void performPrimaryAction() {
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    studio::devices().retryPendingAdd(instanceId);
+    return;
+  }
+  const auto* current = static_cast<const canon_ble::CanonBleState*>(
+      studio::devices().specializedState(instanceId));
+  if (studio::devices().isPendingAdd(instanceId) && current != nullptr &&
+      current->pairingRejected) {
+    enqueue(studio::CommandType::Connect);
+    return;
+  }
   if (studio::devices().runtimeState(instanceId).link !=
       studio::LinkState::Connected) {
     return;
   }
   const auto* state = static_cast<const canon_ble::CanonBleState*>(
       studio::devices().specializedState(instanceId));
+
   if (state == nullptr ||
       state->phase != canon_ble::CanonBleState::Phase::Ready ||
       state->commandPending) {
@@ -105,6 +117,16 @@ void refresh() {
   const auto* state = static_cast<const canon_ble::CanonBleState*>(
       studio::devices().specializedState(instanceId));
 
+  if (studio::devices().pendingAddCommitFailed(instanceId)) {
+    view.status = "COULDN'T SAVE";
+    view.detail = "RETRY TO ADD DEVICE";
+    view.actionLabel = "RETRY";
+    view.actionColor = kReady;
+    view.actionEnabled = true;
+    recorder_shell::apply(view);
+    return;
+  }
+
   if (runtime.link != studio::LinkState::Connected || state == nullptr) {
     view.status = "DISCONNECTED";
     view.detail = "SMARTPHONE BLE";
@@ -126,6 +148,9 @@ void refresh() {
     } else if (state != nullptr && state->pairingRejected) {
       view.status = "PAIRING REJECTED";
       view.detail = "TRY AGAIN";
+      view.actionLabel = "RETRY";
+      view.actionColor = kReady;
+      view.actionEnabled = true;
     }
     view.powerEnabled =
         state != nullptr &&

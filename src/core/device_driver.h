@@ -26,6 +26,12 @@ class DeviceDriver {
   // Explicit user action; transports may remove controller-side bond data.
   virtual void forgetPairing(const DeviceRecord&) {}
 
+  // Abandons an uncommitted Add-device attempt. Drivers should clear any
+  // selected peer, controller bond, or provisional device-local data.
+  virtual void cancelOnboarding(const DeviceRecord& record) {
+    forgetPairing(record);
+  }
+
   // Hint used while pairing a new instance: skip peers already claimed by
   // another saved record so a second body can be discovered.
   virtual void preferSkipPeer(InstanceId /*instanceId*/,

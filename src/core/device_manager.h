@@ -24,7 +24,8 @@ class DeviceManager {
   size_t count() const { return registry_.count(); }
   const DeviceRecord* at(size_t index) const { return registry_.at(index); }
   const DeviceRecord* find(InstanceId instanceId) const {
-    return registry_.find(instanceId);
+    return isPendingAdd(instanceId) ? &pendingRecord_
+                                    : registry_.find(instanceId);
   }
   InstanceProfile profile(InstanceId instanceId) const;
   InstanceId foregroundInstance() const;
@@ -34,6 +35,18 @@ class DeviceManager {
   bool isRetained(InstanceId instanceId) const;
 
   RegistryStatus add(DriverId driverId, const char* displayName, InstanceId& outId);
+  RegistryStatus beginAdd(DriverId driverId, const char* displayName,
+                          InstanceId& outId);
+  InstanceId pendingAdd() const { return pendingRecord_.instanceId; }
+  bool isPendingAdd(InstanceId instanceId) const {
+    return instanceId != kInvalidInstanceId &&
+           pendingRecord_.instanceId == instanceId;
+  }
+  bool pendingAddCommitFailed(InstanceId instanceId) const {
+    return isPendingAdd(instanceId) && pendingCommitFailed_;
+  }
+  bool retryPendingAdd(InstanceId instanceId);
+  RegistryStatus cancelPendingAdd(InstanceId instanceId);
   RegistryStatus remove(InstanceId instanceId);
   RegistryStatus rename(InstanceId instanceId, const char* displayName);
   RegistryStatus setEnabled(InstanceId instanceId, bool enabled);
@@ -76,6 +89,8 @@ class DeviceManager {
   void touch(ActiveSlot& slot);
   static uint8_t ownerBit(ConnectionOwner owner);
   void applySkipPeers(DeviceDriver& driver, const DeviceRecord& record);
+  DeviceRecord* mutableRecord(InstanceId instanceId);
+  bool commitPendingAdd();
   bool seedInitialRegistry();
   bool save();
   CommandStatus dispatch(const DeviceCommand& command);
@@ -85,6 +100,8 @@ class DeviceManager {
   size_t driverCount_ = 0;
   ConfigStore store_;
   DeviceRegistry registry_;
+  DeviceRecord pendingRecord_;
+  bool pendingCommitFailed_ = false;
   DeviceCommandQueue commands_;
   DeviceResultQueue results_;
   ActiveSlot activeSlots_[kMaxActiveInstances] = {};

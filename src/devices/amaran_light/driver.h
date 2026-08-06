@@ -15,6 +15,9 @@ class AmaranLightDriver : public DeviceDriver {
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
   void forgetPairing(const DeviceRecord& record) override;
+  void cancelOnboarding(const DeviceRecord& record) override {
+    forgetPairing(record);
+  }
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:

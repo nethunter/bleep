@@ -116,6 +116,15 @@ void CanonTriggerDriver::forgetPairing(const DeviceRecord& record) {
   sessions_[0].client.forgetBond(record.bleAddress, record.bleAddressType);
 }
 
+void CanonTriggerDriver::cancelOnboarding(const DeviceRecord& record) {
+  Session* session = sessionFor(record.instanceId);
+  if (session != nullptr) {
+    session->client.forgetDevice();
+  } else {
+    forgetPairing(record);
+  }
+}
+
 bool CanonTriggerDriver::consumePairingUpdate(InstanceId instanceId,
                                                DeviceRecord& record) {
   Session* session = sessionFor(instanceId);

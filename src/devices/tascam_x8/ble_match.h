@@ -7,7 +7,8 @@ namespace tascam_x8 {
 
 inline bool matchesAdvertisement(
     const studio::ble::Advertisement& advertisement) {
-  return studio::ble::advertisementNameEquals(advertisement, kDeviceName);
+  return studio::ble::advertisesService(advertisement, kPrimaryServiceUuid) ||
+         studio::ble::advertisementNameEquals(advertisement, kDeviceName);
 }
 
 }  // namespace tascam_x8

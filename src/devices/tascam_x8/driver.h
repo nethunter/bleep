@@ -14,6 +14,7 @@ class TascamX8Driver : public DeviceDriver {
   CommandStatus dispatch(const DeviceCommand& command) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
+  void cancelOnboarding(const DeviceRecord& record) override;
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:

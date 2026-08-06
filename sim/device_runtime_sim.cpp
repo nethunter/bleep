@@ -288,7 +288,19 @@ class SimCanonTriggerDriver : public DeviceDriver {
   const void* specializedState(InstanceId instanceId) const override {
     return instanceId == activeInstance_ ? &state_ : nullptr;
   }
-  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
+  bool consumePairingUpdate(InstanceId instanceId,
+                            DeviceRecord& record) override {
+    if (instanceId != activeInstance_ || record.paired ||
+        state_.link != canon_trigger::CanonTriggerState::Link::Connected) {
+      return false;
+    }
+    record.paired = true;
+    std::strncpy(record.bleAddress, "22:33:44:55:66:77",
+                 sizeof(record.bleAddress) - 1);
+    std::strncpy(record.bleName, "EOS Remote",
+                 sizeof(record.bleName) - 1);
+    return true;
+  }
   canon_trigger::CanonTriggerState& state() { return state_; }
 
  private:

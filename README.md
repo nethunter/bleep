@@ -180,8 +180,10 @@ partition.
 
 ## Using the current build
 
-The panel always boots to Home. Open **Devices**, add a device from its category,
-then open that device to begin scanning or reconnecting. Pairing mode matters:
+The panel always boots to Home. Open **Devices** and choose a device from its
+category to go straight into pairing. The device appears in the saved Devices
+list only after pairing reaches protocol-ready state; Back or a failed attempt
+does not leave an unpaired record behind. Pairing mode matters:
 
 - Shark: make the slider discoverable; Ble(e)p matches service `0xFFF0` or a
   `Nano`/`Shark` advertised name.

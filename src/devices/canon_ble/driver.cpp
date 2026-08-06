@@ -147,6 +147,15 @@ void CanonBleDriver::forgetPairing(const DeviceRecord& record) {
       .forgetBond(record.bleAddress, record.bleAddressType);
 }
 
+void CanonBleDriver::cancelOnboarding(const DeviceRecord& record) {
+  Session* session = sessionFor(record.instanceId);
+  if (session != nullptr) {
+    session->client.forgetDevice();
+  } else {
+    forgetPairing(record);
+  }
+}
+
 void CanonBleDriver::preferSkipPeer(InstanceId instanceId,
                                     const char* bleAddress) {
   Session* session = sessionFor(instanceId);

@@ -197,8 +197,10 @@ Reference research:
   exposes them.
 - Required adapter: Tascam AK-BT1. The captured module identifies as a u-blox
   ANNA-B1 running `4.0.0-004T`.
-- Pairing flow: the app connects directly to the `Portacapture X8` BLE
-  advertisement; no SMP pairing or encrypted ATT exchange was observed.
+- Pairing flow: connect directly to an advertisement carrying the custom
+  Tascam primary service UUID. Observed local names include `Portacapture X8`
+  and the module-derived `ANNA-B1-…`; no SMP pairing or encrypted ATT exchange
+  was observed.
 - Protocol status: record start, record stop, COBS framing, custom GATT UUIDs,
   session keepalive, and recorder-originated start/stop transition events are
   confirmed from annotated captures. The current recording/stopped field is

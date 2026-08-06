@@ -34,6 +34,7 @@ void simShowActions(Mode mode, studio::InstanceId instanceId);
 void simShowLightColor(Mode mode, studio::InstanceId instanceId, bool rgb);
 void simSaveWait(uint32_t waitMs);
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint);
+void simChooseDriver(studio::DriverId driverId);
 #endif
 
 }  // namespace picker_shell

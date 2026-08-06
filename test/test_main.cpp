@@ -60,6 +60,9 @@ class MemoryBackend : public studio::IConfigBackend {
   }
 
   bool write(const uint8_t* data, size_t length) override {
+    if (failWrites) {
+      return false;
+    }
     if (length > sizeof(data_)) {
       return false;
     }
@@ -82,6 +85,8 @@ class MemoryBackend : public studio::IConfigBackend {
     }
     return false;
   }
+
+  bool failWrites = false;
 
  private:
   uint8_t data_[studio::ConfigStore::kMaxBlobSize] = {};
@@ -285,8 +290,22 @@ class FakeDriver : public studio::DeviceDriver {
   void forgetPairing(const studio::DeviceRecord&) override {
     ++forgetPairingCount;
   }
+  void cancelOnboarding(const studio::DeviceRecord&) override {
+    ++cancelOnboardingCount;
+  }
   bool consumePairingUpdate(studio::InstanceId,
-                            studio::DeviceRecord&) override { return false; }
+                            studio::DeviceRecord& record) override {
+    if (!pairingUpdatePending) {
+      return false;
+    }
+    pairingUpdatePending = false;
+    record.paired = pairingValue;
+    if (pairingValue) {
+      std::strcpy(record.bleAddress, "11:22:33:44:55:66");
+      std::strcpy(record.bleName, "Test device");
+    }
+    return true;
+  }
 
   bool active = false;
   bool ready = true;
@@ -309,6 +328,9 @@ class FakeDriver : public studio::DeviceDriver {
   studio::CommandType failCommand = studio::CommandType::Refresh;
   int failCommandCount = 0;
   int forgetPairingCount = 0;
+  int cancelOnboardingCount = 0;
+  bool pairingUpdatePending = false;
+  bool pairingValue = true;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
 
  private:
@@ -818,6 +840,96 @@ void test_registry_crud_and_single_shark_limit() {
       static_cast<int>(registry.remove(first)));
   TEST_ASSERT_EQUAL_UINT32(0, registry.count());
   TEST_ASSERT_TRUE(registry.initialized());
+}
+
+void test_transactional_add_commits_only_after_pairing_and_readiness() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+  const size_t initialCount = devices.count();
+
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Pending Camera", id)));
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_EQUAL_UINT32(initialCount, devices.count());
+  TEST_ASSERT_NOT_NULL(devices.find(id));
+  TEST_ASSERT_FALSE(backend.containsText("Pending Camera"));
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+
+  driver.ready = false;
+  driver.pairingUpdatePending = true;
+  devices.loop();
+  TEST_ASSERT_TRUE(devices.find(id)->paired);
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_EQUAL_UINT32(initialCount, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Pending Camera"));
+
+  driver.ready = true;
+  devices.loop();
+  TEST_ASSERT_FALSE(devices.isPendingAdd(id));
+  TEST_ASSERT_EQUAL_UINT32(initialCount + 1, devices.count());
+  TEST_ASSERT_TRUE(backend.containsText("Pending Camera"));
+  TEST_ASSERT_TRUE(devices.ownedBy(id, studio::ConnectionOwner::Foreground));
+}
+
+void test_transactional_add_cancel_and_failed_save_do_not_register_device() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+  const size_t initialCount = devices.count();
+
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Canceled Camera", id)));
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Second Draft", id)));
+  const studio::InstanceId canceledId = devices.pendingAdd();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.cancelPendingAdd(canceledId)));
+  TEST_ASSERT_EQUAL_INT(1, driver.cancelOnboardingCount);
+  TEST_ASSERT_FALSE(devices.isActive(canceledId));
+  TEST_ASSERT_EQUAL_UINT32(initialCount, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Canceled Camera"));
+
+  studio::DeviceManager restarted(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(restarted.begin());
+  TEST_ASSERT_EQUAL_UINT32(initialCount, restarted.count());
+
+  studio::InstanceId failedId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Save Retry Camera", failedId)));
+  TEST_ASSERT_TRUE(
+      devices.acquire(failedId, studio::ConnectionOwner::Foreground));
+  backend.failWrites = true;
+  driver.ready = true;
+  driver.pairingUpdatePending = true;
+  devices.loop();
+  TEST_ASSERT_TRUE(devices.pendingAddCommitFailed(failedId));
+  TEST_ASSERT_EQUAL_UINT32(initialCount, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Save Retry Camera"));
+
+  backend.failWrites = false;
+  TEST_ASSERT_TRUE(devices.retryPendingAdd(failedId));
+  TEST_ASSERT_FALSE(devices.isPendingAdd(failedId));
+  TEST_ASSERT_EQUAL_UINT32(initialCount + 1, devices.count());
+  TEST_ASSERT_TRUE(backend.containsText("Save Retry Camera"));
 }
 
 void test_config_round_trip_preserves_dormant_records_and_detects_corruption() {
@@ -2048,6 +2160,13 @@ void test_ble_device_advertisement_matchers() {
   const studio::ble::Advertisement tascamAdvertisement =
       bleAdvertisement("22:33:44:55:66:77", tascam_x8::kDeviceName, 0x1800);
   TEST_ASSERT_TRUE(tascam_x8::matchesAdvertisement(tascamAdvertisement));
+  const uint8_t tascamUuid[16] = {
+      0x24, 0x56, 0xe1, 0xb9, 0x26, 0xe2, 0x8f, 0x83,
+      0xe7, 0x44, 0xf3, 0x4f, 0x01, 0xe9, 0xd7, 0x01};
+  TEST_ASSERT_TRUE(
+      tascam_x8::matchesAdvertisement(bleAdvertisement128(tascamUuid)));
+  TEST_ASSERT_FALSE(tascam_x8::matchesAdvertisement(
+      bleAdvertisement("22:33:44:55:66:77", "ANNA-B1-BC5A07", 0x1800)));
   const studio::ble::Advertisement unprovisionedAmaran =
       bleAdvertisement("44:55:66:77:88:99", "Amaran", 0x1827);
   TEST_ASSERT_TRUE(studio::ble::advertisesService(unprovisionedAmaran, "1827"));
@@ -2189,6 +2308,8 @@ int main(int, char**) {
   RUN_TEST(test_tascam_scanner_and_confirmed_state);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
+  RUN_TEST(test_transactional_add_commits_only_after_pairing_and_readiness);
+  RUN_TEST(test_transactional_add_cancel_and_failed_save_do_not_register_device);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);

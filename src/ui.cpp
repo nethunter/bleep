@@ -374,8 +374,17 @@ void onDriverChosen(studio::DriverId driverId) {
     return;
   }
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
-  studio::devices().add(descriptor->id, descriptor->model, instanceId);
-  refreshDevices();
+  if (studio::devices().beginAdd(descriptor->id, descriptor->model,
+                                 instanceId) != studio::RegistryStatus::Ok) {
+    refreshDevices();
+    return;
+  }
+  showDevice(instanceId);
+  if (!studio::devices().ownedBy(instanceId,
+                                 studio::ConnectionOwner::Foreground)) {
+    studio::devices().cancelPendingAdd(instanceId);
+    showDevices();
+  }
 }
 
 void onAddDevice(lv_event_t*) {
@@ -1112,6 +1121,10 @@ void showDeviceParent() {
     scene_ui::returnFromDeviceControl();
     return;
   }
+  const studio::InstanceId pending = studio::devices().pendingAdd();
+  if (pending != studio::kInvalidInstanceId) {
+    studio::devices().cancelPendingAdd(pending);
+  }
   showDevices();
 }
 
@@ -1167,6 +1180,7 @@ void simShowAddDevice() {
     lv_obj_add_flag(addButton, LV_OBJ_FLAG_HIDDEN);
   }
   picker_shell::Callbacks callbacks;
+  callbacks.onDriverChosen = onDriverChosen;
   callbacks.onClosed = onAddPickerClosed;
   picker_shell::show(picker_shell::Mode::AddDriver, callbacks);
 }

@@ -55,7 +55,7 @@ void markDirty(lv_event_t*){if(syncingControls)return;captureDraft();dirty=true;
 void setMode(bool rgb){if(rgb==rgbMode)return;captureDraft();rgbMode=rgb;renderMode();restoreDraft();dirty=true;applyAt=millis()+350;}
 void onCct(lv_event_t*){setMode(false);} void onRgb(lv_event_t*){setMode(true);}
 void onPower(lv_event_t*){const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));queue(s&&s->on?studio::CommandType::TurnOff:studio::CommandType::TurnOn);}
-void onRetry(lv_event_t*){queue(studio::CommandType::Connect);}
+void onRetry(lv_event_t*){if(studio::devices().pendingAddCommitFailed(instanceId))studio::devices().retryPendingAdd(instanceId);else queue(studio::CommandType::Connect);}
 void onBack(lv_event_t*){hide();ui::showDeviceParent();}
 lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj_t*& slider){
   lv_obj_t* row=lv_obj_create(parent);lv_obj_set_size(row,166,28);lv_obj_set_style_bg_opa(row,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(row,0,0);lv_obj_set_style_pad_all(row,0,0);
@@ -81,6 +81,7 @@ void ensure(){if(screen)return;screen=lv_obj_create(nullptr);lv_obj_set_style_bg
 }
 const char* phase(const amaran_light::AmaranLightState* s){if(!s)return "Unavailable";switch(s->phase){case amaran_light::AmaranLightState::Phase::Unprovisioned:return "Not provisioned";case amaran_light::AmaranLightState::Phase::Scanning:return "Scanning for light";case amaran_light::AmaranLightState::Phase::Provisioning:return "Provisioning";case amaran_light::AmaranLightState::Phase::PendingConfig:return "Configuring mesh";case amaran_light::AmaranLightState::Phase::ConnectingProxy:return "Connecting proxy";case amaran_light::AmaranLightState::Phase::Ready:return s->optimistic?"Ready / optimistic":"Ready / state unknown";case amaran_light::AmaranLightState::Phase::Failed:return s->error[0]?s->error:"Failed";}return "Unknown";}
 void showForState(const amaran_light::AmaranLightState* s){
+  if(studio::devices().pendingAddCommitFailed(instanceId)){pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Amaran Light");pairingScreen.setStatus("Couldn't save","Retry to add this device",false,true,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());return;}
   if(s&&s->phase==amaran_light::AmaranLightState::Phase::Ready){if(lv_scr_act()!=screen)lv_scr_load(screen);return;}
   pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Amaran Light");
   const bool failed=s&&s->phase==amaran_light::AmaranLightState::Phase::Failed;

@@ -481,6 +481,28 @@ the replacement.
   powered endurance run. Do not claim the D1 failure is fixed from builds or
   short functional tests.
 
+## ADR-026: Add-device pairing is transactional
+
+- Status: Accepted
+- Decision: Selecting a compiled driver from **Add device** immediately opens
+  that driver's pairing flow. The candidate instance remains provisional and
+  is excluded from registry enumeration, scenes, and the checked NVS device
+  blob until the driver has supplied pairing identity, reached protocol-ready
+  state, and the updated blob has been written successfully.
+- Failure and navigation: A definite pairing error stays in the provisional
+  flow with Retry. Back, hardware long-press, activation failure, or explicit
+  cancellation deactivates the transport and asks the driver to clear any
+  selected peer, controller bond, or provisional mesh-node data. Reboot during
+  pairing restores only the previously committed registry.
+- Success: A successful commit preserves the provisional instance ID and keeps
+  the user on the ready device controls. A failed persistence write remains a
+  provisional error with Retry rather than exposing an unsaved device as
+  configured. Existing committed records, reconnects, and Portal-managed Home
+  Assistant entities retain their prior lifecycle.
+- Persistence: The device schema is unchanged. Prepared records are inserted
+  into the in-memory registry only at commit, with existing capacity,
+  per-driver limits, and monotonic committed instance IDs enforced.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

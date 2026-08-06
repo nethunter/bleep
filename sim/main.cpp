@@ -222,14 +222,46 @@ int main() {
   if (!capture("03_add_device")) {
     return 1;
   }
-  ui::showDevices();
-  canonTriggerId = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::CanonTrigger, "EOS R6 Trigger",
-                        canonTriggerId);
-  if (canonTriggerId == studio::kInvalidInstanceId) {
-    std::fprintf(stderr, "Failed to restore maximum device configuration\n");
+  const size_t countBeforeOnboarding = studio::devices().count();
+  picker_shell::simChooseDriver(studio::DriverId::CanonTrigger);
+  const studio::InstanceId canceledAdd = studio::devices().pendingAdd();
+  if (canceledAdd == studio::kInvalidInstanceId ||
+      studio::devices().count() != countBeforeOnboarding ||
+      !studio::devices().ownedBy(canceledAdd,
+                                 studio::ConnectionOwner::Foreground)) {
+    std::fprintf(stderr, "Add device did not open provisional pairing\n");
     return 1;
   }
+  if (!capture("03a_add_device_pairing")) {
+    return 1;
+  }
+  ui::handleLongPress();
+  if (studio::devices().pendingAdd() != studio::kInvalidInstanceId ||
+      studio::devices().count() != countBeforeOnboarding) {
+    std::fprintf(stderr, "Back did not discard provisional device\n");
+    return 1;
+  }
+
+  ui::simShowAddDevice();
+  picker_shell::simChooseDriver(studio::DriverId::CanonTrigger);
+  canonTriggerId = studio::devices().pendingAdd();
+  studio::simSetCanonTriggerConnectedState();
+  studio::devices().loop();
+  ui::tick();
+  if (canonTriggerId == studio::kInvalidInstanceId ||
+      studio::devices().pendingAdd() != studio::kInvalidInstanceId ||
+      studio::devices().count() != countBeforeOnboarding + 1) {
+    std::fprintf(stderr, "Ready pairing did not commit provisional device\n");
+    return 1;
+  }
+  // Reload the now-committed instance so the headless full-refresh framebuffer
+  // redraws static chrome as well as the status/button changes.
+  ui::showDevices();
+  ui::showDevice(canonTriggerId);
+  if (!capture("03b_add_device_ready")) {
+    return 1;
+  }
+  ui::showDevices();
 
   const studio::InstanceId id =
       studio::devices().count() > 0 ? studio::devices().at(0)->instanceId
