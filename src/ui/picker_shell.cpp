@@ -20,7 +20,7 @@ constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr uint32_t kColOk = 0x3DDC97;
 
-enum class Level : uint8_t { Category, DeviceList, Action, LightColor };
+enum class Level : uint8_t { Category, DeviceList, Action, Wait, LightColor };
 
 Mode mode = Mode::AddDriver;
 Level level = Level::Category;
@@ -37,6 +37,9 @@ lv_obj_t* parameter0 = nullptr;
 lv_obj_t* parameter1 = nullptr;
 lv_obj_t* parameter2 = nullptr;
 lv_obj_t* colorWheel = nullptr;
+lv_obj_t* waitSpinbox = nullptr;
+studio::SceneStep initialSceneStep{};
+bool editingSceneStep = false;
 bool lightEditorRgb = false;
 int32_t draftCctKelvin = 5600;
 int32_t draftCctBrightness = 50;
@@ -236,13 +239,32 @@ void onChooseAction(lv_event_t* event) {
   if (command == studio::CommandType::SetLightCct ||
       command == studio::CommandType::SetLightRgb) {
     level = Level::LightColor;
-    lightEditorRgb = false;
-    draftCctKelvin = 5600;
-    draftCctBrightness = 50;
-    draftCctTint = 0;
-    draftRgbHue = 0;
-    draftRgbSaturation = 100;
-    draftRgbBrightness = 50;
+    const bool reuse = editingSceneStep &&
+                       initialSceneStep.type == studio::SceneStepType::Action &&
+                       initialSceneStep.targetId == selectedDevice &&
+                       initialSceneStep.command == command;
+    lightEditorRgb = command == studio::CommandType::SetLightRgb;
+    if (reuse && !lightEditorRgb) {
+      draftCctKelvin = initialSceneStep.value0;
+      draftCctBrightness = initialSceneStep.value1;
+      draftCctTint = initialSceneStep.value2;
+    } else if (reuse) {
+      const uint32_t rgb = static_cast<uint32_t>(initialSceneStep.value0);
+      const lv_color_hsv_t hsv = lv_color_rgb_to_hsv(
+          static_cast<uint8_t>((rgb >> 16) & 0xff),
+          static_cast<uint8_t>((rgb >> 8) & 0xff),
+          static_cast<uint8_t>(rgb & 0xff));
+      draftRgbHue = hsv.h;
+      draftRgbSaturation = hsv.s;
+      draftRgbBrightness = initialSceneStep.value1;
+    } else {
+      draftCctKelvin = 5600;
+      draftCctBrightness = 50;
+      draftCctTint = 0;
+      draftRgbHue = 0;
+      draftRgbSaturation = 100;
+      draftRgbBrightness = 50;
+    }
     refresh();
     return;
   }
@@ -253,7 +275,9 @@ void onChooseAction(lv_event_t* event) {
 }
 
 void onSaveLightParameters(lv_event_t*) {
-  if (callbacks.onSceneAction == nullptr) return;
+  if (callbacks.onSceneAction == nullptr) {
+    return;
+  }
   if (!lightEditorRgb) {
     callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightCct,
                             lv_slider_get_value(parameter0),
@@ -271,15 +295,18 @@ void onSaveLightParameters(lv_event_t*) {
 }
 
 void onChooseWait(lv_event_t*) {
-  if (callbacks.onWaitChosen != nullptr) {
-    callbacks.onWaitChosen();
-  }
-  hide();
+  level = Level::Wait;
+  refresh();
 }
 
 void onClose(lv_event_t*) { hide(); }
 
 void onBack(lv_event_t*) {
+  if (level == Level::Wait) {
+    level = Level::Category;
+    refresh();
+    return;
+  }
   if (level == Level::LightColor) {
     level = Level::Action;
     refresh();
@@ -295,6 +322,68 @@ void onBack(lv_event_t*) {
     level = Level::Category;
     refresh();
   }
+}
+
+void onWaitDecrement(lv_event_t*) {
+  if (waitSpinbox != nullptr) {
+    lv_spinbox_decrement(waitSpinbox);
+  }
+}
+
+void onWaitIncrement(lv_event_t*) {
+  if (waitSpinbox != nullptr) {
+    lv_spinbox_increment(waitSpinbox);
+  }
+}
+
+void onSaveWait(lv_event_t*) {
+  if (callbacks.onWaitChosen != nullptr && waitSpinbox != nullptr) {
+    callbacks.onWaitChosen(
+        static_cast<uint32_t>(lv_spinbox_get_value(waitSpinbox)));
+  }
+  hide();
+}
+
+void refreshWaitParameters() {
+  lv_label_set_text(titleLabel, "Wait");
+  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(body, 10, 0);
+  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t* hint = lv_label_create(body);
+  lv_label_set_text(hint, "Duration (ms)");
+  lv_obj_set_style_text_font(hint, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(hint, lv_color_hex(kColMuted), 0);
+
+  lv_obj_t* controls = lv_obj_create(body);
+  lv_obj_set_size(controls, 158, 38);
+  lv_obj_set_style_bg_opa(controls, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(controls, 0, 0);
+  lv_obj_set_style_pad_all(controls, 0, 0);
+  lv_obj_clear_flag(controls, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* minus = makeButton(controls, "-", onWaitDecrement);
+  lv_obj_set_size(minus, 34, 34);
+  lv_obj_align(minus, LV_ALIGN_LEFT_MID, 0, 0);
+  waitSpinbox = lv_spinbox_create(controls);
+  lv_obj_set_size(waitSpinbox, 78, 34);
+  lv_obj_align(waitSpinbox, LV_ALIGN_CENTER, 0, 0);
+  lv_spinbox_set_range(waitSpinbox, CONFIG_SCENE_MIN_WAIT_MS,
+                       CONFIG_SCENE_MAX_WAIT_MS);
+  lv_spinbox_set_digit_format(waitSpinbox, 5, 0);
+  lv_spinbox_set_step(waitSpinbox, 50);
+  const uint32_t initial =
+      editingSceneStep && initialSceneStep.type == studio::SceneStepType::Wait
+          ? initialSceneStep.waitMs
+          : 500;
+  lv_spinbox_set_value(waitSpinbox, static_cast<int32_t>(initial));
+  lv_obj_t* plus = makeButton(controls, "+", onWaitIncrement);
+  lv_obj_set_size(plus, 34, 34);
+  lv_obj_align(plus, LV_ALIGN_RIGHT_MID, 0, 0);
+
+  lv_obj_t* save = makeButton(body, editingSceneStep ? "Save wait" : "Add wait",
+                              onSaveWait, kColAccent);
+  lv_obj_set_size(save, 110, 30);
 }
 
 void captureLightEditorDraft() {
@@ -401,7 +490,9 @@ void refreshLightParameters() {
     labeledParameter(body, "Bri", 0, 100, draftCctBrightness, parameter1);
     labeledParameter(body, "Tint", -1000, 1000, draftCctTint, parameter2);
   }
-  lv_obj_t* save = makeButton(body, "Add color", onSaveLightParameters, kColAccent);
+  lv_obj_t* save = makeButton(
+      body, editingSceneStep ? "Save color" : "Add color",
+      onSaveLightParameters, kColAccent);
   lv_obj_set_size(save, 110, 28);
 }
 
@@ -660,7 +751,7 @@ void refresh() {
   }
   setChrome();
   lv_obj_clean(body);
-  parameter0 = parameter1 = parameter2 = colorWheel = nullptr;
+  parameter0 = parameter1 = parameter2 = colorWheel = waitSpinbox = nullptr;
   if (level == Level::Category) {
     refreshCategory();
   } else if (level == Level::DeviceList) {
@@ -671,6 +762,8 @@ void refresh() {
     }
   } else if (level == Level::Action) {
     refreshActions();
+  } else if (level == Level::Wait) {
+    refreshWaitParameters();
   } else {
     refreshLightParameters();
   }
@@ -725,9 +818,60 @@ void ensureOverlay() {
 void show(Mode showMode, const Callbacks& showCallbacks) {
   mode = showMode;
   callbacks = showCallbacks;
+  editingSceneStep = false;
+  initialSceneStep = studio::SceneStep{};
   level = Level::Category;
   selectedDevice = studio::kInvalidInstanceId;
   ensureOverlay();
+  refresh();
+  lv_obj_clear_flag(overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+void showSceneStep(const studio::SceneStep& step,
+                   const Callbacks& showCallbacks) {
+  mode = Mode::SceneStep;
+  callbacks = showCallbacks;
+  editingSceneStep = true;
+  initialSceneStep = step;
+  ensureOverlay();
+  if (step.type == studio::SceneStepType::Wait) {
+    level = Level::Wait;
+    selectedDevice = studio::kInvalidInstanceId;
+  } else {
+    selectedDevice = step.targetId;
+    const studio::DeviceRecord* record = studio::devices().find(step.targetId);
+    const studio::InstanceProfile profile =
+        record != nullptr ? studio::devices().profile(step.targetId)
+                          : studio::InstanceProfile{};
+    category = profile.type;
+    if (step.command == studio::CommandType::SetLightCct ||
+        step.command == studio::CommandType::SetLightRgb) {
+      level = Level::LightColor;
+      lightEditorRgb = step.command == studio::CommandType::SetLightRgb;
+      draftCctKelvin = 5600;
+      draftCctBrightness = 50;
+      draftCctTint = 0;
+      draftRgbHue = 0;
+      draftRgbSaturation = 100;
+      draftRgbBrightness = 50;
+      if (!lightEditorRgb) {
+        draftCctKelvin = step.value0;
+        draftCctBrightness = step.value1;
+        draftCctTint = step.value2;
+      } else {
+        const uint32_t rgb = static_cast<uint32_t>(step.value0);
+        const lv_color_hsv_t hsv = lv_color_rgb_to_hsv(
+            static_cast<uint8_t>((rgb >> 16) & 0xff),
+            static_cast<uint8_t>((rgb >> 8) & 0xff),
+            static_cast<uint8_t>(rgb & 0xff));
+        draftRgbHue = hsv.h;
+        draftRgbSaturation = hsv.s;
+        draftRgbBrightness = step.value1;
+      }
+    } else {
+      level = Level::Action;
+    }
+  }
   refresh();
   lv_obj_clear_flag(overlay, LV_OBJ_FLAG_HIDDEN);
 }
@@ -744,6 +888,8 @@ void hide() {
   body = nullptr;
   level = Level::Category;
   selectedDevice = studio::kInvalidInstanceId;
+  editingSceneStep = false;
+  initialSceneStep = studio::SceneStep{};
   const Callbacks closed = callbacks;
   callbacks = Callbacks{};
   if (closed.onClosed != nullptr) {
@@ -808,6 +954,24 @@ void simShowLightColor(Mode showMode, studio::InstanceId instanceId, bool rgb) {
   draftRgbSaturation = 80;
   draftRgbBrightness = 50;
   refresh();
+}
+
+void simSaveWait(uint32_t waitMs) {
+  if (waitSpinbox == nullptr) {
+    return;
+  }
+  lv_spinbox_set_value(waitSpinbox, static_cast<int32_t>(waitMs));
+  onSaveWait(nullptr);
+}
+
+void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint) {
+  if (parameter0 == nullptr || parameter1 == nullptr || parameter2 == nullptr) {
+    return;
+  }
+  lv_slider_set_value(parameter0, kelvin, LV_ANIM_OFF);
+  lv_slider_set_value(parameter1, brightness, LV_ANIM_OFF);
+  lv_slider_set_value(parameter2, tint, LV_ANIM_OFF);
+  onSaveLightParameters(nullptr);
 }
 #endif
 

@@ -498,6 +498,46 @@ int main() {
   if (!capture("22_scenes_edit_start")) {
     return 1;
   }
+  scene_ui::simEditStep(sceneId, true, 1);
+  pump(200);
+  if (!capture("22a_scenes_edit_wait")) {
+    return 1;
+  }
+  picker_shell::simSaveWait(750);
+  const studio::SceneRecord* editedScene = studio::scenes().find(sceneId);
+  if (editedScene == nullptr || editedScene->startCount != 3 ||
+      editedScene->startSteps[1].type != studio::SceneStepType::Wait ||
+      editedScene->startSteps[1].waitMs != 750) {
+    std::fprintf(stderr, "Sequence wait editor did not replace the step\n");
+    return 1;
+  }
+  studio::SceneRecord colorEditScene = *editedScene;
+  colorEditScene.startSteps[1] = studio::makeActionStep(
+      pano60Id, studio::CommandType::SetLightCct, 5600, 50, 0);
+  if (studio::scenes().replace(colorEditScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to prepare color-step edit regression\n");
+    return 1;
+  }
+  scene_ui::simEditStep(sceneId, true, 1);
+  picker_shell::simSaveLightCct(4300, 72, 120);
+  const studio::SceneRecord* colorEditedScene = studio::scenes().find(sceneId);
+  if (colorEditedScene == nullptr || colorEditedScene->startCount != 3 ||
+      colorEditedScene->startSteps[1].command !=
+          studio::CommandType::SetLightCct ||
+      colorEditedScene->startSteps[1].value0 != 4300 ||
+      colorEditedScene->startSteps[1].value1 != 72 ||
+      colorEditedScene->startSteps[1].value2 != 120) {
+    std::fprintf(stderr, "Sequence color editor did not replace the step\n");
+    return 1;
+  }
+  colorEditScene = *colorEditedScene;
+  colorEditScene.startSteps[1] = studio::makeWaitStep(750);
+  if (studio::scenes().replace(colorEditScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to restore wait after edit regression\n");
+    return 1;
+  }
   scene_ui::simShowAddStepCategory(sceneId);
   pump(200);
   if (!capture("22b_scenes_add_category")) {

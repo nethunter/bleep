@@ -26,6 +26,7 @@ bool simShowingList();
 void simShowAddStepCategory(studio::SceneId sceneId);
 void simShowAddStepDevice(studio::SceneId sceneId, studio::DeviceType category);
 void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId);
+void simEditStep(studio::SceneId sceneId, bool startList, uint8_t index);
 #endif
 
 }  // namespace scene_ui

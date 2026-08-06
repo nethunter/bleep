@@ -1637,3 +1637,23 @@ Record values with the exact build environment and commit/worktree state.
   Configuration status-response decoding and reset-advertisement verification
   are not yet implemented, so support stays Experimental and local removal is
   not evidence that a fixture left the mesh.
+
+### 2026-08-05: Sequence step settings editor
+
+- Made every existing Start/Stop step label an edit control. Wait steps now
+  open a prefilled millisecond spinbox, ordinary actions reopen the selected
+  target's capability-safe action picker, and CCT/RGB actions reopen with their
+  persisted parameters. Saving replaces the selected row; `+ Step` still adds
+  a new row and now asks for a wait duration instead of inserting a fixed value.
+- Added simulator regressions that change the seeded 500 ms wait to 750 ms and
+  edit a CCT step to 4300 K, 72% brightness, and +120 tint while asserting the
+  step count does not change. The complete simulator capture run passed, and
+  `22a_scenes_edit_wait.png` was visually checked on the 240x240 round layout.
+- Native tests passed 41/41. `ui_sim` and all seven firmware profiles
+  (`crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`,
+  `tascam_x8`, `home_assistant`, and `amaran_light`) built successfully.
+  `crowpanel_128` uses 1,724,534 bytes flash / 188,596 bytes RAM (54.8% /
+  57.6%); Roboto uses 1,694,070 / 188,596 (53.9% / 57.6%).
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240` with image hash verification. Physical touch
+  editing of wait and color values remains operator-pending.
