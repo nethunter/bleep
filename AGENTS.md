@@ -130,6 +130,13 @@ Flashing notes:
 - Do not start a long-running `device monitor` and block on it unless asked;
   prefer a bounded read if you need to confirm runtime behavior.
 
+## Git history
+
+Before merging a feature branch, rebase it onto the current `main` branch. Then
+merge it from `main` with `git merge --no-ff <feature-branch>`. Do not merge
+`main` into the feature branch; keep the feature commits linear and preserve an
+explicit merge commit for the completed tranche.
+
 ## Safety
 
 Movement, delete, standby/start, and go-to commands move real hardware. ACK
