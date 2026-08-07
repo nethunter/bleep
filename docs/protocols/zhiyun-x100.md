@@ -1,9 +1,9 @@
 # Zhiyun MOLUS X100 Bluetooth evidence
 
-Status: `Research`. Transport and framing were decoded from one Android
-host-HCI session, then standard PB-GATT provisioning and deterministic direct
-power/brightness/CCT readback were reproduced from a laptop against a freshly
-reset X100. No Ble(e)p driver or panel-originated command exists yet.
+Status: `Experimental`. Transport and framing were decoded from one Android
+host-HCI session; PB-GATT provisioning and deterministic direct power/
+brightness/CCT readback were first reproduced from a laptop and are now
+implemented in Ble(e)p. Panel-originated hardware verification remains open.
 
 ## Evidence boundary
 
@@ -19,6 +19,13 @@ name suffix, product identifier response, provisioning keys, and encrypted
 Mesh traffic. ZHIYUN's published specifications give the X100 a 0-100%
 brightness range and 2700-6500 K CCT range:
 <https://www.zhiyun-tech.com/en/product/param/768?page=second_nav&source=param&type=website>.
+
+ZY Vega's captured direct CCT writes include 50 K boundaries such as 2950,
+3150, 3900, and 5450 K, but live panel testing showed this X100 quantizing a
+4550 K write to 4500 K on readback. Ble(e)p therefore snaps actual control
+targets to the nearest 100 K before writing and verifies that canonical value
+exactly. The captured 50 K writes remain transport evidence, not evidence that
+the fixture retains those values.
 
 ## Advertising and onboarding
 
@@ -156,21 +163,24 @@ at sequence 2, was required before light-state queries produced notifications:
 The light also sent one unsolicited pre-provision `0x2005` reply. Its purpose
 is unknown.
 
-## Safe first implementation boundary
+## Implemented boundary
 
-A bounded first driver can target an already-provisioned X100 advertising
-`0x1828`, discover `0xFEE9` directly, subscribe to `...9601`, query power,
-brightness, and CCT, then write only the three captured setters. It does not
-need to decode or originate Bluetooth Mesh Network PDUs for those direct
-controls.
+The driver accepts a factory-reset X100 advertising `0x1827`, provisions it
+with the shared panel-owned no-OOB PB-GATT engine, stores its Device Key and
+unicast allocation in the existing versioned mesh store, then rediscovers
+`0x1828`. It discovers `0xFEE9` directly, subscribes to `...9601`, queries
+power, brightness, and CCT, then writes only the three captured setters. It
+does not decode or originate Bluetooth Mesh Network PDUs for direct controls.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,
 disconnected, and changed from `0x1827` to `0x1828`. AppKey/model configuration
 was not needed for the separate direct `0xFEE9` control path. A production
-onboarding tranche must still define ownership and durable recovery of the
-mesh identity, support retry/rollback, and verify reset back to `0x1827`; the
-existing Amaran mesh store must not silently absorb Zhiyun nodes. Before
+The shared repository preserves the existing `AMSH` version-1 NVS schema while
+making its multi-vendor ownership explicit. Durable save happens before the
+provisioning link is closed. Recovery when the light accepts Provisioning Data
+but completion or persistence is interrupted still requires reset/retry and
+hardware verification back to `0x1827`. Before
 enabling either tranche by default, verify advertisement matching without a
 stable address, 0/100% brightness, 2700/6500 K bounds, power off/on, reconnect,
 retention/eviction, multiple X100 instances, and coexistence with the existing

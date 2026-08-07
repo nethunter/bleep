@@ -6,7 +6,7 @@
 #include "core/ble/ble_central.h"
 #include "core/device_types.h"
 #include "core/mesh/pb_gatt_provisioner.h"
-#include "devices/amaran_light/store.h"
+#include "core/mesh/mesh_store.h"
 #include "devices/zhiyun_x100/protocol.h"
 #include "devices/zhiyun_x100/state.h"
 
@@ -60,6 +60,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
                  size_t payloadLength = 0);
   bool sendInitializationStep();
   bool sendVerificationStep();
+  bool retryCctVerification();
   void handleFrame(const ParsedFrame& frame);
   void finishInitialization();
   void finishCommand(bool success, const char* error = nullptr);
@@ -87,6 +88,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   uint16_t expectedSequence_ = 0;
   uint16_t expectedCommand_ = 0;
   bool awaitingResponse_ = false;
+  uint8_t verificationAttempts_ = 0;
   Operation operation_ = Operation::None;
   uint8_t step_ = 0;
   bool desiredPower_ = false;
@@ -95,8 +97,8 @@ class X100Client : public studio::ble::BleCentralDelegate,
   uint32_t setupAtMs_ = 0;
   uint32_t verifyAtMs_ = 0;
   uint32_t responseDeadlineMs_ = 0;
+  uint32_t provisioningDeadlineMs_ = 0;
   studio::mesh::PbGattProvisioner provisioner_;
-  amaran_light::MeshStoreData meshData_;
   uint8_t provisioningBytes_[160] = {};
   size_t provisioningLength_ = 0;
 };

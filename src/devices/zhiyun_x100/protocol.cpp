@@ -99,6 +99,13 @@ FrameBytes buildBrightnessWrite(uint16_t sequence, float percent) {
   return buildStateWrite(sequence, kCommandBrightness, value, sizeof(value));
 }
 
+uint16_t normalizeCct(uint16_t kelvin) {
+  if (kelvin <= kMinKelvin) return kMinKelvin;
+  if (kelvin >= kMaxKelvin) return kMaxKelvin;
+  return static_cast<uint16_t>(
+      ((kelvin + kCctStepKelvin / 2) / kCctStepKelvin) * kCctStepKelvin);
+}
+
 FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin) {
   if (kelvin < kMinKelvin || kelvin > kMaxKelvin) return {};
   uint8_t value[2];

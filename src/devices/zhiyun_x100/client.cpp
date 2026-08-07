@@ -2,12 +2,15 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <esp_random.h>
 
 #include <cmath>
 #include <cstring>
 
 #include "core/ble/ble_runtime.h"
 #include "core/ble/ble_timing.h"
+#include "core/preferences_store.h"
+#include "core/mesh/mesh_repository.h"
 #include "devices/zhiyun_x100/ble_match.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
@@ -18,6 +21,9 @@ namespace {
 const NimBLEUUID kControlService(kControlServiceUuid);
 const NimBLEUUID kWriteCharacteristic(kWriteCharacteristicUuid);
 const NimBLEUUID kNotifyCharacteristic(kNotifyCharacteristicUuid);
+const NimBLEUUID kProvisionService("00001827-0000-1000-8000-00805f9b34fb");
+const NimBLEUUID kProvisionIn("00002adb-0000-1000-8000-00805f9b34fb");
+const NimBLEUUID kProvisionOut("00002adc-0000-1000-8000-00805f9b34fb");
 X100Client* gNotifyClient = nullptr;
 
 void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
@@ -40,9 +46,10 @@ void X100Client::begin() {
   gNotifyClient = this;
 }
 
-void X100Client::activate(const char* address, uint8_t addressType,
-                          const char* name, bool paired) {
+void X100Client::activate(studio::InstanceId instanceId, const char* address,
+                          uint8_t addressType, const char* name, bool paired) {
   begin();
+  instanceId_ = instanceId;
   connectRequested_ = initialized_;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   targetAddress_[0] = '\0';
@@ -61,6 +68,8 @@ void X100Client::activate(const char* address, uint8_t addressType,
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   state_.error[0] = '\0';
   state_.lastCommandFailed = false;
+  state_.brightnessLimited = false;
+  state_.maxBrightness = 100;
   if (!connectRequested_) return;
   if (haveTarget_) beginConnect();
   else beginScan();
@@ -74,14 +83,21 @@ void X100Client::deactivate() {
   initialized_ = false;
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
+  provisioningIn_ = nullptr;
   gNotifyClient = nullptr;
   setupPending_ = false;
   awaitingResponse_ = false;
   operation_ = Operation::None;
+  provisioner_.cancel();
+  provisioningDeadlineMs_ = 0;
+  provisioningLink_ = false;
+  scanAfterProvision_ = false;
+  provisioningLength_ = 0;
   scanner_.reset();
   state_.link = X100State::Link::Disconnected;
   state_.phase = X100State::Phase::Idle;
   state_.commandPending = false;
+  instanceId_ = studio::kInvalidInstanceId;
 }
 
 void X100Client::loop() {
@@ -98,6 +114,18 @@ void X100Client::loop() {
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
       return;
     }
+  }
+  if (state_.phase == X100State::Phase::Provisioning &&
+      provisioningDeadlineMs_ != 0 &&
+      static_cast<int32_t>(now - provisioningDeadlineMs_) >= 0) {
+    provisioningDeadlineMs_ = 0;
+    provisioner_.cancel();
+    state_.phase = X100State::Phase::Failed;
+    std::strncpy(state_.error, "Provisioning timeout",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    return;
   }
   if (awaitingResponse_ &&
       static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
@@ -176,6 +204,7 @@ bool X100Client::sendInitializationStep() {
 }
 
 bool X100Client::completeConnect() {
+  if (provisioningLink_) return setupProvisioning();
   const uint32_t started = millis();
   NimBLERemoteService* service = client_->getService(kControlService);
   if (service == nullptr) return false;
@@ -197,6 +226,123 @@ bool X100Client::completeConnect() {
       "zhiyun_x100", linkHandle_, "gatt_setup", millis() - started,
       millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
   return sendInitializationStep();
+}
+
+bool X100Client::loadMesh() {
+  return studio::mesh::repository().begin();
+}
+
+bool X100Client::setupProvisioning() {
+  NimBLERemoteService* service = client_->getService(kProvisionService);
+  if (service == nullptr) return false;
+  provisioningIn_ = service->getCharacteristic(kProvisionIn);
+  NimBLERemoteCharacteristic* out = service->getCharacteristic(kProvisionOut);
+  if (provisioningIn_ == nullptr || out == nullptr ||
+      !out->subscribe(true, notifyTrampoline, true) || !loadMesh()) {
+    provisioningIn_ = nullptr;
+    return false;
+  }
+  provisioningLength_ = 0;
+  state_.link = X100State::Link::Connected;
+  state_.phase = X100State::Phase::Provisioning;
+  provisioningDeadlineMs_ = millis() + 30000;
+  studio::mesh::StoreData& meshData = studio::mesh::repository().data();
+  return provisioner_.begin(meshData.network.networkKey,
+                            meshData.network.ivIndex,
+                            meshData.network.nextUnicastAddress, *this);
+}
+
+bool X100Client::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
+  if (provisioningIn_ == nullptr || pdu == nullptr || length + 1 > 80)
+    return false;
+  uint8_t wrapped[80] = {0x03};
+  std::memcpy(wrapped + 1, pdu, length);
+  return provisioningIn_->writeValue(wrapped, length + 1, false);
+}
+
+bool X100Client::finishProvisioning() {
+  if (!provisioner_.complete() || instanceId_ == studio::kInvalidInstanceId)
+    return false;
+  studio::mesh::StoreData& meshData = studio::mesh::repository().data();
+  const studio::mesh::StoreData previous = meshData;
+  studio::mesh::NodeRecord node;
+  node.instanceId = instanceId_;
+  node.model = studio::DriverId::ZhiyunX100;
+  node.unicastAddress = meshData.network.nextUnicastAddress;
+  node.elementCount = provisioner_.elementCount();
+  node.configured = true;
+  std::memcpy(node.deviceKey, provisioner_.deviceKey(), sizeof(node.deviceKey));
+  std::strncpy(node.bleAddress, targetAddress_, sizeof(node.bleAddress) - 1);
+  node.bleAddress[sizeof(node.bleAddress) - 1] = '\0';
+  node.bleAddressType = targetAddressType_;
+  if (node.unicastAddress > 0x7fff - node.elementCount) return false;
+  if (!studio::mesh::upsertNode(meshData, node)) return false;
+  meshData.network.nextUnicastAddress =
+      static_cast<uint16_t>(node.unicastAddress + node.elementCount);
+  if (!studio::mesh::repository().save()) {
+    meshData = previous;
+    return false;
+  }
+  provisioner_.cancel();
+  provisioningDeadlineMs_ = 0;
+  provisioningIn_ = nullptr;
+  provisioningLink_ = false;
+  scanAfterProvision_ = true;
+  haveTarget_ = false;
+  state_.phase = X100State::Phase::Initializing;
+  studio::ble::bleCentral().disconnect(linkHandle_, false);
+  return true;
+}
+
+void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
+  if (data == nullptr || length == 0 ||
+      length > sizeof(provisioningBytes_) - provisioningLength_) {
+    provisioner_.cancel();
+    state_.phase = X100State::Phase::Failed;
+    std::strncpy(state_.error, "Provisioning data overflow",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    return;
+  }
+  std::memcpy(provisioningBytes_ + provisioningLength_, data, length);
+  provisioningLength_ += length;
+  while (provisioningLength_ >= 2) {
+    if (provisioningBytes_[0] != 0x03) {
+      std::memmove(provisioningBytes_, provisioningBytes_ + 1,
+                   --provisioningLength_);
+      continue;
+    }
+    size_t pduLength = 0;
+    switch (provisioningBytes_[1]) {
+      case 0x01: pduLength = 12; break;
+      case 0x03: pduLength = 65; break;
+      case 0x05:
+      case 0x06: pduLength = 17; break;
+      case 0x08: pduLength = 1; break;
+      case 0x09: pduLength = 2; break;
+      default: pduLength = 0; break;
+    }
+    if (pduLength == 0) {
+      std::memmove(provisioningBytes_, provisioningBytes_ + 1,
+                   --provisioningLength_);
+      continue;
+    }
+    const size_t wrappedLength = pduLength + 1;
+    if (provisioningLength_ < wrappedLength) return;
+    const bool handled = provisioner_.handle(provisioningBytes_ + 1, pduLength);
+    provisioningLength_ -= wrappedLength;
+    std::memmove(provisioningBytes_, provisioningBytes_ + wrappedLength,
+                 provisioningLength_);
+    if (!handled || (provisioner_.complete() && !finishProvisioning())) {
+      state_.phase = X100State::Phase::Failed;
+      std::strncpy(state_.error, "Provisioning failed",
+                   sizeof(state_.error) - 1);
+      state_.error[sizeof(state_.error) - 1] = '\0';
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      return;
+    }
+  }
 }
 
 void X100Client::handleFrame(const ParsedFrame& frame) {
@@ -241,16 +387,39 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       float actual = 0.0f;
       valid = parseBrightness(frame, actual) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
+      state_.verificationField = 1;
+      state_.readbackBrightness = actual;
       if (valid) {
         state_.brightness = actual;
+        if (actual > state_.maxBrightness) {
+          state_.maxBrightness = static_cast<uint8_t>(actual + 0.5f);
+        }
         step_ = 1;
-        if (!sendVerificationStep()) finishCommand(false, "CCT readback failed");
+        verificationAttempts_ = 0;
+        state_.verificationField = 2;
+        if (!writeFrame(buildCctWrite(nextSequence(), desiredKelvin_))) {
+          finishCommand(false, "CCT write failed");
+        } else {
+          verifyAtMs_ = millis() + 250;
+        }
         return;
       }
     } else {
       uint16_t actual = 0;
       valid = parseCct(frame, actual) && actual == desiredKelvin_;
+      state_.readbackKelvin = actual;
       if (valid) state_.kelvin = actual;
+    }
+    if (!valid && retryCctVerification()) return;
+    if (!valid && step_ == 0 &&
+        desiredBrightness_ > state_.readbackBrightness + 0.05f &&
+        std::fabs(state_.readbackBrightness - state_.brightness) <= 0.05f) {
+      // The fixture silently rejects brightness above the power source's
+      // ceiling (for example, 60% with a 60 W USB-C supply). Seven stable
+      // readbacks distinguish that limit from normal setter latency.
+      state_.brightnessLimited = true;
+      state_.maxBrightness =
+          static_cast<uint8_t>(state_.readbackBrightness + 0.5f);
     }
   } else if (operation_ == Operation::Refresh) {
     if (step_ == 0) {
@@ -290,6 +459,9 @@ bool X100Client::setPower(bool on) {
   step_ = 0;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
+  state_.requestedKelvin = 0;
+  state_.readbackKelvin = 0;
+  state_.verificationField = 0;
   verifyAtMs_ = millis() + 250;
   return true;
 }
@@ -297,12 +469,21 @@ bool X100Client::setPower(bool on) {
 bool X100Client::setCct(uint16_t kelvin, uint8_t brightness) {
   if (!protocolReady() || state_.commandPending || kelvin < kMinKelvin ||
       kelvin > kMaxKelvin || brightness > 100) return false;
-  if (!writeFrame(buildBrightnessWrite(nextSequence(), brightness)) ||
-      !writeFrame(buildCctWrite(nextSequence(), kelvin))) return false;
+  const uint16_t normalizedKelvin = normalizeCct(kelvin);
+  // The X100 can acknowledge two immediate writes while dropping the first
+  // state change. Apply and confirm brightness before sending CCT.
+  if (!writeFrame(buildBrightnessWrite(nextSequence(), brightness)))
+    return false;
   desiredBrightness_ = brightness;
-  desiredKelvin_ = kelvin;
+  desiredKelvin_ = normalizedKelvin;
+  state_.requestedBrightness = brightness;
+  state_.readbackBrightness = 0.0f;
+  state_.requestedKelvin = normalizedKelvin;
+  state_.readbackKelvin = 0;
+  state_.verificationField = 1;
   operation_ = Operation::Cct;
   step_ = 0;
+  verificationAttempts_ = 0;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
   verifyAtMs_ = millis() + 250;
@@ -329,14 +510,25 @@ bool X100Client::sendVerificationStep() {
   return sendQuery(command);
 }
 
+bool X100Client::retryCctVerification() {
+  constexpr uint8_t kMaxRetries = 7;
+  if (operation_ != Operation::Cct || verificationAttempts_ >= kMaxRetries)
+    return false;
+  ++verificationAttempts_;
+  verifyAtMs_ = millis() + 250;
+  return true;
+}
+
 void X100Client::finishCommand(bool success, const char* error) {
   awaitingResponse_ = false;
   verifyAtMs_ = 0;
   state_.commandPending = false;
   state_.lastCommandFailed = !success;
+  verificationAttempts_ = 0;
   if (success) {
     state_.confirmed = true;
     state_.error[0] = '\0';
+    state_.verificationField = 0;
   } else if (error != nullptr) {
     std::strncpy(state_.error, error, sizeof(state_.error) - 1);
     state_.error[sizeof(state_.error) - 1] = '\0';
@@ -382,14 +574,21 @@ void X100Client::beginConnect() {
 void X100Client::handleDisconnect() {
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
+  provisioningIn_ = nullptr;
   setupPending_ = false;
   awaitingResponse_ = false;
   verifyAtMs_ = 0;
   operation_ = Operation::None;
   scanner_.reset();
+  provisioningLength_ = 0;
+  provisioningDeadlineMs_ = 0;
   state_.link = X100State::Link::Disconnected;
   state_.phase = X100State::Phase::Idle;
   state_.commandPending = false;
+  if (scanAfterProvision_ && connectRequested_) {
+    scanAfterProvision_ = false;
+    beginScan();
+  }
 }
 
 bool X100Client::consumePairingUpdate(
@@ -413,7 +612,11 @@ bool X100Client::consumePairingUpdate(
 void X100Client::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
-  if (link != linkHandle_ || !matchesAdvertisement(advertisement)) return;
+  if (link != linkHandle_) return;
+  const bool provisioned = matchesAdvertisement(advertisement);
+  const bool unprovisioned = matchesUnprovisionedAdvertisement(advertisement);
+  if (!provisioned && !unprovisioned) return;
+  provisioningLink_ = unprovisioned;
   std::strncpy(targetAddress_, advertisement.address.value,
                sizeof(targetAddress_) - 1);
   targetAddress_[sizeof(targetAddress_) - 1] = '\0';
@@ -453,8 +656,11 @@ void X100Client::drainNotifications() {
   while ((received = xStreamBufferReceive(
               static_cast<StreamBufferHandle_t>(notifyStream_), bytes,
               sizeof(bytes), 0)) > 0) {
-    scanner_.feed(bytes, received,
-                  [this](const ParsedFrame& frame) { handleFrame(frame); });
+    if (provisioningLink_)
+      handleProvisioningBytes(bytes, received);
+    else
+      scanner_.feed(bytes, received,
+                    [this](const ParsedFrame& frame) { handleFrame(frame); });
   }
 }
 

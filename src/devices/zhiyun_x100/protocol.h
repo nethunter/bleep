@@ -25,6 +25,7 @@ constexpr uint16_t kCommandCct = 0x1002;
 constexpr uint16_t kCommandPower = 0x1008;
 constexpr uint16_t kMinKelvin = 2700;
 constexpr uint16_t kMaxKelvin = 6500;
+constexpr uint16_t kCctStepKelvin = 100;
 constexpr size_t kMaxFrameSize = 80;
 
 struct FrameBytes {
@@ -47,6 +48,7 @@ FrameBytes buildReadRequest(uint16_t sequence, uint16_t command);
 FrameBytes buildPowerWrite(uint16_t sequence, bool on);
 FrameBytes buildBrightnessWrite(uint16_t sequence, float percent);
 FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin);
+uint16_t normalizeCct(uint16_t kelvin);
 
 bool parseBrightness(const ParsedFrame& frame, float& percent);
 bool parseCct(const ParsedFrame& frame, uint16_t& kelvin);

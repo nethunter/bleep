@@ -109,30 +109,33 @@ Reference research:
 
 ### MOLUS X100
 
-- Status: `Experimental`; the compile-time driver, panel UI, transactional
-  already-provisioned discovery, direct GATT initialization, and deterministic
-  command/readback path are implemented. Panel-originated hardware verification
-  is still open.
+- Status: `Experimental`; the compile-time driver, panel UI, shared panel-owned
+  PB-GATT provisioning, direct GATT initialization, and deterministic command/
+  readback path are implemented. Panel-originated hardware verification is open.
 - Product identity: internal BLE model marker `pl105`; captured local names use
   `PL105_` plus a device-specific suffix.
 - Transport: standard no-OOB PB-GATT (`0x1827`) for factory-reset onboarding,
   Mesh Proxy (`0x1828`) after provisioning, and direct proprietary control on
   service `0xFEE9`.
 - Captured capabilities: power, float32 brightness, and uint16 CCT. ZHIYUN's
-  published device limits are 0-100% and 2700-6500 K.
+  published device limits are 0-100% and 2700-6500 K. Although captured ZY
+  Vega writes include 50 K boundaries, live device readback quantizes them to
+  100 K; the driver canonicalizes to 100 K before exact verification.
 - State quality: setters have no per-write acknowledgement, but a write followed
   by correlated reads of power, brightness, and CCT was live-confirmed. A
   driver can therefore remain non-optimistic by publishing the value only
   after matching device-originated readback.
-- Implemented tranche: Add device selects only an already-provisioned `pl105`
-  advertiser on `0x1828`, validates identity on `0xFEE9`, reads all three state
-  fields, and commits the record only after confirmed Ready. Power and CCT/
+- Implemented tranche: Add device selects either a factory-reset `pl105` on
+  `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
+  panel-owned network and a durable Device Key/unicast allocation, then is
+  rediscovered and validated on `0xFEE9`. The normal device record commits only
+  after confirmed Ready. Power and CCT/
   brightness commands remain pending until matching correlated replies arrive;
   scenes therefore wait for confirmation instead of treating the write as
   success. X100 exposes no tint or RGB capability.
-- Missing before production: panel-owned PB-GATT provisioning and secure mesh
-  ownership, interrupted-provision recovery and rollback, verified factory
-  reset, boundary and power-cycle checks, rotating-address recovery, firmware
+- Missing before production: reconciliation when a light accepts Provisioning
+  Data but completion/persistence is interrupted, verified reset/retry,
+  boundary and power-cycle checks, rotating-address recovery, firmware
   compatibility policy, multiple fixtures, retained/session and mixed-device
   coexistence measurements, plus independently observed optical output.
 - Evidence and golden vectors:

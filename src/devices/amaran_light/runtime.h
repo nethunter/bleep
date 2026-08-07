@@ -5,6 +5,7 @@
 
 #include "core/ble/ble_central.h"
 #include "core/device_types.h"
+#include "core/mesh/pb_gatt_provisioner.h"
 #include "devices/amaran_light/state.h"
 #include "devices/amaran_light/store.h"
 
@@ -12,7 +13,8 @@ class NimBLERemoteCharacteristic;
 
 namespace amaran_light {
 
-class AmaranRuntime : public studio::ble::BleCentralDelegate {
+class AmaranRuntime : public studio::ble::BleCentralDelegate,
+                      public studio::mesh::ProvisioningSender {
  public:
   bool activate(const studio::DeviceRecord& record);
   void deactivate(studio::InstanceId instanceId);
@@ -29,6 +31,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate {
   void onBleEvent(studio::ble::LinkHandle link,
                   const studio::ble::Event& event) override;
   void enqueueNotification(const uint8_t* data, size_t length);
+  bool sendProvisioningPdu(const uint8_t* pdu, size_t length) override;
 #ifdef UI_SIMULATOR
   void simSetPhase(studio::InstanceId instanceId, AmaranLightState::Phase phase);
 #endif
@@ -53,10 +56,6 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate {
   bool setupProxy();
   void processNotification(const Notification& notification);
   bool sendProvisioning(const uint8_t* pdu, size_t length);
-  bool handleCapabilities(const uint8_t* pdu, size_t length);
-  bool handleDevicePublicKey(const uint8_t* pdu, size_t length);
-  bool handleDeviceConfirmation(const uint8_t* pdu, size_t length);
-  bool handleDeviceRandom(const uint8_t* pdu, size_t length);
   bool completeProvisioning();
   bool configureNext();
   bool sendAccess(studio::InstanceId instanceId, const uint8_t* access,
@@ -68,9 +67,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate {
   studio::ble::LinkHandle link_ = studio::ble::kInvalidLinkHandle;
   studio::InstanceId linkInstance_ = studio::kInvalidInstanceId;
   bool provisioningLink_ = false;
-  bool loaded_ = false;
   bool connected_ = false;
-  uint8_t provisioningStep_ = 0;
   uint8_t configStep_ = 0;
   uint32_t nextConfigAt_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
@@ -78,20 +75,9 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate {
   Notification notifications_[8] = {};
   uint8_t notifyHead_ = 0;
   uint8_t notifyTail_ = 0;
-  MeshStoreData storeData_;
-  SequenceAllocator sequences_;
-  uint8_t capabilities_[12] = {};
-  uint8_t localPublic_[64] = {};
-  uint8_t remotePublic_[64] = {};
-  uint8_t ecdhSecret_[32] = {};
-  uint8_t confirmationSalt_[16] = {};
-  uint8_t confirmationKey_[16] = {};
-  uint8_t localRandom_[16] = {};
-  uint8_t remoteRandom_[16] = {};
-  uint8_t remoteConfirmation_[16] = {};
-  uint8_t deviceKey_[16] = {};
   char provisioningAddress_[studio::kBleAddressCapacity] = "";
   uint8_t provisioningAddressType_ = 0;
+  studio::mesh::PbGattProvisioner provisioner_;
 };
 
 AmaranRuntime& runtime();

@@ -32,6 +32,7 @@
 #include "devices/zhiyun_x100/ble_match.h"
 #include "devices/zhiyun_x100/protocol.h"
 #include "devices/zhiyun_x100/state.h"
+#include "core/mesh/provisioning_policy.h"
 
 using namespace shark;
 
@@ -2413,6 +2414,16 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
   TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(2700, 0, 0));
   TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(6500, 100, 0));
   TEST_ASSERT_FALSE(zhiyun_x100::validCctCommand(5600, 50, 1));
+  TEST_ASSERT_EQUAL_UINT16(4500, zhiyun_x100::normalizeCct(4549));
+  TEST_ASSERT_EQUAL_UINT16(4600, zhiyun_x100::normalizeCct(4550));
+  const zhiyun_x100::FrameBytes capturedCct =
+      zhiyun_x100::buildCctWrite(0x000c, 5450);
+  const uint8_t expectedCct[] = {
+      0x24,0x3c,0x0b,0x00,0x00,0x01,0x0c,0x00,0x02,0x10,
+      0x00,0x80,0x01,0x4a,0x15,0xa9,0xea};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedCct), capturedCct.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedCct, capturedCct.bytes,
+                                sizeof(expectedCct));
   TEST_ASSERT_EQUAL_UINT32(0,
       zhiyun_x100::buildCctWrite(1, 2699).length);
 }
@@ -2437,6 +2448,33 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
   const studio::ble::Advertisement unprovisioned =
       bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1827);
   TEST_ASSERT_FALSE(zhiyun_x100::matchesAdvertisement(unprovisioned));
+  TEST_ASSERT_TRUE(
+      zhiyun_x100::matchesUnprovisionedAdvertisement(unprovisioned));
+  studio::ble::Advertisement manufacturerOnly =
+      bleAdvertisement("44:55:66:77:88:99", "Other", 0x1827);
+  const uint8_t manufacturer[] = {
+      8, 0xff, 0x05, 0x09, 'p', 'l', '1', '0', '5'};
+  std::memcpy(manufacturerOnly.payload + manufacturerOnly.payloadLength,
+              manufacturer, sizeof(manufacturer));
+  manufacturerOnly.payloadLength += sizeof(manufacturer);
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesUnprovisionedAdvertisement(
+      manufacturerOnly));
+  manufacturerOnly.payload[manufacturerOnly.payloadLength - 1] = '6';
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesUnprovisionedAdvertisement(
+      manufacturerOnly));
+}
+
+void test_mesh_no_oob_policy_accepts_x100_static_oob_capability() {
+  const uint8_t x100Capabilities[] = {
+      0x01, 0x01, 0x00, 0x01, 0x00, 0x01,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  TEST_ASSERT_TRUE(studio::mesh::supportsNoOobProvisioning(
+      x100Capabilities, sizeof(x100Capabilities)));
+  uint8_t unsupported[sizeof(x100Capabilities)];
+  std::memcpy(unsupported, x100Capabilities, sizeof(unsupported));
+  unsupported[4] = 1;
+  TEST_ASSERT_FALSE(studio::mesh::supportsNoOobProvisioning(
+      unsupported, sizeof(unsupported)));
 }
 
 }  // namespace
@@ -2491,5 +2529,6 @@ int main(int, char**) {
   RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);
   RUN_TEST(test_zhiyun_x100_identity_and_advertisement_match);
+  RUN_TEST(test_mesh_no_oob_policy_accepts_x100_static_oob_capability);
   return UNITY_END();
 }

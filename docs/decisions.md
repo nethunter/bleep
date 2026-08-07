@@ -529,16 +529,18 @@ the replacement.
   device ownership before starting Wi-Fi. Configuration changes do not acquire
   physical links, and normal operation resumes only after Portal teardown.
 
-## ADR-028: X100 first tranche uses confirmed direct GATT control
+## ADR-028: X100 uses shared panel-owned provisioning and confirmed direct control
 
 - Status: Experimental; panel hardware gate open
-- Decision: expose one `ZHIYUN MOLUS X100` light driver for fixtures that have
-  already been provisioned and advertise Mesh Proxy `0x1828`. Discovery
-  requires both the `pl105` product identity (`PL105_` name or company
-  `0x0905`) and the proxy service, then control uses the separate cleartext
-  `0xFEE9` GATT service. The first tranche does not send encrypted Bluetooth
-  Mesh access messages and does not import or depend on the provisioning mesh
-  keys for normal control.
+- Decision: expose one `ZHIYUN MOLUS X100` light driver that can select a
+  factory-reset fixture advertising Mesh Provisioning `0x1827` or an existing
+  fixture advertising Mesh Proxy `0x1828`. Discovery requires both the `pl105`
+  product identity (`PL105_` name or company `0x0905`) and the expected mesh
+  service. A reset light is provisioned with the same no-OOB PB-GATT engine,
+  panel-owned network, durable node store, and unicast allocator as Amaran.
+  The existing version-1 `AMSH` NVS schema is preserved behind a neutral shared
+  repository. Normal X100 control then uses the separate cleartext `0xFEE9`
+  GATT service and does not send encrypted Mesh access messages.
 - Session and state: after subscribing, the driver reproduces the captured
   identity, firmware, status, and mode initialization sequence starting at
   sequence 2. Protocol readiness requires a validated `pl105` identity and
@@ -550,11 +552,13 @@ the replacement.
   uses the shared lazy central and retained-session policy. Callbacks only
   enqueue bounded bytes; framing, CRC validation, correlation, state mutation,
   command completion, and LVGL remain in `loop()`.
-- Deferred onboarding: standard no-OOB PB-GATT provisioning is proven from a
-  laptop, but panel-owned provisioning is deferred until mesh ownership,
-  durable secret storage, unicast allocation, interrupted-attempt recovery,
-  rollback, and verified factory reset are accepted together. An unprovisioned
-  `0x1827` X100 is therefore intentionally not selected by this tranche.
+- Provisioning recovery: the node record, Device Key, and advanced unicast
+  allocator are persisted before the provisioning link is deliberately closed.
+  The driver then rescans by product/service for `0x1828`, initializes `0xFEE9`,
+  and commits the normal device registry only after confirmed direct readback.
+  Persistence failure restores the in-memory store. If the light accepts
+  Provisioning Data but disconnects before Complete or durable save, automatic
+  reconciliation remains blocked; reset and retry is the documented recovery.
 - Gate: verify add, initial state, power off/on, several brightness/CCT values,
   rejection or clamping at 0/100% and 2700/6500 K, reconnect after reboot,
   retained navigation, scene confirmation, timeout/retry, and coexistence on
@@ -571,5 +575,3 @@ These remain unresolved until their roadmap spikes complete:
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;
 - measured memory budgets for minimal and full firmware profiles.
-- whether X100 panel-owned provisioning uses a dedicated mesh identity or a
-  versioned multi-vendor mesh store, and the corresponding reset/rollback UX.

@@ -2081,3 +2081,54 @@ Record values with the exact build environment and commit/worktree state.
   the existing sizes; `crowpanel_128` used 1,802,420 bytes flash / 164,580
   bytes RAM. The default combined image flashed successfully to
   `/dev/cu.usbserial-211240`, its hashes verified, and the board hard-reset.
+
+### 2026-08-07: Shared X100 panel-owned provisioning
+
+- Extracted the Amaran userspace no-OOB PB-GATT state machine into a shared
+  provisioner and placed the existing version-1 `AMSH` store, panel-owned mesh
+  identity, sequence allocator, and node records behind one neutral repository.
+  Existing persisted Amaran data remains schema-compatible; Amaran and X100 no
+  longer keep independent in-memory copies of the same NVS record.
+- X100 Add device now accepts product-qualified `PL105_`/`pl105` advertisements
+  on Mesh Provisioning `0x1827` as well as Mesh Proxy `0x1828`. A reset light is
+  provisioned at the next durable unicast address, its Device Key/node record is
+  saved before disconnect, then the driver rescans for `0x1828` and continues
+  the existing confirmed `0xFEE9` initialization. It deliberately skips Mesh
+  AppKey/model configuration because normal X100 control is direct GATT.
+- The shared capability policy accepts the X100's advertised optional static
+  OOB support while explicitly selecting no-OOB. Product matching rejects a
+  generic Zhiyun company ID unless the manufacturer payload contains `pl105`.
+  Failed node-store saves restore the previous in-memory node/allocation state.
+- Native tests passed 49/49. `ui_sim` built and completed its full capture run,
+  ending with 11,472 bytes free, 20,788 bytes peak used, and 1% fragmentation.
+- All eight final-source firmware profiles built successfully. Flash/RAM bytes
+  were: `crowpanel_128` 1,804,040 / 165,268; `crowpanel_128_roboto` 1,773,576 /
+  165,268; `canon_ble` 1,797,548 / 162,564; `canon_trigger` 1,793,994 / 161,572;
+  `tascam_x8` 1,795,394 / 161,484; `home_assistant` 1,790,640 / 161,092;
+  `amaran_light` 1,755,770 / 155,876; and `zhiyun_x100` 1,742,864 / 156,748.
+  The combined image flashed successfully to `/dev/cu.usbserial-211240`, every
+  written region's hash verified, and the board hard-reset.
+- Hardware gate remains open: reset the fixture back to `0x1827`, add MOLUS
+  X100 from the panel, observe provisioning/rediscovery/confirmed Ready, then
+  verify physical power and CCT/brightness output. An interruption after the
+  fixture accepts Provisioning Data but before Complete/durable save cannot be
+  reconciled automatically; factory reset and retry is the safe recovery.
+
+### 2026-08-07: X100 CCT verification quantization fix
+
+- Live panel testing confirmed that panel-owned provisioning, rediscovery,
+  retained connection, power, and brightness all work, but arbitrary CCT
+  slider values changed the light and then reported `NOT CONFIRMED`.
+- Reinspection of the Android HCI capture found ZY Vega direct CCT writes at
+  2950, 3150, 3900, and 5450 K: every value is on a 50 K boundary. Bleep had
+  emitted every integer Kelvin and demanded exact equality from the quantized
+  device readback. The client now rounds all UI and scene requests to the
+  nearest 50 K, writes that canonical value, and still requires exact readback;
+  the panel slider snaps to the same value when released.
+- Added the captured 5450 K wire frame as a golden vector plus normalization
+  boundary coverage. Native tests passed 49/49, the full `ui_sim` capture run
+  completed, and all eight firmware profiles built. `crowpanel_128` used
+  1,804,148 bytes flash / 165,268 bytes RAM. The corrected combined image
+  flashed to `/dev/cu.usbserial-211240`, verified every written-region hash,
+  and hard-reset. Live CCT confirmation after this flash remains the operator
+  gate.

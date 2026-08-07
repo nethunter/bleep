@@ -48,7 +48,7 @@ feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
   Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Amaran
-  Light entry, and an experimental already-provisioned MOLUS X100 entry;
+  Light entry, and an experimental provisioning-capable MOLUS X100 entry;
   hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, a
@@ -70,7 +70,8 @@ feasibility spikes:
   sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
   Portal provisioning and four local HA entities. ADR-024 adds an experimental
   userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
-  open. ADR-028 adds direct `0xFEE9` X100 control with confirmed readback;
+  open. ADR-028 shares that panel-owned provisioning repository and PB-GATT
+  engine with X100, then adds direct `0xFEE9` control with confirmed readback;
   generated reverse-Stop and groups remain deferred.
 
 ## Compile-time driver catalog
@@ -354,9 +355,10 @@ GATT is accessed through a transport facade:
 
 - all current BLE builds use one lazy NimBLE central;
 - Shark, Canon, and Tascam use their device-specific GATT services;
-- Amaran uses userspace PB-GATT provisioning and Mesh Proxy GATT over that same
-  central, with one proxy connection shared by its logical lights;
-- X100 uses the shared central to discover an already-provisioned `pl105`
+- Amaran and X100 share one panel-owned mesh repository, durable unicast
+  allocator, and userspace no-OOB PB-GATT provisioner over that central;
+- Amaran uses one Mesh Proxy GATT connection shared by its logical lights;
+- X100 accepts a reset `pl105` Provisioning advertiser or a provisioned
   Mesh-Proxy advertiser, then initializes and controls the separate `0xFEE9`
   GATT service. Its writes remain pending until correlated device replies
   confirm the requested values;

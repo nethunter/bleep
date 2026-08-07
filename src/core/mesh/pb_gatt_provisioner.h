@@ -3,7 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifndef UI_SIMULATOR
 #include <mbedtls/ecp.h>
+#endif
 
 namespace studio::mesh {
 
@@ -12,6 +14,25 @@ class ProvisioningSender {
   virtual ~ProvisioningSender() = default;
   virtual bool sendProvisioningPdu(const uint8_t* pdu, size_t length) = 0;
 };
+
+#ifdef UI_SIMULATOR
+
+class PbGattProvisioner {
+ public:
+  bool begin(const uint8_t[16], uint32_t, uint16_t,
+             ProvisioningSender&) { return false; }
+  bool handle(const uint8_t*, size_t) { return false; }
+  void cancel() {}
+  bool active() const { return false; }
+  bool complete() const { return false; }
+  uint8_t elementCount() const { return 1; }
+  const uint8_t* deviceKey() const { return deviceKey_; }
+
+ private:
+  uint8_t deviceKey_[16] = {};
+};
+
+#else
 
 class PbGattProvisioner {
  public:
@@ -57,5 +78,7 @@ class PbGattProvisioner {
   mbedtls_mpi privateKey_;
   mbedtls_ecp_point publicKey_;
 };
+
+#endif
 
 }  // namespace studio::mesh

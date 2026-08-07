@@ -80,9 +80,9 @@ principles:
   provisioning, one shared Mesh Proxy connection, power,
   independently remembered CCT/tint/brightness and RGB/saturation/brightness
   looks, plus a unified parameterized `Set color` sequence action.
-- Experimental ZHIYUN MOLUS X100 support for an already-provisioned light,
-  with direct power and CCT/brightness controls that remain pending until the
-  light returns matching state reads.
+- Experimental ZHIYUN MOLUS X100 support with panel-owned provisioning of a
+  factory-reset light and direct power/CCT/brightness controls that remain
+  pending until the light returns matching state reads.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -106,7 +106,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
 | Amaran Light | Experimental | Adds the first nearby factory-reset Amaran fixture advertising Mesh Provisioning to a panel-owned mesh; optimistic power, CCT/tint/brightness, RGB/brightness, and sequence actions use one shared proxy. Pano 60c/120c and Ace 25c are the initial validation fixtures; real-fixture verification remains open. |
-| ZHIYUN MOLUS X100 | Experimental | Adds an already-provisioned `PL105` light advertising Mesh Proxy and controls power plus 2700-6500 K CCT/brightness through direct GATT. Commands complete only after matching device readback. Panel-owned provisioning and panel hardware verification remain open. |
+| ZHIYUN MOLUS X100 | Experimental | Provisions a factory-reset `PL105` into the shared panel-owned mesh, rediscovers it on Mesh Proxy, and controls power plus 2700-6500 K CCT/brightness through direct GATT. Commands complete only after matching device readback. Panel hardware verification remains open. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
 Compatibility claims are deliberately narrow. Read
@@ -209,9 +209,9 @@ does not leave an unpaired record behind. Pairing mode matters:
   saved phone registration and a BR-E1 bond are different pairings.
 - Tascam X8: install the AK-BT1 and make the recorder available to its remote
   app connection.
-- ZHIYUN X100: provision the light first so it advertises Mesh Proxy `0x1828`;
-  Ble(e)p then matches the `PL105_` identity and opens the direct control
-  service. Factory-reset `0x1827` onboarding is not in this firmware tranche.
+- ZHIYUN X100: factory-reset or previously provisioned lights are accepted.
+  Ble(e)p matches the `PL105_` identity, provisions `0x1827` when needed, then
+  rediscovers `0x1828` and opens the direct control service.
 
 For first-time Home Assistant setup, open **Portal** from Home. Join the
 temporary `Bleep-Setup-…` WPA2 network by scanning the on-panel QR code, or join

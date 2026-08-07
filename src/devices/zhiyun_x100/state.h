@@ -21,7 +21,14 @@ struct X100State {
   bool confirmed = false;
   bool on = false;
   float brightness = 0.0f;
+  bool brightnessLimited = false;
+  uint8_t maxBrightness = 100;
   uint16_t kelvin = 5600;
+  float requestedBrightness = 0.0f;
+  float readbackBrightness = 0.0f;
+  uint16_t requestedKelvin = 0;
+  uint16_t readbackKelvin = 0;
+  uint8_t verificationField = 0;
   bool commandPending = false;
   bool lastCommandFailed = false;
   char deviceName[40] = "";

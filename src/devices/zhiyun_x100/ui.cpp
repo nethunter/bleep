@@ -26,6 +26,11 @@ constexpr uint32_t kDanger = 0xf26d6d;
 studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
 bool syncing = false;
+bool editPending = false;
+bool editDispatched = false;
+bool editCommandObserved = false;
+bool localTargetActive = false;
+uint32_t editDueMs = 0;
 uint32_t lastRefreshMs = 0;
 lv_obj_t* screen = nullptr;
 lv_obj_t* title = nullptr;
@@ -64,14 +69,44 @@ void onRetry() {
 void onBackEvent(lv_event_t*) { onBack(); }
 void onRetryEvent(lv_event_t*) { onRetry(); }
 
-void onApply(lv_event_t*) {
+void onSliderChange(lv_event_t*) {
   if (syncing || instanceId == studio::kInvalidInstanceId) return;
+  editPending = true;
+  localTargetActive = true;
+  editDueMs = millis() + 350;
+  char text[20];
+  std::snprintf(text, sizeof(text), "%ld K",
+                static_cast<long>(lv_slider_get_value(cctSlider)));
+  lv_label_set_text(cctValue, text);
+  std::snprintf(text, sizeof(text), "%ld%%",
+                static_cast<long>(lv_slider_get_value(brightnessSlider)));
+  lv_label_set_text(brightnessValue, text);
+}
+
+void processDebouncedEdit(uint32_t now) {
   const studio::DeviceRuntimeState runtime =
       studio::devices().runtimeState(instanceId);
-  if (!runtime.protocolReady || runtime.commandPending) return;
-  enqueue(studio::CommandType::SetLightCct,
-          lv_slider_get_value(cctSlider),
+  if (editDispatched) {
+    if (runtime.commandPending) {
+      editCommandObserved = true;
+    } else if (editCommandObserved) {
+      editDispatched = false;
+      editCommandObserved = false;
+      if (!editPending && !runtime.commandFailed) localTargetActive = false;
+    }
+  }
+  if (!editPending || editDispatched || !runtime.protocolReady ||
+      runtime.commandPending || static_cast<int32_t>(now - editDueMs) < 0)
+    return;
+  const uint16_t kelvin = zhiyun_x100::normalizeCct(
+      static_cast<uint16_t>(lv_slider_get_value(cctSlider)));
+  syncing = true;
+  lv_slider_set_value(cctSlider, kelvin, LV_ANIM_OFF);
+  syncing = false;
+  enqueue(studio::CommandType::SetLightCct, kelvin,
           lv_slider_get_value(brightnessSlider));
+  editPending = false;
+  editDispatched = true;
 }
 
 void onPower(lv_event_t*) {
@@ -132,7 +167,8 @@ void ensure() {
   lv_obj_align(cctSlider, LV_ALIGN_TOP_MID, 0, 98);
   lv_slider_set_range(cctSlider, zhiyun_x100::kMinKelvin,
                       zhiyun_x100::kMaxKelvin);
-  lv_obj_add_event_cb(cctSlider, onApply, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(cctSlider, onSliderChange, LV_EVENT_VALUE_CHANGED,
+                      nullptr);
 
   lv_obj_t* brightnessLabel =
       makeLabel(screen, "BRIGHTNESS", 120, UI_FONT_14, kMuted);
@@ -143,7 +179,8 @@ void ensure() {
   lv_obj_set_size(brightnessSlider, 142, 10);
   lv_obj_align(brightnessSlider, LV_ALIGN_TOP_MID, 0, 143);
   lv_slider_set_range(brightnessSlider, 0, 100);
-  lv_obj_add_event_cb(brightnessSlider, onApply, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(brightnessSlider, onSliderChange,
+                      LV_EVENT_VALUE_CHANGED, nullptr);
 
   powerButton = makeButton(screen, "POWER", onPower, kAccent);
   lv_obj_set_size(powerButton, 96, 30);
@@ -159,6 +196,8 @@ const char* phaseText(const zhiyun_x100::X100State* state) {
     return "Scanning for PL105";
   if (state->link == zhiyun_x100::X100State::Link::Connecting)
     return "Connecting";
+  if (state->phase == zhiyun_x100::X100State::Phase::Provisioning)
+    return "Creating mesh";
   if (state->phase == zhiyun_x100::X100State::Phase::Initializing)
     return "Initializing control";
   if (state->phase == zhiyun_x100::X100State::Phase::ReadingState)
@@ -186,7 +225,7 @@ void showForState(const zhiyun_x100::X100State* state) {
                       state->phase == zhiyun_x100::X100State::Phase::Failed;
   pairingScreen.setStatus(phaseText(state),
                           failed ? "Check the light and retry"
-                                 : "Already-provisioned X100 required",
+                                 : "Reset or provisioned X100 nearby",
                           !failed, failed, "Retry");
   if (lv_scr_act() != pairingScreen.screen()) lv_scr_load(pairingScreen.screen());
 }
@@ -199,14 +238,30 @@ void refresh() {
     return;
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
   lv_label_set_text(title, record != nullptr ? record->displayName : "MOLUS X100");
-  lv_label_set_text(status, state->commandPending
-                                ? "VERIFYING..."
-                                : (state->lastCommandFailed ? "NOT CONFIRMED"
-                                                            : "CONFIRMED"));
+  char statusText[32];
+  if (editPending) {
+    std::snprintf(statusText, sizeof(statusText), "ADJUSTING...");
+  } else if (state->commandPending || editDispatched) {
+    std::snprintf(statusText, sizeof(statusText), "VERIFYING...");
+  } else if (state->lastCommandFailed && state->brightnessLimited &&
+             state->requestedBrightness > state->maxBrightness) {
+    std::snprintf(statusText, sizeof(statusText), "LIMIT %u%%",
+                  state->maxBrightness);
+  } else if (state->lastCommandFailed && state->verificationField == 1) {
+    std::snprintf(statusText, sizeof(statusText), "B %.0f != %.1f",
+                  state->requestedBrightness, state->readbackBrightness);
+  } else if (state->lastCommandFailed && state->verificationField == 2) {
+    std::snprintf(statusText, sizeof(statusText), "%u != %u K",
+                  state->requestedKelvin, state->readbackKelvin);
+  } else {
+    std::snprintf(statusText, sizeof(statusText), "%s",
+                  state->lastCommandFailed ? "NOT CONFIRMED" : "CONFIRMED");
+  }
+  lv_label_set_text(status, statusText);
   lv_obj_set_style_text_color(
       status,
       lv_color_hex(state->lastCommandFailed ? kDanger : kAccent), 0);
-  if (!state->commandPending) {
+  if (!localTargetActive && !state->commandPending) {
     syncing = true;
     lv_slider_set_value(cctSlider, state->kelvin, LV_ANIM_OFF);
     lv_slider_set_value(brightnessSlider,
@@ -214,9 +269,16 @@ void refresh() {
     syncing = false;
   }
   char text[20];
-  std::snprintf(text, sizeof(text), "%u K", state->kelvin);
+  const uint16_t shownKelvin = localTargetActive
+                                   ? static_cast<uint16_t>(
+                                         lv_slider_get_value(cctSlider))
+                                   : state->kelvin;
+  const float shownBrightness =
+      localTargetActive ? lv_slider_get_value(brightnessSlider)
+                        : state->brightness;
+  std::snprintf(text, sizeof(text), "%u K", shownKelvin);
   lv_label_set_text(cctValue, text);
-  std::snprintf(text, sizeof(text), "%.1f%%", state->brightness);
+  std::snprintf(text, sizeof(text), "%.1f%%", shownBrightness);
   lv_label_set_text(brightnessValue, text);
   lv_label_set_text(powerLabel, state->on ? "TURN OFF" : "TURN ON");
   lv_obj_set_style_bg_color(powerButton,
@@ -230,6 +292,10 @@ void init() { ensure(); }
 void show(studio::InstanceId id) {
   ensure();
   instanceId = id;
+  editPending = false;
+  editDispatched = false;
+  editCommandObserved = false;
+  localTargetActive = false;
   visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) {
     instanceId = studio::kInvalidInstanceId;
@@ -245,6 +311,10 @@ void hide() {
     studio::devices().release(instanceId, studio::ConnectionOwner::Foreground);
   visible = false;
   instanceId = studio::kInvalidInstanceId;
+  editPending = false;
+  editDispatched = false;
+  editCommandObserved = false;
+  localTargetActive = false;
 }
 
 void release() {
@@ -262,6 +332,7 @@ bool active() { return visible; }
 void tick() {
   if (!visible) return;
   const uint32_t now = millis();
+  processDebouncedEdit(now);
   if (now - lastRefreshMs >= 200) {
     lastRefreshMs = now;
     refresh();
