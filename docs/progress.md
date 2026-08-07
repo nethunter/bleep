@@ -2162,3 +2162,18 @@ Record values with the exact build environment and commit/worktree state.
   `amaran_light` 1,756,206 / 155,876; and `zhiyun_x100` 1,744,138 / 156,780.
   The final combined image flashed successfully to
   `/dev/cu.usbserial-211240`, verified all written-region hashes, and reset.
+
+### 2026-08-07: BLE transmit-power default restored to +3 dBm
+
+- `CONFIG_BLE_TX_POWER_DBM` now has one default definition in
+  `include/driver_config.h`: +3 dBm. `platformio.ini` does not duplicate the
+  default; individual profiles may override the symbol when needed. The
+  existing compile-time `-24` through `20` dBm input-range guard remains.
+- Updated README, architecture, and ADR-025 to describe +3 dBm as the shared
+  default. Earlier 0 dBm progress entries remain as historical records of the
+  battery-conscious experiment rather than current configuration.
+- Native tests passed 49/49. All eight firmware profiles built successfully;
+  `crowpanel_128` used 1,805,322 bytes flash / 165,300 bytes RAM. The combined
+  +3 dBm image flashed successfully to `/dev/cu.usbserial-211240`, verified all
+  written-region hashes, and hard-reset. RF range/current behavior at +3 dBm
+  was not measured during this build-and-flash check.
