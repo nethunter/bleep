@@ -10,6 +10,7 @@
 #include "devices/shark_nano_ii/client.h"
 #include "devices/shark_nano_ii/protocol.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
 #include "../../ui.h"
 
@@ -427,6 +428,7 @@ void onRepair(lv_event_t*) {
   gShark.forgetDevice();
 }
 void onBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   hide();
   ui::showDeviceParent();
 }

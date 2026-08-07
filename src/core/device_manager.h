@@ -48,6 +48,8 @@ class DeviceManager {
   bool retryPendingAdd(InstanceId instanceId);
   RegistryStatus cancelPendingAdd(InstanceId instanceId);
   RegistryStatus remove(InstanceId instanceId);
+  RegistryStatus update(InstanceId instanceId, const char* displayName,
+                        bool enabled);
   RegistryStatus rename(InstanceId instanceId, const char* displayName);
   RegistryStatus setEnabled(InstanceId instanceId, bool enabled);
   RegistryStatus clearPairing(InstanceId instanceId);

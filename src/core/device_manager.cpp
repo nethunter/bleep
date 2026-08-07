@@ -302,40 +302,55 @@ bool DeviceManager::commitPendingAdd() {
 
 RegistryStatus DeviceManager::remove(InstanceId instanceId) {
   DeviceRecord* record = registry_.find(instanceId);
-  if (record != nullptr) {
-    DeviceDriver* driver = driverFor(record->driverId);
-    if (driver != nullptr) {
-      // Drop controller-side bonds before the registry forgets the address.
-      driver->forgetPairing(*record);
-    }
-  }
-  if (isActive(instanceId)) {
-    deactivate(instanceId);
-  }
+  if (record == nullptr) return RegistryStatus::NotFound;
+  const DeviceRecord removed = *record;
+  const DeviceRegistry previous = registry_;
   const RegistryStatus status = registry_.remove(instanceId);
-  if (status == RegistryStatus::Ok) {
-    save();
+  if (status != RegistryStatus::Ok) return status;
+  if (!save()) {
+    registry_ = previous;
+    return RegistryStatus::Invalid;
   }
-  return status;
+  DeviceDriver* driver = driverFor(removed.driverId);
+  if (isActive(instanceId)) {
+    if (driver != nullptr) driver->deactivate(instanceId);
+    removeActive(instanceId);
+  }
+  if (driver != nullptr) {
+    // Forget transport identity only after the updated registry is durable.
+    driver->forgetPairing(removed);
+  }
+  return RegistryStatus::Ok;
 }
 
 RegistryStatus DeviceManager::rename(InstanceId instanceId, const char* displayName) {
-  const RegistryStatus status = registry_.rename(instanceId, displayName);
-  if (status == RegistryStatus::Ok) {
-    save();
+  const DeviceRecord* record = registry_.find(instanceId);
+  return record == nullptr ? RegistryStatus::NotFound
+                           : update(instanceId, displayName, record->enabled);
+}
+
+RegistryStatus DeviceManager::update(InstanceId instanceId,
+                                     const char* displayName, bool enabled) {
+  char safeName[kDeviceNameCapacity] = "";
+  if (displayName != nullptr) {
+    std::strncpy(safeName, displayName, sizeof(safeName) - 1);
   }
-  return status;
+  const DeviceRegistry previous = registry_;
+  RegistryStatus status = registry_.rename(instanceId, safeName);
+  if (status != RegistryStatus::Ok) return status;
+  status = registry_.setEnabled(instanceId, enabled);
+  if (status != RegistryStatus::Ok || !save()) {
+    registry_ = previous;
+    return RegistryStatus::Invalid;
+  }
+  if (!enabled && isActive(instanceId)) deactivate(instanceId);
+  return RegistryStatus::Ok;
 }
 
 RegistryStatus DeviceManager::setEnabled(InstanceId instanceId, bool enabled) {
-  if (!enabled && isActive(instanceId)) {
-    deactivate(instanceId);
-  }
-  const RegistryStatus status = registry_.setEnabled(instanceId, enabled);
-  if (status == RegistryStatus::Ok) {
-    save();
-  }
-  return status;
+  const DeviceRecord* record = registry_.find(instanceId);
+  return record == nullptr ? RegistryStatus::NotFound
+                           : update(instanceId, record->displayName, enabled);
 }
 
 RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {

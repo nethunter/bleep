@@ -1,6 +1,7 @@
 #include "ui/recorder_shell.h"
 
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 
 namespace recorder_shell {
 
@@ -68,6 +69,7 @@ void setPowerEnabled(bool enabled) {
 }
 
 void onBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   if (callbacks.onBack != nullptr) {
     callbacks.onBack();
   }

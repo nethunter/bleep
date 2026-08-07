@@ -503,6 +503,31 @@ the replacement.
   into the in-memory registry only at commit, with existing capacity,
   per-driver limits, and monotonic committed instance IDs enforced.
 
+## ADR-027: Portal administration is configuration-only and physically entered
+
+- Status: Accepted
+- Scope: The station-bound Portal is a responsive phone/desktop console for
+  committed device records, current authored Start/Stop sequences, and Home
+  Assistant provisioning. It exposes overview, device, sequence, and HA views.
+- Physical boundary: Portal entry remains a physical action on the panel. The
+  Portal has no remote entry route, pairing flow, device controls, or sequence
+  execution. Physical-device pairing remains on the panel; HA entities may be
+  added through Portal because their provisioning is already network-native.
+- Session boundary: A fresh unpredictable mutation nonce is generated at each
+  Portal entry and embedded in the served page. State-changing requests require
+  that nonce, CORS is not enabled, responses are not cached or frameable, and
+  the existing ten-minute inactivity and explicit-exit teardown remain in force.
+  This is same-origin request protection, not user authentication or transport
+  encryption; use remains limited to a trusted local network.
+- Consistency: Portal edits use the same checked registries and scene validation
+  as the panel. Mutations are transactional with rollback after failed NVS
+  writes, revisions reject stale full-record scene updates, and device deletion
+  is blocked while a scene references the instance. Dormant records remain
+  visible when their driver is omitted from the active build.
+- Runtime: Entering Portal cancels scene preparation/execution and releases
+  device ownership before starting Wi-Fi. Configuration changes do not acquire
+  physical links, and normal operation resumes only after Portal teardown.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

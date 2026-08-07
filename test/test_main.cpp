@@ -1368,9 +1368,15 @@ void test_removed_registry_stays_empty_after_restart() {
   studio::DeviceManager first(backend, legacy, firstDrivers, 1);
   TEST_ASSERT_TRUE(first.begin());
   TEST_ASSERT_EQUAL_UINT32(1, first.count());
+  const studio::InstanceId removedId = first.at(0)->instanceId;
+  TEST_ASSERT_TRUE(
+      first.acquire(removedId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(first.remove(first.at(0)->instanceId)));
+      static_cast<int>(first.remove(removedId)));
+  TEST_ASSERT_FALSE(first.isActive(removedId));
+  TEST_ASSERT_EQUAL_INT(1, firstDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, firstDriver.forgetPairingCount);
 
   FakeDriver secondDriver;
   studio::DeviceDriver* secondDrivers[] = {&secondDriver};
@@ -1378,6 +1384,67 @@ void test_removed_registry_stays_empty_after_restart() {
   TEST_ASSERT_TRUE(second.begin());
   TEST_ASSERT_EQUAL_UINT32(0, second.count());
   TEST_ASSERT_EQUAL_INT(0, secondDriver.activationCount);
+}
+
+void test_admin_mutations_roll_back_when_persistence_fails() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  deviceBackend.failWrites = true;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(devices.update(cameraId, "Renamed", false)));
+  TEST_ASSERT_EQUAL_STRING("Camera", devices.find(cameraId)->displayName);
+  TEST_ASSERT_TRUE(devices.find(cameraId)->enabled);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(devices.remove(cameraId)));
+  TEST_ASSERT_NOT_NULL(devices.find(cameraId));
+  TEST_ASSERT_EQUAL_INT(0, driver.forgetPairingCount);
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Take", sceneId)));
+  studio::SceneRecord original = *scenes.find(sceneId);
+  original.startCount = 1;
+  original.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(original)));
+
+  sceneBackend.failWrites = true;
+  studio::SceneId copyId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Invalid),
+      static_cast<int>(scenes.duplicate(sceneId, "Take copy", copyId)));
+  TEST_ASSERT_EQUAL(studio::kInvalidSceneId, copyId);
+  TEST_ASSERT_EQUAL_UINT32(1, scenes.count());
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Invalid),
+      static_cast<int>(scenes.rename(sceneId, "Changed")));
+  TEST_ASSERT_EQUAL_STRING("Take", scenes.find(sceneId)->name);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Invalid),
+      static_cast<int>(scenes.setEnabled(sceneId, false)));
+  TEST_ASSERT_TRUE(scenes.find(sceneId)->enabled);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Invalid),
+      static_cast<int>(scenes.remove(sceneId)));
+  TEST_ASSERT_NOT_NULL(scenes.find(sceneId));
 }
 
 void test_manager_holds_concurrent_active_links() {
@@ -2320,6 +2387,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
+  RUN_TEST(test_admin_mutations_roll_back_when_persistence_fails);
   RUN_TEST(test_manager_holds_concurrent_active_links);
   RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);

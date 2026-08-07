@@ -71,6 +71,10 @@ principles:
 - Experimental local Home Assistant control for four selected lights, switches,
   input booleans, buttons, scenes, or scripts through a temporary setup Portal
   and one shared on-demand Wi-Fi session.
+- A responsive LAN Portal for phone or desktop administration of committed
+  devices and current Start/Stop sequences. It can rename, enable, disable, or
+  remove existing devices and create, duplicate, reorder, and edit sequences;
+  physical pairing and runtime control remain on the panel.
 - Experimental native `Amaran Light` support with panel-owned PB-GATT
   provisioning, one shared Mesh Proxy connection, power,
   independently remembered CCT/tint/brightness and RGB/saturation/brightness
@@ -111,6 +115,7 @@ The current target is the **ESP32-C3 CrowPanel 1.28-inch round display**:
 - 240x240 GC9A01 LCD;
 - CST816D touch controller;
 - PI4IOE5V6408 I/O expander;
+- onboard vibration motor;
 - optional external button on GPIO 1, active low.
 
 The board does not include battery-voltage sensing, so the firmware cannot show
@@ -122,13 +127,18 @@ values shown on the Shark screen come from the slider.
 - **Touch:** Home, device management, sequences, connection, keypoints,
   positioning, run controls, per-keypoint settings, and explicit Canon camera
   power-down. Reopening or preparing a Canon Smart camera that Ble(e)p powered
-  off automatically reconnects and attempts the captured wake sequence.
+  off automatically reconnects and attempts the captured wake sequence. An
+  accepted touch click produces a crisp haptic tap; a device becoming ready or
+  opening an already-connected device uses two quick ticks; Back uses two
+  uneven taps; and a newly surfaced error uses two strong pulses. Scrolling
+  and canceled touches do not produce feedback.
 - **Button (GPIO 1):** A short press activates the current primary action. On a
   sequence run screen it starts from Ready and stops once armed or while Start
   is running. Device screens similarly dispatch their primary Shark, Canon, or
   Tascam action. A 700 ms hold navigates Back, cancels, or closes the current
-  overlay. The button has no power behavior; the hardware SPDT switch controls
-  controller power.
+  overlay. Recognized short presses use the normal tap, while a long press uses
+  the Back pattern. The button has no power behavior; the hardware SPDT switch
+  controls controller power.
 
 ### Pin assumptions
 
@@ -138,6 +148,7 @@ values shown on the Shark screen come from the slider.
 | I2C SDA / SCL | GPIO 4 / 5 |
 | Touch interrupt | GPIO 0 |
 | External button | GPIO 1, active low |
+| Vibration motor | I/O expander P0 |
 | I/O expander | I2C `0x43` |
 | CST816D touch | I2C `0x15` |
 | BM8563 RTC | I2C `0x51` |
@@ -203,11 +214,23 @@ The browser and panel show scanning, joining, and
 failure feedback. After Ble(e)p joins, note the numeric LAN address, let the
 setup AP close, and rejoin the normal local Wi-Fi. Open that numeric address
 while the Portal screen remains active; `http://bleep.local` is also advertised
-as a convenience but may not resolve on every client or network. Enter the local
-`http://` Home Assistant URL and long-lived access token, then select at most
-four supported entities. Exit Portal on the panel after saving; this stops the
-LAN server and turns Wi-Fi off. Later Portal sessions join saved Wi-Fi directly
-and show their current numeric LAN address; normal Home boot remains network-free.
+as a convenience but may not resolve on every client or network.
+
+The LAN Portal opens on **Overview** and provides dedicated **Devices**,
+**Sequences**, and **Home Assistant** views. Devices can be renamed,
+enabled/disabled, or removed; removal is blocked while a sequence references
+the device. Add physical devices on the panel so their pairing flow stays local
+to the controller. Home Assistant entities remain the exception and can be
+added in the Portal by entering the local `http://` Home Assistant URL and
+long-lived access token, then selecting at most four supported entities.
+
+Sequences can be created, renamed, enabled/disabled, duplicated, and deleted.
+Their Start and Stop lists support action and wait steps, in-place editing, and
+reordering. The Portal changes configuration only: it does not connect to
+devices or run sequences. Choose **Finish & Exit** in the Portal, or Exit on the
+panel, after saving; this stops the LAN server and turns Wi-Fi off. Later Portal
+sessions join saved Wi-Fi directly and show their current numeric LAN address;
+normal Home boot remains network-free.
 In LAN mode, the on-panel QR code changes from the temporary Wi-Fi credentials
 to the current numeric Portal URL.
 

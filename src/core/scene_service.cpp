@@ -32,30 +32,67 @@ void SceneService::loop(uint32_t nowMs) {
 bool SceneService::save() { return store_.save(registry_); }
 
 SceneRegistryStatus SceneService::add(const char* name, SceneId& outId) {
+  const SceneRegistry previous = registry_;
   const SceneRegistryStatus status = registry_.add(name, outId);
   if (status == SceneRegistryStatus::Ok && !save()) {
-    registry_.remove(outId);
+    registry_ = previous;
     outId = kInvalidSceneId;
     return SceneRegistryStatus::Invalid;
   }
   return status;
 }
 
+SceneRegistryStatus SceneService::duplicate(SceneId sourceId, const char* name,
+                                            SceneId& outId) {
+  outId = kInvalidSceneId;
+  const SceneRecord* source = registry_.find(sourceId);
+  if (source == nullptr) return SceneRegistryStatus::NotFound;
+  const SceneRecord sourceCopy = *source;
+  const SceneRegistry previous = registry_;
+  SceneRegistryStatus status = registry_.add(name, outId);
+  if (status != SceneRegistryStatus::Ok) return status;
+  SceneRecord copy = sourceCopy;
+  copy.sceneId = outId;
+  std::strncpy(copy.name, name, sizeof(copy.name) - 1);
+  copy.name[sizeof(copy.name) - 1] = '\0';
+  status = registry_.replace(copy);
+  if (status != SceneRegistryStatus::Ok || !save()) {
+    registry_ = previous;
+    outId = kInvalidSceneId;
+    return SceneRegistryStatus::Invalid;
+  }
+  return SceneRegistryStatus::Ok;
+}
+
 SceneRegistryStatus SceneService::remove(SceneId sceneId) {
   if (runner_.busy() && runner_.progress().sceneId == sceneId) {
     return SceneRegistryStatus::Invalid;
   }
+  const SceneRegistry previous = registry_;
   const SceneRegistryStatus status = registry_.remove(sceneId);
-  if (status == SceneRegistryStatus::Ok) {
-    save();
+  if (status == SceneRegistryStatus::Ok && !save()) {
+    registry_ = previous;
+    return SceneRegistryStatus::Invalid;
   }
   return status;
 }
 
 SceneRegistryStatus SceneService::rename(SceneId sceneId, const char* name) {
+  const SceneRegistry previous = registry_;
   const SceneRegistryStatus status = registry_.rename(sceneId, name);
-  if (status == SceneRegistryStatus::Ok) {
-    save();
+  if (status == SceneRegistryStatus::Ok && !save()) {
+    registry_ = previous;
+    return SceneRegistryStatus::Invalid;
+  }
+  return status;
+}
+
+SceneRegistryStatus SceneService::setEnabled(SceneId sceneId, bool enabled) {
+  const SceneRegistry previous = registry_;
+  const SceneRegistryStatus status = registry_.setEnabled(sceneId, enabled);
+  if (status == SceneRegistryStatus::Ok && !save()) {
+    registry_ = previous;
+    return SceneRegistryStatus::Invalid;
   }
   return status;
 }
@@ -64,9 +101,13 @@ SceneRegistryStatus SceneService::replace(const SceneRecord& record) {
   if (runner_.validate(record) != SceneValidationStatus::Ok) {
     return SceneRegistryStatus::Invalid;
   }
+  const SceneRegistry previous = registry_;
   const SceneRegistryStatus status = registry_.replace(record);
+  if (status == SceneRegistryStatus::Ok && !save()) {
+    registry_ = previous;
+    return SceneRegistryStatus::Invalid;
+  }
   if (status == SceneRegistryStatus::Ok) {
-    save();
     runner_.refreshPrepared(record.sceneId);
   }
   return status;

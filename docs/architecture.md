@@ -231,8 +231,10 @@ browser and panel report scanning, connecting, success, timeout, missing SSID,
 or rejected credentials. A successful join saves those credentials, exposes
 the assigned numeric LAN address during a bounded handoff, destroys the AP,
 binds a new listener to the station address, and advertises a best-effort
-`http://bleep.local` mDNS alias. HA URL/token/entity setup is served only on that
-LAN listener. Discovery incrementally parses `/api/states`; the browser
+`http://bleep.local` mDNS alias. The responsive LAN console serves overview,
+committed-device administration, current authored Start/Stop sequence editing,
+and HA setup. Physical pairing, device commands, and sequence execution are
+deliberately absent. Discovery incrementally parses `/api/states`; the browser
 receives at most 24 bounded summaries and may select four. Secrets are password
 fields and never appear in `/api/config`. Exit or ten minutes of inactivity
 stops HTTP/mDNS, disconnects STA, and returns Wi-Fi to off.
@@ -303,6 +305,20 @@ muted gray when simply disconnected or powered off. Chip navigation is disabled
 while Start or Stop steps execute; a compact status label remains above
 Cancel/Done.
 
+The CrowPanel vibration motor is driven by PI4IOE5V6408 expander output P0. A
+shared main-loop sequencer provides four semantic patterns: Press is one 20 ms
+tap; Connected is 12 ms on, 24 ms off, then 12 ms on; Back is 15 ms on, 35 ms
+off, then 30 ms on; Error is 60 ms on, 45 ms off, then 60 ms on. LVGL's input
+feedback callback requests Press only after a click is accepted, and navigation
+handlers replace that generic pulse with Back. Connected fires when the current
+device becomes protocol-ready, when an already-ready retained device is opened,
+or when sequence preparation reaches `ScenePhase::Ready`; it queues behind a
+stronger active pattern. Foreground command failures, pending-add save failures,
+sequence failures, and terminal Portal errors request Error only on their
+transition into failure.
+Stronger patterns take priority, and no pattern delays UI, transport, or scene
+work.
+
 The twelve-record Devices screen plus the largest specialized control screen
 exhausted the earlier 64 KiB LVGL pool. The final 76 KiB pool passes the full
 capture run and retains 14,192 bytes on its most demanding sequence-stop
@@ -354,6 +370,15 @@ Entering Portal mode:
    the bounded HTTP server there with `bleep.local` as best-effort discovery,
    and changes the QR code to the numeric Portal URL;
 5. displays the active network, URL, timeout, and Exit on the panel.
+
+The LAN listener exposes bounded JSON APIs for summary, device records,
+sequences, and HA configuration. Each session has a fresh mutation nonce;
+state-changing requests without it are rejected, CORS is not enabled, and the
+page is served with no-store and frame-denial headers. Device and sequence
+changes pass through their normal registries, validation, and checked NVS
+writes. Failed persistence restores the prior in-memory state, stale sequence
+revisions are rejected, and referenced devices cannot be removed. Records for
+drivers omitted from the current build remain visible but unavailable.
 
 Exiting Portal mode, reaching the inactivity timeout, or rebooting destroys the
 HTTP server, mDNS responder, SoftAP, and station connection before restoring

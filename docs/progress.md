@@ -1848,3 +1848,131 @@ Record values with the exact build environment and commit/worktree state.
   attempts failed and recovered automatically. This verifies real Tascam
   Add-device pairing and transactional commit; pairing-error Retry, Back
   cleanup, and reboot-during-pairing checks remain open.
+
+### 2026-08-06: Responsive Portal device and sequence administration
+
+- Added ADR-027 and expanded the station-bound Portal into responsive Overview,
+  Devices, Sequences, and Home Assistant views. Existing physical devices can
+  be renamed, enabled/disabled, and removed; physical pairing and all runtime
+  controls remain panel-only. Referenced-device removal is rejected with the
+  referencing sequences identified, and dormant records remain visible.
+- Added create, rename, enable/disable, duplicate, delete, and full in-place
+  Start/Stop editing for the current scene model, including action/wait steps
+  and reordering. Bounded stable command IDs cross the HTTP boundary, scene
+  revisions reject stale updates, and normal scene validation remains
+  authoritative.
+- Made device and scene mutations transactional across checked NVS writes.
+  Added a per-entry mutation nonce, no-store/frame-denial headers, request-size
+  limits, and a safe deferred **Finish & Exit** route. Portal entry still
+  cancels scenes and releases device links before Wi-Fi starts.
+- Native tests passed 46/46, including persistence-failure rollback for device
+  update/removal and scene duplicate/rename/enable/removal. The embedded
+  JavaScript passed a Node syntax check. Mocked desktop and 390 px mobile Portal
+  flows were visually inspected with no browser console errors or horizontal
+  overflow; real phone/desktop interaction against the board remains pending.
+- Native and UI simulator verification passed; the complete simulator capture
+  ended with 11,424 bytes free and 1% fragmentation. All seven firmware profiles
+  built successfully. Flash/RAM bytes were: `crowpanel_128` 1,781,886 / 164,084;
+  `crowpanel_128_roboto` 1,751,414 / 164,084; `canon_ble` 1,779,660 / 162,436;
+  `canon_trigger` 1,776,108 / 161,444; `tascam_x8` 1,777,506 / 161,348;
+  `home_assistant` 1,772,738 / 160,964; and `amaran_light` 1,738,368 / 155,756.
+  The final main image flashed to `/dev/cu.usbserial-211240`; hashes verified and
+  the panel hard-reset. Live phone/desktop CRUD, reboot persistence, and ten
+  Portal lifecycle heap/socket/task cycles remain operator-pending hardware
+  gates.
+- Replaced the ambiguous Overview metric `OFF / Runtime links in Portal` with
+  `PAUSED / Device connections`. Replaced the text-only sidebar wordmark with a
+  responsive embedded derivative of `assets/bleep_logo.png`; the Portal serves
+  the 320 px WebP locally from program flash. Desktop and 390 px mobile browser
+  checks confirmed the logo loaded at 178 px and 132 px respectively, with no
+  page overflow.
+- All seven firmware profiles rebuilt successfully after the branding change.
+  Flash/RAM bytes were: `crowpanel_128` 1,792,140 / 164,124;
+  `crowpanel_128_roboto` 1,761,668 / 164,124; `canon_ble` 1,789,916 / 162,484;
+  `canon_trigger` 1,786,350 / 161,492; `tascam_x8` 1,787,762 / 161,388;
+  `home_assistant` 1,782,996 / 161,012; and `amaran_light` 1,748,618 / 155,796.
+  The final main image flashed to `/dev/cu.usbserial-211240`; hashes verified and
+  the panel hard-reset.
+
+### 2026-08-06: CrowPanel haptic feedback
+
+- Added Phase 7 haptic feedback through the onboard vibration motor on
+  PI4IOE5V6408 expander output P0. Accepted LVGL touch clicks and recognized
+  short-button actions pulse for 25 ms; recognized long presses pulse for 50 ms.
+  Scrolling and canceled touches do not trigger feedback.
+- Motor timing is a rollover-safe main-loop deadline. Feedback never delays
+  LVGL, scene, BLE, or Wi-Fi work, and a repeated request extends an active
+  pulse. Expander initialization writes the output latch low before enabling
+  the motor output so boot does not intentionally buzz.
+- Native tests passed 46/46. `ui_sim` built and completed its full capture run,
+  ending with 11,424 bytes free and 1% fragmentation. All seven firmware
+  profiles built successfully. Flash/RAM bytes were: `crowpanel_128` 1,782,094
+  / 164,092; `crowpanel_128_roboto` 1,751,622 / 164,092; `canon_ble` 1,779,868
+  / 162,444; `canon_trigger` 1,776,316 / 161,452; `tascam_x8` 1,777,714 /
+  161,356; `home_assistant` 1,772,946 / 160,972; and `amaran_light` 1,738,576 /
+  155,764.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Physical confirmation of pulse feel and the chosen 25/50 ms strengths remains
+  operator-pending.
+
+### 2026-08-06: Semantic Press, Back, and Error haptics
+
+- Replaced the single-duration motor pulse with a shared non-blocking pattern
+  sequencer. Press is one 20 ms tap; Back is 15 ms on, 35 ms off, then 30 ms
+  on; Error is 60 ms on, 45 ms off, then 60 ms on. Back replaces the generic
+  Press generated by the same click, and Error takes priority over both.
+- Routed touch and hardware-button Back paths through the Back pattern. Error
+  feedback fires once when a foreground command, pending-add save, sequence, or
+  terminal Portal state newly fails; an unchanged error does not keep buzzing.
+- Added simulator pattern assertions for exact Press/Back/Error output changes,
+  Back overriding Press, and Error suppressing weaker feedback. Native tests
+  passed 46/46; `ui_sim` built and completed its full capture run with 11,424
+  bytes free and 1% fragmentation.
+- All seven firmware profiles built successfully. Flash/RAM bytes were:
+  `crowpanel_128` 1,782,786 / 164,108; `crowpanel_128_roboto` 1,752,322 /
+  164,108; `canon_ble` 1,780,566 / 162,468; `canon_trigger` 1,776,996 /
+  161,476; `tascam_x8` 1,778,404 / 161,372; `home_assistant` 1,773,646 /
+  160,996; and `amaran_light` 1,739,268 / 155,780.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Physical differentiation and strength checks for all three patterns remain
+  operator-pending.
+
+### 2026-08-06: Connection-ready haptic
+
+- Added a Connected pattern: two quick 12 ms ticks separated by 24 ms. It fires
+  when the foreground device becomes link-connected and protocol-ready, when an
+  already-ready retained device is opened, and when sequence preparation enters
+  `ScenePhase::Ready`. A readiness transition during Back or Error is queued
+  until the stronger pattern completes.
+- Extended simulator coverage to assert the exact Connected output sequence,
+  delayed delivery after Error, a device becoming ready in place, reopening a
+  retained ready device, and a sequence reaching Ready.
+- Native tests passed 46/46. `ui_sim` built and completed its full capture run
+  with 11,424 bytes free and 1% fragmentation.
+- All seven firmware profiles built successfully. Flash/RAM bytes were:
+  `crowpanel_128` 1,783,140 / 164,124; `crowpanel_128_roboto` 1,752,668 /
+  164,124; `canon_ble` 1,780,916 / 162,484; `canon_trigger` 1,777,350 /
+  161,492; `tascam_x8` 1,778,762 / 161,388; `home_assistant` 1,773,996 /
+  161,012; and `amaran_light` 1,739,618 / 155,796.
+- The final `crowpanel_128` image flashed successfully to
+  `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
+  Physical differentiation of the Connected pattern remains operator-pending.
+
+### 2026-08-07: CrowPanel watch-crown CAD prototype
+
+- Used Elecrow's official `E5A5-2.35S10-12B15-F200` encoder drawing and board
+  STEP as the mechanical references for a removable watch-crown prototype.
+  The encoder drawing specifies a nominal 0.8 mm square drive socket and
+  0.15 mm push-switch travel.
+- Generated a Fusion 360-compatible STEP plus an STL and parametric CadQuery
+  source under `output/cad/`. The crown is 11.5 mm diameter by 3.0 mm thick,
+  with 40 straight rim flutes, a 0.75 mm clearance hub, and a relieved 0.76 mm
+  square drive with a tapered lead-in.
+- Re-imported the exported STEP and verified one valid solid with an
+  11.495 x 11.495 x 5.350 mm envelope and 294.949 mm3 volume. The integrated
+  sub-millimeter shaft requires a fine resin or machining process; physical
+  encoder fit, neighboring-component clearance, rotation, and preserved button
+  travel remain unverified. No firmware build or flash was applicable to this
+  CAD-only artifact.

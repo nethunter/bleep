@@ -50,16 +50,20 @@ void simSetWifiFeedback(Status status, const char* message) {
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_system.h>
 
 #include <cstdio>
 #include <cstring>
 #include <new>
 
 #include "core/device_manager.h"
+#include "core/command_traits.h"
 #include "core/home_assistant_config.h"
 #include "core/preferences_store.h"
 #include "core/scene_service.h"
 #include "devices/home_assistant/protocol.h"
+#include "assets/portal_logo.h"
+#include "portal_assets.h"
 
 namespace portal {
 namespace {
@@ -79,6 +83,7 @@ Status currentStatus = Status::Inactive;
 uint32_t lastActivity = 0;
 bool lanMode = false;
 bool switchToLanPending = false;
+bool exitPending = false;
 WifiJoinState wifiJoinState = WifiJoinState::Idle;
 uint32_t wifiJoinStarted = 0;
 uint32_t switchToLanAt = 0;
@@ -90,6 +95,7 @@ char wifiJoinMessage[64] = "Ready to connect";
 char statusMessage[48] = "Portal off";
 char portalUrl[32] = "http://192.168.4.1";
 char qrPayloadValue[96] = "";
+char portalNonce[17] = "";
 
 const char kStyle[] PROGMEM = R"HTML(<style>
 :root{color-scheme:dark;--bg:#05070a;--panel:#12161d;--ink:#f3f4f6;--muted:#8a94a6;--cyan:#35c7f2}
@@ -106,15 +112,6 @@ async function scanWifi(){scan.disabled=true;networks.textContent='Scanning near
 async function pollScan(){try{let r=await fetch('/api/wifi/scan'),d=await r.json();if(d.state==='scanning'){setTimeout(pollScan,500);return}networks.textContent='';(d.networks||[]).forEach(n=>{let b=document.createElement('button');b.type='button';b.className='result';let name=document.createElement('div');name.textContent=n.ssid;let meta=document.createElement('small');meta.textContent=n.rssi+' dBm · '+(n.secure?'secured':'open');b.append(name,meta);b.onclick=()=>{ssid.value=n.ssid;ssid.focus();message('Selected '+n.ssid+'. Enter its password, then connect.')};networks.append(b)});if(!networks.children.length)networks.textContent=d.error||'No networks found. Enter the SSID manually.';message('Scan complete.');scan.disabled=false}catch(e){networks.textContent='Scan interrupted. Enter the SSID manually.';message('Could not read scan results.','bad');scan.disabled=false}}
 async function pollJoin(){try{let r=await fetch('/api/wifi/status'),d=await r.json();message(d.message,d.state==='connected'?'ok':d.state==='failed'?'bad':'');if(d.state==='connecting'){timer=setTimeout(pollJoin,500);return}connect.disabled=false;scan.disabled=false;if(d.state==='connected'){let link=document.createElement('a');link.href=d.url;link.textContent=d.url;feedback.append(document.createElement('br'),'Reconnect this device to '+d.ssid+', then open ',link,'.');if(d.alias)feedback.append(document.createElement('br'),'Optional alias: '+d.alias)}}catch(e){message('The setup network closed. Reconnect to your normal Wi-Fi and use the numeric address shown on the Ble(e)p panel.','ok')}}
 form.onsubmit=async e=>{e.preventDefault();clearTimeout(timer);connect.disabled=true;scan.disabled=true;networks.textContent='';message('Starting Wi-Fi connection…');try{let r=await fetch('/wifi',{method:'POST',body:new URLSearchParams(new FormData(form))});let d=await r.json();if(!r.ok)throw new Error(d.error||'Could not start connection');message(d.message);pollJoin()}catch(e){message(e.message,'bad');connect.disabled=false;scan.disabled=false}};scan.onclick=scanWifi;scanWifi();</script></main></body></html>)HTML";
-
-const char kPortalPage[] PROGMEM = R"HTML(<!doctype html><html><head>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>Ble(e)p Portal</title>)HTML";
-const char kPortalBody[] PROGMEM = R"HTML(</head><body><main><header><h1>BLE(E)P / LINK</h1><p>Available only while Portal is open on the panel</p></header>
-<form method=post action=/save><section><h2>Home Assistant</h2><label>Local Home Assistant URL</label><input name=url value="http://homeassistant.local:8123" required><label>Long-lived token</label><input name=token type=password required></section>
-<section><h2>Entity rack / max 4</h2><p class=hint>Search by friendly name or canonical entity ID.</p><input id=q placeholder="light.key or Key Light"><button class=secondary type=button onclick=findEntities()>Scan supported entities</button><div id=results></div><div id=slots></div></section><button>Save configuration</button></form>
-<script>const slots=document.querySelector('#slots');for(let i=0;i<4;i++)slots.insertAdjacentHTML('beforeend',`<div class=entity><div><label>Entity ${i+1}</label><input name=id${i} id=id${i} placeholder=light.key_light></div><div><label>Panel name</label><input name=name${i} id=name${i} placeholder=Key Light><input type=hidden name=instance${i}></div></div>`);
-async function findEntities(){let p=new URLSearchParams({q:q.value,url:document.querySelector('[name=url]').value,token:document.querySelector('[name=token]').value});results.textContent='Scanning…';let r=await fetch('/api/entities',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p});let d=await r.json();results.textContent='';(d.entities||[]).forEach(e=>{let b=document.createElement('button');b.type='button';b.className='result';let n=document.createElement('div');n.textContent=e.name;let s=document.createElement('small');s.textContent=e.entity_id+' · '+e.state;b.append(n,s);b.onclick=()=>{for(let i=0;i<4;i++)if(!document.querySelector('#id'+i).value){document.querySelector('#id'+i).value=e.entity_id;document.querySelector('#name'+i).value=e.name;break}};results.append(b)});if(!results.children.length)results.textContent=d.error||'No matches';}
-fetch('/api/config').then(r=>r.json()).then(d=>{if(d.url)document.querySelector('[name=url]').value=d.url;(d.entities||[]).forEach((e,i)=>{document.querySelector('#id'+i).value=e.entity_id;document.querySelector('#name'+i).value=e.name;document.querySelector('[name=instance'+i+']').value=e.instance_id})});</script></main></body></html>)HTML";
 
 void setStatus(Status value, const char* message) {
   currentStatus = value;
@@ -137,6 +134,249 @@ void sendPage(const char* head, const char* body) {
   server->sendContent_P(head);
   server->sendContent_P(kStyle);
   server->sendContent_P(body);
+}
+
+void sendPortalPage() {
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server->sendHeader("Cache-Control", "no-store");
+  server->sendHeader("X-Frame-Options", "DENY");
+  server->send(200, "text/html", "");
+  server->sendContent_P(assets::kHead);
+  server->sendContent_P(assets::kStyle);
+  server->sendContent("<script>window.PORTAL_NONCE='");
+  server->sendContent(portalNonce);
+  server->sendContent("'</script>");
+  server->sendContent_P(assets::kBody);
+}
+
+void sendJson(int status, JsonDocument& doc) {
+  String body;
+  serializeJson(doc, body);
+  server->send(status, "application/json", body);
+}
+
+void sendError(int status, const char* code, const char* message) {
+  JsonDocument doc;
+  doc["error"] = code;
+  doc["message"] = message;
+  sendJson(status, doc);
+}
+
+bool requireMutation() {
+  if (!requireStage(true)) return false;
+  if (server->header("X-Portal-Nonce") == portalNonce) return true;
+  sendError(403, "invalid_session", "Reload the Portal and try again");
+  return false;
+}
+
+uint32_t hashBytes(uint32_t value, const void* bytes, size_t length) {
+  const uint8_t* data = static_cast<const uint8_t*>(bytes);
+  for (size_t i = 0; i < length; ++i) value = (value ^ data[i]) * 16777619u;
+  return value;
+}
+
+uint32_t deviceRevision(const studio::DeviceRecord& record) {
+  uint32_t value = 2166136261u;
+  value = hashBytes(value, &record.instanceId, sizeof(record.instanceId));
+  value = hashBytes(value, &record.driverId, sizeof(record.driverId));
+  value = hashBytes(value, &record.enabled, sizeof(record.enabled));
+  value = hashBytes(value, record.displayName, sizeof(record.displayName));
+  value = hashBytes(value, record.homeAssistantEntityId,
+                    sizeof(record.homeAssistantEntityId));
+  return value;
+}
+
+uint32_t sceneRevision(const studio::SceneRecord& record) {
+  uint32_t value = 2166136261u;
+  value = hashBytes(value, &record.sceneId, sizeof(record.sceneId));
+  value = hashBytes(value, &record.enabled, sizeof(record.enabled));
+  value = hashBytes(value, record.name, sizeof(record.name));
+  value = hashBytes(value, &record.startCount, sizeof(record.startCount));
+  value = hashBytes(value, record.startSteps,
+                    sizeof(studio::SceneStep) * record.startCount);
+  value = hashBytes(value, &record.stopCount, sizeof(record.stopCount));
+  return hashBytes(value, record.stopSteps,
+                   sizeof(studio::SceneStep) * record.stopCount);
+}
+
+const char* driverName(studio::DriverId id) {
+  const studio::DriverDescriptor* descriptor = studio::DriverCatalog::find(id);
+  if (descriptor != nullptr) return descriptor->model;
+  switch (id) {
+    case studio::DriverId::SharkNanoII: return "Shark Nano II";
+    case studio::DriverId::CanonBle: return "Canon (Smart)";
+    case studio::DriverId::CanonTrigger: return "Canon (Trigger)";
+    case studio::DriverId::TascamX8: return "Portacapture X8";
+    case studio::DriverId::HomeAssistant: return "Home Assistant Entity";
+    case studio::DriverId::AmaranLight: return "Amaran Light";
+    case studio::DriverId::AmaranPano120c: return "Amaran Pano 120c";
+    case studio::DriverId::AmaranAce25c: return "Amaran Ace 25c";
+    default: return "Unavailable driver";
+  }
+}
+
+void addAction(JsonArray actions, studio::CommandType command,
+               const char* id, const char* label,
+               const studio::InstanceProfile& profile) {
+  const studio::Capability required = studio::requiredCapability(command);
+  if ((profile.capabilities & studio::capabilityBit(required)) == 0) return;
+  JsonObject action = actions.add<JsonObject>();
+  action["id"] = id;
+  action["label"] = label;
+}
+
+void serializeDevice(JsonObject out, const studio::DeviceRecord& record) {
+  const studio::DriverDescriptor* descriptor =
+      studio::DriverCatalog::find(record.driverId);
+  out["id"] = record.instanceId;
+  out["revision"] = deviceRevision(record);
+  out["name"] = record.displayName;
+  out["driver"] = driverName(record.driverId);
+  out["driver_available"] = descriptor != nullptr;
+  out["enabled"] = record.enabled;
+  out["paired"] = record.paired;
+  if (record.homeAssistantEntityId[0] != '\0') {
+    out["entity_id"] = record.homeAssistantEntityId;
+  }
+  JsonArray actions = out["actions"].to<JsonArray>();
+  if (descriptor == nullptr || !record.enabled) return;
+  const studio::InstanceProfile profile = studio::devices().profile(record.instanceId);
+  addAction(actions, studio::CommandType::RecordTrigger, "record_trigger",
+            "Record trigger", profile);
+  addAction(actions, studio::CommandType::RecordStart, "record_start",
+            "Record start", profile);
+  addAction(actions, studio::CommandType::RecordStop, "record_stop",
+            "Record stop", profile);
+  addAction(actions, studio::CommandType::TurnOn, "turn_on", "Turn on", profile);
+  addAction(actions, studio::CommandType::TurnOff, "turn_off", "Turn off", profile);
+  addAction(actions, studio::CommandType::Press, "press", "Press", profile);
+  addAction(actions, studio::CommandType::Activate, "activate", "Activate", profile);
+  addAction(actions, studio::CommandType::SetLightCct, "set_light_cct",
+            "Set CCT", profile);
+  addAction(actions, studio::CommandType::SetLightRgb, "set_light_rgb",
+            "Set RGB", profile);
+}
+
+const char* commandId(studio::CommandType command) {
+  switch (command) {
+    case studio::CommandType::RecordTrigger: return "record_trigger";
+    case studio::CommandType::RecordStart: return "record_start";
+    case studio::CommandType::RecordStop: return "record_stop";
+    case studio::CommandType::TurnOn: return "turn_on";
+    case studio::CommandType::TurnOff: return "turn_off";
+    case studio::CommandType::Press: return "press";
+    case studio::CommandType::Activate: return "activate";
+    case studio::CommandType::SetLightCct: return "set_light_cct";
+    case studio::CommandType::SetLightRgb: return "set_light_rgb";
+    default: return "unsupported";
+  }
+}
+
+const char* commandLabel(studio::CommandType command) {
+  switch (command) {
+    case studio::CommandType::RecordTrigger: return "Record trigger";
+    case studio::CommandType::RecordStart: return "Record start";
+    case studio::CommandType::RecordStop: return "Record stop";
+    case studio::CommandType::TurnOn: return "Turn on";
+    case studio::CommandType::TurnOff: return "Turn off";
+    case studio::CommandType::Press: return "Press";
+    case studio::CommandType::Activate: return "Activate";
+    case studio::CommandType::SetLightCct: return "Set CCT";
+    case studio::CommandType::SetLightRgb: return "Set RGB";
+    default: return "Unsupported";
+  }
+}
+
+bool parseCommand(const char* value, studio::CommandType& out) {
+  if (value == nullptr) return false;
+  struct Entry { const char* id; studio::CommandType command; };
+  const Entry entries[] = {
+      {"record_trigger", studio::CommandType::RecordTrigger},
+      {"record_start", studio::CommandType::RecordStart},
+      {"record_stop", studio::CommandType::RecordStop},
+      {"turn_on", studio::CommandType::TurnOn},
+      {"turn_off", studio::CommandType::TurnOff},
+      {"press", studio::CommandType::Press},
+      {"activate", studio::CommandType::Activate},
+      {"set_light_cct", studio::CommandType::SetLightCct},
+      {"set_light_rgb", studio::CommandType::SetLightRgb},
+  };
+  for (const Entry& entry : entries) {
+    if (std::strcmp(value, entry.id) == 0) {
+      out = entry.command;
+      return true;
+    }
+  }
+  return false;
+}
+
+void serializeStep(JsonObject out, const studio::SceneStep& step) {
+  if (step.type == studio::SceneStepType::Wait) {
+    out["kind"] = "wait";
+    out["wait_ms"] = step.waitMs;
+    return;
+  }
+  out["kind"] = "action";
+  out["target_id"] = step.targetId;
+  out["command"] = commandId(step.command);
+  out["label"] = commandLabel(step.command);
+  out["value0"] = step.value0;
+  out["value1"] = step.value1;
+  out["value2"] = step.value2;
+}
+
+void serializeScene(JsonObject out, const studio::SceneRecord& record) {
+  out["id"] = record.sceneId;
+  out["revision"] = sceneRevision(record);
+  out["name"] = record.name;
+  out["enabled"] = record.enabled;
+  JsonArray start = out["start"].to<JsonArray>();
+  for (uint8_t i = 0; i < record.startCount; ++i) {
+    serializeStep(start.add<JsonObject>(), record.startSteps[i]);
+  }
+  JsonArray stop = out["stop"].to<JsonArray>();
+  for (uint8_t i = 0; i < record.stopCount; ++i) {
+    serializeStep(stop.add<JsonObject>(), record.stopSteps[i]);
+  }
+}
+
+bool parseIdPath(const String& uri, const char* prefix, uint32_t& id) {
+  if (!uri.startsWith(prefix)) return false;
+  const String value = uri.substring(std::strlen(prefix));
+  if (value.length() == 0) return false;
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (value[i] < '0' || value[i] > '9') return false;
+  }
+  id = static_cast<uint32_t>(value.toInt());
+  return id != 0;
+}
+
+bool parseBody(JsonDocument& doc) {
+  if (!server->hasArg("plain") || server->arg("plain").length() > 4096) {
+    sendError(413, "request_too_large", "Request body is missing or too large");
+    return false;
+  }
+  if (deserializeJson(doc, server->arg("plain")) != DeserializationError::Ok) {
+    sendError(400, "invalid_json", "Request body is not valid JSON");
+    return false;
+  }
+  return true;
+}
+
+const char* validationMessage(studio::SceneValidationStatus status) {
+  switch (status) {
+    case studio::SceneValidationStatus::Empty: return "Add at least one Start or Stop step";
+    case studio::SceneValidationStatus::InvalidName: return "Sequence name is required";
+    case studio::SceneValidationStatus::Full: return "This sequence has too many steps";
+    case studio::SceneValidationStatus::MissingTarget: return "A target device is missing";
+    case studio::SceneValidationStatus::DisabledTarget: return "A target device is disabled";
+    case studio::SceneValidationStatus::UnsupportedCommand: return "A step uses an unsupported action";
+    case studio::SceneValidationStatus::MissingCapability: return "A device does not support the selected action";
+    case studio::SceneValidationStatus::WaitOutOfRange: return "Wait must be between 0 and 60000 ms";
+    case studio::SceneValidationStatus::TooManyTargets: return "The sequence uses too many devices";
+    case studio::SceneValidationStatus::Busy: return "The sequence is currently busy";
+    default: return "Sequence validation failed";
+  }
 }
 
 bool connectStation(const char* ssid, const char* password, bool keepAp) {
@@ -311,7 +551,7 @@ void sendWifiScan() {
 }
 
 void handleEntities() {
-  if (!requireStage(true)) return;
+  if (!requireMutation()) return;
   setStatus(Status::Testing, "Querying Home Assistant");
   const String baseUrl = server->arg("url");
   const String token = server->arg("token");
@@ -388,7 +628,7 @@ void handleConfig() {
 }
 
 void handleSave() {
-  if (!requireStage(true)) return;
+  if (!requireMutation()) return;
   studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
   studio::HomeAssistantConfig previous;
@@ -401,8 +641,10 @@ void handleSave() {
   config.configured = true;
   std::strncpy(config.baseUrl, server->arg("url").c_str(),
                sizeof(config.baseUrl) - 1);
-  std::strncpy(config.token, server->arg("token").c_str(),
-               sizeof(config.token) - 1);
+  const String submittedToken = server->arg("token");
+  if (submittedToken.length() > 0) {
+    std::strncpy(config.token, submittedToken.c_str(), sizeof(config.token) - 1);
+  }
   if (!studio::validLocalHomeAssistantUrl(config.baseUrl) || config.token[0] == '\0') {
     server->send(400, "text/plain", "Invalid local Home Assistant configuration");
     return;
@@ -461,15 +703,251 @@ void handleSave() {
     return;
   }
   setStatus(Status::Saved, "Saved - exit Portal");
-  server->send(200, "text/html",
-      "<body style='background:#05070a;color:#f3f4f6;font-family:monospace;padding:3rem'><h1>LINK SAVED</h1><p>Return to the panel and exit Portal.</p></body>");
+  JsonDocument response;
+  response["saved"] = true;
+  sendJson(200, response);
+}
+
+void handleSummary() {
+  if (!requireStage(true)) return;
+  JsonDocument doc;
+  doc["devices"] = studio::devices().count();
+  doc["device_capacity"] = CONFIG_MAX_DEVICE_INSTANCES;
+  doc["sequences"] = studio::scenes().count();
+  doc["sequence_capacity"] = CONFIG_MAX_SCENES;
+  doc["timeout_seconds"] =
+      lastActivity > millis() ? 0 : (kTimeoutMs - (millis() - lastActivity)) / 1000;
+  sendJson(200, doc);
+}
+
+void handleDevices() {
+  if (!requireStage(true)) return;
+  JsonDocument doc;
+  JsonArray devices = doc["devices"].to<JsonArray>();
+  for (size_t i = 0; i < studio::devices().count(); ++i) {
+    const studio::DeviceRecord* record = studio::devices().at(i);
+    if (record != nullptr) serializeDevice(devices.add<JsonObject>(), *record);
+  }
+  sendJson(200, doc);
+}
+
+void handleDeviceMutation(studio::InstanceId instanceId) {
+  if (!requireMutation()) return;
+  const studio::DeviceRecord* current = studio::devices().find(instanceId);
+  if (current == nullptr) {
+    sendError(404, "device_not_found", "Device no longer exists");
+    return;
+  }
+  JsonDocument request;
+  if (!parseBody(request)) return;
+  if ((request["revision"] | 0u) != deviceRevision(*current)) {
+    sendError(409, "stale_revision", "Device changed; reload and try again");
+    return;
+  }
+  if (server->method() == HTTP_PATCH) {
+    const char* name = request["name"] | "";
+    const bool enabled = request["enabled"] | current->enabled;
+    if (name[0] == '\0' || std::strlen(name) >= studio::kDeviceNameCapacity) {
+      sendError(422, "invalid_name", "Device name must be 1 to 31 characters");
+      return;
+    }
+    if (studio::devices().update(instanceId, name, enabled) !=
+        studio::RegistryStatus::Ok) {
+      sendError(500, "save_failed", "Device could not be saved");
+      return;
+    }
+    JsonDocument response;
+    serializeDevice(response.to<JsonObject>(), *studio::devices().find(instanceId));
+    sendJson(200, response);
+    return;
+  }
+  if (server->method() != HTTP_DELETE) {
+    sendError(405, "method_not_allowed", "Unsupported device operation");
+    return;
+  }
+  JsonDocument conflict;
+  JsonArray references = conflict["sequences"].to<JsonArray>();
+  for (size_t i = 0; i < studio::scenes().count(); ++i) {
+    const studio::SceneRecord* scene = studio::scenes().at(i);
+    if (scene == nullptr) continue;
+    bool referenced = false;
+    const studio::SceneStep* lists[] = {scene->startSteps, scene->stopSteps};
+    const uint8_t counts[] = {scene->startCount, scene->stopCount};
+    for (size_t list = 0; list < 2 && !referenced; ++list) {
+      for (uint8_t step = 0; step < counts[list]; ++step) {
+        referenced = lists[list][step].type == studio::SceneStepType::Action &&
+                     lists[list][step].targetId == instanceId;
+        if (referenced) break;
+      }
+    }
+    if (referenced) {
+      JsonObject item = references.add<JsonObject>();
+      item["id"] = scene->sceneId;
+      item["name"] = scene->name;
+    }
+  }
+  if (!references.isNull() && references.size() > 0) {
+    conflict["error"] = "device_referenced";
+    conflict["message"] = "Remove this device from its sequences first";
+    sendJson(409, conflict);
+    return;
+  }
+  if (studio::devices().remove(instanceId) != studio::RegistryStatus::Ok) {
+    sendError(500, "remove_failed", "Device could not be removed");
+    return;
+  }
+  JsonDocument response;
+  response["removed"] = true;
+  sendJson(200, response);
+}
+
+void handleSequences() {
+  if (!requireStage(true)) return;
+  JsonDocument doc;
+  JsonArray sequences = doc["sequences"].to<JsonArray>();
+  for (size_t i = 0; i < studio::scenes().count(); ++i) {
+    const studio::SceneRecord* record = studio::scenes().at(i);
+    if (record != nullptr) serializeScene(sequences.add<JsonObject>(), *record);
+  }
+  sendJson(200, doc);
+}
+
+void handleCreateSequence() {
+  if (!requireMutation()) return;
+  JsonDocument request;
+  if (!parseBody(request)) return;
+  const char* name = request["name"] | "";
+  if (name[0] == '\0' || std::strlen(name) >= studio::kDeviceNameCapacity) {
+    sendError(422, "invalid_name", "Sequence name must be 1 to 31 characters");
+    return;
+  }
+  studio::SceneId id = studio::kInvalidSceneId;
+  const studio::SceneId sourceId = request["source_id"] | studio::kInvalidSceneId;
+  const studio::SceneRegistryStatus status = sourceId == studio::kInvalidSceneId
+      ? studio::scenes().add(name, id)
+      : studio::scenes().duplicate(sourceId, name, id);
+  if (status != studio::SceneRegistryStatus::Ok) {
+    sendError(status == studio::SceneRegistryStatus::Full ? 409 : 500,
+              status == studio::SceneRegistryStatus::Full ? "sequence_capacity" : "save_failed",
+              status == studio::SceneRegistryStatus::Full ? "Sequence capacity is full" : "Sequence could not be saved");
+    return;
+  }
+  JsonDocument response;
+  serializeScene(response.to<JsonObject>(), *studio::scenes().find(id));
+  sendJson(201, response);
+}
+
+bool parseSteps(JsonDocument& request, const char* key,
+                studio::SceneStep* destination, uint8_t& count) {
+  JsonArray steps = request[key].as<JsonArray>();
+  if (steps.isNull()) {
+    count = 0;
+    return true;
+  }
+  if (steps.size() > CONFIG_MAX_SCENE_STEPS) return false;
+  count = 0;
+  for (JsonObject step : steps) {
+    const char* kind = step["kind"] | "";
+    if (std::strcmp(kind, "wait") == 0) {
+      const int64_t wait = step["wait_ms"] | -1;
+      if (wait < CONFIG_SCENE_MIN_WAIT_MS || wait > CONFIG_SCENE_MAX_WAIT_MS) {
+        return false;
+      }
+      destination[count++] = studio::makeWaitStep(static_cast<uint32_t>(wait));
+      continue;
+    }
+    if (std::strcmp(kind, "action") != 0) return false;
+    studio::CommandType command;
+    if (!parseCommand(step["command"] | nullptr, command)) return false;
+    const studio::InstanceId target = step["target_id"] | studio::kInvalidInstanceId;
+    if (target == studio::kInvalidInstanceId) return false;
+    destination[count++] = studio::makeActionStep(
+        target, command, step["value0"] | 0, step["value1"] | 0,
+        step["value2"] | 0);
+  }
+  return true;
+}
+
+void handleSequenceMutation(studio::SceneId sceneId) {
+  if (server->method() == HTTP_GET) {
+    if (!requireStage(true)) return;
+    const studio::SceneRecord* record = studio::scenes().find(sceneId);
+    if (record == nullptr) {
+      sendError(404, "sequence_not_found", "Sequence no longer exists");
+      return;
+    }
+    JsonDocument response;
+    serializeScene(response.to<JsonObject>(), *record);
+    sendJson(200, response);
+    return;
+  }
+  if (!requireMutation()) return;
+  const studio::SceneRecord* current = studio::scenes().find(sceneId);
+  if (current == nullptr) {
+    sendError(404, "sequence_not_found", "Sequence no longer exists");
+    return;
+  }
+  JsonDocument request;
+  if (!parseBody(request)) return;
+  if ((request["revision"] | 0u) != sceneRevision(*current)) {
+    sendError(409, "stale_revision", "Sequence changed; reload and try again");
+    return;
+  }
+  if (server->method() == HTTP_DELETE) {
+    if (studio::scenes().remove(sceneId) != studio::SceneRegistryStatus::Ok) {
+      sendError(500, "remove_failed", "Sequence could not be removed");
+      return;
+    }
+    JsonDocument response;
+    response["removed"] = true;
+    sendJson(200, response);
+    return;
+  }
+  if (server->method() != HTTP_PUT) {
+    sendError(405, "method_not_allowed", "Unsupported sequence operation");
+    return;
+  }
+  studio::SceneRecord updated = *current;
+  const char* name = request["name"] | "";
+  if (name[0] == '\0' || std::strlen(name) >= sizeof(updated.name)) {
+    sendError(422, "invalid_name", "Sequence name must be 1 to 31 characters");
+    return;
+  }
+  std::strncpy(updated.name, name, sizeof(updated.name) - 1);
+  updated.name[sizeof(updated.name) - 1] = '\0';
+  updated.enabled = request["enabled"] | updated.enabled;
+  if (!parseSteps(request, "start", updated.startSteps, updated.startCount) ||
+      !parseSteps(request, "stop", updated.stopSteps, updated.stopCount)) {
+    sendError(422, "invalid_step", "A sequence step is invalid or out of range");
+    return;
+  }
+  const studio::SceneValidationStatus validation = studio::scenes().validate(updated);
+  if (validation != studio::SceneValidationStatus::Ok) {
+    sendError(422, "validation_failed", validationMessage(validation));
+    return;
+  }
+  if (studio::scenes().replace(updated) != studio::SceneRegistryStatus::Ok) {
+    sendError(500, "save_failed", "Sequence could not be saved");
+    return;
+  }
+  JsonDocument response;
+  serializeScene(response.to<JsonObject>(), *studio::scenes().find(sceneId));
+  sendJson(200, response);
+}
+
+void handleExit() {
+  if (!requireMutation()) return;
+  JsonDocument response;
+  response["closing"] = true;
+  sendJson(200, response);
+  exitPending = true;
 }
 
 void installHandlers() {
   server->on("/", HTTP_GET, [] {
     touch();
-    sendPage(lanMode ? kPortalPage : kWifiPage,
-             lanMode ? kPortalBody : kWifiBody);
+    if (lanMode) sendPortalPage();
+    else sendPage(kWifiPage, kWifiBody);
   });
   server->on("/wifi", HTTP_POST, handleWifiSave);
   server->on("/api/wifi/status", HTTP_GET, sendWifiStatus);
@@ -478,7 +956,28 @@ void installHandlers() {
   server->on("/api/config", HTTP_GET, handleConfig);
   server->on("/api/entities", HTTP_POST, handleEntities);
   server->on("/save", HTTP_POST, handleSave);
+  server->on("/api/summary", HTTP_GET, handleSummary);
+  server->on("/api/devices", HTTP_GET, handleDevices);
+  server->on("/api/sequences", HTTP_GET, handleSequences);
+  server->on("/api/sequences", HTTP_POST, handleCreateSequence);
+  server->on("/api/exit", HTTP_POST, handleExit);
+  server->on("/assets/bleep-logo.webp", HTTP_GET, [] {
+    if (!requireStage(true)) return;
+    server->sendHeader("Cache-Control", "private, max-age=600");
+    server->send_P(200, PSTR("image/webp"),
+                   reinterpret_cast<PGM_P>(assets::kPortalLogoWebp),
+                   assets::kPortalLogoWebpSize);
+  });
   server->onNotFound([] {
+    uint32_t id = 0;
+    if (parseIdPath(server->uri(), "/api/devices/", id)) {
+      handleDeviceMutation(static_cast<studio::InstanceId>(id));
+      return;
+    }
+    if (parseIdPath(server->uri(), "/api/sequences/", id)) {
+      handleSequenceMutation(static_cast<studio::SceneId>(id));
+      return;
+    }
     touch();
     server->sendHeader("Location", "/", true);
     server->send(302);
@@ -488,6 +987,8 @@ void installHandlers() {
 bool startServer(IPAddress address) {
   server = new (std::nothrow) WebServer(address, 80);
   if (server == nullptr) return false;
+  const char* headers[] = {"X-Portal-Nonce"};
+  server->collectHeaders(headers, 1);
   installHandlers();
   server->begin();
   return true;
@@ -562,6 +1063,10 @@ bool begin() {
   if (currentStatus != Status::Inactive) return true;
   studio::scenes().cancel();
   studio::devices().deactivateAll();
+  exitPending = false;
+  std::snprintf(portalNonce, sizeof(portalNonce), "%08lX%08lX",
+                static_cast<unsigned long>(esp_random()),
+                static_cast<unsigned long>(esp_random()));
   const uint64_t chip = ESP.getEfuseMac();
   std::snprintf(apSsid, sizeof(apSsid), "Bleep-Setup-%04X",
                 static_cast<unsigned>(chip & 0xffff));
@@ -596,6 +1101,10 @@ void loop() {
   if (currentStatus == Status::Inactive || currentStatus == Status::Error) return;
   if (dnsServer != nullptr) dnsServer->processNextRequest();
   if (server != nullptr) server->handleClient();
+  if (exitPending) {
+    stop();
+    return;
+  }
   if (!lanMode && wifiJoinState == WifiJoinState::Connecting) {
     const wl_status_t status = WiFi.status();
     if (status == WL_CONNECTED) {
@@ -659,6 +1168,8 @@ void stop() {
   WiFi.mode(WIFI_OFF);
   lanMode = false;
   switchToLanPending = false;
+  exitPending = false;
+  portalNonce[0] = '\0';
   setStatus(Status::Inactive, "Portal off");
 }
 

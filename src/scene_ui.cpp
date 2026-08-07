@@ -11,6 +11,7 @@
 #include "core/driver_catalog.h"
 #include "core/scene_service.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #include "ui.h"
 #include "ui/picker_shell.h"
 
@@ -262,16 +263,21 @@ bool allTargetsReady(const studio::SceneRecord& record) {
 }
 
 void onBackToHome(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   hide();
   ui::showHome();
 }
 
 void onBackToList(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   releaseHeldScene();
   showListView();
 }
 
-void onBackToRun(lv_event_t*) { showRunView(currentScene); }
+void onBackToRun(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  showRunView(currentScene);
+}
 
 void onOpenScene(lv_event_t* event) { showRunView(eventScene(event)); }
 

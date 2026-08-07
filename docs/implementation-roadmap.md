@@ -206,9 +206,15 @@ Completion gate:
 
 - configuration survives power cycles and compatible firmware rebuilds;
 - startup remains on Home until the operator selects a device or scene;
-- portal routes exist only in Portal mode and only on its temporary AP;
+- portal routes exist only in Portal mode, on the setup AP or its temporary
+  station-bound LAN listener;
 - repeated mode transitions recover their memory and normal device control;
 - corrupted or old records fail safely or migrate predictably.
+
+Implemented deviation (ADR-027): the LAN Portal now administers committed
+device settings and the current authored Start/Stop scene model from responsive
+phone/desktop views. Physical-device pairing, groups, backup, restore, reset,
+and the remaining Phase 3 completion gates are not advanced by this tranche.
 
 ## Phase 4: Amaran light driver
 
@@ -280,11 +286,12 @@ Work:
   continue policies;
 - edit, validate, import, and export scenes through Portal-mode HTTP.
 
-Active deviation (ADR-019 / ADR-020): the first panel tranche ships authored
+Active deviation (ADR-019 / ADR-020 / ADR-027): the first panel tranche ships authored
 Start and Stop lists, prepare-on-open concurrent links (`Ready` before Start),
-NVS persistence, and Press Record / Press Stop for Canon Smart + Tascam.
-Generated reverse-Stop, groups, lights, Parallel, and Portal editing remain
-for later Phase 6 work.
+NVS persistence, Press Record / Press Stop for Canon Smart + Tascam, and
+responsive Portal create/edit/duplicate/delete for that same persisted model.
+Generated reverse-Stop, groups, Parallel, import/export, journaling, and broader
+Phase 6 policy work remain later work.
 
 Completion gate:
 
@@ -318,7 +325,9 @@ Work:
 - preserve the specialized Shark keypoint/run experience;
 - show only configured, enabled instances in operational menus;
 - show pairing, connection, state quality, scene progress, and USB portal
-  status within the round-display safe area.
+  status within the round-display safe area;
+- provide distinct, non-blocking haptic confirmation for accepted presses,
+  connection readiness, Back navigation, and newly surfaced errors.
 
 Completion gate:
 

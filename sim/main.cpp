@@ -16,6 +16,7 @@
 #include "devices/home_assistant/client.h"
 #include "devices/amaran_light/ui.h"
 #include "devices/amaran_light/runtime.h"
+#include "haptic_feedback.h"
 #include "portal_service.h"
 #include "scene_ui.h"
 #include "sim_runtime.h"
@@ -30,6 +31,75 @@ constexpr int kHeight = 240;
 lv_color_t gFb[kWidth * kHeight];
 lv_disp_draw_buf_t gDrawBuf;
 lv_disp_drv_t gDispDrv;
+bool gHapticStates[8] = {};
+uint8_t gHapticStateCount = 0;
+
+void hapticOutput(bool enabled) {
+  if (gHapticStateCount < sizeof(gHapticStates) / sizeof(gHapticStates[0])) {
+    gHapticStates[gHapticStateCount++] = enabled;
+  }
+}
+
+bool expectHapticStates(const bool* expected, uint8_t count) {
+  if (gHapticStateCount != count) {
+    return false;
+  }
+  for (uint8_t i = 0; i < count; ++i) {
+    if (gHapticStates[i] != expected[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void advanceHaptic(uint32_t ms) {
+  simAdvanceMillis(ms);
+  haptic_feedback::loop(millis());
+}
+
+bool verifyHapticPatterns() {
+  haptic_feedback::begin(hapticOutput);
+  gHapticStateCount = 0;
+  haptic_feedback::request(haptic_feedback::Pattern::Press);
+  advanceHaptic(19);
+  advanceHaptic(1);
+  const bool pressExpected[] = {true, false};
+  if (!expectHapticStates(pressExpected, 2)) return false;
+
+  haptic_feedback::begin(hapticOutput);
+  gHapticStateCount = 0;
+  haptic_feedback::request(haptic_feedback::Pattern::Connected);
+  advanceHaptic(12);
+  advanceHaptic(24);
+  advanceHaptic(12);
+  const bool connectedExpected[] = {true, false, true, false};
+  if (!expectHapticStates(connectedExpected, 4)) return false;
+
+  haptic_feedback::begin(hapticOutput);
+  gHapticStateCount = 0;
+  haptic_feedback::request(haptic_feedback::Pattern::Press);
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  advanceHaptic(15);
+  advanceHaptic(35);
+  advanceHaptic(30);
+  const bool backExpected[] = {true, false, true, false};
+  if (!expectHapticStates(backExpected, 4)) return false;
+
+  haptic_feedback::begin(hapticOutput);
+  gHapticStateCount = 0;
+  haptic_feedback::request(haptic_feedback::Pattern::Error);
+  haptic_feedback::request(haptic_feedback::Pattern::Press);
+  haptic_feedback::request(haptic_feedback::Pattern::Connected);
+  advanceHaptic(60);
+  advanceHaptic(45);
+  advanceHaptic(60);
+  advanceHaptic(12);
+  advanceHaptic(24);
+  advanceHaptic(12);
+  const bool errorExpected[] = {true, false, true, false,
+                                true, false, true, false};
+  return expectHapticStates(errorExpected, 8);
+}
 
 void flushCb(lv_disp_drv_t* disp, const lv_area_t*, lv_color_t*) {
   lv_disp_flush_ready(disp);
@@ -86,6 +156,7 @@ bool convertToRoundPng(const char* ppmPath, const char* pngPath) {
 
 void pump(uint32_t ms) {
   simAdvanceMillis(ms);
+  haptic_feedback::loop(millis());
   lv_tick_inc(ms);
   ui::tick();
   studio::devices().loop();
@@ -138,6 +209,10 @@ void printLvglMemory(const char* stage) {
 
 int main() {
   std::setbuf(stdout, nullptr);
+  if (!verifyHapticPatterns()) {
+    std::fprintf(stderr, "Haptic pattern regression failed\n");
+    return 1;
+  }
   ensureDir("sim/screenshots");
   setupDisplay();
 
@@ -289,8 +364,31 @@ int main() {
   }
 
   studio::simSetConnectedDemoState();
-  pump(200);
+  gHapticStateCount = 0;
+  pump(1);
+  pump(12);
+  pump(24);
+  pump(12);
+  const bool deviceConnectedExpected[] = {true, false, true, false};
+  if (!expectHapticStates(deviceConnectedExpected, 4)) {
+    std::fprintf(stderr, "Device Ready did not request Connected haptic\n");
+    return 1;
+  }
   if (!capture("06_shark_keys")) {
+    return 1;
+  }
+
+  ui::showDevices();
+  pump(1);
+  gHapticStateCount = 0;
+  shark_ui::show(id);
+  pump(1);
+  pump(12);
+  pump(24);
+  pump(12);
+  if (!expectHapticStates(deviceConnectedExpected, 4)) {
+    std::fprintf(stderr,
+                 "Opening retained Ready device did not request Connected haptic\n");
     return 1;
   }
 
@@ -673,6 +771,7 @@ int main() {
     std::fprintf(stderr, "Sequence did not restart preparation after failure\n");
     return 1;
   }
+  gHapticStateCount = 0;
   studio::simSetSequenceConnectedState();
   for (int i = 0; i < 10; ++i) {
     studio::devices().loop();
@@ -681,6 +780,12 @@ int main() {
   }
   if (studio::scenes().progress().phase != studio::ScenePhase::Ready) {
     std::fprintf(stderr, "Sequence did not reach Ready after prepare\n");
+    return 1;
+  }
+  pump(60);
+  const bool sequenceConnectedExpected[] = {true, false, true, false};
+  if (!expectHapticStates(sequenceConnectedExpected, 4)) {
+    std::fprintf(stderr, "Sequence Ready did not request Connected haptic\n");
     return 1;
   }
   if (!capture("24_scenes_run_ready")) {

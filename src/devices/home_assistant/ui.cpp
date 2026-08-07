@@ -6,6 +6,7 @@
 #include "core/device_manager.h"
 #include "devices/home_assistant/client.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #include "../../ui.h"
 
 namespace home_assistant_ui {
@@ -53,6 +54,7 @@ void enqueue(studio::CommandType type) {
 }
 
 void onBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   hide();
   ui::showDeviceParent();
 }

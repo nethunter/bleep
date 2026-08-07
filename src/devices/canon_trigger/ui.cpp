@@ -8,6 +8,7 @@
 #include "core/device_manager.h"
 #include "devices/canon_trigger/state.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #include "../../ui.h"
 
 namespace canon_trigger_ui {
@@ -95,6 +96,7 @@ void refresh() {
 }
 
 void onBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   hide();
   ui::showDeviceParent();
 }

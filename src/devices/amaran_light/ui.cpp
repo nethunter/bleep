@@ -8,6 +8,7 @@
 #include "core/device_manager.h"
 #include "devices/amaran_light/state.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
 #include "../../ui.h"
 
@@ -56,7 +57,7 @@ void setMode(bool rgb){if(rgb==rgbMode)return;captureDraft();rgbMode=rgb;renderM
 void onCct(lv_event_t*){setMode(false);} void onRgb(lv_event_t*){setMode(true);}
 void onPower(lv_event_t*){const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));queue(s&&s->on?studio::CommandType::TurnOff:studio::CommandType::TurnOn);}
 void onRetry(lv_event_t*){if(studio::devices().pendingAddCommitFailed(instanceId))studio::devices().retryPendingAdd(instanceId);else queue(studio::CommandType::Connect);}
-void onBack(lv_event_t*){hide();ui::showDeviceParent();}
+void onBack(lv_event_t*){haptic_feedback::request(haptic_feedback::Pattern::Back);hide();ui::showDeviceParent();}
 lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj_t*& slider){
   lv_obj_t* row=lv_obj_create(parent);lv_obj_set_size(row,166,28);lv_obj_set_style_bg_opa(row,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(row,0,0);lv_obj_set_style_pad_all(row,0,0);
   lv_obj_t* label=lv_label_create(row);lv_label_set_text(label,text);lv_obj_set_style_text_font(label,UI_FONT_14,0);lv_obj_align(label,LV_ALIGN_LEFT_MID,0,0);

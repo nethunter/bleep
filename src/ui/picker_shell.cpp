@@ -8,6 +8,7 @@
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 
 namespace picker_shell {
 namespace {
@@ -303,6 +304,7 @@ void onChooseWait(lv_event_t*) {
 void onClose(lv_event_t*) { hide(); }
 
 void onBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   if (editingSceneStep) {
     hide();
     return;

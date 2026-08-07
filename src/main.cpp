@@ -8,6 +8,7 @@
 #include "core/ble/ble_runtime.h"
 #include "core/device_manager.h"
 #include "core/scene_service.h"
+#include "haptic_feedback.h"
 #include "ui.h"
 #include "portal_service.h"
 
@@ -40,6 +41,7 @@ constexpr uint8_t touchAddr = 0x15;
 constexpr uint8_t ioDirectionReg = 0x03;
 constexpr uint8_t ioOutputReg = 0x05;
 constexpr uint8_t ioHighZReg = 0x07;
+constexpr uint8_t ioVibrationMotor = 0;
 constexpr uint8_t ioPanelPower = 4;
 constexpr uint8_t ioTouchPower = 3;
 constexpr uint8_t ioBacklight = 2;
@@ -212,9 +214,11 @@ void ioSetPin(uint8_t pin, bool high) {
 
 void initIoExpander() {
   constexpr uint8_t enabledPins =
-      (1U << 0) | (1U << 1) | (1U << board::ioBacklight) | (1U << board::ioTouchPower) |
-      (1U << board::ioPanelPower);
+      (1U << board::ioVibrationMotor) | (1U << 1) | (1U << board::ioBacklight) |
+      (1U << board::ioTouchPower) | (1U << board::ioPanelPower);
 
+  ioOutputState = 0;
+  i2cWrite8(board::ioExpanderAddr, board::ioOutputReg, ioOutputState);
   i2cWrite8(board::ioExpanderAddr, board::ioDirectionReg, enabledPins);
   i2cWrite8(board::ioExpanderAddr, board::ioHighZReg, static_cast<uint8_t>(~enabledPins));
   ioSetPin(board::ioTouchPower, true);
@@ -223,6 +227,10 @@ void initIoExpander() {
   delay(80);
   ioSetPin(board::ioBacklight, true);
   delay(80);
+}
+
+void setHapticMotor(bool enabled) {
+  ioSetPin(board::ioVibrationMotor, enabled);
 }
 
 bool initTouch() {
@@ -321,11 +329,21 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   data->point.y = lastY;
 }
 
+void lvTouchFeedback(lv_indev_drv_t*, uint8_t eventCode) {
+  if (eventCode == LV_EVENT_CLICKED) {
+    haptic_feedback::request(haptic_feedback::Pattern::Press);
+  }
+}
+
 void handleShortPress() {
+  haptic_feedback::request(haptic_feedback::Pattern::Press);
   ui::handleShortPress();
 }
 
-void handleLongPress() { ui::handleLongPress(); }
+void handleLongPress() {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  ui::handleLongPress();
+}
 
 void pollButton() {
   static bool lastRawPressed = false;
@@ -380,6 +398,7 @@ void setupLvgl() {
     lv_indev_drv_init(&touchDrv);
     touchDrv.type = LV_INDEV_TYPE_POINTER;
     touchDrv.read_cb = lvTouchRead;
+    touchDrv.feedback_cb = lvTouchFeedback;
     lv_indev_drv_register(&touchDrv);
   }
 }
@@ -391,6 +410,7 @@ void setup() {
   pinMode(board::button, INPUT_PULLUP);
   Wire.begin(board::i2cSda, board::i2cScl, board::i2cFreq);
   initIoExpander();
+  haptic_feedback::begin(setHapticMotor);
   scanI2cBus();
 
   display.init();
@@ -432,6 +452,7 @@ void loop() {
     lastStatsMs = now;
     logRuntimeStats("periodic");
   }
+  haptic_feedback::loop(now);
   pollButton();
   ui::tick();
 

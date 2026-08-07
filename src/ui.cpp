@@ -22,6 +22,7 @@
 #include "devices/canon_trigger/ui.h"
 #endif
 #include "fonts/ui_fonts.h"
+#include "haptic_feedback.h"
 #if CONFIG_DRIVER_SHARK_NANO_II
 #include "devices/shark_nano_ii/ui.h"
 #endif
@@ -86,6 +87,11 @@ bool disconnectArmed = false;
 uint8_t renamePage = 0;
 bool renameUpperCase = true;
 RenameDoneFn renameDoneCallback = nullptr;
+uint8_t hapticErrorMask = 0;
+studio::InstanceId hapticForegroundInstance = studio::kInvalidInstanceId;
+bool hapticForegroundReady = false;
+studio::SceneId hapticSceneId = studio::kInvalidSceneId;
+studio::ScenePhase hapticScenePhase = studio::ScenePhase::Idle;
 
 static const char* kRenameUpperPage0[] = {"A", "B", "C", "\n", "D", "E", "F", "\n",
                                          "G", "H", "I", ""};
@@ -358,14 +364,21 @@ void releaseDeviceRows() {
 }
 
 void onShowDevices(lv_event_t*) { showDevices(); }
-void onShowHome(lv_event_t*) { showHome(); }
+void onShowHome(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  showHome();
+}
 void onShowScenes(lv_event_t*) { scene_ui::show(); }
 void onShowPortal(lv_event_t*) { showPortal(); }
 void onExitPortal(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
   portal::stop();
   showHome();
 }
-void onCloseModal(lv_event_t*) { closeDeviceModal(); }
+void onCloseModal(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  closeDeviceModal();
+}
 
 void onDriverChosen(studio::DriverId driverId) {
   const studio::DriverDescriptor* descriptor =
@@ -820,7 +833,75 @@ void init() {
   lv_scr_load(scrHome);
 }
 
+void monitorHapticErrors() {
+  constexpr uint8_t kRuntimeError = 1U << 0;
+  constexpr uint8_t kPendingAddError = 1U << 1;
+  constexpr uint8_t kSceneError = 1U << 2;
+  constexpr uint8_t kPortalError = 1U << 3;
+
+  uint8_t nextMask = 0;
+  const studio::InstanceId foreground = studio::devices().foregroundInstance();
+  if (foreground != studio::kInvalidInstanceId) {
+    const studio::DeviceRuntimeState runtime =
+        studio::devices().runtimeState(foreground);
+    if (runtime.commandFailed) {
+      nextMask |= kRuntimeError;
+    }
+    if (studio::devices().pendingAddCommitFailed(foreground)) {
+      nextMask |= kPendingAddError;
+    }
+  }
+  if (studio::scenes().progress().phase == studio::ScenePhase::Failed) {
+    nextMask |= kSceneError;
+  }
+  if (portal::status() == portal::Status::Error) {
+    nextMask |= kPortalError;
+  }
+
+  if ((nextMask & static_cast<uint8_t>(~hapticErrorMask)) != 0) {
+    haptic_feedback::request(haptic_feedback::Pattern::Error);
+  }
+  hapticErrorMask = nextMask;
+}
+
+void monitorHapticConnections() {
+  const studio::InstanceId foreground = studio::devices().foregroundInstance();
+  const studio::DeviceRuntimeState runtime =
+      foreground == studio::kInvalidInstanceId
+          ? studio::DeviceRuntimeState{}
+          : studio::devices().runtimeState(foreground);
+  const bool foregroundReady =
+      foreground != studio::kInvalidInstanceId &&
+      runtime.link == studio::LinkState::Connected && runtime.protocolReady;
+
+  if (foreground != hapticForegroundInstance) {
+    hapticForegroundInstance = foreground;
+    hapticForegroundReady = foregroundReady;
+    if (foregroundReady) {
+      // Opening a retained ready session confirms that commands can be sent
+      // immediately, just like a connection becoming ready in place.
+      haptic_feedback::request(haptic_feedback::Pattern::Connected);
+    }
+  } else {
+    if (foregroundReady && !hapticForegroundReady) {
+      haptic_feedback::request(haptic_feedback::Pattern::Connected);
+    }
+    hapticForegroundReady = foregroundReady;
+  }
+
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  if (progress.phase == studio::ScenePhase::Ready &&
+      (progress.sceneId != hapticSceneId ||
+       hapticScenePhase != studio::ScenePhase::Ready)) {
+    haptic_feedback::request(haptic_feedback::Pattern::Connected);
+  }
+  hapticSceneId = progress.sceneId;
+  hapticScenePhase = progress.phase;
+}
+
 void tick() {
+  monitorHapticErrors();
+  monitorHapticConnections();
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::tick();
