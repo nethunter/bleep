@@ -2132,3 +2132,33 @@ Record values with the exact build environment and commit/worktree state.
   flashed to `/dev/cu.usbserial-211240`, verified every written-region hash,
   and hard-reset. Live CCT confirmation after this flash remains the operator
   gate.
+
+### 2026-08-07: X100 live control verification follow-up
+
+- Panel-owned provisioning, rediscovery, retained connection, power, and
+  brightness/CCT control were exercised on the physical X100. Live readback
+  corrected the earlier 50 K hypothesis: a 4550 K request retained as 4500 K,
+  so the final UI and command path canonicalizes to 100 K and still verifies
+  exact device-originated state.
+- Replaced immediate paired brightness/CCT writes with a deterministic staged
+  transaction: write brightness, verify it, write CCT, then verify it. This
+  avoids the fixture accepting the second setter while leaving the first state
+  unchanged. Mismatch diagnostics identify the failing field and show requested
+  versus readback values.
+- The panel now uses a 350 ms trailing debounce without disabling either
+  slider. Slider thumbs and labels remain optimistic at the latest requested
+  values; command completion, scene status, and the status label remain
+  non-optimistic and use correlated readback.
+- With a 60 W USB-C source, 55% confirmed while 62% and 75% were rejected and
+  the fixture retained 60%. This matches ZHIYUN's documented supply-dependent
+  60% ceiling. Repeated stable readback is reported as `LIMIT 60%` rather than
+  as a misleading CCT mismatch. The light was subsequently connected to a
+  100 W source; above-60% live confirmation remains to be recorded.
+- Final validation passed native 49/49 and the complete `ui_sim` capture run.
+  All eight firmware profiles built successfully: `crowpanel_128` used
+  1,805,322 bytes flash / 165,300 bytes RAM; `crowpanel_128_roboto` 1,774,850 /
+  165,300; `canon_ble` 1,797,984 / 162,564; `canon_trigger` 1,794,430 / 161,572;
+  `tascam_x8` 1,795,830 / 161,484; `home_assistant` 1,791,076 / 161,092;
+  `amaran_light` 1,756,206 / 155,876; and `zhiyun_x100` 1,744,138 / 156,780.
+  The final combined image flashed successfully to
+  `/dev/cu.usbserial-211240`, verified all written-region hashes, and reset.

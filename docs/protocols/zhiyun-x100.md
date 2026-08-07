@@ -144,6 +144,15 @@ on, and then confirmed restoration to the original values. This verifies
 protocol state, though independently observed optical output remains a
 separate hardware check.
 
+Panel testing also established two fixture behaviors that the app capture did
+not prove. Back-to-back brightness and CCT setters can leave the first value
+unchanged, so Ble(e)p now writes and confirms brightness before writing and
+confirming CCT. The fixture also rejected brightness above 60% while powered by
+a 60 W USB-C source and retained its prior 60% state. This matches ZHIYUN's
+documented supply-dependent output limit. Ble(e)p reports that stable readback
+as `LIMIT 60%`; the UI thumb and label remain optimistic while command and
+scene success remain tied to device-originated readback.
+
 ## Setup and unknown commands
 
 ZY Vega queried these commands immediately after subscribing to `0xFEE9`.
