@@ -458,7 +458,7 @@ the replacement.
   schematics, part identification, current waveforms, and destructive analysis
   are available.
 - Decision: Initialize BLE from the compile-time `CONFIG_BLE_TX_POWER_DBM`
-  setting, defaulting firmware profiles to +3 dBm; use a 20/100 active scan
+  setting, defaulting firmware profiles to +6 dBm; use a 20/100 active scan
   window/interval in four-second bursts with 1.5-second pauses; request 30-50
   ms connection intervals after protocol setup; and enable Wi-Fi station modem
   sleep for the retained Home Assistant session. Healthy protocol-ready sessions remain

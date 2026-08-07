@@ -2177,3 +2177,20 @@ Record values with the exact build environment and commit/worktree state.
   +3 dBm image flashed successfully to `/dev/cu.usbserial-211240`, verified all
   written-region hashes, and hard-reset. RF range/current behavior at +3 dBm
   was not measured during this build-and-flash check.
+
+### 2026-08-07: BLE transmit-power default increased to +6 dBm
+
+- Changed the single `CONFIG_BLE_TX_POWER_DBM` default in
+  `include/driver_config.h` from +3 to +6 dBm. The shared NimBLE backend and
+  compile-time range guard are unchanged, and `platformio.ini` still does not
+  duplicate the default.
+- Updated README, architecture, and ADR-025 to describe +6 dBm as the current
+  default. Earlier 0/+3 dBm entries remain historical verification records.
+- Native tests passed 49/49. All eight firmware profiles built successfully at
+  unchanged sizes; `crowpanel_128` used 1,805,322 bytes flash / 165,300 bytes
+  RAM. The +6 dBm combined image flashed successfully to
+  `/dev/cu.usbserial-211240`, verified all written-region hashes, and
+  hard-reset.
+- This session used USB power only. Battery-path operation at +6 dBm remains
+  unverified until D1 is replaced and its polarity, loaded voltage drop, and
+  temperature are checked on the physical board.

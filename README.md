@@ -61,7 +61,7 @@ principles:
   remain immediately reusable while healthy. An ownerless retained session is
   parked after an unexpected drop instead of reconnecting indefinitely.
 - A battery-conscious runtime policy uses compile-time configurable BLE
-  transmit power (+3 dBm by default), bounded
+  transmit power (+6 dBm by default), bounded
   low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem
   sleep, and ownerless reconnect suppression. The screen and backlight remain
   on continuously.
@@ -291,7 +291,7 @@ future Arduino-as-component build is expected to expose these options through
 Kconfig without changing driver code.
 
 BLE transmit power is selected at compile time with
-`CONFIG_BLE_TX_POWER_DBM`. Its shared configuration default is `+3` dBm;
+`CONFIG_BLE_TX_POWER_DBM`. Its shared configuration default is `+6` dBm;
 define the symbol as an integer from `-24` through `20` in a profile's build
 flags when a different range/current trade-off is required. NimBLE maps the
 request to a radio level supported by the ESP32-C3.

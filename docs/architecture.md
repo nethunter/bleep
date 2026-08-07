@@ -180,7 +180,7 @@ ms during setup and 30–50 ms after protocol readiness; rejection is diagnostic
 and non-fatal.
 
 The NimBLE controller is initialized with the compile-time
-`CONFIG_BLE_TX_POWER_DBM` setting. The shared configuration defaults to +3 dBm
+`CONFIG_BLE_TX_POWER_DBM` setting. The shared configuration defaults to +6 dBm
 rather than leaving the value implicit; builds may select another value from -24
 through 20 dBm when their range/current trade-off requires it. NimBLE maps the
 request to a radio-supported level. These radio policies reduce average and
