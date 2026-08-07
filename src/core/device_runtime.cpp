@@ -20,6 +20,9 @@
 #if CONFIG_DRIVER_AMARAN_LIGHT
 #include "devices/amaran_light/driver.h"
 #endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+#include "devices/zhiyun_x100/driver.h"
+#endif
 
 namespace studio {
 
@@ -46,6 +49,9 @@ DeviceManager& devices() {
   static AmaranLightDriver amaranPano120c(DriverId::AmaranPano120c);
   static AmaranLightDriver amaranAce25c(DriverId::AmaranAce25c);
 #endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+  static ZhiyunX100Driver zhiyunX100Driver;
+#endif
   static DeviceDriver* drivers[] = {
 #if CONFIG_DRIVER_SHARK_NANO_II
       &sharkDriver,
@@ -66,6 +72,9 @@ DeviceManager& devices() {
       &amaranLight,
       &amaranPano120c,
       &amaranAce25c,
+#endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+      &zhiyunX100Driver,
 #endif
       nullptr,
   };

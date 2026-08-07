@@ -246,6 +246,38 @@ Completion gate:
 - commands and mixed-device sequences target individual lights;
 - credentials never leak into normal logs or unprotected exports.
 
+### Phase 4b: ZHIYUN MOLUS X100 direct-control tranche
+
+Status: Experimental already-provisioned driver implemented under ADR-028;
+panel hardware gate remains open.
+
+Implemented boundary:
+
+- discover provisioned `pl105` fixtures advertising Mesh Proxy `0x1828`;
+- initialize and validate the direct proprietary `0xFEE9` session;
+- read power, float32 brightness, and CCT before reporting Ready;
+- expose power and CCT/brightness controls with correlated read-after-write;
+- persist the normal BLE identity transactionally and retain healthy sessions;
+- omit tint/RGB controls and constrain scenes to 2700-6500 K, 0-100%, tint 0.
+
+Deferred production work:
+
+- panel-owned PB-GATT provisioning, mesh-secret persistence, unicast
+  allocation, interrupted-attempt recovery, rollback, and verified reset;
+- address-rotation recovery beyond service/product rescanning, multiple X100s,
+  firmware-version compatibility policy, and service-change handling;
+- physical boundary, reconnect, scene, retained-pool, coexistence, latency,
+  and heap measurements listed in ADR-028.
+
+Completion gate:
+
+- one already-provisioned fixture adds from the panel, reaches confirmed Ready,
+  controls power/CCT/brightness with observed light output, survives reboot,
+  and completes a scene without optimistic state;
+- failure and timeout paths preserve the last confirmed state and remain
+  retryable;
+- the full profile passes mixed-device coexistence and memory recovery checks.
+
 ## Phase 5: Canon camera drivers
 
 Initial models:

@@ -16,6 +16,7 @@
 #include "devices/home_assistant/client.h"
 #include "devices/amaran_light/ui.h"
 #include "devices/amaran_light/runtime.h"
+#include "devices/zhiyun_x100/ui.h"
 #include "haptic_feedback.h"
 #include "portal_service.h"
 #include "scene_ui.h"
@@ -253,9 +254,10 @@ int main() {
   studio::InstanceId pano60Id = studio::kInvalidInstanceId;
   studio::InstanceId pano120Id = studio::kInvalidInstanceId;
   studio::InstanceId ace25Id = studio::kInvalidInstanceId;
+  studio::InstanceId zhiyunId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Key", pano60Id);
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Fill", pano120Id);
-  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Rim", ace25Id);
+  studio::devices().add(studio::DriverId::ZhiyunX100, "MOLUS X100", zhiyunId);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
       canonTriggerId == studio::kInvalidInstanceId ||
@@ -266,7 +268,7 @@ int main() {
       haScene == studio::kInvalidInstanceId ||
       pano60Id == studio::kInvalidInstanceId ||
       pano120Id == studio::kInvalidInstanceId ||
-      ace25Id == studio::kInvalidInstanceId) {
+      zhiyunId == studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
     return 1;
   }
@@ -601,6 +603,13 @@ int main() {
   }
   if (!capture("20f_amaran_rgb")) return 1;
   amaran_light_ui::hide();
+
+  zhiyun_x100_ui::show(zhiyunId);
+  pump(300);
+  if (!capture("20g_zhiyun_x100_confirmed")) {
+    return 1;
+  }
+  zhiyun_x100_ui::hide();
   ui::showHome();
   tascam_x8_ui::show(tascamId);
   pump(100);

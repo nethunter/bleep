@@ -457,10 +457,11 @@ the replacement.
   component and electrical cause remain a `Hardware hypothesis` until board
   schematics, part identification, current waveforms, and destructive analysis
   are available.
-- Decision: Initialize BLE at 0 dBm; use a 20/100 active scan window/interval
-  in four-second bursts with 1.5-second pauses; request 30-50 ms connection
-  intervals after protocol setup; and enable Wi-Fi station modem sleep for the
-  retained Home Assistant session. Healthy protocol-ready sessions remain
+- Decision: Initialize BLE from the compile-time `CONFIG_BLE_TX_POWER_DBM`
+  setting, defaulting firmware profiles to +3 dBm; use a 20/100 active scan
+  window/interval in four-second bursts with 1.5-second pauses; request 30-50
+  ms connection intervals after protocol setup; and enable Wi-Fi station modem
+  sleep for the retained Home Assistant session. Healthy protocol-ready sessions remain
   retained across navigation. If an ownerless retained session drops
   unexpectedly, deactivate it instead of running background reconnect. Canon
   Smart's intentional `PoweredOff` state remains retained so acquiring it can
@@ -528,6 +529,38 @@ the replacement.
   device ownership before starting Wi-Fi. Configuration changes do not acquire
   physical links, and normal operation resumes only after Portal teardown.
 
+## ADR-028: X100 first tranche uses confirmed direct GATT control
+
+- Status: Experimental; panel hardware gate open
+- Decision: expose one `ZHIYUN MOLUS X100` light driver for fixtures that have
+  already been provisioned and advertise Mesh Proxy `0x1828`. Discovery
+  requires both the `pl105` product identity (`PL105_` name or company
+  `0x0905`) and the proxy service, then control uses the separate cleartext
+  `0xFEE9` GATT service. The first tranche does not send encrypted Bluetooth
+  Mesh access messages and does not import or depend on the provisioning mesh
+  keys for normal control.
+- Session and state: after subscribing, the driver reproduces the captured
+  identity, firmware, status, and mode initialization sequence starting at
+  sequence 2. Protocol readiness requires a validated `pl105` identity and
+  device-originated brightness, CCT, and power replies. Power and CCT/
+  brightness writes remain pending until correlated read-after-write replies
+  equal the request; a GATT write alone never changes published state.
+- Lifecycle: successful initialization commits the normal transactional
+  add-device record with the discovered BLE identity. The one-instance driver
+  uses the shared lazy central and retained-session policy. Callbacks only
+  enqueue bounded bytes; framing, CRC validation, correlation, state mutation,
+  command completion, and LVGL remain in `loop()`.
+- Deferred onboarding: standard no-OOB PB-GATT provisioning is proven from a
+  laptop, but panel-owned provisioning is deferred until mesh ownership,
+  durable secret storage, unicast allocation, interrupted-attempt recovery,
+  rollback, and verified factory reset are accepted together. An unprovisioned
+  `0x1827` X100 is therefore intentionally not selected by this tranche.
+- Gate: verify add, initial state, power off/on, several brightness/CCT values,
+  rejection or clamping at 0/100% and 2700/6500 K, reconnect after reboot,
+  retained navigation, scene confirmation, timeout/retry, and coexistence on
+  the CrowPanel. Optical output must be observed separately from protocol
+  readback.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
@@ -538,3 +571,5 @@ These remain unresolved until their roadmap spikes complete:
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;
 - measured memory budgets for minimal and full firmware profiles.
+- whether X100 panel-owned provisioning uses a dedicated mesh identity or a
+  versioned multi-vendor mesh store, and the corresponding reset/rollback UX.

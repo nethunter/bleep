@@ -284,7 +284,9 @@ void onSaveLightParameters(lv_event_t*) {
     callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightCct,
                             lv_slider_get_value(parameter0),
                             lv_slider_get_value(parameter1),
-                            lv_slider_get_value(parameter2));
+                            parameter2 != nullptr
+                                ? lv_slider_get_value(parameter2)
+                                : 0);
   } else {
     const lv_color_hsv_t hsv = lv_colorwheel_get_hsv(colorWheel);
     const uint32_t rgb = lv_color_to32(lv_color_hsv_to_rgb(
@@ -399,11 +401,10 @@ void captureLightEditorDraft() {
     draftRgbHue = lv_colorwheel_get_hsv(colorWheel).h;
     draftRgbSaturation = lv_slider_get_value(parameter0);
     draftRgbBrightness = lv_slider_get_value(parameter1);
-  } else if (!lightEditorRgb && parameter0 != nullptr && parameter1 != nullptr &&
-             parameter2 != nullptr) {
+  } else if (!lightEditorRgb && parameter0 != nullptr && parameter1 != nullptr) {
     draftCctKelvin = lv_slider_get_value(parameter0);
     draftCctBrightness = lv_slider_get_value(parameter1);
-    draftCctTint = lv_slider_get_value(parameter2);
+    draftCctTint = parameter2 != nullptr ? lv_slider_get_value(parameter2) : 0;
   }
 }
 
@@ -434,28 +435,41 @@ lv_obj_t* labeledParameter(lv_obj_t* parent, const char* label, int minimum,
 }
 
 void refreshLightParameters() {
+  const studio::DeviceRecord* selected = studio::devices().find(selectedDevice);
+  const studio::InstanceProfile profile =
+      selected != nullptr ? studio::devices().profile(selectedDevice)
+                          : studio::InstanceProfile{};
+  const bool supportsRgb =
+      (profile.capabilities &
+       studio::capabilityBit(studio::Capability::SetLightRgb)) != 0;
+  const bool supportsTint =
+      (profile.capabilities &
+       studio::capabilityBit(studio::Capability::SetLightTint)) != 0;
+  if (!supportsRgb) lightEditorRgb = false;
   lv_label_set_text(titleLabel, "Set color");
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(body, 3, 0);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
-  lv_obj_t* modes = lv_obj_create(body);
-  lv_obj_set_size(modes, 132, 27);
-  lv_obj_set_style_bg_opa(modes, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(modes, 0, 0);
-  lv_obj_set_style_pad_all(modes, 0, 0);
-  lv_obj_clear_flag(modes, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* cct = makeButton(modes, "CCT", onLightMode,
-                             lightEditorRgb ? kColPanel : kColAccent);
-  lv_obj_set_size(cct, 62, 27);
-  lv_obj_align(cct, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_t* rgb = makeButton(modes, "RGB", onLightMode,
-                             lightEditorRgb ? kColAccent : kColPanel);
-  lv_obj_set_size(rgb, 62, 27);
-  lv_obj_align(rgb, LV_ALIGN_RIGHT_MID, 0, 0);
-  lv_obj_remove_event_cb(rgb, onLightMode);
-  lv_obj_add_event_cb(rgb, onLightMode, LV_EVENT_CLICKED,
-                      reinterpret_cast<void*>(1));
+  if (supportsRgb) {
+    lv_obj_t* modes = lv_obj_create(body);
+    lv_obj_set_size(modes, 132, 27);
+    lv_obj_set_style_bg_opa(modes, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(modes, 0, 0);
+    lv_obj_set_style_pad_all(modes, 0, 0);
+    lv_obj_clear_flag(modes, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* cct = makeButton(modes, "CCT", onLightMode,
+                               lightEditorRgb ? kColPanel : kColAccent);
+    lv_obj_set_size(cct, 62, 27);
+    lv_obj_align(cct, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_t* rgb = makeButton(modes, "RGB", onLightMode,
+                               lightEditorRgb ? kColAccent : kColPanel);
+    lv_obj_set_size(rgb, 62, 27);
+    lv_obj_align(rgb, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_remove_event_cb(rgb, onLightMode);
+    lv_obj_add_event_cb(rgb, onLightMode, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(1));
+  }
   if (lightEditorRgb) {
     lv_obj_t* row = lv_obj_create(body);
     lv_obj_set_size(row, 158, 67);
@@ -493,9 +507,13 @@ void refreshLightParameters() {
     lv_slider_set_range(parameter1, 0, 100);
     lv_slider_set_value(parameter1, draftRgbBrightness, LV_ANIM_OFF);
   } else {
-    labeledParameter(body, "K", 2300, 10000, draftCctKelvin, parameter0);
+    const bool x100 = selected != nullptr &&
+                      selected->driverId == studio::DriverId::ZhiyunX100;
+    labeledParameter(body, "K", x100 ? 2700 : 2300,
+                     x100 ? 6500 : 10000, draftCctKelvin, parameter0);
     labeledParameter(body, "Bri", 0, 100, draftCctBrightness, parameter1);
-    labeledParameter(body, "Tint", -1000, 1000, draftCctTint, parameter2);
+    if (supportsTint)
+      labeledParameter(body, "Tint", -1000, 1000, draftCctTint, parameter2);
   }
   lv_obj_t* save = makeButton(
       body, editingSceneStep ? "Save color" : "Add color",
@@ -980,12 +998,12 @@ void simSaveWait(uint32_t waitMs) {
 }
 
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint) {
-  if (parameter0 == nullptr || parameter1 == nullptr || parameter2 == nullptr) {
+  if (parameter0 == nullptr || parameter1 == nullptr) {
     return;
   }
   lv_slider_set_value(parameter0, kelvin, LV_ANIM_OFF);
   lv_slider_set_value(parameter1, brightness, LV_ANIM_OFF);
-  lv_slider_set_value(parameter2, tint, LV_ANIM_OFF);
+  if (parameter2 != nullptr) lv_slider_set_value(parameter2, tint, LV_ANIM_OFF);
   onSaveLightParameters(nullptr);
 }
 #endif

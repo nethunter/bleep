@@ -60,7 +60,8 @@ principles:
   four protocol-ready device sessions stay connected across navigation and
   remain immediately reusable while healthy. An ownerless retained session is
   parked after an unexpected drop instead of reconnecting indefinitely.
-- A battery-conscious runtime policy uses 0 dBm BLE transmit power, bounded
+- A battery-conscious runtime policy uses compile-time configurable BLE
+  transmit power (+3 dBm by default), bounded
   low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem
   sleep, and ownerless reconnect suppression. The screen and backlight remain
   on continuously.
@@ -79,6 +80,9 @@ principles:
   provisioning, one shared Mesh Proxy connection, power,
   independently remembered CCT/tint/brightness and RGB/saturation/brightness
   looks, plus a unified parameterized `Set color` sequence action.
+- Experimental ZHIYUN MOLUS X100 support for an already-provisioned light,
+  with direct power and CCT/brightness controls that remain pending until the
+  light returns matching state reads.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -102,6 +106,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
 | Amaran Light | Experimental | Adds the first nearby factory-reset Amaran fixture advertising Mesh Provisioning to a panel-owned mesh; optimistic power, CCT/tint/brightness, RGB/brightness, and sequence actions use one shared proxy. Pano 60c/120c and Ace 25c are the initial validation fixtures; real-fixture verification remains open. |
+| ZHIYUN MOLUS X100 | Experimental | Adds an already-provisioned `PL105` light advertising Mesh Proxy and controls power plus 2700-6500 K CCT/brightness through direct GATT. Commands complete only after matching device readback. Panel-owned provisioning and panel hardware verification remain open. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
 Compatibility claims are deliberately narrow. Read
@@ -175,6 +180,7 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e canon_trigger
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e tascam_x8
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e home_assistant
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e zhiyun_x100
 ```
 
 To render the UI on a desktop, install ImageMagick and run:
@@ -203,6 +209,9 @@ does not leave an unpaired record behind. Pairing mode matters:
   saved phone registration and a BR-E1 bond are different pairings.
 - Tascam X8: install the AK-BT1 and make the recorder available to its remote
   app connection.
+- ZHIYUN X100: provision the light first so it advertises Mesh Proxy `0x1828`;
+  Ble(e)p then matches the `PL105_` identity and opens the direct control
+  service. Factory-reset `0x1827` onboarding is not in this firmware tranche.
 
 For first-time Home Assistant setup, open **Portal** from Home. Join the
 temporary `Bleep-Setup-…` WPA2 network by scanning the on-panel QR code, or join
@@ -280,6 +289,12 @@ flags. Runtime device records are separate from compiled driver metadata, so a
 record can remain dormant when a smaller firmware build omits its driver. A
 future Arduino-as-component build is expected to expose these options through
 Kconfig without changing driver code.
+
+BLE transmit power is selected at compile time with
+`CONFIG_BLE_TX_POWER_DBM`. Its shared configuration default is `+3` dBm;
+define the symbol as an integer from `-24` through `20` in a profile's build
+flags when a different range/current trade-off is required. NimBLE maps the
+request to a radio level supported by the ESP32-C3.
 
 For the complete model, read [architecture](docs/architecture.md),
 [architecture decisions](docs/decisions.md), and [scenes](docs/scenes.md).

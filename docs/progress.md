@@ -21,7 +21,7 @@ short, factual, and reproducible.
   aliases for persisted records. Crypto, persistence, parameterized
   scenes, and UI are implemented; real-fixture configuration status and safe
   reset gates remain open.
-- Last updated: 2026-08-06.
+- Last updated: 2026-08-07.
 
 ## Completed planning
 
@@ -1976,3 +1976,108 @@ Record values with the exact build environment and commit/worktree state.
   encoder fit, neighboring-component clearance, rotation, and preserved button
   travel remain unverified. No firmware build or flash was applicable to this
   CAD-only artifact.
+
+### 2026-08-07: Zhiyun MOLUS X100 Android HCI protocol research
+
+- Generated and downloaded a Pixel Android bugreport through ADB after a ZY
+  Vega add/control session. The bugreport and both HCI logs remain under a
+  private temporary path and were not added to the repository.
+- Isolated the relevant rotated snoop log (SHA-256
+  `2d677dac86f0896026add3ba1d41910ca663819291f50dd30491379caa6bab1f`)
+  and documented only sanitized transport facts and golden vectors in
+  `docs/protocols/zhiyun-x100.md`.
+- Confirmed the `pl105` product marker, no-OOB PB-GATT provisioning on `0x1827`,
+  post-provision Mesh Proxy on `0x1828`, and a separate cleartext `0xFEE9`
+  write/notify channel. Vendor frames use `24 3c`, a little-endian body length
+  and sequence, and CRC-16/XMODEM over the body with little-endian CRC storage.
+- Decoded captured power (`0x1008`), float32 brightness (`0x1001`), and uint16
+  CCT (`0x1002`) read/write shapes. Setters had no per-write response; physical
+  output and read-after-write confirmation remain hardware-unverified.
+- No source, build configuration, persistent schema, or firmware behavior was
+  changed. No build or flash was run for this documentation-only research
+  session. A bounded already-provisioned direct-GATT driver is the next safe
+  implementation candidate; factory-reset provisioning needs a separate
+  architecture decision for mesh ownership and recovery.
+
+### 2026-08-07: Zhiyun MOLUS X100 live provisioning and control
+
+- Found the freshly reset `PL105_4BF3` advertising Mesh Provisioning `0x1827`
+  near the laptop. Its live Provisioning Capabilities matched the capture:
+  one element, P-256, static OOB available, and no input/output OOB.
+- Corrected the research provisioner to treat advertised static-OOB capability
+  as optional when Provisioning Start explicitly selects no-OOB. Provisioned
+  the light into a fresh private mesh at unicast address 2; it disconnected and
+  reappeared advertising Mesh Proxy `0x1828`. AppKey/model configuration was
+  intentionally skipped because direct control uses the separate `0xFEE9`
+  service. Mesh recovery material was retained outside the repository with
+  owner-only permissions.
+- Live GATT discovery confirmed both Mesh Proxy `0x1828` and proprietary
+  `0xFEE9` with the captured write/notify characteristics. Direct state queries
+  timed out until the captured `0x2003`, `0x8001`, `0x2001`, and `0x0006`
+  initialization sequence was reproduced starting at sequence 2.
+- The fixture identified as `pl105` with firmware `1.8.4`. Device-originated
+  reads reported on / 13.0% / 5600 K. The laptop wrote on / 10.0% / 3200 K,
+  read all three values back exactly, then restored and read back the original
+  state. This confirms a non-optimistic command path based on correlated
+  read-after-write; independently observed optical output is still an operator
+  check.
+- No firmware source or build configuration changed, so no PlatformIO build or
+  panel flash was applicable. The next safe implementation task is the bounded
+  already-provisioned direct-GATT driver; production provisioning still needs
+  accepted ownership, durable secret storage, reset, retry, and rollback
+  semantics.
+
+### 2026-08-07: Zhiyun MOLUS X100 confirmed direct-control firmware
+
+- Added the experimental `zhiyun.molus_x100` driver, a dedicated
+  `zhiyun_x100` build profile, and panel/simulator UI. Add device matches an
+  already-provisioned `pl105` advertiser on Mesh Proxy `0x1828`, opens the
+  separate `0xFEE9` direct-control service, reproduces the captured
+  initialization sequence, validates the product identity, and reads power,
+  brightness, and CCT before reporting Ready or committing the record.
+- Power and CCT/brightness commands are non-optimistic: the GATT setter remains
+  pending, then correlated device reads must equal the requested values before
+  the driver publishes them or completes a scene command. The initial tranche
+  exposes 2700-6500 K, 0-100%, and no tint/RGB capability. CRC, captured golden
+  vectors, fragmented notifications, identity, range, and advertisement
+  matching have native coverage.
+- Recorded ADR-028 and the Phase 4b completion gate. Still missing before
+  production are panel-owned PB-GATT provisioning and a versioned secure mesh
+  identity/store, unicast allocation, interrupted-provision recovery and
+  rollback, verified factory reset, rotating-address and firmware-version
+  policy, multiple fixtures, and the physical boundary/reboot/scene/retention/
+  coexistence checks. Optical output must be observed independently from a
+  matching protocol readback.
+- Native tests passed 48/48. `ui_sim` built and completed its full capture run;
+  the X100 screen is recorded as `20g_zhiyun_x100_confirmed.png`. The run ended
+  with 11,472 bytes free, 20,788 bytes peak used, and 1% fragmentation.
+- All eight firmware profiles built successfully. Flash/RAM bytes were:
+  `crowpanel_128` 1,802,420 / 164,580; `crowpanel_128_roboto` 1,771,964 /
+  164,580; `canon_ble` 1,796,016 / 162,548; `canon_trigger` 1,792,462 /
+  161,540; `tascam_x8` 1,793,862 / 161,460; `home_assistant` 1,789,108 /
+  161,060; `amaran_light` 1,754,718 / 155,868; and `zhiyun_x100` 1,730,502 /
+  153,364.
+- The laptop had already provisioned the fixture and verified the direct
+  protocol by changing it to on / 10.0% / 3200 K, reading those values back,
+  and restoring on / 13.0% / 5600 K. The final `crowpanel_128` image flashed
+  successfully to `/dev/cu.usbserial-211240`, its hashes verified, and a bounded
+  monitor showed normal display/touch initialization plus the boot heap line
+  (`free_heap=129220`, `min_free_heap=126744`). Panel-originated add and
+  physical light control remain the final operator-assisted hardware gate.
+
+### 2026-08-07: Compile-time BLE transmit power
+
+- Replaced the shared NimBLE backend's hard-coded 0 dBm transmit power with
+  `CONFIG_BLE_TX_POWER_DBM`. Existing firmware profiles explicitly retain the
+  0 dBm default; the configuration header supplies the same fallback and
+  rejects values outside the ESP32-C3/NimBLE `-24` through `20` dBm input
+  range at compile time. NimBLE maps the requested value to a supported radio
+  level.
+- Updated ADR-025, architecture, and README guidance to distinguish the
+  battery-conscious default from compile-time overrides. Alternate values
+  still require hardware range, reliability, and current measurements and do
+  not change the battery-path safety boundary.
+- Native tests passed 48/48. All eight firmware profiles built successfully at
+  the existing sizes; `crowpanel_128` used 1,802,420 bytes flash / 164,580
+  bytes RAM. The default combined image flashed successfully to
+  `/dev/cu.usbserial-211240`, its hashes verified, and the board hard-reset.

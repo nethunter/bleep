@@ -35,6 +35,9 @@
 #if CONFIG_DRIVER_AMARAN_LIGHT
 #include "devices/amaran_light/ui.h"
 #endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+#include "devices/zhiyun_x100/ui.h"
+#endif
 
 namespace ui {
 
@@ -806,6 +809,9 @@ void buildRenameOverlay() {
 }  // namespace
 
 void releaseDeviceUis() {
+#if CONFIG_DRIVER_ZHIYUN_X100
+  zhiyun_x100_ui::release();
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   amaran_light_ui::release();
 #endif
@@ -902,6 +908,12 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
+#if CONFIG_DRIVER_ZHIYUN_X100
+  if (zhiyun_x100_ui::active()) {
+    zhiyun_x100_ui::tick();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::tick();
@@ -953,6 +965,12 @@ void tick() {
 }
 
 void handleShortPress() {
+#if CONFIG_DRIVER_ZHIYUN_X100
+  if (zhiyun_x100_ui::active()) {
+    zhiyun_x100_ui::handleShortPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::handleShortPress();
@@ -996,6 +1014,12 @@ void handleShortPress() {
 }
 
 void handleLongPress() {
+#if CONFIG_DRIVER_ZHIYUN_X100
+  if (zhiyun_x100_ui::active()) {
+    zhiyun_x100_ui::handleLongPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::handleLongPress();
@@ -1051,6 +1075,11 @@ void handleLongPress() {
 }
 
 void showHome() {
+#if CONFIG_DRIVER_ZHIYUN_X100
+  if (zhiyun_x100_ui::active()) {
+    zhiyun_x100_ui::hide();
+  }
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::hide();
@@ -1097,6 +1126,11 @@ void showHome() {
 }
 
 void showDevices() {
+#if CONFIG_DRIVER_ZHIYUN_X100
+  if (zhiyun_x100_ui::active()) {
+    zhiyun_x100_ui::hide();
+  }
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::hide();
@@ -1160,6 +1194,11 @@ void showDevice(studio::InstanceId instanceId) {
   }
   releaseDeviceRows();
   switch (record->driverId) {
+#if CONFIG_DRIVER_ZHIYUN_X100
+    case studio::DriverId::ZhiyunX100:
+      zhiyun_x100_ui::show(instanceId);
+      break;
+#endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
     case studio::DriverId::AmaranLight:
     case studio::DriverId::AmaranPano120c:

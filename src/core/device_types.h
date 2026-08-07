@@ -21,6 +21,7 @@ enum class DriverId : uint16_t {
   AmaranPano60c = 6,
   AmaranPano120c = 7,
   AmaranAce25c = 8,
+  ZhiyunX100 = 9,
 };
 
 enum class DeviceType : uint8_t {
@@ -77,6 +78,7 @@ enum class Capability : uint32_t {
   Activate = 1u << 16,
   SetLightCct = 1u << 17,
   SetLightRgb = 1u << 18,
+  SetLightTint = 1u << 19,
 };
 
 constexpr uint32_t capabilityBit(Capability capability) {

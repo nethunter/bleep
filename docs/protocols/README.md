@@ -7,6 +7,7 @@ does not ship raw packet captures.
 
 - [Tascam Portacapture X8](tascam-x8.md)
 - [Canon smartphone-mode BLE](canon-smartphone-ble.md)
+- [Zhiyun MOLUS X100](zhiyun-x100.md)
 
 Raw captures were removed before publication because radio traces can contain
 stable addresses, nearby device names, phone/camera identifiers, pairing

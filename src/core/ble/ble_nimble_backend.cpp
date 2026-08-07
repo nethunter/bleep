@@ -303,10 +303,9 @@ bool BleNimbleBackend::begin() {
   if (!NimBLEDevice::init("Ble(e)p")) {
     return false;
   }
-  // The ESP32-C3 defaults to +3 dBm. Zero dBm is ample for a handheld studio
-  // controller and trims peak radio current without sacrificing normal
-  // across-room use.
-  NimBLEDevice::setPower(0, NimBLETxPowerType::All);
+  // Keep transmit power configurable for installations that need a different
+  // range/current trade-off than the firmware profile default.
+  NimBLEDevice::setPower(CONFIG_BLE_TX_POWER_DBM, NimBLETxPowerType::All);
   NimBLEDevice::setMTU(247);
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setScanCallbacks(&impl_->scanCallbacks, true);

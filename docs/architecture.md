@@ -20,12 +20,14 @@ flowchart TB
   Groups --> DeviceManager
   DeviceManager --> SharkDriver
   DeviceManager --> AmaranDriver
+  DeviceManager --> ZhiyunX100Driver
   DeviceManager --> CanonTriggerDriver
   DeviceManager --> CanonSmartDriver
   DeviceManager --> HomeAssistantDriver
   DeviceManager --> FutureRecorderDrivers
   SharkDriver --> BluetoothRuntime
   AmaranDriver --> BluetoothRuntime
+  ZhiyunX100Driver --> BluetoothRuntime
   CanonTriggerDriver --> BluetoothRuntime
   CanonSmartDriver --> BluetoothRuntime
   CanonSmartDriver --> WifiHttpRuntime
@@ -46,8 +48,8 @@ feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
   Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Amaran
-  Light entry; hidden legacy Amaran model IDs remain resolvable for persisted
-  records;
+  Light entry, and an experimental already-provisioned MOLUS X100 entry;
+  hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, a
   four-session retained connection pool, per-owner lifecycle, and persistence;
@@ -68,7 +70,8 @@ feasibility spikes:
   sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
   Portal provisioning and four local HA entities. ADR-024 adds an experimental
   userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
-  open; generated reverse-Stop and groups remain deferred.
+  open. ADR-028 adds direct `0xFEE9` X100 control with confirmed readback;
+  generated reverse-Stop and groups remain deferred.
 
 ## Compile-time driver catalog
 
@@ -175,9 +178,13 @@ walks. The backend also makes best-effort connection-parameter requests: 7.5–1
 ms during setup and 30–50 ms after protocol readiness; rejection is diagnostic
 and non-fatal.
 
-The NimBLE controller is initialized at 0 dBm rather than its +3 dBm default.
-These radio policies reduce average and peak demand but are not electrical
-protection for the CrowPanel battery-input path.
+The NimBLE controller is initialized with the compile-time
+`CONFIG_BLE_TX_POWER_DBM` setting. The shared configuration defaults to +3 dBm
+rather than leaving the value implicit; builds may select another value from -24
+through 20 dBm when their range/current trade-off requires it. NimBLE maps the
+request to a radio-supported level. These radio policies reduce average and
+peak demand but are not electrical protection for the CrowPanel battery-input
+path.
 
 Serial-only `ble_timing` records cover activation, scan/direct connect, link,
 security, GATT setup, protocol readiness, retries, teardown, and total sequence
@@ -349,6 +356,10 @@ GATT is accessed through a transport facade:
 - Shark, Canon, and Tascam use their device-specific GATT services;
 - Amaran uses userspace PB-GATT provisioning and Mesh Proxy GATT over that same
   central, with one proxy connection shared by its logical lights;
+- X100 uses the shared central to discover an already-provisioned `pl105`
+  Mesh-Proxy advertiser, then initializes and controls the separate `0xFEE9`
+  GATT service. Its writes remain pending until correlated device replies
+  confirm the requested values;
 - callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
   persistence, and writes remain on the main loop.
 

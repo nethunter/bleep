@@ -84,7 +84,8 @@ constexpr DriverDescriptor kDrivers[] = {
         capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
             capabilityBit(Capability::SetLightCct) |
-            capabilityBit(Capability::SetLightRgb),
+            capabilityBit(Capability::SetLightRgb) |
+            capabilityBit(Capability::SetLightTint),
         4,
     },
     {
@@ -96,7 +97,8 @@ constexpr DriverDescriptor kDrivers[] = {
         capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
             capabilityBit(Capability::SetLightCct) |
-            capabilityBit(Capability::SetLightRgb),
+            capabilityBit(Capability::SetLightRgb) |
+            capabilityBit(Capability::SetLightTint),
         4,
         false,
     },
@@ -109,9 +111,23 @@ constexpr DriverDescriptor kDrivers[] = {
         capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
             capabilityBit(Capability::SetLightCct) |
-            capabilityBit(Capability::SetLightRgb),
+            capabilityBit(Capability::SetLightRgb) |
+            capabilityBit(Capability::SetLightTint),
         4,
         false,
+    },
+#endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+    {
+        DriverId::ZhiyunX100,
+        "zhiyun.molus_x100",
+        "ZHIYUN",
+        "MOLUS X100",
+        DeviceType::Light,
+        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
+            capabilityBit(Capability::TurnOff) |
+            capabilityBit(Capability::SetLightCct),
+        1,
     },
 #endif
     {},

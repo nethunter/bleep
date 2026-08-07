@@ -12,6 +12,7 @@
 #include "devices/tascam_x8/state.h"
 #include "devices/home_assistant/driver.h"
 #include "devices/amaran_light/driver.h"
+#include "devices/zhiyun_x100/state.h"
 
 namespace studio {
 namespace {
@@ -387,6 +388,69 @@ class SimTascamDriver : public DeviceDriver {
   tascam_x8::TascamX8State state_;
 };
 
+class SimZhiyunX100Driver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::ZhiyunX100; }
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
+    state_.link = zhiyun_x100::X100State::Link::Connected;
+    state_.phase = zhiyun_x100::X100State::Phase::Ready;
+    state_.hasSavedDevice = true;
+    state_.confirmed = true;
+    state_.on = true;
+    state_.brightness = 13.0f;
+    state_.kelvin = 5600;
+    std::strncpy(state_.deviceName, "PL105_SIM",
+                 sizeof(state_.deviceName) - 1);
+    return true;
+  }
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId != activeInstance_) return;
+    activeInstance_ = kInvalidInstanceId;
+    state_.link = zhiyun_x100::X100State::Link::Disconnected;
+  }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    if (command.instanceId != activeInstance_) return CommandStatus::Unavailable;
+    if (command.type == CommandType::TurnOn ||
+        command.type == CommandType::TurnOff) {
+      state_.on = command.type == CommandType::TurnOn;
+      state_.confirmed = true;
+      state_.lastCommandFailed = false;
+      return CommandStatus::Succeeded;
+    }
+    if (command.type == CommandType::SetLightCct && command.value2 == 0) {
+      state_.kelvin = static_cast<uint16_t>(command.value0);
+      state_.brightness = static_cast<float>(command.value1);
+      state_.confirmed = true;
+      state_.lastCommandFailed = false;
+      return CommandStatus::Succeeded;
+    }
+    return CommandStatus::Unsupported;
+  }
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
+    DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
+    runtime.link = state_.link == zhiyun_x100::X100State::Link::Connected
+                       ? LinkState::Connected
+                       : LinkState::Disconnected;
+    runtime.protocolReady = state_.phase == zhiyun_x100::X100State::Phase::Ready;
+    runtime.quality = state_.confirmed ? StateQuality::Confirmed
+                                       : StateQuality::Unknown;
+    runtime.commandPending = state_.commandPending;
+    runtime.commandFailed = state_.lastCommandFailed;
+    return runtime;
+  }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
+
+ private:
+  InstanceId activeInstance_ = kInvalidInstanceId;
+  zhiyun_x100::X100State state_;
+};
+
 MemoryConfigBackend gBackend;
 MemoryConfigBackend gScenesBackend;
 SeededLegacyBackend gLegacy;
@@ -398,10 +462,12 @@ HomeAssistantDriver gHomeAssistantDriver;
 AmaranLightDriver gAmaranPano60(DriverId::AmaranLight);
 AmaranLightDriver gAmaranPano120(DriverId::AmaranPano120c);
 AmaranLightDriver gAmaranAce25(DriverId::AmaranAce25c);
+SimZhiyunX100Driver gZhiyunX100Driver;
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver, &gHomeAssistantDriver,
-                            &gAmaranPano60, &gAmaranPano120, &gAmaranAce25};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 8);
+                            &gAmaranPano60, &gAmaranPano120, &gAmaranAce25,
+                            &gZhiyunX100Driver};
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 9);
 SceneService gScenes(gScenesBackend, gManager);
 
 }  // namespace

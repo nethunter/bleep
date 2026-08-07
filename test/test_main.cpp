@@ -29,6 +29,9 @@
 #include "devices/amaran_light/protocol.h"
 #include "devices/amaran_light/state.h"
 #include "devices/amaran_light/store.h"
+#include "devices/zhiyun_x100/ble_match.h"
+#include "devices/zhiyun_x100/protocol.h"
+#include "devices/zhiyun_x100/state.h"
 
 using namespace shark;
 
@@ -753,7 +756,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(8, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(9, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -811,6 +814,20 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::DriverId::AmaranPano120c)->discoverable);
   TEST_ASSERT_FALSE(studio::DriverCatalog::find(
       studio::DriverId::AmaranAce25c)->discoverable);
+  const studio::DriverDescriptor* x100 =
+      studio::DriverCatalog::find(studio::DriverId::ZhiyunX100);
+  TEST_ASSERT_NOT_NULL(x100);
+  TEST_ASSERT_EQUAL_STRING("zhiyun.molus_x100", x100->stableId);
+  TEST_ASSERT_EQUAL_UINT8(1, x100->maxInstances);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::TurnOn) |
+          studio::capabilityBit(studio::Capability::TurnOff) |
+          studio::capabilityBit(studio::Capability::SetLightCct),
+      x100->capabilities);
+  TEST_ASSERT_BITS_LOW(
+      studio::capabilityBit(studio::Capability::SetLightRgb) |
+          studio::capabilityBit(studio::Capability::SetLightTint),
+      x100->capabilities);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -2357,6 +2374,71 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_UINT32(amaran_light::kSequenceBlockSize, sequence);
 }
 
+void test_zhiyun_x100_frames_and_confirmed_state_replies() {
+  const zhiyun_x100::FrameBytes brightnessRead =
+      zhiyun_x100::buildReadRequest(6, zhiyun_x100::kCommandBrightness);
+  const uint8_t expectedRead[] = {
+      0x24,0x3c,0x0d,0x00,0x00,0x01,0x06,0x00,0x01,0x10,
+      0x00,0x80,0x00,0x00,0x00,0x00,0x00,0x36,0xf0};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedRead), brightnessRead.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedRead, brightnessRead.bytes,
+                                sizeof(expectedRead));
+
+  const zhiyun_x100::FrameBytes powerOff =
+      zhiyun_x100::buildPowerWrite(0x0172, false);
+  const uint8_t expectedPowerOff[] = {
+      0x24,0x3c,0x0a,0x00,0x00,0x01,0x72,0x01,0x08,0x10,
+      0x00,0x80,0x01,0x00,0x9b,0x6d};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedPowerOff), powerOff.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPowerOff, powerOff.bytes,
+                                sizeof(expectedPowerOff));
+
+  const uint8_t brightnessReply[] = {
+      0x24,0x3c,0x0d,0x00,0x01,0x00,0x06,0x00,0x01,0x10,
+      0x00,0x80,0x00,0x00,0x00,0x40,0x40,0x28,0xf3};
+  zhiyun_x100::FrameScanner scanner;
+  unsigned callbacks = 0;
+  scanner.feed(brightnessReply, 7,
+               [&](const zhiyun_x100::ParsedFrame&) { ++callbacks; });
+  scanner.feed(brightnessReply + 7, sizeof(brightnessReply) - 7,
+               [&](const zhiyun_x100::ParsedFrame& frame) {
+                 ++callbacks;
+                 float brightness = -1.0f;
+                 TEST_ASSERT_TRUE(zhiyun_x100::parseBrightness(frame,
+                                                               brightness));
+                 TEST_ASSERT_FLOAT_WITHIN(0.001f, 3.0f, brightness);
+                 TEST_ASSERT_EQUAL_UINT16(6, frame.sequence);
+               });
+  TEST_ASSERT_EQUAL_UINT32(1, callbacks);
+  TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(2700, 0, 0));
+  TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(6500, 100, 0));
+  TEST_ASSERT_FALSE(zhiyun_x100::validCctCommand(5600, 50, 1));
+  TEST_ASSERT_EQUAL_UINT32(0,
+      zhiyun_x100::buildCctWrite(1, 2699).length);
+}
+
+void test_zhiyun_x100_identity_and_advertisement_match() {
+  const uint8_t identityReply[] = {
+      0x24,0x3c,0x22,0x00,0x01,0x00,0x02,0x00,0x03,0x20,
+      0x30,0x39,0x30,0x32,0x30,0x37,0x65,0x30,0x63,0x33,
+      0x31,0x32,0x30,0x32,0x35,0x30,0x00,0x70,0x6c,0x31,
+      0x30,0x35,0x00,0x00,0x00,0x00,0x00,0x00,
+      0xf3,0xc6};
+  zhiyun_x100::FrameScanner scanner;
+  bool identified = false;
+  scanner.feed(identityReply, sizeof(identityReply),
+               [&](const zhiyun_x100::ParsedFrame& frame) {
+                 identified = zhiyun_x100::identityIsX100(frame);
+               });
+  TEST_ASSERT_TRUE(identified);
+  const studio::ble::Advertisement x100 =
+      bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1828);
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesAdvertisement(x100));
+  const studio::ble::Advertisement unprovisioned =
+      bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1827);
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesAdvertisement(unprovisioned));
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -2407,5 +2489,7 @@ int main(int, char**) {
   RUN_TEST(test_amaran_crypto_and_network_vectors);
   RUN_TEST(test_amaran_access_payloads_and_validation);
   RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);
+  RUN_TEST(test_zhiyun_x100_identity_and_advertisement_match);
   return UNITY_END();
 }

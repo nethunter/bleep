@@ -105,6 +105,39 @@ Reference research:
 - <https://amarancreators.com/pages/amaran-pano-60c>
 - <https://amarancreators.com/pages/amaran-pano-120c>
 
+## Zhiyun lights
+
+### MOLUS X100
+
+- Status: `Experimental`; the compile-time driver, panel UI, transactional
+  already-provisioned discovery, direct GATT initialization, and deterministic
+  command/readback path are implemented. Panel-originated hardware verification
+  is still open.
+- Product identity: internal BLE model marker `pl105`; captured local names use
+  `PL105_` plus a device-specific suffix.
+- Transport: standard no-OOB PB-GATT (`0x1827`) for factory-reset onboarding,
+  Mesh Proxy (`0x1828`) after provisioning, and direct proprietary control on
+  service `0xFEE9`.
+- Captured capabilities: power, float32 brightness, and uint16 CCT. ZHIYUN's
+  published device limits are 0-100% and 2700-6500 K.
+- State quality: setters have no per-write acknowledgement, but a write followed
+  by correlated reads of power, brightness, and CCT was live-confirmed. A
+  driver can therefore remain non-optimistic by publishing the value only
+  after matching device-originated readback.
+- Implemented tranche: Add device selects only an already-provisioned `pl105`
+  advertiser on `0x1828`, validates identity on `0xFEE9`, reads all three state
+  fields, and commits the record only after confirmed Ready. Power and CCT/
+  brightness commands remain pending until matching correlated replies arrive;
+  scenes therefore wait for confirmation instead of treating the write as
+  success. X100 exposes no tint or RGB capability.
+- Missing before production: panel-owned PB-GATT provisioning and secure mesh
+  ownership, interrupted-provision recovery and rollback, verified factory
+  reset, boundary and power-cycle checks, rotating-address recovery, firmware
+  compatibility policy, multiple fixtures, retained/session and mixed-device
+  coexistence measurements, plus independently observed optical output.
+- Evidence and golden vectors:
+  [protocols/zhiyun-x100.md](protocols/zhiyun-x100.md).
+
 ## Canon cameras
 
 ### EOS R6, EOS R6 Mark II, and EOS R6 Mark III
