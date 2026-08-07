@@ -77,10 +77,7 @@ bool AmaranRuntime::setupProvisioning() { return false; }
 bool AmaranRuntime::setupProxy() { return false; }
 void AmaranRuntime::processNotification(const Notification&) {}
 bool AmaranRuntime::sendProvisioning(const uint8_t*, size_t) { return false; }
-bool AmaranRuntime::handleCapabilities(const uint8_t*, size_t) { return false; }
-bool AmaranRuntime::handleDevicePublicKey(const uint8_t*, size_t) { return false; }
-bool AmaranRuntime::handleDeviceConfirmation(const uint8_t*, size_t) { return false; }
-bool AmaranRuntime::handleDeviceRandom(const uint8_t*, size_t) { return false; }
+bool AmaranRuntime::sendProvisioningPdu(const uint8_t*, size_t) { return false; }
 bool AmaranRuntime::completeProvisioning() { return false; }
 bool AmaranRuntime::configureNext() { return false; }
 bool AmaranRuntime::sendAccess(studio::InstanceId, const uint8_t*, size_t) { return false; }
@@ -92,14 +89,12 @@ void AmaranRuntime::updateSharedReady() {}
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
-#include <esp_random.h>
-#include <mbedtls/ecdh.h>
 
 #include <cstring>
 
 #include "core/ble/ble_runtime.h"
+#include "core/mesh/mesh_repository.h"
 #include "core/preferences_store.h"
-#include "devices/amaran_light/crypto.h"
 #include "devices/amaran_light/protocol.h"
 
 namespace amaran_light {
@@ -116,27 +111,10 @@ constexpr const char* kProxyOut = "00002ade-0000-1000-8000-00805f9b34fb";
 
 AmaranRuntime instance;
 AmaranRuntime* activeRuntime = nullptr;
-mbedtls_ecp_group provisionGroup;
-mbedtls_mpi provisionPrivate;
-mbedtls_ecp_point provisionPublic;
-bool provisionKeyActive = false;
-
-int randomCallback(void*, unsigned char* output, size_t length) {
-  esp_fill_random(output, length);
-  return 0;
-}
 
 void notificationCallback(NimBLERemoteCharacteristic*, uint8_t* data,
                           size_t length, bool) {
   if (activeRuntime != nullptr) activeRuntime->enqueueNotification(data, length);
-}
-
-void closeProvisionKey() {
-  if (!provisionKeyActive) return;
-  mbedtls_ecp_point_free(&provisionPublic);
-  mbedtls_mpi_free(&provisionPrivate);
-  mbedtls_ecp_group_free(&provisionGroup);
-  provisionKeyActive = false;
 }
 
 studio::ble::Address addressFrom(const char* value, uint8_t type) {
@@ -160,21 +138,7 @@ const AmaranRuntime::Session* AmaranRuntime::sessionFor(studio::InstanceId id) c
 }
 
 bool AmaranRuntime::ensureLoaded() {
-  if (loaded_) return true;
-  static studio::PreferencesAmaranBackend backend;
-  static MeshStore store(backend);
-  const studio::ConfigLoadStatus status = store.load(storeData_);
-  if (status == studio::ConfigLoadStatus::Corrupt) return false;
-  if (status == studio::ConfigLoadStatus::Missing) storeData_ = MeshStoreData{};
-  if (!storeData_.network.initialized) {
-    esp_fill_random(storeData_.network.networkKey, 16);
-    esp_fill_random(storeData_.network.applicationKey, 16);
-    storeData_.network.initialized = true;
-    if (!store.save(storeData_)) return false;
-  }
-  sequences_.begin(store, storeData_);
-  loaded_ = true;
-  return true;
+  return studio::mesh::repository().begin();
 }
 
 bool AmaranRuntime::activate(const studio::DeviceRecord& record) {
@@ -186,7 +150,7 @@ bool AmaranRuntime::activate(const studio::DeviceRecord& record) {
   if (session == nullptr) return false;
   session->instanceId = record.instanceId;
   session->model = record.driverId;
-  const MeshNodeRecord* node = findNode(storeData_, record.instanceId);
+  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), record.instanceId);
   session->state.phase = node == nullptr ? AmaranLightState::Phase::Scanning
                                          : (node->configured ? AmaranLightState::Phase::ConnectingProxy
                                                              : AmaranLightState::Phase::PendingConfig);
@@ -215,6 +179,7 @@ void AmaranRuntime::deactivate(studio::InstanceId id) {
   bool any = false;
   for (const auto& session : sessions_) any = any || session.instanceId != studio::kInvalidInstanceId;
   if (!any && link_ != studio::ble::kInvalidLinkHandle) {
+    provisioner_.cancel();
     studio::ble::bleCentral().release(link_);
     link_ = studio::ble::kInvalidLinkHandle;
     connected_ = false;
@@ -234,7 +199,7 @@ bool AmaranRuntime::beginLink(studio::InstanceId id, bool provisioning) {
   linkInstance_ = id;
   provisioningLink_ = provisioning;
   activeRuntime = this;
-  const MeshNodeRecord* node = findNode(storeData_, id);
+  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (!provisioning && node != nullptr && node->bleAddress[0] != '\0') {
     return studio::ble::bleCentral().requestConnect(
         link_, addressFrom(node->bleAddress, node->bleAddressType));
@@ -295,10 +260,10 @@ bool AmaranRuntime::setupProvisioning() {
   dataIn_ = service->getCharacteristic(NimBLEUUID(kProvisionIn));
   NimBLERemoteCharacteristic* out = service->getCharacteristic(NimBLEUUID(kProvisionOut));
   if (dataIn_ == nullptr || out == nullptr || !out->subscribe(true, notificationCallback, true)) return false;
-  provisioningStep_ = 1;
   if (Session* session = sessionFor(linkInstance_)) session->state.phase = AmaranLightState::Phase::Provisioning;
-  const uint8_t invite[] = {0x00,0x00};
-  return sendProvisioning(invite, sizeof(invite));
+  return provisioner_.begin(studio::mesh::repository().data().network.networkKey,
+                            studio::mesh::repository().data().network.ivIndex,
+                            studio::mesh::repository().data().network.nextUnicastAddress, *this);
 }
 
 bool AmaranRuntime::setupProxy() {
@@ -309,7 +274,7 @@ bool AmaranRuntime::setupProxy() {
   dataIn_ = service->getCharacteristic(NimBLEUUID(kProxyIn));
   NimBLERemoteCharacteristic* out = service->getCharacteristic(NimBLEUUID(kProxyOut));
   if (dataIn_ == nullptr || out == nullptr || !out->subscribe(true, notificationCallback, true)) return false;
-  const MeshNodeRecord* node = findNode(storeData_, linkInstance_);
+  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node != nullptr && !node->configured) {
     configStep_ = 0;
     nextConfigAt_ = millis();
@@ -339,8 +304,8 @@ void AmaranRuntime::loop() {
     processNotification(notification);
   }
   if (connected_ && !provisioningLink_ &&
-      findNode(storeData_, linkInstance_) != nullptr &&
-      !findNode(storeData_, linkInstance_)->configured &&
+      findNode(studio::mesh::repository().data(), linkInstance_) != nullptr &&
+      !findNode(studio::mesh::repository().data(), linkInstance_)->configured &&
       static_cast<int32_t>(now - nextConfigAt_) >= 0) {
     configureNext();
   }
@@ -353,158 +318,75 @@ bool AmaranRuntime::sendProvisioning(const uint8_t* pdu, size_t length) {
   return dataIn_->writeValue(wrapped, length + 1, false);
 }
 
+bool AmaranRuntime::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
+  return sendProvisioning(pdu, length);
+}
+
 void AmaranRuntime::processNotification(const Notification& notification) {
   if (!provisioningLink_ || notification.length < 2 || notification.bytes[0] != 0x03) return;
   const uint8_t* pdu = notification.bytes + 1;
   const size_t length = notification.length - 1;
-  bool ok = true;
-  if (pdu[0] == 0x09) ok = false;
-  else if (pdu[0] == 0x01 && provisioningStep_ == 1) ok = handleCapabilities(pdu, length);
-  else if (pdu[0] == 0x03 && provisioningStep_ == 2) ok = handleDevicePublicKey(pdu, length);
-  else if (pdu[0] == 0x05 && provisioningStep_ == 3) ok = handleDeviceConfirmation(pdu, length);
-  else if (pdu[0] == 0x06 && provisioningStep_ == 4) ok = handleDeviceRandom(pdu, length);
-  else if (pdu[0] == 0x08 && provisioningStep_ == 5) ok = completeProvisioning();
+  bool ok = provisioner_.handle(pdu, length);
+  if (ok && provisioner_.complete()) ok = completeProvisioning();
   if (!ok) if (Session* session = sessionFor(linkInstance_)) fail(*session, "Provisioning failed");
 }
 
-bool AmaranRuntime::handleCapabilities(const uint8_t* pdu, size_t length) {
-  if (length != 12 || (pdu[2] != 0 || (pdu[3] & 1) == 0) || pdu[4] || pdu[5] || pdu[6] || pdu[9]) return false;
-  std::memcpy(capabilities_, pdu, 12);
-  const uint8_t start[] = {0x02,0,0,0,0,0};
-  if (!sendProvisioning(start, sizeof(start))) return false;
-  closeProvisionKey();
-  mbedtls_ecp_group_init(&provisionGroup);
-  mbedtls_mpi_init(&provisionPrivate);
-  mbedtls_ecp_point_init(&provisionPublic);
-  provisionKeyActive = true;
-  if (mbedtls_ecp_group_load(&provisionGroup, MBEDTLS_ECP_DP_SECP256R1) != 0 ||
-      mbedtls_ecp_gen_keypair(&provisionGroup, &provisionPrivate, &provisionPublic,
-                              randomCallback, nullptr) != 0) return false;
-  uint8_t encoded[65]; size_t encodedLength = 0;
-  if (mbedtls_ecp_point_write_binary(&provisionGroup, &provisionPublic,
-      MBEDTLS_ECP_PF_UNCOMPRESSED, &encodedLength, encoded, sizeof(encoded)) != 0 || encodedLength != 65) return false;
-  std::memcpy(localPublic_, encoded + 1, 64);
-  uint8_t publicPdu[65] = {0x03}; std::memcpy(publicPdu + 1, localPublic_, 64);
-  provisioningStep_ = 2;
-  return sendProvisioning(publicPdu, sizeof(publicPdu));
-}
-
-bool AmaranRuntime::handleDevicePublicKey(const uint8_t* pdu, size_t length) {
-  if (length != 65 || !provisionKeyActive) return false;
-  std::memcpy(remotePublic_, pdu + 1, 64);
-  uint8_t encoded[65] = {0x04}; std::memcpy(encoded + 1, remotePublic_, 64);
-  mbedtls_ecp_point remote; mbedtls_ecp_point_init(&remote);
-  mbedtls_mpi secret; mbedtls_mpi_init(&secret);
-  const bool ok = mbedtls_ecp_point_read_binary(&provisionGroup, &remote, encoded, sizeof(encoded)) == 0 &&
-      mbedtls_ecdh_compute_shared(&provisionGroup, &secret, &remote, &provisionPrivate,
-                                  randomCallback, nullptr) == 0 &&
-      mbedtls_mpi_write_binary(&secret, ecdhSecret_, sizeof(ecdhSecret_)) == 0;
-  mbedtls_mpi_free(&secret); mbedtls_ecp_point_free(&remote);
-  if (!ok) return false;
-  uint8_t inputs[145]; size_t offset = 0;
-  inputs[offset++] = 0;
-  std::memcpy(inputs + offset, capabilities_ + 1, 11); offset += 11;
-  const uint8_t startParameters[5] = {}; std::memcpy(inputs + offset, startParameters, 5); offset += 5;
-  std::memcpy(inputs + offset, localPublic_, 64); offset += 64;
-  std::memcpy(inputs + offset, remotePublic_, 64);
-  meshS1(inputs, sizeof(inputs), confirmationSalt_);
-  const uint8_t prck[] = {'p','r','c','k'};
-  meshK1(ecdhSecret_, sizeof(ecdhSecret_), confirmationSalt_, prck, sizeof(prck), confirmationKey_);
-  esp_fill_random(localRandom_, sizeof(localRandom_));
-  uint8_t material[32]; std::memcpy(material, localRandom_, 16); std::memset(material + 16, 0, 16);
-  uint8_t confirmation[16]; aesCmac(confirmationKey_, material, sizeof(material), confirmation);
-  uint8_t confirmationPdu[17] = {0x05}; std::memcpy(confirmationPdu + 1, confirmation, 16);
-  provisioningStep_ = 3;
-  return sendProvisioning(confirmationPdu, sizeof(confirmationPdu));
-}
-
-bool AmaranRuntime::handleDeviceConfirmation(const uint8_t* pdu, size_t length) {
-  if (length != 17) return false;
-  std::memcpy(remoteConfirmation_, pdu + 1, 16);
-  uint8_t randomPdu[17] = {0x06}; std::memcpy(randomPdu + 1, localRandom_, 16);
-  provisioningStep_ = 4;
-  return sendProvisioning(randomPdu, sizeof(randomPdu));
-}
-
-bool AmaranRuntime::handleDeviceRandom(const uint8_t* pdu, size_t length) {
-  if (length != 17) return false;
-  std::memcpy(remoteRandom_, pdu + 1, 16);
-  uint8_t material[32]; std::memcpy(material, remoteRandom_, 16); std::memset(material + 16, 0, 16);
-  uint8_t expected[16]; aesCmac(confirmationKey_, material, sizeof(material), expected);
-  if (std::memcmp(expected, remoteConfirmation_, 16) != 0) return false;
-  uint8_t saltMaterial[48]; std::memcpy(saltMaterial, confirmationSalt_, 16);
-  std::memcpy(saltMaterial + 16, localRandom_, 16); std::memcpy(saltMaterial + 32, remoteRandom_, 16);
-  uint8_t provisioningSalt[16], sessionKey[16], nonceFull[16];
-  meshS1(saltMaterial, sizeof(saltMaterial), provisioningSalt);
-  const uint8_t prsk[] = {'p','r','s','k'}, prsn[] = {'p','r','s','n'}, prdk[] = {'p','r','d','k'};
-  meshK1(ecdhSecret_, 32, provisioningSalt, prsk, 4, sessionKey);
-  meshK1(ecdhSecret_, 32, provisioningSalt, prsn, 4, nonceFull);
-  meshK1(ecdhSecret_, 32, provisioningSalt, prdk, 4, deviceKey_);
-  uint8_t provisioningData[25]; std::memcpy(provisioningData, storeData_.network.networkKey, 16);
-  provisioningData[16] = provisioningData[17] = provisioningData[18] = 0;
-  provisioningData[19] = static_cast<uint8_t>(storeData_.network.ivIndex >> 24);
-  provisioningData[20] = static_cast<uint8_t>(storeData_.network.ivIndex >> 16);
-  provisioningData[21] = static_cast<uint8_t>(storeData_.network.ivIndex >> 8);
-  provisioningData[22] = static_cast<uint8_t>(storeData_.network.ivIndex);
-  provisioningData[23] = static_cast<uint8_t>(storeData_.network.nextUnicastAddress >> 8);
-  provisioningData[24] = static_cast<uint8_t>(storeData_.network.nextUnicastAddress);
-  uint8_t encrypted[25], tag[8];
-  if (!aesCcmEncrypt(sessionKey, nonceFull + 3, 13, provisioningData, sizeof(provisioningData), 8, encrypted, tag)) return false;
-  uint8_t dataPdu[34] = {0x07}; std::memcpy(dataPdu + 1, encrypted, 25); std::memcpy(dataPdu + 26, tag, 8);
-  provisioningStep_ = 5;
-  return sendProvisioning(dataPdu, sizeof(dataPdu));
-}
-
 bool AmaranRuntime::completeProvisioning() {
-  Session* session = sessionFor(linkInstance_); if (session == nullptr) return false;
-  static studio::PreferencesAmaranBackend backend; MeshStore store(backend);
+  Session* session = sessionFor(linkInstance_);
+  if (session == nullptr || !provisioner_.complete()) return false;
+  MeshStoreData& meshData = studio::mesh::repository().data();
+  const MeshStoreData previous = meshData;
   MeshNodeRecord node; node.instanceId = session->instanceId; node.model = session->model;
-  node.unicastAddress = storeData_.network.nextUnicastAddress;
-  node.elementCount = capabilities_[1] == 0 ? 1 : capabilities_[1];
-  std::memcpy(node.deviceKey, deviceKey_, 16);
+  node.unicastAddress = meshData.network.nextUnicastAddress;
+  node.elementCount = provisioner_.elementCount();
+  std::memcpy(node.deviceKey, provisioner_.deviceKey(), 16);
   std::strncpy(node.bleAddress, provisioningAddress_, sizeof(node.bleAddress)-1);
   node.bleAddressType = provisioningAddressType_;
-  storeData_.network.nextUnicastAddress = static_cast<uint16_t>(node.unicastAddress + node.elementCount);
-  const studio::ble::Address target = addressFrom("", 0);
-  (void)target;
-  upsertNode(storeData_, node);
-  if (!store.save(storeData_)) return false;
+  if (node.unicastAddress > 0x7fff - node.elementCount ||
+      !upsertNode(meshData, node))
+    return false;
+  meshData.network.nextUnicastAddress =
+      static_cast<uint16_t>(node.unicastAddress + node.elementCount);
+  if (!studio::mesh::repository().save()) {
+    meshData = previous;
+    return false;
+  }
   session->state.phase = AmaranLightState::Phase::PendingConfig;
   session->pairingDirty = true;
   provisioningLink_ = false;
-  closeProvisionKey();
+  provisioner_.cancel();
   studio::ble::bleCentral().disconnect(link_, false);
   return true;
 }
 
 bool AmaranRuntime::configureNext() {
-  MeshNodeRecord* node = findNode(storeData_, linkInstance_);
+  MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node == nullptr || dataIn_ == nullptr) return false;
   uint8_t access[24] = {}; size_t length = 0;
   switch (configStep_) {
     case 0: access[0]=0x80; access[1]=0x08; access[2]=0; length=3; break;
-    case 1: access[0]=0; access[1]=access[2]=access[3]=0; std::memcpy(access+4, storeData_.network.applicationKey, 16); length=20; break;
+    case 1: access[0]=0; access[1]=access[2]=access[3]=0; std::memcpy(access+4, studio::mesh::repository().data().network.applicationKey, 16); length=20; break;
     case 2: access[0]=0x80; access[1]=0x3d; access[2]=static_cast<uint8_t>(node->unicastAddress); access[3]=static_cast<uint8_t>(node->unicastAddress>>8); access[4]=access[5]=0; access[6]=0x11; access[7]=0x02; access[8]=access[9]=0; length=10; break;
-    case 3: access[0]=0x80; access[1]=0x1b; access[2]=static_cast<uint8_t>(node->unicastAddress); access[3]=static_cast<uint8_t>(node->unicastAddress>>8); access[4]=static_cast<uint8_t>(storeData_.network.groupAddress); access[5]=static_cast<uint8_t>(storeData_.network.groupAddress>>8); access[6]=0x11; access[7]=0x02; access[8]=access[9]=0; length=10; break;
+    case 3: access[0]=0x80; access[1]=0x1b; access[2]=static_cast<uint8_t>(node->unicastAddress); access[3]=static_cast<uint8_t>(node->unicastAddress>>8); access[4]=static_cast<uint8_t>(studio::mesh::repository().data().network.groupAddress); access[5]=static_cast<uint8_t>(studio::mesh::repository().data().network.groupAddress>>8); access[6]=0x11; access[7]=0x02; access[8]=access[9]=0; length=10; break;
     default: {
-      static studio::PreferencesAmaranBackend backend; MeshStore store(backend);
-      node->configured = true; if (!store.save(storeData_)) return false;
+      node->configured = true;
+      if (!studio::mesh::repository().save()) return false;
       studio::ble::bleCentral().markProtocolReady(link_); updateSharedReady(); return true;
     }
   }
   const size_t pduCount = length <= 11 ? 1 : (length + 4 + 11) / 12;
   uint32_t sequences[4] = {};
-  for (size_t i = 0; i < pduCount; ++i) if (!sequences_.next(sequences[i])) return false;
+  for (size_t i = 0; i < pduCount; ++i) if (!studio::mesh::repository().sequences().next(sequences[i])) return false;
   NetworkPduBatch batch;
   if (pduCount == 1) {
     batch.count = 1;
-    if (!encodeDeviceMessage(storeData_.network.networkKey, node->deviceKey,
-        access, length, sequences[0], storeData_.network.provisionerAddress,
-        node->unicastAddress, storeData_.network.ivIndex, batch.pdus[0])) return false;
-  } else if (!encodeSegmentedDeviceMessage(storeData_.network.networkKey,
+    if (!encodeDeviceMessage(studio::mesh::repository().data().network.networkKey, node->deviceKey,
+        access, length, sequences[0], studio::mesh::repository().data().network.provisionerAddress,
+        node->unicastAddress, studio::mesh::repository().data().network.ivIndex, batch.pdus[0])) return false;
+  } else if (!encodeSegmentedDeviceMessage(studio::mesh::repository().data().network.networkKey,
       node->deviceKey, access, length, sequences, pduCount,
-      storeData_.network.provisionerAddress, node->unicastAddress,
-      storeData_.network.ivIndex, batch)) return false;
+      studio::mesh::repository().data().network.provisionerAddress, node->unicastAddress,
+      studio::mesh::repository().data().network.ivIndex, batch)) return false;
   for (uint8_t i = 0; i < batch.count; ++i) {
     uint8_t proxy[70]; size_t proxyLength=0;
     if (!wrapProxyPdu(batch.pdus[i], proxy, sizeof(proxy), proxyLength) ||
@@ -514,13 +396,13 @@ bool AmaranRuntime::configureNext() {
 }
 
 bool AmaranRuntime::sendAccess(studio::InstanceId id, const uint8_t* access, size_t length) {
-  const MeshNodeRecord* node = findNode(storeData_, id);
+  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (node == nullptr || !node->configured || dataIn_ == nullptr || !connected_) return false;
-  uint32_t sequence; if (!sequences_.next(sequence)) return false;
+  uint32_t sequence; if (!studio::mesh::repository().sequences().next(sequence)) return false;
   NetworkPdu network;
-  if (!encodeAccessMessage(storeData_.network.networkKey, storeData_.network.applicationKey,
-      access, length, sequence, storeData_.network.provisionerAddress,
-      node->unicastAddress, storeData_.network.ivIndex, network)) return false;
+  if (!encodeAccessMessage(studio::mesh::repository().data().network.networkKey, studio::mesh::repository().data().network.applicationKey,
+      access, length, sequence, studio::mesh::repository().data().network.provisionerAddress,
+      node->unicastAddress, studio::mesh::repository().data().network.ivIndex, network)) return false;
   uint8_t proxy[70]; size_t proxyLength = 0;
   return wrapProxyPdu(network, proxy, sizeof(proxy), proxyLength) &&
          dataIn_->writeValue(proxy, proxyLength, false);
@@ -534,7 +416,7 @@ studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& comma
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) valid = buildPowerAccess(command.type == studio::CommandType::TurnOn, payload);
   else if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) valid = buildCctAccess(command.value0, command.value2, command.value1, payload);
   else if (command.type == studio::CommandType::SetLightRgb && validRgbCommand(command.value0, command.value1)) valid = buildRgbAccess(command.value0, command.value1, payload);
-  else if (command.type == studio::CommandType::Connect) { session->state.phase=AmaranLightState::Phase::Scanning;session->state.error[0]='\0';return beginLink(command.instanceId, findNode(storeData_, command.instanceId) == nullptr) ? studio::CommandStatus::Succeeded : studio::CommandStatus::Unavailable; }
+  else if (command.type == studio::CommandType::Connect) { session->state.phase=AmaranLightState::Phase::Scanning;session->state.error[0]='\0';return beginLink(command.instanceId, findNode(studio::mesh::repository().data(), command.instanceId) == nullptr) ? studio::CommandStatus::Succeeded : studio::CommandStatus::Unavailable; }
   else return studio::CommandStatus::Unsupported;
   if (!valid) return studio::CommandStatus::InvalidArgument;
   session->state.commandPending = true;
@@ -560,19 +442,20 @@ studio::DeviceRuntimeState AmaranRuntime::runtimeState(studio::InstanceId id) co
 }
 const AmaranLightState* AmaranRuntime::state(studio::InstanceId id) const { const Session* s=sessionFor(id); return s ? &s->state : nullptr; }
 bool AmaranRuntime::consumePairingUpdate(studio::InstanceId id, studio::DeviceRecord& record) {
-  Session* session=sessionFor(id); const MeshNodeRecord* node=findNode(storeData_,id);
+  Session* session=sessionFor(id); const MeshNodeRecord* node=findNode(studio::mesh::repository().data(),id);
   if (!session || !node || !session->pairingDirty) return false;
   session->pairingDirty=false; record.paired=node->configured; return true;
 }
 void AmaranRuntime::forgetLocal(studio::InstanceId id) {
-  if (!loaded_) return; static studio::PreferencesAmaranBackend backend; MeshStore store(backend);
-  if (removeNode(storeData_, id)) store.save(storeData_);
+  if (!studio::mesh::repository().begin()) return;
+  if (removeNode(studio::mesh::repository().data(), id))
+    studio::mesh::repository().save();
 }
 void AmaranRuntime::fail(Session& session, const char* error) { session.state.phase=AmaranLightState::Phase::Failed; session.state.lastCommandFailed=true; std::strncpy(session.state.error,error,sizeof(session.state.error)-1); }
 void AmaranRuntime::updateSharedReady() {
   for (auto& session : sessions_) {
     if (session.instanceId == studio::kInvalidInstanceId) continue;
-    const MeshNodeRecord* node=findNode(storeData_,session.instanceId);
+    const MeshNodeRecord* node=findNode(studio::mesh::repository().data(),session.instanceId);
     if (node && node->configured) { session.state.phase=AmaranLightState::Phase::Ready; session.state.proxyConnected=true; session.pairingDirty=true; }
   }
 }

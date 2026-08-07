@@ -248,12 +248,14 @@ Completion gate:
 
 ### Phase 4b: ZHIYUN MOLUS X100 direct-control tranche
 
-Status: Experimental already-provisioned driver implemented under ADR-028;
-panel hardware gate remains open.
+Status: Experimental factory-reset provisioning and confirmed direct-control
+driver implemented under ADR-028; panel hardware gate remains open.
 
 Implemented boundary:
 
-- discover provisioned `pl105` fixtures advertising Mesh Proxy `0x1828`;
+- discover factory-reset `pl105` fixtures on `0x1827` and provision them into
+  the shared panel-owned mesh with durable Device Key/unicast allocation;
+- rediscover provisioned `pl105` fixtures advertising Mesh Proxy `0x1828`;
 - initialize and validate the direct proprietary `0xFEE9` session;
 - read power, float32 brightness, and CCT before reporting Ready;
 - expose power and CCT/brightness controls with correlated read-after-write;
@@ -262,8 +264,7 @@ Implemented boundary:
 
 Deferred production work:
 
-- panel-owned PB-GATT provisioning, mesh-secret persistence, unicast
-  allocation, interrupted-attempt recovery, rollback, and verified reset;
+- interrupted-after-Provisioning-Data reconciliation and verified reset/retry;
 - address-rotation recovery beyond service/product rescanning, multiple X100s,
   firmware-version compatibility policy, and service-change handling;
 - physical boundary, reconnect, scene, retained-pool, coexistence, latency,
@@ -271,7 +272,7 @@ Deferred production work:
 
 Completion gate:
 
-- one already-provisioned fixture adds from the panel, reaches confirmed Ready,
+- one factory-reset fixture provisions from the panel, reaches confirmed Ready,
   controls power/CCT/brightness with observed light output, survives reboot,
   and completes a scene without optimistic state;
 - failure and timeout paths preserve the last confirmed state and remain

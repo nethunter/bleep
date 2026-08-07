@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "devices/amaran_light/crypto.h"
+#include "core/mesh/provisioning_policy.h"
 
 namespace studio::mesh {
 namespace {
@@ -76,9 +77,7 @@ void PbGattProvisioner::closeKey() {
 
 bool PbGattProvisioner::handleCapabilities(const uint8_t* pdu, size_t length) {
   // Static OOB may be advertised as available while no-OOB remains selectable.
-  if (length != 12 || pdu[2] != 0 || (pdu[3] & 1) == 0 || pdu[4] != 0 ||
-      pdu[6] != 0 || pdu[9] != 0)
-    return false;
+  if (!supportsNoOobProvisioning(pdu, length)) return false;
   elementCount_ = pdu[1] == 0 ? 1 : pdu[1];
   std::memcpy(capabilities_, pdu, sizeof(capabilities_));
   const uint8_t start[] = {0x02, 0, 0, 0, 0, 0};
