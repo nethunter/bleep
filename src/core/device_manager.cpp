@@ -96,6 +96,27 @@ bool DeviceManager::isRetained(InstanceId instanceId) const {
   return slot != nullptr && slot->retained;
 }
 
+BleSlotKey DeviceManager::bleSlotKey(InstanceId instanceId) const {
+  const DeviceRecord* record = find(instanceId);
+  if (record == nullptr) return {};
+  DeviceDriver* driver = driverFor(record->driverId);
+  return driver != nullptr ? driver->bleSlotKey(*record) : BleSlotKey{};
+}
+
+size_t DeviceManager::bleSlotCount() const {
+  BleSlotKey keys[CONFIG_MAX_ACTIVE_LINKS] = {};
+  size_t count = 0;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId == kInvalidInstanceId) continue;
+    const BleSlotKey key = bleSlotKey(activeSlots_[i].instanceId);
+    if (!key.valid()) continue;
+    bool known = false;
+    for (size_t j = 0; j < count; ++j) known = known || keys[j] == key;
+    if (!known && count < CONFIG_MAX_ACTIVE_LINKS) keys[count++] = key;
+  }
+  return count;
+}
+
 void DeviceManager::touch(ActiveSlot& slot) {
   ++useCounter_;
   if (useCounter_ == 0) {
@@ -493,7 +514,10 @@ bool DeviceManager::acquire(InstanceId instanceId, ConnectionOwner owner) {
     }
     return addActive(instanceId, owner);
   }
-  if (activeCount_ >= kMaxActiveInstances && !evictOldestIdle()) {
+  if (!ensureBleSlotAvailable(*record, *driver)) {
+    return false;
+  }
+  if (activeCount_ >= kMaxActiveInstances && !evictOldestIdleInstance()) {
     return false;
   }
   if (!driver->activate(*record)) {
@@ -522,26 +546,75 @@ void DeviceManager::release(InstanceId instanceId, ConnectionOwner owner) {
   }
 }
 
-bool DeviceManager::evictOldestIdle() {
+bool DeviceManager::ensureBleSlotAvailable(const DeviceRecord& record,
+                                           const DeviceDriver& driver) {
+  const BleSlotKey requested = driver.bleSlotKey(record);
+  if (!requested.valid()) return true;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId != kInvalidInstanceId &&
+        bleSlotKey(activeSlots_[i].instanceId) == requested) {
+      return true;
+    }
+  }
+  return bleSlotCount() < CONFIG_MAX_ACTIVE_LINKS || evictOldestIdleBleGroup();
+}
+
+bool DeviceManager::evictOldestIdleInstance() {
   ActiveSlot* oldest = nullptr;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
     ActiveSlot& slot = activeSlots_[i];
-    if (slot.instanceId == kInvalidInstanceId || slot.owners != 0) {
-      continue;
-    }
+    if (slot.instanceId == kInvalidInstanceId || slot.owners != 0) continue;
     const DeviceRuntimeState runtime = runtimeState(slot.instanceId);
     if (runtime.commandPending ||
         (runtime.recordingConfirmed && runtime.recording)) {
       continue;
     }
-    if (oldest == nullptr || slot.lastUsed < oldest->lastUsed) {
-      oldest = &slot;
+    if (oldest == nullptr || slot.lastUsed < oldest->lastUsed) oldest = &slot;
+  }
+  if (oldest == nullptr) return false;
+  deactivate(oldest->instanceId);
+  return true;
+}
+
+bool DeviceManager::evictOldestIdleBleGroup() {
+  BleSlotKey oldest;
+  uint32_t oldestUse = 0;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    const ActiveSlot& candidate = activeSlots_[i];
+    if (candidate.instanceId == kInvalidInstanceId) continue;
+    const BleSlotKey key = bleSlotKey(candidate.instanceId);
+    if (!key.valid()) continue;
+    bool safe = true;
+    uint32_t groupUse = 0;
+    for (size_t j = 0; j < kMaxActiveInstances; ++j) {
+      const ActiveSlot& member = activeSlots_[j];
+      if (member.instanceId == kInvalidInstanceId ||
+          bleSlotKey(member.instanceId) != key) {
+        continue;
+      }
+      const DeviceRuntimeState runtime = runtimeState(member.instanceId);
+      if (member.owners != 0 || runtime.commandPending ||
+          (runtime.recordingConfirmed && runtime.recording)) {
+        safe = false;
+        break;
+      }
+      if (member.lastUsed > groupUse) groupUse = member.lastUsed;
+    }
+    if (safe && (!oldest.valid() || groupUse < oldestUse)) {
+      oldest = key;
+      oldestUse = groupUse;
     }
   }
-  if (oldest == nullptr) {
-    return false;
+  if (!oldest.valid()) return false;
+  InstanceId members[kMaxActiveInstances] = {};
+  size_t memberCount = 0;
+  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
+    if (activeSlots_[i].instanceId != kInvalidInstanceId &&
+        bleSlotKey(activeSlots_[i].instanceId) == oldest) {
+      members[memberCount++] = activeSlots_[i].instanceId;
+    }
   }
-  deactivate(oldest->instanceId);
+  for (size_t i = 0; i < memberCount; ++i) deactivate(members[i]);
   return true;
 }
 

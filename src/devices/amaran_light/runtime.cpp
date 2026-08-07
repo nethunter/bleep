@@ -33,14 +33,17 @@ void AmaranRuntime::loop() {}
 studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& command) {
   Session* s = sessionFor(command.instanceId);
   if (s == nullptr) return studio::CommandStatus::Unavailable;
+  if (command.type == studio::CommandType::Refresh) {
+    return studio::CommandStatus::Succeeded;
+  }
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) {
-    s->state.on = command.type == studio::CommandType::TurnOn; s->state.optimistic = true; return studio::CommandStatus::Succeeded;
+    s->state.on = command.type == studio::CommandType::TurnOn; s->state.optimistic = true; s->state.powerOptimistic = true; return studio::CommandStatus::Succeeded;
   }
   if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) {
-    s->state.mode = AmaranLightState::Mode::Cct; s->state.kelvin = command.value0; s->state.cctBrightness = command.value1; s->state.tintPermille = command.value2; s->state.optimistic = true; return studio::CommandStatus::Succeeded;
+    s->state.mode = AmaranLightState::Mode::Cct; s->state.kelvin = command.value0; s->state.cctBrightness = command.value1; s->state.tintPermille = command.value2; s->state.optimistic = true; s->state.powerOptimistic = false; return studio::CommandStatus::Succeeded;
   }
   if (command.type == studio::CommandType::SetLightRgb && validRgbCommand(command.value0, command.value1)) {
-    s->state.mode = AmaranLightState::Mode::Rgb; s->state.rgb = command.value0; s->state.rgbBrightness = command.value1; s->state.optimistic = true; return studio::CommandStatus::Succeeded;
+    s->state.mode = AmaranLightState::Mode::Rgb; s->state.rgb = command.value0; s->state.rgbBrightness = command.value1; s->state.optimistic = true; s->state.powerOptimistic = false; return studio::CommandStatus::Succeeded;
   }
   return studio::CommandStatus::Unsupported;
 }
@@ -81,6 +84,8 @@ bool AmaranRuntime::sendProvisioningPdu(const uint8_t*, size_t) { return false; 
 bool AmaranRuntime::completeProvisioning() { return false; }
 bool AmaranRuntime::configureNext() { return false; }
 bool AmaranRuntime::sendAccess(studio::InstanceId, const uint8_t*, size_t) { return false; }
+bool AmaranRuntime::sendAccessTo(uint16_t, const uint8_t*, size_t) { return false; }
+bool AmaranRuntime::refreshGroupPower() { return false; }
 void AmaranRuntime::fail(Session& s, const char* error) { s.state.phase = AmaranLightState::Phase::Failed; std::strncpy(s.state.error, error, sizeof(s.state.error)-1); }
 void AmaranRuntime::updateSharedReady() {}
 }  // namespace amaran_light
@@ -108,6 +113,8 @@ constexpr const char* kProxyService = "00001828-0000-1000-8000-00805f9b34fb";
 constexpr const char* kProxyAdvertisedService = "1828";
 constexpr const char* kProxyIn = "00002add-0000-1000-8000-00805f9b34fb";
 constexpr const char* kProxyOut = "00002ade-0000-1000-8000-00805f9b34fb";
+constexpr uint32_t kPowerPollIntervalMs = 5000;
+constexpr uint32_t kNodeFreshnessMs = 15000;
 
 AmaranRuntime instance;
 AmaranRuntime* activeRuntime = nullptr;
@@ -241,6 +248,16 @@ void AmaranRuntime::onBleEvent(studio::ble::LinkHandle link,
   } else if (event.type == studio::ble::EventType::Disconnected) {
     connected_ = false;
     dataIn_ = nullptr;
+    for (auto& session : sessions_) {
+      if (session.instanceId == studio::kInvalidInstanceId) continue;
+      session.state.proxyConnected = false;
+      session.state.nodeReachable = false;
+      const MeshNodeRecord* node =
+          findNode(studio::mesh::repository().data(), session.instanceId);
+      if (node != nullptr && node->configured) {
+        session.state.phase = AmaranLightState::Phase::ConnectingProxy;
+      }
+    }
     if (link_ != studio::ble::kInvalidLinkHandle &&
         linkInstance_ != studio::kInvalidInstanceId) {
       studio::ble::bleCentral().requestScan(link_, true);
@@ -281,6 +298,7 @@ bool AmaranRuntime::setupProxy() {
   } else {
     studio::ble::bleCentral().markProtocolReady(link_);
     updateSharedReady();
+    refreshGroupPower();
   }
   return true;
 }
@@ -309,6 +327,18 @@ void AmaranRuntime::loop() {
       static_cast<int32_t>(now - nextConfigAt_) >= 0) {
     configureNext();
   }
+  if (connected_ && !provisioningLink_ && dataIn_ != nullptr &&
+      static_cast<uint32_t>(now - lastPowerPollMs_) >= kPowerPollIntervalMs) {
+    lastPowerPollMs_ = now;
+    refreshGroupPower();
+  }
+  for (auto& session : sessions_) {
+    if (session.state.nodeReachable &&
+        static_cast<uint32_t>(now - session.state.lastSeenMs) >
+            kNodeFreshnessMs) {
+      session.state.nodeReachable = false;
+    }
+  }
 }
 
 bool AmaranRuntime::sendProvisioning(const uint8_t* pdu, size_t length) {
@@ -323,12 +353,54 @@ bool AmaranRuntime::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
 }
 
 void AmaranRuntime::processNotification(const Notification& notification) {
-  if (!provisioningLink_ || notification.length < 2 || notification.bytes[0] != 0x03) return;
-  const uint8_t* pdu = notification.bytes + 1;
-  const size_t length = notification.length - 1;
-  bool ok = provisioner_.handle(pdu, length);
-  if (ok && provisioner_.complete()) ok = completeProvisioning();
-  if (!ok) if (Session* session = sessionFor(linkInstance_)) fail(*session, "Provisioning failed");
+  if (provisioningLink_) {
+    if (notification.length < 2 || notification.bytes[0] != 0x03) return;
+    const uint8_t* pdu = notification.bytes + 1;
+    const size_t length = notification.length - 1;
+    bool ok = provisioner_.handle(pdu, length);
+    if (ok && provisioner_.complete()) ok = completeProvisioning();
+    if (!ok) {
+      if (Session* session = sessionFor(linkInstance_)) {
+        fail(*session, "Provisioning failed");
+      }
+    }
+    return;
+  }
+
+  const MeshStoreData& meshData = studio::mesh::repository().data();
+  DecodedAccessMessage decoded;
+  if (!decodeProxyAccessMessage(meshData.network.networkKey,
+                                meshData.network.applicationKey,
+                                notification.bytes, notification.length,
+                                meshData.network.ivIndex, decoded)) {
+    return;
+  }
+  VendorPowerStatus status;
+  if (!parseVendorPowerStatus(decoded.access, decoded.accessLength, status)) {
+    return;
+  }
+  for (uint8_t i = 0; i < meshData.nodeCount; ++i) {
+    const MeshNodeRecord& node = meshData.nodes[i];
+    if (node.unicastAddress != decoded.source) continue;
+    Session* session = sessionFor(node.instanceId);
+    if (session == nullptr) return;
+    if (session->receiveSequenceKnown &&
+        decoded.sequence <= session->receiveSequence) {
+      return;
+    }
+    session->receiveSequenceKnown = true;
+    session->receiveSequence = decoded.sequence;
+    session->state.on = status.on;
+    if (session->state.powerOptimistic) {
+      session->state.optimistic = false;
+      session->state.powerOptimistic = false;
+    }
+    session->state.nodeReachable = true;
+    session->state.powerConfirmed = true;
+    session->state.lastSeenMs = millis();
+    session->state.lastCommandFailed = false;
+    return;
+  }
 }
 
 bool AmaranRuntime::completeProvisioning() {
@@ -371,7 +443,10 @@ bool AmaranRuntime::configureNext() {
     default: {
       node->configured = true;
       if (!studio::mesh::repository().save()) return false;
-      studio::ble::bleCentral().markProtocolReady(link_); updateSharedReady(); return true;
+      studio::ble::bleCentral().markProtocolReady(link_);
+      updateSharedReady();
+      refreshGroupPower();
+      return true;
     }
   }
   const size_t pduCount = length <= 11 ? 1 : (length + 4 + 11) / 12;
@@ -397,15 +472,31 @@ bool AmaranRuntime::configureNext() {
 
 bool AmaranRuntime::sendAccess(studio::InstanceId id, const uint8_t* access, size_t length) {
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
-  if (node == nullptr || !node->configured || dataIn_ == nullptr || !connected_) return false;
+  if (node == nullptr || !node->configured) return false;
+  return sendAccessTo(node->unicastAddress, access, length);
+}
+
+bool AmaranRuntime::sendAccessTo(uint16_t destination, const uint8_t* access,
+                                 size_t length) {
+  if (dataIn_ == nullptr || !connected_) return false;
   uint32_t sequence; if (!studio::mesh::repository().sequences().next(sequence)) return false;
   NetworkPdu network;
   if (!encodeAccessMessage(studio::mesh::repository().data().network.networkKey, studio::mesh::repository().data().network.applicationKey,
       access, length, sequence, studio::mesh::repository().data().network.provisionerAddress,
-      node->unicastAddress, studio::mesh::repository().data().network.ivIndex, network)) return false;
+      destination, studio::mesh::repository().data().network.ivIndex, network)) return false;
   uint8_t proxy[70]; size_t proxyLength = 0;
   return wrapProxyPdu(network, proxy, sizeof(proxy), proxyLength) &&
          dataIn_->writeValue(proxy, proxyLength, false);
+}
+
+bool AmaranRuntime::refreshGroupPower() {
+  AccessPayload payload;
+  const bool sent = buildPowerStatusGetAccess(payload) &&
+                    sendAccessTo(
+                        studio::mesh::repository().data().network.groupAddress,
+                        payload.bytes, payload.length);
+  lastPowerPollMs_ = millis();
+  return sent;
 }
 
 studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& command) {
@@ -413,6 +504,14 @@ studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& comma
   if (session == nullptr) return studio::CommandStatus::Unavailable;
   AccessPayload payload;
   bool valid = false;
+  if (command.type == studio::CommandType::Refresh) {
+    session->state.commandPending = true;
+    const bool sent = refreshGroupPower();
+    session->state.commandPending = false;
+    session->state.lastCommandFailed = !sent;
+    return sent ? studio::CommandStatus::Succeeded
+                : studio::CommandStatus::Unavailable;
+  }
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) valid = buildPowerAccess(command.type == studio::CommandType::TurnOn, payload);
   else if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) valid = buildCctAccess(command.value0, command.value2, command.value1, payload);
   else if (command.type == studio::CommandType::SetLightRgb && validRgbCommand(command.value0, command.value1)) valid = buildRgbAccess(command.value0, command.value1, payload);
@@ -424,6 +523,9 @@ studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& comma
   session->state.commandPending = false; session->state.lastCommandFailed = !sent;
   if (!sent) return studio::CommandStatus::Unavailable;
   session->state.optimistic = true;
+  session->state.powerOptimistic =
+      command.type == studio::CommandType::TurnOn ||
+      command.type == studio::CommandType::TurnOff;
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) session->state.on = command.type == studio::CommandType::TurnOn;
   else if (command.type == studio::CommandType::SetLightCct) { session->state.mode=AmaranLightState::Mode::Cct; session->state.kelvin=command.value0; session->state.cctBrightness=command.value1; session->state.tintPermille=command.value2; }
   else { session->state.mode=AmaranLightState::Mode::Rgb; session->state.rgb=command.value0; session->state.rgbBrightness=command.value1; }
@@ -436,7 +538,12 @@ studio::DeviceRuntimeState AmaranRuntime::runtimeState(studio::InstanceId id) co
   else if (session->state.phase == AmaranLightState::Phase::Provisioning || session->state.phase == AmaranLightState::Phase::ConnectingProxy || session->state.phase == AmaranLightState::Phase::PendingConfig) out.link = studio::LinkState::Connecting;
   else if (session->state.phase == AmaranLightState::Phase::Ready) out.link = studio::LinkState::Connected;
   out.protocolReady = session->state.phase == AmaranLightState::Phase::Ready;
-  out.quality = session->state.optimistic ? studio::StateQuality::Optimistic : studio::StateQuality::Unknown;
+  out.quality = session->state.optimistic
+                    ? studio::StateQuality::Optimistic
+                    : (session->state.powerConfirmed &&
+                               session->state.nodeReachable
+                           ? studio::StateQuality::Confirmed
+                           : studio::StateQuality::Unknown);
   out.commandPending = session->state.commandPending; out.commandFailed = session->state.lastCommandFailed;
   return out;
 }

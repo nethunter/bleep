@@ -14,6 +14,12 @@ The raw bug report and snoop logs remain outside the repository because they
 contain radio addresses, nearby device names, phone identity, and Bluetooth
 Mesh provisioning material.
 
+A later ZY Vega session added this X60RGB beside one X100 and then controlled
+both. Its relevant rotated HCI log has SHA-256
+`d61d04de34eec7d8dabc5d8284cf0e3ec3431299fbec0d58f3fc7a8c8af47430`.
+It provides the shared-gateway evidence below; the raw companion video and
+bugreport remain outside the repository.
+
 The advertised product model is independently identified as PLX104 in the FCC
 filing for the MOLUS X60RGB. ZHIYUN publishes a 60 W maximum output, 0-100%
 brightness, and 2700-6500 K CCT range.
@@ -32,9 +38,13 @@ brightness, and 2700-6500 K CCT range.
 ## Shared vendor protocol
 
 The X60RGB reuses the X100 `24 3c` envelope, little-endian body length,
-sequence and command fields, and CRC-16/XMODEM. Its state payload selector is
-`01 80`, while the X100 uses `00 80`. Reads end that prefix with `00`; writes
-and captured write replies use `01`.
+sequence and command fields, and CRC-16/XMODEM. The captured X60RGB member used
+the state payload prefix `01 80`, while the captured X100 member used `00 80`.
+Reads end that prefix with `00`; writes and captured write replies use `01`.
+The leading byte is no longer treated as proven model identity: the
+multi-fixture capture shows that it routes a member through a shared gateway,
+while its allocation rule remains a `Hypothesis` because model and add order
+covary.
 
 Initialization starts at sequence 2 and queries identity `0x2003`, firmware
 `0x8001`, status `0x2001`, mode `0x0006`, CCT, power, and brightness. The
@@ -84,6 +94,50 @@ confirm RGB hue, saturation, and brightness in that captured semantic order.
 CCT and power retain the shared read-after-write path so both supported models
 use the same conservative state publication rule.
 
+## Routed control through an X100
+
+In the later two-fixture session, the X60RGB's final direct onboarding/identity
+connection closed before its control screen was exercised. No subsequent ACL
+traffic used that connection handle. ZY Vega nevertheless sent X60RGB
+brightness, CCT, hue, saturation, and power commands with the `01 80 01`
+prefix through the X100's retained `0xFEE9` write characteristic. The X100's
+own controls used `00 80 01` on that same characteristic.
+
+This is direct evidence that a Zhiyun fixture can proxy proprietary control for
+another mesh member without using standard Mesh Proxy Data In for each access
+command. It also means the X60RGB radio address is an onboarding or gateway
+candidate identity, not a requirement for a dedicated steady-state BLE link.
+
+The capture does not yet prove a reliable routed online test for the X60RGB.
+Initial state was obtained while its temporary direct link existed, and rapid
+routed slider writes did not each have an immediately correlatable response.
+Per-member reachability and confirmed power therefore require a decoded routed
+reply or timeout policy rather than inference from the shared gateway link.
+
+## Cross-brand panel-owned mesh probe
+
+A factory-reset X60RGB was provisioned into the same private panel-owned test
+network as one Aputure MC Pro and one Amaran Ace 25c. It received unicast
+address `0x0004`, reported one element, and reappeared with both Mesh Proxy
+`0x1828` and proprietary control `0xFEE9` available. Amaran-specific AppKey and
+model configuration was deliberately skipped for the X60RGB.
+
+The X60RGB then served as the sole BLE Mesh Proxy for five read-only
+group-addressed vendor-power polls. The proxy returned five unique,
+authenticated MC Pro Off statuses and three unique Ace 25c Off statuses, with
+each response duplicated under the same source/sequence through redundant
+relay paths. Separately, the captured `0xFEE9` initialization against that same
+X60RGB connection identified `plx104` and read 4400 K, Power On, and 12%
+brightness. A Python camera frame independently showed the identified Zhiyun
+emitting while the two Sidus fixtures remained dark.
+
+This proves that one X60RGB BLE connection can expose both the standard Mesh
+Proxy bearer for cross-brand traffic and the proprietary Zhiyun control
+service. It strengthens the one-slot-per-panel-owned-mesh architecture. The
+current firmware still has separate Amaran proxy and per-Zhiyun client owners,
+so slot accounting must not be merged until one shared gateway runtime
+multiplexes both GATT services.
+
 ## Implemented boundary
 
 `Zhiyun Light` is one multi-instance driver rather than separate X100 and
@@ -93,6 +147,11 @@ product-qualified advertisement and identity reply. Both models reuse the same
 PB-GATT provisioner, mesh repository, retained BLE lifecycle, frame scanner,
 and CCT/power client. The X60RGB additionally exposes RGB controls translated
 to the captured HSI writes.
+
+The current model-derived selector and per-instance direct-client ownership are
+implementation limitations exposed by the later capture. Mesh members need
+persisted routing selectors and one shared gateway session; a second same-model
+fixture is required to determine the selector allocation rule safely.
 
 The raw capture did not establish effect-mode commands, current-mode readback,
 reset, interrupted provisioning recovery, multiple simultaneous fixtures, or

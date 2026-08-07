@@ -52,8 +52,9 @@ feasibility spikes:
   captured MOLUS profiles;
   hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
-- `DeviceManager` owns a fixed-capacity registry, command/result queues, a
-  four-session retained connection pool, per-owner lifecycle, and persistence;
+- `DeviceManager` owns a fixed-capacity registry, command/result queues, up to
+  eight logical active instances grouped onto four physical BLE transport
+  slots, per-owner lifecycle, and persistence;
 - schema version 2 stores up to twelve device records in the `studio` NVS
   namespace, migrates v1 BLE records unchanged, and retains records for
   unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
@@ -143,9 +144,14 @@ When a retained instance gains a new owner, `DeviceManager` invokes the
 driver's bounded resume hook before attaching that owner. Canon Smart uses this
 hook to reconnect and wake a session that the panel previously powered off;
 other drivers leave their retained transport unchanged.
-The active-instance pool evicts only the least-recently-used idle and
-unprotected session; it
-never evicts sequence/foreground owners, pending commands, or confirmed
+Logical active-instance capacity is separate from physical BLE capacity. Each
+driver supplies a `BleSlotKey`: ordinary GATT instances use their instance ID,
+non-BLE runtimes use no key, and logical members sharing one real transport use
+the same key. A new key at the four-slot limit evicts the least-recently-used
+transport group only when every member of that group is idle and unprotected;
+the complete group is deactivated so eviction actually frees its one central
+link. The logical-instance limit may evict one idle instance independently.
+Neither path evicts sequence/foreground owners, pending commands, or confirmed
 recording. No device is selected or restored implicitly at boot.
 
 ### Shared BLE central
@@ -360,11 +366,19 @@ GATT is accessed through a transport facade:
 - Amaran and Zhiyun lights share one panel-owned mesh repository, durable unicast
   allocator, and userspace no-OOB PB-GATT provisioner over that central;
 - Amaran uses one Mesh Proxy GATT connection shared by its logical lights;
+- `DeviceManager` charges that complete panel-owned Amaran/Aputure mesh one
+  `BleSlotKey`, so adding or retaining another member does not consume another
+  one of the four physical slots;
 - The generic, multi-instance Zhiyun driver accepts reset or provisioned
   product-qualified `pl105` X100 and `plx104` X60RGB advertisements. It uses
   PB-GATT when provisioning is required, rediscovers the Mesh Proxy advertiser,
   then initializes and controls the separate `0xFEE9` GATT service. Its writes
   remain pending until correlated device replies confirm the requested values;
+- ZY Vega capture proves a future Zhiyun mesh should likewise share one
+  proprietary gateway connection. The current driver still owns one direct
+  client per member because same-model routing-selector allocation is not yet
+  known; it therefore keeps per-instance slot keys until that transport is
+  genuinely shared;
 - callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
   persistence, and writes remain on the main loop.
 

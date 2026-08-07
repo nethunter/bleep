@@ -9,6 +9,13 @@ class DeviceDriver {
   virtual ~DeviceDriver() = default;
 
   virtual DriverId driverId() const = 0;
+  // Physical BLE capacity is charged by transport group rather than by every
+  // logical instance. The default is one slot per instance. Drivers whose
+  // instances share one actual connection return the same non-empty key;
+  // non-BLE runtimes return an empty key.
+  virtual BleSlotKey bleSlotKey(const DeviceRecord& record) const {
+    return {record.driverId, record.instanceId};
+  }
   virtual bool activate(const DeviceRecord& record) = 0;
   // Called when an already-active retained instance gains another owner.
   // Drivers may resume device-specific work without rebuilding the session.

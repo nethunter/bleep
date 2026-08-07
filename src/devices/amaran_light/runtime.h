@@ -42,6 +42,8 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
     studio::DriverId model = studio::DriverId::Unknown;
     AmaranLightState state;
     bool pairingDirty = false;
+    bool receiveSequenceKnown = false;
+    uint32_t receiveSequence = 0;
   };
   struct Notification {
     uint8_t bytes[80] = {};
@@ -60,6 +62,9 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   bool configureNext();
   bool sendAccess(studio::InstanceId instanceId, const uint8_t* access,
                   size_t length);
+  bool sendAccessTo(uint16_t destination, const uint8_t* access,
+                    size_t length);
+  bool refreshGroupPower();
   void fail(Session& session, const char* error);
   void updateSharedReady();
 
@@ -70,6 +75,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   bool connected_ = false;
   uint8_t configStep_ = 0;
   uint32_t nextConfigAt_ = 0;
+  uint32_t lastPowerPollMs_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
   NimBLERemoteCharacteristic* dataIn_ = nullptr;
   Notification notifications_[8] = {};

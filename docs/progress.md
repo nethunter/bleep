@@ -12,15 +12,20 @@ short, factual, and reproducible.
   lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
   (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
   Home/Devices resident; scene UI loads on demand.
-- Universal driver framework: Four-slot retained connection pool for manual and
-  sequence sessions, including multiple instances of one Canon driver. All four GATT
+- Universal driver framework: Eight logical active instances map onto four
+  retained physical BLE transport groups for manual and sequence sessions,
+  including multiple instances of one Canon driver. All four GATT
   clients now share one lazy NimBLE scanner/runtime and async link slots,
   targeted discovery, explicit protocol readiness, and BLE timing telemetry.
 - One discoverable generic `Amaran Light` entry now uses the shared userspace
   PB-GATT/Mesh Proxy runtime; prior model IDs remain hidden compatibility
   aliases for persisted records. Crypto, persistence, parameterized
-  scenes, and UI are implemented; real-fixture configuration status and safe
-  reset gates remain open.
+  scenes, and UI are implemented. Panel-owned Ace 25c/MC Pro provisioning,
+  composition, configuration status, standard OnOff model transactions, Ace
+  Light Lightness model transactions, cross-proxy routing, and group messaging
+  are host-proven. Group-addressed vendor power Set/Get is physically correlated
+  on the Ace 25c/MC Pro pair;
+  firmware integration of those findings and safe reset gates remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
   and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
   direct CCT/power control; X60RGB adds captured hue/saturation control. X100
@@ -34,7 +39,8 @@ short, factual, and reproducible.
 - Defined shared light, camera, motion, and recorder capabilities.
 - Defined runtime enable/disable, configuration, and capability-safe groups.
 - Selected direct control on the ESP32-C3 rather than an external gateway.
-- Selected both panel-owned and imported Amaran mesh onboarding.
+- Selected panel-owned Amaran/Aputure mesh onboarding; existing Sidus-network
+  import is outside the planned product scope.
 - Selected Canon BR-E1-compatible Bluetooth plus CCAPI HTTP.
 - Split Canon UX into `Canon (Trigger)` and `Canon (Smart)`; Smart requires a
   captured smartphone BLE-to-Wi-Fi handoff before implementation.
@@ -57,30 +63,40 @@ physical output separately from protocol confirmation.
 
 After that, continue the existing production gates:
 
-Exercise ADR-024 on target fixtures before promoting native Amaran support:
+Integrate the Ace 25c/MC Pro findings into the firmware before promoting native
+Amaran/Aputure support:
 
-1. Provision one Pano 60c, Pano 120c, and Ace 25c through the generic entry; capture configuration status
-   responses and require each step to acknowledge before marking Ready.
-2. Verify power, CCT/tint/RGB at several brightness levels, reboot recovery,
+1. Parse Composition Data, select each reported SIG/vendor model, require
+   decoded configuration success, and complete fallback proxy selection. Core
+   slot accounting now charges the complete Amaran/Aputure mesh one retained
+   physical link.
+2. Implement Generic OnOff only as Ace/MC reachability/shadow state, Ace Light
+   Lightness as model state, and the confirmed group-addressed vendor power
+   Set/Get as emitter control/state. Resolve each member by authenticated source
+   with a response timeout; keep unverified Telink properties optimistic.
+3. Provision Pano 60c and Pano 120c through the generic entry and capture their
+   composition/configuration statuses before claiming shared behavior.
+4. Verify CCT/tint/RGB at several brightness levels, reboot recovery,
    interrupted configuration, preferred/fallback proxy selection, and durable
    sequence continuity.
-3. Implement and verify reset followed by the fixture returning to PB-GATT
+5. Implement and verify reset followed by the fixture returning to PB-GATT
    advertisements before deleting node secrets; retain a separately confirmed
    local-record fallback for unreachable factory-reset fixtures.
-4. With paired Canon Smart (R6 II or III) and Tascam X8 configured and initially
+6. With paired Canon Smart (R6 II or III) and Tascam X8 configured and initially
    disconnected, open a sequence; confirm the shared scanner discovers both,
    both async links reach Ready without starvation, Start records with the
    authored gap, and Stop confirms both stopped.
-5. Confirm device screens refuse open while a sequence owns links; Back/Done
+7. Confirm device screens refuse open while a sequence owns links; Back/Done
    releases sequence ownership while protocol-ready sessions remain connected.
-6. Confirm scene persistence across power cycle.
-7. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
-8. Run ten initially disconnected cycles per driver and ten Canon Smart +
+8. Confirm scene persistence across power cycle.
+9. Continue Canon Trigger/Smart and Shark foundation hardware gates as before.
+10. Run ten initially disconnected cycles per driver and ten Canon Smart +
    Tascam sequence opens; record median/p95 readiness, per-stage blocking GATT,
    scan drops, retries, post-init heap, and post-teardown heap. Trigger the
    asynchronous GATT executor only if blocking GATT reaches the 25% gate.
-9. Keep groups, existing-mesh import, Portal scene editing, and generated
-   reverse-Stop deferred.
+11. Keep existing-mesh import, Portal scene editing, and generated reverse-Stop
+   deferred. The panel-owned Generic OnOff group used for mesh state/control is
+   part of ADR-024, not the deferred user-authored native-groups feature.
 
 ## Measurements
 
@@ -2268,3 +2284,265 @@ Record values with the exact build environment and commit/worktree state.
 - This session used USB power only. Battery-path operation at +6 dBm remains
   unverified until D1 is replaced and its polarity, loaded voltage drop, and
   temperature are checked on the physical board.
+
+### 2026-08-07: Zhiyun and Sidus multi-fixture HCI documentation
+
+- Analyzed operator-recorded Android video and rotated HCI logs for one
+  X100/X60RGB ZY Vega mesh and one Ace 25c/MC Pro Sidus network. Raw captures
+  remain outside the repository; only sanitized evidence and HCI SHA-256
+  identifiers were documented.
+- ZY Vega retained one X100 `0xFEE9` connection after the X60RGB onboarding
+  link closed, then routed both members' proprietary commands through it. This
+  upgrades one-gateway/multiple-member routing to observed behavior and
+  downgrades the existing model-derived `00`/`01` selector interpretation to
+  an allocation hypothesis pending a same-model or reversed-order capture.
+- Sidus retained one standard Mesh Proxy `0x1828` connection to the MC Pro and
+  routed both the MC Pro and Ace 25c through it. The control interval contained
+  81 Data In writes and 34 Data Out notifications; encrypted network/application
+  data prevents per-node status decoding without the mesh keys.
+- Updated `docs/protocols/zhiyun-x100.md`,
+  `docs/protocols/zhiyun-x60rgb.md`, and
+  `docs/protocols/amaran-lights.md` with the transport evidence, mesh-level
+  slot implication, state-quality boundary, and remaining fallback/offline
+  tests. No firmware source or user-visible behavior changed, so no build,
+  flash, or hardware run was applicable to this documentation-only session.
+
+### 2026-08-07: Aputure MC Pro panel-owned mesh probe
+
+- Factory-reset one Aputure MC Pro and provisioned it over PB-GATT into a new
+  private test mesh. Credentials and stable BLE identity remain outside the
+  repository. The node received unicast address `0x0002` with one element.
+- Decoded Composition Data Status: company `0x03F6`; SIG Config Server
+  `0x0000`, Health Server `0x0002`, Generic OnOff Server `0x1000`; vendor model
+  `0x03F6:0x1000`.
+- Found a defect in the external `studio-lighter` research sender: its Config
+  AppKey Add was emitted as an oversized unsegmented lower-transport message.
+  A temporary standards-compliant two-segment sender received both Segment
+  Acknowledgment and Config AppKey Status success.
+- Received Config Model App Status success for the MC Pro vendor model and SIG
+  Generic OnOff Server. Generic OnOff Get then returned authenticated Generic
+  OnOff Status `0x01`, confirming that node `0x0002` was on and reachable
+  through the proxy at query time.
+- This is Aputure-specific evidence. The prior command corpus was tested only
+  on Amaran fixtures; vendor-control equivalence is not assumed. Ace 25c
+  provisioning, per-node status, shared-mesh routing, physical-output checks,
+  and proxy fallback remain open.
+- Only protocol documentation changed in this repository. No firmware build or
+  flash was applicable; the live probe used the external research client.
+
+### 2026-08-07: Retained host mesh-lab probes
+
+- Added `tools/mesh_lab/mesh_probe.py` with the focused AppKey Add, vendor/SIG
+  model bind, and Generic OnOff Get operations used for the MC Pro probe. Its
+  AppKey path emits standards-compliant 12-byte lower-transport segments and
+  persists sequence reservations before attempting BLE writes.
+- Added `tools/mesh_lab/decode_notifications.py` to decrypt network, control,
+  unsegmented access, and reassembled segmented access messages using a private
+  mesh state file. Both tools reject a state file readable by group or world;
+  credentials remain outside the repository and are never printed.
+- Python syntax/help checks passed. The retained decoder reproduced the MC Pro
+  Generic OnOff Status `0x8204 01` from the captured notification.
+- `crowpanel_128` build succeeded: RAM 168,708 / 327,680 bytes (51.5%), flash
+  1,809,716 / 3,145,728 bytes (57.5%). Upload to
+  `/dev/cu.usbserial-211240` completed successfully. No firmware source changed.
+
+### 2026-08-07: Ace 25c joined to the MC Pro test mesh
+
+- Provisioned one factory-reset Amaran Ace 25c into the same private test mesh
+  as the Aputure MC Pro. The Ace received unicast address `0x0003` with one
+  element; credentials and stable BLE identities remain outside the repository.
+- Decoded Ace Composition Data Status: company `0x0211`, version `0x3333`, ten
+  SIG models including Generic OnOff/Level/Power OnOff and Light Lightness, and
+  vendor model `0x0211:0x0000`. This differs from the MC Pro's
+  `0x03F6:0x1000` vendor model and proves configuration must use composition
+  rather than one product-family constant.
+- Ace Config AppKey Status and vendor/SIG Config Model App Status all returned
+  success. Generic OnOff Get addressed to Ace node `0x0003` over only the MC
+  Pro BLE Proxy returned authenticated status `0x8204 01` from `0x0003`.
+- Both fixtures advertised Mesh Proxy `0x1828`. Generic OnOff Get addressed to
+  MC Pro node `0x0002` over only the Ace BLE Proxy returned authenticated status
+  `0x8204 01` from `0x0002`. This verifies individual state, cross-member mesh
+  routing, and bidirectional proxy fallback while using one physical BLE link.
+- Extended the retained probe with Composition Data Get and a separate
+  `--proxy-address`, allowing logical destination and physical proxy selection
+  to be tested independently. One CoreBluetooth attempt ended silently; the
+  retry succeeded and the pre-reserved sequence number prevented nonce reuse.
+
+### 2026-08-07: Two-node standard-model automation and response soak
+
+- Confirmed acknowledged Generic OnOff Set/Get model transactions on both
+  nodes. MC Pro's model changed Off then On immediately through the Ace proxy.
+  Ace's model reported one-second transitions (`01 00 0A`, then `00`;
+  `00 01 0A`, then `01`). Physical output was unattended.
+- Ace standard readback returned Generic Level `0x7FFF`, Light Lightness
+  `0xFFFF`, Generic OnPowerUp `0x01`, and Default Transition Time `0x41` (one
+  second). Light Lightness Set to `0x8000` returned present/target/remaining
+  status, settled at `0x8000`, and was restored to model value `0xFFFF`.
+- Bound both Generic OnOff Servers to group `0xC000`. One group Get returned
+  separate authenticated On statuses from MC Pro `0x0002` and Ace `0x0003`;
+  the same result worked through either fixture as the sole BLE proxy.
+- One group Off through MC Pro returned immediate MC model Off and Ace's
+  one-second transition, then a group Get reported both model Off. One group On
+  through Ace returned immediate MC model On and Ace's reverse transition, then
+  a final group Get reported both model On. Both nodes remained reachable while
+  their model state was Off, proving model state and connectivity must be
+  tracked independently.
+- Ten alternating unicast Gets over one retained MC Pro proxy connection
+  returned 10/10 statuses (five per node). The reverse Ace-proxy run also
+  returned 10/10. No member response was lost after a usable proxy session
+  formed.
+- CoreBluetooth intermittently ended an attempted connection with no tool
+  output. One silent attempt during full-lightness restoration may have sent:
+  the next acknowledged Set found Ace already at `0xFFFF`, and the node's
+  sequence advanced. Treat a silent host attempt as indeterminate until a
+  directed Get resolves state, not automatically as unsent.
+- Tested the prior Amaran vendor corpus separately. Ace unicast power-off and
+  brightness-50 vectors produced no response and left authenticated standard
+  state at On/`0xFFFF`; MC Pro likewise ignored the Amaran power-off vector.
+  These successful proxy writes remain optimistic and are not valid evidence
+  of fixture control for either tested firmware.
+- Extended `tools/mesh_lab/mesh_probe.py` with acknowledged OnOff/Lightness
+  control, standard state Gets, independent proxy selection, alternating-node
+  soak, SIG group subscription, and group OnOff Get. Both standard models ended
+  On; Ace's Light Lightness model ended at `0xFFFF`.
+- Operator correction after returning: MC Pro was physically dark despite its
+  authenticated Generic OnOff model reporting `0x01`. A repeated Get still
+  returned model On, and a subsequent acknowledged standard On Set also
+  returned model On. The standard MC Pro model therefore proves reachability
+  but is not authoritative emitter state; the earlier restore claim is
+  withdrawn.
+- Operator-watched follow-up made the boundary definitive. After the fixture
+  was turned On locally, standard Generic OnOff Set Off acknowledged `0x00` and
+  the following Get persisted `0x00`, but the emitter visibly did not change.
+  MC Pro Generic OnOff is a writable shadow model: retain it for authenticated
+  reachability only and exclude it from emitter state/control claims.
+- A subsequent watched group Off produced MC model Off and Ace's one-second
+  model transition toward Off, but neither emitter changed. Generic OnOff is a
+  shadow model on both tested fixtures and cannot implement physical group
+  power. A 30-second passive proxy listen while requesting local fixture
+  toggles captured no notifications; whether the controls were exercised
+  during the exact window remained operator confirmation at capture end.
+- Extended `decode_notifications.py` with semantic configuration status,
+  OnOff present/target/remaining time, level, OnPowerUp, default-transition, and
+  lightness decoding. Known captured transition and lightness responses were
+  replayed successfully through the new labels.
+- Final Python syntax checks and `git diff --check` passed. `crowpanel_128`
+  built successfully at 168,708 / 327,680 bytes RAM (51.5%) and 1,809,716 /
+  3,145,728 bytes flash (57.5%), then uploaded to
+  `/dev/cu.usbserial-211240` with written-region hash verification. Firmware
+  sources were unchanged by this host-tool/protocol session.
+
+### 2026-08-07: Ace 25c/MC Pro physical vendor power correlation
+
+- Subscribed the composition-selected vendor models on MC Pro `0x0002` and Ace
+  25c `0x0003` to group `0xC000`. The previously captured power payload sent to
+  this group physically turned both emitters Off, then On, then restored both
+  Off. The same payload had produced no observed effect when sent unicast.
+- Correlated group poll `26 0E 00 00 00 00 00 00 00 00 0E` with both physical
+  states. Each node returned an authenticated opcode `0x26` status whose first
+  data byte tracked real emitter power (`00` Off, `01` On); its leading checksum
+  covered the following nine bytes. MC Pro ended in Off status
+  `E8 00 00 00 00 20 A4 28 FA 02`; Ace ended in Off status
+  `EB 00 00 00 00 80 56 1A FA 01`.
+- Stored intensity `FA` remained unchanged across Off and On responses, so
+  emitter power is not inferred from intensity. A separate `0x0A` vendor poll
+  returned valid but dynamically changing fields that remain unresolved.
+- With both emitters physically Off, only MC Pro continued advertising Mesh
+  Proxy; Ace stopped advertising it. The mesh still occupied one BLE link and
+  both nodes answered through MC Pro, but fallback candidate availability is
+  power-state dependent.
+- Added named `vendor-power-get`, `vendor-power-on`, and `vendor-power-off`
+  operations to the retained mesh probe and semantic decoding for the
+  correlated statuses. Final authenticated Get confirmed both fixtures Off.
+- OBSBOT Center was running for independent webcam observation, but its
+  accessibility state capture timed out twice; no camera-derived claim is
+  recorded. Direct Python/OpenCV capture then reached AVFoundation but macOS
+  denied Camera permission, so it also produced no frame. The physical
+  transitions were operator-watched and final state was device-originated
+  authenticated status.
+- Python syntax/help checks, replay of both final vendor statuses through the
+  semantic decoder, and `git diff --check` passed. `crowpanel_128` remained at
+  168,708 / 327,680 bytes RAM (51.5%) and 1,809,716 / 3,145,728 bytes flash
+  (57.5%); build and upload to `/dev/cu.usbserial-211240` succeeded with hash
+  verification. Firmware sources were unchanged.
+
+### 2026-08-07: Mesh-aware physical BLE slot accounting
+
+- Split retained logical capacity from physical BLE capacity in
+  `DeviceManager`. Each driver now exposes a `BleSlotKey`: ordinary GATT
+  instances use one key each, non-BLE Home Assistant entities use no key, and
+  all logical Amaran/Aputure members in the single panel-owned mesh share one
+  key backed by the runtime's existing single Mesh Proxy connection.
+- A second logical member can activate while all four physical keys are
+  occupied without evicting anything. Acquisition of a genuinely new fifth key
+  uses group-aware LRU: every member must be idle and unprotected, and the whole
+  group is deactivated so its one central link is actually released. The
+  separate eight-instance bound retains its single-instance LRU behavior.
+- Added native coverage for the full four-key condition, same-mesh admission,
+  whole-mesh eviction, Home Assistant's zero-BLE cost, and existing recording/
+  owner protection. Native passed 50/50 after the refactor.
+- Kept Zhiyun per-instance accounting for now. The mixed X100/X60RGB capture
+  proves one proprietary gateway can route the mesh, but the firmware still
+  owns one direct client per member and selector `00`/`01` covaries with model
+  and onboarding order. Counting those clients as one before implementing the
+  shared gateway would overbook the four-client central; a same-model or
+  reversed-order capture remains the safe selector gate.
+- Added the captured vendor physical-power Get builder and checksum/profile/
+  state parser to the production Amaran protocol with MC Pro Off, Ace 25c On,
+  and corrupt-checksum native vectors. Firmware transport integration remains
+  separate because current notification handling does not yet decrypt Proxy
+  Network PDUs.
+- Added `vendor-power-soak` to the retained host probe. A read-only ten-poll run
+  over one retained MC Pro proxy returned 10/10 authenticated Off statuses from
+  MC Pro and 9/10 from Ace 25c. This observed miss requires bounded retry/
+  freshness logic; a single absent group reply must not immediately mark a
+  member offline. Both emitters remained Off and no state-changing command was
+  sent.
+- Final verification: native passed 50/50; `ui_sim` built and completed its
+  full capture flow (20,788-byte LVGL peak, 1% final fragmentation); all eight
+  firmware profiles (`crowpanel_128`, Roboto, Canon Smart, Canon Trigger,
+  Tascam X8, Home Assistant, Amaran, and Zhiyun) built successfully. The first
+  cross-profile attempt exposed an ESP32 GCC aggregate-initialization mismatch;
+  an explicit constexpr `BleSlotKey` constructor fixed it before the successful
+  rerun. Default firmware used 168,708 / 327,680 bytes RAM (51.5%) and
+  1,810,744 / 3,145,728 bytes flash (57.6%). Upload to
+  `/dev/cu.usbserial-211240` completed successfully with esptool verification.
+
+### 2026-08-07: Authenticated mesh member status and cross-brand gateway proof
+
+- Added AES-CCM decrypt/authentication and a bounded complete-unsegmented Proxy
+  Network PDU decoder to the production Amaran transport. Native round-trip
+  coverage encrypts a captured MC Pro status through the production encoder,
+  recovers its source/destination/access payload, and rejects a corrupted tag.
+- The runtime now sends the physically correlated vendor-power Get to the
+  panel-owned group every five seconds. Authenticated replies are mapped by
+  provisioned source address, vendor checksum/profile are validated, and power,
+  reachability, and `lastSeen` update independently from the shared Proxy link.
+  Per-source repeated sequence numbers are ignored; a member becomes stale only
+  after a fifteen-second gap, accommodating the observed 9/10 Ace response run.
+  Physical vendor power Set remains disabled in this tranche.
+- Native passed 50/50. All eight firmware profiles rebuilt successfully and
+  `ui_sim` completed its full screenshot flow with 20,788-byte peak LVGL use
+  and 1% final fragmentation. Default `crowpanel_128` used 168,820 / 327,680
+  bytes RAM (51.5%) and 1,812,058 / 3,145,728 bytes flash (57.6%), then uploaded
+  successfully to `/dev/cu.usbserial-211240` with hash verification.
+- macOS Camera permission was available on retry. Two direct Python/OpenCV
+  1920x1080 captures succeeded. The operator identified the physical order as
+  Zhiyun, MC Pro, then Ace 25c; the later frame showed the Zhiyun emitting while
+  the two Sidus-network fixtures remained dark.
+- Discovered the ready fixture as factory-reset X60RGB `X104_...`, not X100.
+  Provisioned it with standard no-OOB PB-GATT into the same private test mesh as
+  MC Pro and Ace at unicast `0x0004`, one element, and intentionally skipped
+  Amaran AppKey/model configuration. Private keys and stable BLE identifiers
+  remain outside the repository. It reappeared advertising Mesh Proxy.
+- With X60RGB as the sole BLE gateway, five read-only group power polls returned
+  five unique authenticated MC Pro Off statuses and three unique Ace Off
+  statuses. Every response was delivered twice with the same source/sequence,
+  demonstrating a redundant relay path and validating the runtime replay guard.
+- Added retained `tools/mesh_lab/zhiyun_probe.py`. Its read-only captured
+  `0xFEE9` initialization identified `plx104` and returned 4400 K, Power On,
+  and 12% brightness from the newly provisioned X60RGB without printing raw
+  identity payloads. Together with the Mesh Proxy poll, this proves one X60RGB
+  BLE connection can carry its proprietary state and cross-brand standards
+  mesh traffic. Firmware still needs one shared gateway owner before Zhiyun and
+  Amaran logical members can honestly consume the same physical slot.

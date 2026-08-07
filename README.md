@@ -57,9 +57,11 @@ principles:
 - A round, touch-first Home and Devices interface with persistent device
   records, enable/disable, rename, forget/re-pair, and delete.
 - On-demand Bluetooth LE connections through one shared NimBLE central. Up to
-  four protocol-ready device sessions stay connected across navigation and
-  remain immediately reusable while healthy. An ownerless retained session is
-  parked after an unexpected drop instead of reconnecting indefinitely.
+  four physical BLE transport groups stay connected across navigation and
+  remain immediately reusable while healthy. Ordinary devices consume one
+  group each; all logical Amaran/Aputure members of the panel-owned mesh share
+  one group and one proxy connection. An ownerless retained session is parked
+  after an unexpected drop instead of reconnecting indefinitely.
 - A battery-conscious runtime policy uses compile-time configurable BLE
   transmit power (+6 dBm by default), bounded
   low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem
@@ -77,9 +79,12 @@ principles:
   remove existing devices and create, duplicate, reorder, and edit sequences;
   physical pairing and runtime control remain on the panel.
 - Experimental native `Amaran Light` support with panel-owned PB-GATT
-  provisioning, one shared Mesh Proxy connection, power,
-  independently remembered CCT/tint/brightness and RGB/saturation/brightness
-  looks, plus a unified parameterized `Set color` sequence action.
+  provisioning, one shared Mesh Proxy connection, optimistic color-property
+  controls, and a unified parameterized `Set color` sequence action. The
+  firmware periodically polls the captured group-addressed physical-power path,
+  authenticates each Ace 25c/MC Pro response, and keeps member reachability
+  separate from the proxy link. Physical power writes remain a bounded
+  research path rather than a general Amaran/Aputure command claim.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
   fixture when needed, and uses confirmed direct controls; X60RGB also exposes
@@ -106,7 +111,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
-| Amaran Light | Experimental | Adds the first nearby factory-reset Amaran fixture advertising Mesh Provisioning to a panel-owned mesh; optimistic power, CCT/tint/brightness, RGB/brightness, and sequence actions use one shared proxy. Pano 60c/120c and Ace 25c are the initial validation fixtures; real-fixture verification remains open. |
+| Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to one panel-owned mesh whose logical members consume one physical BLE slot. Host probes confirm Ace 25c/MC Pro provisioning, routing, proxy fallback, and group physical-power Set/Get; firmware still needs that confirmed power path, composition parsing, reset/recovery, and Pano validation. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Add each fixture through the same entry. Ble(e)p recognizes `PL105` X100 and `PLX104`/`X104` X60RGB advertisements, provisions a reset fixture into the shared panel-owned mesh when needed, then uses confirmed direct GATT control. Both models support power and 2700-6500 K CCT/brightness; X60RGB adds RGB hue/saturation. X60RGB panel hardware verification remains open. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 

@@ -30,6 +30,7 @@ class DeviceManager {
   InstanceProfile profile(InstanceId instanceId) const;
   InstanceId foregroundInstance() const;
   size_t activeCount() const { return activeCount_; }
+  size_t bleSlotCount() const;
   bool isActive(InstanceId instanceId) const;
   bool ownedBy(InstanceId instanceId, ConnectionOwner owner) const;
   bool isRetained(InstanceId instanceId) const;
@@ -86,7 +87,11 @@ class DeviceManager {
   const ActiveSlot* slotFor(InstanceId instanceId) const;
   bool addActive(InstanceId instanceId, ConnectionOwner owner);
   void removeActive(InstanceId instanceId);
-  bool evictOldestIdle();
+  bool ensureBleSlotAvailable(const DeviceRecord& record,
+                              const DeviceDriver& driver);
+  bool evictOldestIdleInstance();
+  bool evictOldestIdleBleGroup();
+  BleSlotKey bleSlotKey(InstanceId instanceId) const;
   void deactivate(InstanceId instanceId);
   void touch(ActiveSlot& slot);
   static uint8_t ownerBit(ConnectionOwner owner);

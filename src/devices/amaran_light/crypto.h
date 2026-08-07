@@ -27,5 +27,9 @@ bool aesCcmEncrypt(const uint8_t key[16], const uint8_t* nonce,
                    size_t nonceLength, const uint8_t* plaintext,
                    size_t plaintextLength, size_t tagLength,
                    uint8_t* ciphertext, uint8_t* tag);
+bool aesCcmDecrypt(const uint8_t key[16], const uint8_t* nonce,
+                   size_t nonceLength, const uint8_t* ciphertext,
+                   size_t ciphertextLength, const uint8_t* tag,
+                   size_t tagLength, uint8_t* plaintext);
 
 }  // namespace amaran_light

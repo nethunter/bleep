@@ -8,6 +8,7 @@ namespace studio {
 class HomeAssistantDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::HomeAssistant; }
+  BleSlotKey bleSlotKey(const DeviceRecord&) const override { return {}; }
   bool activate(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;

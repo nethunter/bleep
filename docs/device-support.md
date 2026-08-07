@@ -18,10 +18,13 @@ the next target connects. Concurrent Canon Smart + Tascam scene
 preparation, ten-cycle timing distributions, and post-teardown heap recovery
 remain hardware gates.
 
-ADR-022 retains protocol-ready sessions across navigation and sequences, up to
-four active runtime instances. Multiple instances of the same Canon driver use
-independent client state. Unexpected drops retry while retained; unfinished
-first-time attempts stop when their last owner leaves.
+ADR-022 retains protocol-ready sessions across navigation and sequences. Up to
+eight logical instances map onto four physical BLE transport groups. Ordinary
+GATT devices consume one group per instance; the panel-owned Amaran/Aputure
+mesh consumes one group for all its logical members, and Home Assistant
+consumes none. Multiple Canon instances retain independent client state.
+Unexpected drops retry while retained; unfinished first-time attempts stop
+when their last owner leaves.
 
 ## Home Assistant
 
@@ -93,10 +96,17 @@ of successful movement.
   Sidus/amaran mesh import remains deferred.
 
 The first release maintains one active studio mesh. Keys live in a separate
-checksummed NVS record and are not logged or exported. Writes update optimistic
-state only. Hardware verification is still required for provisioning and
-configuration status responses, proxy fallback, reboot recovery, and safe
-node reset before this becomes Current.
+checksummed NVS record and are not logged or exported. The complete mesh is
+charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
+composition-driven configuration, cross-node routing, proxy fallback, and
+group-addressed physical power Set/Get are confirmed. Standard Generic OnOff
+is only a writable shadow/reachability model on both fixtures. CCT/RGB,
+per-member vendor groups, physical group-power command integration,
+reboot/interruption recovery, Pano fixtures, and safe node reset remain open
+before this becomes Current. Firmware does implement authenticated vendor
+power readback: one group poll updates each member by source address, polls
+every five seconds, and marks a member stale after three missed intervals while
+leaving the shared proxy bearer connected.
 
 Reference research:
 

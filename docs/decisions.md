@@ -322,19 +322,24 @@ the replacement.
 ## ADR-022: Protocol-ready device links persist in a bounded pool
 
 - Status: Accepted
-- Decision: `DeviceManager` keeps up to `CONFIG_MAX_ACTIVE_LINKS` protocol-ready
-  device sessions active after their screen or sequence owner leaves. Sessions
-  are keyed by runtime instance, so multiple instances of one compiled driver
-  may coexist. Boot remains BLE-free, and an attempt that has never reached
-  protocol readiness is canceled when its last owner leaves.
+- Decision: `DeviceManager` keeps up to `CONFIG_MAX_ACTIVE_INSTANCES` logical
+  sessions active after their screen or sequence owner leaves and maps them
+  onto at most `CONFIG_MAX_ACTIVE_LINKS` physical BLE transport groups. A
+  driver's `BleSlotKey` is per-instance by default, empty for a non-BLE runtime,
+  or shared by logical instances that demonstrably use one real connection.
+  Boot remains BLE-free, and an attempt that has never reached protocol
+  readiness is canceled when its last owner leaves.
 - Ownership: Foreground device screens and sequences hold independent owners.
   Reopening or preparing an already-active instance reuses its session. Leaving
   removes only that owner; retained sessions continue bounded reconnect after
   an unexpected drop. Canon's explicit power-down remains intentional and does
   not trigger reconnect until requested.
-- Capacity and safety: When four sessions are active, acquisition evicts the
-  least-recently-used retained session with no owner, pending command, or
-  confirmed recording. If none is safe, acquisition fails. Confirmed-recording
+- Capacity and safety: When four distinct BLE keys are active, acquisition of
+  a fifth key evicts the least-recently-used retained transport group only when
+  every logical member has no owner, pending command, or confirmed recording.
+  All members are deactivated together so the shared central link is actually
+  released. Acquiring another member of an existing group consumes no new
+  physical slot. If no group is safe, acquisition fails. Confirmed-recording
   links require explicit confirmation before manual Disconnect. Disconnect,
   disable, forget, remove, Portal entry, and controller shutdown release the
   session without treating an ACK as proof of device state.
@@ -343,9 +348,10 @@ the replacement.
   manual single-active restriction. Their boot, power safety, sequence
   readiness, and borrowed-control decisions remain accepted.
 - Consequence: The shared BLE runtime remains initialized while any retained
-  session owns a central slot. Static per-driver session storage replaces the
-  former single-client driver adapters and must remain within measured ESP32-C3
-  RAM limits.
+  transport group owns a central slot. The panel-owned Amaran/Aputure mesh has
+  one shared key; Home Assistant has none. Zhiyun remains per-instance until
+  its captured proprietary gateway routing replaces the current direct clients.
+  Static per-driver session storage must remain within measured ESP32-C3 RAM.
 
 ## ADR-023: Bounded local Home Assistant entity client
 
@@ -426,25 +432,56 @@ the replacement.
   provisioning and Mesh Proxy GATT for control. Ble(e)p creates one
   panel-owned mesh and does not depend on ESP-IDF's mesh host, Sidus Link,
   Home Assistant, or Python at runtime. Existing-mesh import remains deferred.
-- Runtime: One Amaran runtime owns one physical proxy link shared by all active
-  logical fixtures. It uses the same lazy NimBLE central as the existing GATT
-  drivers. Host-task callbacks only enqueue bounded raw notifications; all
-  provisioning, cryptography, persistence, configuration, writes, state
-  mutation, and LVGL work stays in `loop()`.
+- Runtime: One panel-owned mesh consumes one physical `DeviceManager` link slot,
+  regardless of its logical fixture count. One selected member supplies the
+  proxy bearer, with other proxy-capable members available for fallback. The
+  runtime uses the same lazy NimBLE central as the existing GATT drivers.
+  Host-task callbacks only enqueue bounded raw notifications; all provisioning,
+  cryptography, persistence, configuration, writes, state mutation, and LVGL
+  work stays in `loop()`.
+  This is now enforced by a shared Amaran-family `BleSlotKey`; native coverage
+  fills all four physical slots, activates a second logical mesh member without
+  eviction, and verifies that LRU eviction releases the complete idle mesh
+  group rather than one member.
 - Persistence and replay safety: A separate checksummed NVS record contains the
   mesh identity, keys, IV index, addresses, node device keys, and configuration
   phase. Sequence numbers are durably reserved in blocks of 256 and commands
   stop before the 24-bit space can be reused. A provisioned node is persisted
   as pending configuration before the provisioning link is released.
-- Commands and state: This tranche exposes explicit power, CCT/tint/brightness,
-  and RGB/brightness actions using captured Telink opcode `0x26` payloads.
-  Successful writes are optimistic, never confirmed. Native groups, HSIC,
-  interpolation, and decoded fixture readback remain deferred.
+- Commands and state: Parse Composition Data before selecting models; Ace 25c
+  (`0x0211:0x0000`) and MC Pro (`0x03F6:0x1000`) are not interchangeable.
+  Generic OnOff transactions are confirmed on both; Light Lightness
+  transactions are confirmed on Ace. Generic OnOff is a writable shadow on
+  both tested fixtures: operator-watched Off changed each model while neither
+  emitter changed. Use it only for reachability, never emitter power/control.
+  Subscribe useful standard models and the composition-selected vendor model
+  to the panel-owned group so one refresh/action may receive individually
+  sourced statuses. The group-addressed Telink `0x26` power Set physically
+  controls the tested Ace 25c and MC Pro, and its `0x0E` group poll returns
+  independently sourced, physically correlated power status. The identical
+  power Set sent unicast had no effect. Track proxy-bearer state separately
+  from per-node reachability,
+  confirmed model present/target state, transition deadline, last authenticated
+  response, and separately qualified emitter state. Use only the confirmed
+  group power subset for this fixture pair; other captured Telink `0x26`
+  writes remain optimistic and are not a generic Amaran/Aputure control path.
+  The runtime now decrypts and authenticates complete unsegmented Proxy Network
+  PDUs, rejects non-AppKey traffic and replayed per-source sequence numbers,
+  polls vendor power at five-second intervals, and expires a member after a
+  fifteen-second response gap. This confirms emitter power and reachability
+  without interpreting a missing response as Off. Group power writes remain
+  disabled pending the per-member/group UI decision and panel hardware proof.
+  CCT/tint/RGB,
+  HSIC, interpolation, and vendor-property readback remain deferred.
 - Safety gate: AppKey/model/subscription configuration uses segmented lower
-  transport where required. Promotion requires status-response decoding and
-  real-fixture evidence for the initial validation set, interrupted configuration,
-  fallback proxy selection, reboot recovery, sequence-number continuity, and
-  verified node reset. Until verified reset is implemented, ordinary local
+  transport where required and advances only after decoded success status.
+  Promotion still requires the remaining initial validation fixtures,
+  interrupted configuration, reboot recovery, sequence-number continuity, and
+  verified node reset. Ace/MC cross-routing, bidirectional proxy selection,
+  acknowledged standard-model state, a 20/20 alternating-node response soak,
+  and group physical power Set/Get are now radio- and operator-evidenced. Other
+  physical output properties remain an operator-assisted gate. Until verified
+  reset is implemented, ordinary local
   record removal is not a claim that the fixture left the mesh.
 
 ## ADR-025: Battery-conscious runtime policy does not replace input protection
@@ -575,9 +612,21 @@ the replacement.
   validates the same marker in the direct identity response. Existing X100
   records remain compatible because the numeric driver ID is unchanged.
 - Reuse boundary: both profiles share PB-GATT, mesh ownership and persistence,
-  post-provision discovery, retained multi-link lifecycle, `0xFEE9` transport,
+  post-provision discovery, retained direct-client lifecycle, `0xFEE9` transport,
   frame scanner, CRC, initialization state machine, power, brightness, and CCT
   control. A profile supplies the state selector byte and identity markers.
+- Gateway boundary: the mixed X100/X60RGB capture proves one `0xFEE9` gateway
+  can route multiple members, but selector `00`/`01` still covaries with model
+  and onboarding order. Until a same-model or reversed-order capture resolves
+  allocation and the driver owns one real gateway client, Zhiyun instances
+  retain separate `BleSlotKey`s. Merely changing slot accounting before the
+  transport is shared would overbook the four-client central.
+  A later live test provisioned X60RGB into the same panel-owned standards mesh
+  as MC Pro and Ace 25c; one X60RGB BLE connection both returned its own
+  `0xFEE9` state and routed authenticated responses from the other brands.
+  Therefore the eventual transport group is the panel-owned mesh, not a
+  brand-specific Zhiyun group. This strengthens but does not remove the shared
+  runtime/selector gate.
 - X60RGB extension: selector `01 80` adds captured float32 hue `0x1004` and
   saturation `0x1005`. RGB commands convert packed RGB to HSV, then require
   correlated hue, saturation, and brightness write replies before success.

@@ -22,7 +22,11 @@ struct AmaranLightState {
   bool commandPending = false;
   bool lastCommandFailed = false;
   bool optimistic = false;
+  bool powerOptimistic = false;
+  bool nodeReachable = false;
+  bool powerConfirmed = false;
   bool on = false;
+  uint32_t lastSeenMs = 0;
   uint16_t kelvin = 5600;
   int16_t tintPermille = 0;
   uint8_t cctBrightness = 50;

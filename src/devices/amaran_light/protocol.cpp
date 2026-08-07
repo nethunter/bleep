@@ -10,6 +10,7 @@ namespace {
 
 constexpr uint8_t kPowerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
 constexpr uint8_t kPowerOff[] = {0x26,0x8c,0,0,0,0,0,0,0,0,0x8c};
+constexpr uint8_t kPowerStatusGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
 constexpr uint8_t kNodeReset[] = {0x26,0x9d,0,0,0,0,0,0,0,0,0x9d};
 
 uint8_t scaleGamma(uint8_t channel, uint8_t maximum) {
@@ -32,6 +33,10 @@ bool buildVendor(const uint8_t tail[9], AccessPayload& output) {
 void putBe16(uint8_t* out, uint16_t value) {
   out[0] = static_cast<uint8_t>(value >> 8);
   out[1] = static_cast<uint8_t>(value);
+}
+
+uint16_t getBe16(const uint8_t* input) {
+  return static_cast<uint16_t>(input[0]) << 8 | input[1];
 }
 
 bool encodeNetworkTransport(const uint8_t networkKey[16], const uint8_t* lower,
@@ -88,6 +93,26 @@ uint8_t vendorChecksum(const uint8_t tail[9]) {
 bool buildPowerAccess(bool on, AccessPayload& output) {
   std::memcpy(output.bytes, on ? kPowerOn : kPowerOff, kAccessPayloadSize);
   output.length = kAccessPayloadSize;
+  return true;
+}
+
+bool buildPowerStatusGetAccess(AccessPayload& output) {
+  std::memcpy(output.bytes, kPowerStatusGet, kAccessPayloadSize);
+  output.length = kAccessPayloadSize;
+  return true;
+}
+
+bool parseVendorPowerStatus(const uint8_t* access, size_t length,
+                            VendorPowerStatus& output) {
+  if (access == nullptr || length != kAccessPayloadSize || access[0] != 0x26 ||
+      vendorChecksum(access + 2) != access[1] || access[2] > 1 ||
+      access[3] != 0 || access[4] != 0 || access[5] != 0 ||
+      access[9] > 250 || (access[10] != 1 && access[10] != 2)) {
+    return false;
+  }
+  output.on = access[2] != 0;
+  output.storedIntensity = access[9];
+  output.profile = access[10];
   return true;
 }
 
@@ -322,6 +347,91 @@ bool wrapProxyPdu(const NetworkPdu& network, uint8_t* output,
   std::memcpy(output + 1, network.bytes, network.length);
   outputLength = network.length + 1;
   return true;
+}
+
+bool decodeProxyAccessMessage(const uint8_t networkKey[16],
+                              const uint8_t applicationKey[16],
+                              const uint8_t* proxyPdu, size_t proxyLength,
+                              uint32_t ivIndex, DecodedAccessMessage& output) {
+  output = DecodedAccessMessage{};
+  if (networkKey == nullptr || applicationKey == nullptr || proxyPdu == nullptr ||
+      proxyLength < 16 || proxyPdu[0] != 0x00) {
+    return false;
+  }
+  const uint8_t* network = proxyPdu + 1;
+  const size_t networkLength = proxyLength - 1;
+  NetworkKeys keys;
+  meshK2(networkKey, keys);
+  if ((network[0] & 0x7f) != keys.nid || networkLength < 14) return false;
+
+  const uint8_t* encryptedNetwork = network + 7;
+  const size_t encryptedNetworkLength = networkLength - 7;
+  if (encryptedNetworkLength < 11) return false;
+  uint8_t privacyInput[16] = {};
+  privacyInput[5] = static_cast<uint8_t>(ivIndex >> 24);
+  privacyInput[6] = static_cast<uint8_t>(ivIndex >> 16);
+  privacyInput[7] = static_cast<uint8_t>(ivIndex >> 8);
+  privacyInput[8] = static_cast<uint8_t>(ivIndex);
+  std::memcpy(privacyInput + 9, encryptedNetwork, 7);
+  uint8_t pecb[16];
+  aes128EncryptBlock(keys.privacy, privacyInput, pecb);
+  uint8_t clearHeader[6];
+  for (size_t i = 0; i < sizeof(clearHeader); ++i) {
+    clearHeader[i] = static_cast<uint8_t>(network[i + 1] ^ pecb[i]);
+  }
+  if ((clearHeader[0] & 0x80) != 0) return false;
+  output.sequence = static_cast<uint32_t>(clearHeader[1]) << 16 |
+                    static_cast<uint32_t>(clearHeader[2]) << 8 |
+                    clearHeader[3];
+  output.source = getBe16(clearHeader + 4);
+
+  uint8_t networkNonce[13] = {0x00};
+  std::memcpy(networkNonce + 1, clearHeader, sizeof(clearHeader));
+  networkNonce[7] = networkNonce[8] = 0;
+  networkNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  networkNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  networkNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  networkNonce[12] = static_cast<uint8_t>(ivIndex);
+  const size_t networkPlainLength = encryptedNetworkLength - 4;
+  uint8_t networkPlain[64] = {};
+  if (networkPlainLength > sizeof(networkPlain) ||
+      !aesCcmDecrypt(keys.encryption, networkNonce, sizeof(networkNonce),
+                     encryptedNetwork, networkPlainLength,
+                     encryptedNetwork + networkPlainLength, 4,
+                     networkPlain) ||
+      networkPlainLength < 8) {
+    return false;
+  }
+  output.destination = getBe16(networkPlain);
+
+  const uint8_t* lower = networkPlain + 2;
+  const size_t lowerLength = networkPlainLength - 2;
+  if (lowerLength < 6 || (lower[0] & 0x80) != 0 ||
+      (lower[0] & 0x40) == 0 ||
+      (lower[0] & 0x3f) != meshK4(applicationKey)) {
+    return false;
+  }
+  const uint8_t* encryptedUpper = lower + 1;
+  const size_t encryptedUpperLength = lowerLength - 1;
+  if (encryptedUpperLength < 5) return false;
+  output.accessLength = encryptedUpperLength - 4;
+  if (output.accessLength > sizeof(output.access)) return false;
+
+  uint8_t applicationNonce[13] = {0x01,0x00};
+  applicationNonce[2] = static_cast<uint8_t>(output.sequence >> 16);
+  applicationNonce[3] = static_cast<uint8_t>(output.sequence >> 8);
+  applicationNonce[4] = static_cast<uint8_t>(output.sequence);
+  putBe16(applicationNonce + 5, output.source);
+  putBe16(applicationNonce + 7, output.destination);
+  applicationNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  applicationNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  applicationNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  applicationNonce[12] = static_cast<uint8_t>(ivIndex);
+  return aesCcmDecrypt(applicationKey, applicationNonce,
+                       sizeof(applicationNonce), encryptedUpper,
+                       output.accessLength,
+                       encryptedUpper + output.accessLength, 4,
+                       output.access);
 }
 
 }  // namespace amaran_light

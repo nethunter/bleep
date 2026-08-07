@@ -40,10 +40,12 @@ ADR-018 makes wake
 automatic on screen activation, keeps power-down explicit, and preserves
 non-destructive Back behavior.
 
-ADR-022 replaces screen-scoped teardown with a bounded four-session retained
-pool. Protocol-ready manual and sequence sessions survive navigation, multiple
-instances of one Canon driver may coexist, and safe LRU eviction protects
-foreground, sequence, pending-command, and confirmed-recording sessions.
+ADR-022 replaces screen-scoped teardown with retained logical sessions mapped
+onto four physical BLE transport groups. Protocol-ready manual and sequence
+sessions survive navigation, multiple instances may coexist, shared transports
+such as one Amaran/Aputure mesh consume one slot, and safe group-aware LRU
+eviction protects foreground, sequence, pending-command, and confirmed-recording
+sessions.
 
 ADR-023 authorizes a bounded local Home Assistant client on top of that
 multi-instance baseline. The software tranche includes AP Wi-Fi bootstrap and
@@ -236,8 +238,12 @@ Work:
 - persist pending configuration and reserve replay-safe sequence blocks;
 - implement best-available state readback and mark optimistic state explicitly.
 
-Deferred from this tranche: existing Sidus mesh import, native groups, HSIC,
-interpolation, and confirmed readback.
+Deferred from this tranche: existing Sidus mesh import, user-authored native
+groups, HSIC, interpolation, and confirmed color-property readback. The
+panel-owned vendor-model group and physically correlated power status are now
+research-confirmed for Ace 25c/MC Pro. Firmware now performs authenticated
+group status polling with per-source freshness; enabling the correlated group
+power Set path and completing real-panel verification remain open.
 
 Completion gate:
 

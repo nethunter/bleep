@@ -178,6 +178,25 @@ struct DeviceRecord {
   char homeAssistantEntityId[kHomeAssistantEntityIdCapacity] = "";
 };
 
+struct BleSlotKey {
+  DriverId family = DriverId::Unknown;
+  uint32_t group = 0;
+
+  constexpr BleSlotKey() = default;
+  constexpr BleSlotKey(DriverId slotFamily, uint32_t slotGroup)
+      : family(slotFamily), group(slotGroup) {}
+
+  constexpr bool valid() const {
+    return family != DriverId::Unknown && group != 0;
+  }
+  constexpr bool operator==(const BleSlotKey& other) const {
+    return family == other.family && group == other.group;
+  }
+  constexpr bool operator!=(const BleSlotKey& other) const {
+    return !(*this == other);
+  }
+};
+
 struct InstanceProfile {
   DeviceType type = DeviceType::Unknown;
   uint32_t capabilities = 0;

@@ -20,6 +20,12 @@ Mesh traffic. ZHIYUN's published specifications give the X100 a 0-100%
 brightness range and 2700-6500 K CCT range:
 <https://www.zhiyun-tech.com/en/product/param/768?page=second_nav&source=param&type=website>.
 
+A later operator-recorded ZY Vega session added and controlled one X100 and one
+X60RGB in the same application mesh. Its relevant rotated HCI log has SHA-256
+`d61d04de34eec7d8dabc5d8284cf0e3ec3431299fbec0d58f3fc7a8c8af47430`.
+That capture is the source for the multi-fixture routing findings below. Its
+raw video, bugreport, and snoop log also remain outside the repository.
+
 ZY Vega's captured direct CCT writes include 50 K boundaries such as 2950,
 3150, 3900, and 5450 K, but live panel testing showed this X100 quantizing a
 4550 K write to 4500 K on readback. Ble(e)p therefore snaps actual control
@@ -59,6 +65,71 @@ vendor frames. No SMP pairing or encrypted ATT exchange was observed on the
 post-provision control connection. The standard Mesh Proxy and `0xFEE9`
 channels are distinct even though Wireshark may mis-dissect a `0x24` vendor
 frame on the latter as an unknown Mesh Proxy PDU.
+
+## Multi-fixture gateway routing
+
+The two-fixture ZY Vega capture changes the connection model inferred from the
+earlier single-fixture sessions:
+
+- ZY Vega retained one BLE connection to the X100 throughout the control
+  portion of the recording. Its validated identity reply contained `pl105`
+  and firmware `1.8.4`.
+- The X60RGB used separate, temporary PB-GATT and identity sessions while it
+  was added. Its validated identity reply contained `plx104` and firmware
+  `1.7.0`; its final direct connection closed before the operator began the
+  later X60RGB control sequence.
+- After that X60RGB disconnect, no further ACL data used the X60RGB connection
+  handle. During the same interval, ZY Vega issued 201 proprietary `0xFEE9`
+  writes through the retained X100 connection while the operator controlled
+  both fixtures.
+- X100 state traffic through that retained link used payload prefixes
+  `00 80 00` for reads and `00 80 01` for writes. Later X60RGB brightness,
+  CCT, hue, saturation, and power commands used `01 80 01` through the same
+  X100 characteristic.
+- Standard Mesh Proxy Data In on the retained X100 received no ongoing
+  control writes after initial setup. A few encrypted Mesh Network PDUs were
+  exchanged during setup or housekeeping, but fixture control was carried by
+  the cleartext proprietary `0xFEE9` channel.
+
+This confirms that ZY Vega treats one fixture as a proprietary gateway for
+multiple Zhiyun mesh members. A Zhiyun mesh therefore needs one physical BLE
+connection at a time, not one retained BLE connection per logical fixture.
+Gateway selection and fallback were not exercised.
+
+A subsequent panel-owned test provisioned an X60RGB into the same standards
+mesh as MC Pro and Ace 25c. The X60RGB's single BLE connection routed the two
+other brands' authenticated Mesh responses while its own `0xFEE9` service
+returned identity and state. This cross-brand result did not exercise the X100,
+but confirms that the shared-gateway design should be keyed by panel-owned mesh
+identity rather than Zhiyun model or brand alone.
+
+The first payload byte is now best described as an observed **member-routing
+selector**, not a proven model selector. In this capture the X100 was selector
+`00` and the X60RGB was selector `01`, but model and onboarding order covary.
+The allocation rule remains a `Hypothesis` until a second fixture of the same
+model, or a different add order, demonstrates whether selectors are assigned
+by node order, unicast address, product role, or another mesh record.
+
+## Multi-fixture state boundary
+
+The retained gateway link proves only that the phone can reach a Zhiyun mesh
+entry point. It does not by itself prove that every member is powered or
+reachable. The capture showed immediate device-originated replies to the X100
+initial-state reads and direct X60RGB identity/state traffic during onboarding.
+Rapid routed X60RGB slider writes did not each produce an immediately
+correlatable reply through the gateway, although periodic `0x1201` traffic and
+other notifications continued.
+
+Until a routed per-member status exchange is decoded, state should distinguish:
+
+- gateway BLE connected;
+- member recently replied or timed out;
+- power confirmed by a correlated member reply;
+- power optimistic after a write without matching readback; and
+- last-seen time per member.
+
+A controlled non-gateway power-loss test and a gateway-loss/fallback test are
+still required before documenting reliable member-online detection.
 
 ## Vendor frame
 
@@ -174,13 +245,19 @@ is unknown.
 
 ## Implemented boundary
 
-The multi-instance `Zhiyun Light` driver accepts a factory-reset X100
+The current multi-instance `Zhiyun Light` driver accepts a factory-reset X100
 advertising `0x1827`, provisions it with the shared panel-owned no-OOB PB-GATT
 engine, stores its Device Key and unicast allocation in the existing versioned
 mesh store, then rediscovers `0x1828`. It discovers `0xFEE9` directly,
 subscribes to `...9601`, queries power, brightness, and CCT, then writes only
 the three captured setters. It does not decode or originate Bluetooth Mesh
 Network PDUs for direct controls.
+
+That implementation still owns one direct client per saved Zhiyun fixture and
+selects `00` or `01` from the model profile. The multi-fixture capture shows
+that this is not the ZY Vega network model and cannot represent two same-model
+members safely. A future refactor must persist the routing selector per member
+and let all members of one Zhiyun mesh share one gateway session.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,

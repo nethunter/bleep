@@ -218,6 +218,11 @@ class FakeDriver : public studio::DeviceDriver {
       studio::DriverId id = studio::DriverId::SharkNanoII)
       : id_(id) {}
   studio::DriverId driverId() const override { return id_; }
+  studio::BleSlotKey bleSlotKey(
+      const studio::DeviceRecord& record) const override {
+    if (noBleSlot || id_ == studio::DriverId::HomeAssistant) return {};
+    return {id_, sharedBleGroup != 0 ? sharedBleGroup : record.instanceId};
+  }
   bool activate(const studio::DeviceRecord& record) override {
     for (studio::InstanceId id : activeInstances) {
       if (id == record.instanceId) {
@@ -315,6 +320,8 @@ class FakeDriver : public studio::DeviceDriver {
   bool ready = true;
   bool forceDisconnected = false;
   bool intentionalOffline = false;
+  bool noBleSlot = false;
+  uint32_t sharedBleGroup = 0;
   bool commandPending = false;
   bool recordingConfirmed = false;
   bool recording = false;
@@ -1560,6 +1567,7 @@ void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
     TEST_ASSERT_TRUE(manager.isRetained(id));
   }
   TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_ACTIVE_INSTANCES, manager.activeCount());
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_ACTIVE_LINKS, manager.bleSlotCount());
 
   // The oldest retained-idle session is evicted for a fifth device, while
   // multiple instances backed by the same driver remain active together.
@@ -1584,7 +1592,8 @@ void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
   TEST_ASSERT_TRUE(
       manager.acquire(sharkId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_TRUE(manager.isActive(tascamId));
-  TEST_ASSERT_FALSE(manager.isActive(haIds[0]));
+  TEST_ASSERT_FALSE(manager.isActive(canonIds[0]));
+  TEST_ASSERT_TRUE(manager.isActive(haIds[0]));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::CommandStatus::ConfirmationRequired),
       static_cast<int>(manager.disconnect(tascamId)));
@@ -1592,6 +1601,79 @@ void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
                         static_cast<int>(manager.disconnect(tascamId, true)));
   TEST_ASSERT_FALSE(manager.isActive(tascamId));
+}
+
+void test_manager_counts_shared_mesh_as_one_ble_slot() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver sharkDriver;
+  FakeDriver canonDriver(studio::DriverId::CanonBle);
+  FakeDriver tascamDriver(studio::DriverId::TascamX8);
+  FakeDriver meshDriver(studio::DriverId::AmaranLight);
+  meshDriver.sharedBleGroup = 1;
+  studio::DeviceDriver* drivers[] = {
+      &sharkDriver, &canonDriver, &tascamDriver, &meshDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 4);
+  TEST_ASSERT_TRUE(manager.begin());
+  const studio::InstanceId sharkId = manager.at(0)->instanceId;
+  studio::InstanceId canonId = studio::kInvalidInstanceId;
+  studio::InstanceId tascamId = studio::kInvalidInstanceId;
+  studio::InstanceId meshIds[2] = {};
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::CanonBle, "Camera", canonId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
+  for (studio::InstanceId& id : meshIds) {
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::RegistryStatus::Ok),
+        static_cast<int>(
+            manager.add(studio::DriverId::AmaranLight, "Mesh light", id)));
+  }
+
+  const studio::InstanceId initial[] = {
+      meshIds[0], sharkId, canonId, tascamId};
+  for (studio::InstanceId id : initial) {
+    TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+    manager.loop();
+    manager.release(id, studio::ConnectionOwner::Foreground);
+  }
+  TEST_ASSERT_EQUAL_UINT32(4, manager.activeCount());
+  TEST_ASSERT_EQUAL_UINT32(4, manager.bleSlotCount());
+
+  // A second logical member joins the already-counted mesh transport even
+  // while all four physical BLE slots are occupied.
+  TEST_ASSERT_TRUE(
+      manager.acquire(meshIds[1], studio::ConnectionOwner::Foreground));
+  manager.loop();
+  manager.release(meshIds[1], studio::ConnectionOwner::Foreground);
+  TEST_ASSERT_EQUAL_UINT32(5, manager.activeCount());
+  TEST_ASSERT_EQUAL_UINT32(4, manager.bleSlotCount());
+  TEST_ASSERT_TRUE(manager.isActive(meshIds[0]));
+  TEST_ASSERT_TRUE(manager.isActive(meshIds[1]));
+
+  // Make each single-instance group newer than the mesh group so the next
+  // distinct connection evicts the complete shared group.
+  const studio::InstanceId newer[] = {sharkId, canonId, tascamId};
+  for (studio::InstanceId id : newer) {
+    TEST_ASSERT_TRUE(manager.acquire(id, studio::ConnectionOwner::Foreground));
+    manager.release(id, studio::ConnectionOwner::Foreground);
+  }
+
+  studio::InstanceId secondCanon = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::CanonBle, "Camera 2",
+                                   secondCanon)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(secondCanon, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_FALSE(manager.isActive(meshIds[0]));
+  TEST_ASSERT_FALSE(manager.isActive(meshIds[1]));
+  TEST_ASSERT_EQUAL_UINT32(4, manager.bleSlotCount());
+  TEST_ASSERT_EQUAL_INT(2, meshDriver.deactivationCount);
 }
 
 void test_manager_cancels_unready_release_and_reuses_ready_session() {
@@ -2308,6 +2390,26 @@ void test_amaran_crypto_and_network_vectors() {
       0xd9,0xfc,0xce,0xd7,0xc1,0xe3,0xba};
   TEST_ASSERT_EQUAL_UINT32(sizeof(expectedNetwork), network.length);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedNetwork, network.bytes, network.length);
+
+  const uint8_t mcOff[] = {0x26,0xe8,0,0,0,0,0x20,0xa4,0x28,0xfa,0x02};
+  TEST_ASSERT_TRUE(amaran_light::encodeAccessMessage(
+      networkKey, appKey, mcOff, sizeof(mcOff), 0x1234, 2, 1, 0, network));
+  uint8_t proxy[70] = {};
+  size_t proxyLength = 0;
+  TEST_ASSERT_TRUE(amaran_light::wrapProxyPdu(
+      network, proxy, sizeof(proxy), proxyLength));
+  amaran_light::DecodedAccessMessage decoded;
+  TEST_ASSERT_TRUE(amaran_light::decodeProxyAccessMessage(
+      networkKey, appKey, proxy, proxyLength, 0, decoded));
+  TEST_ASSERT_EQUAL_UINT32(0x1234, decoded.sequence);
+  TEST_ASSERT_EQUAL_UINT16(2, decoded.source);
+  TEST_ASSERT_EQUAL_UINT16(1, decoded.destination);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(mcOff), decoded.accessLength);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(mcOff, decoded.access, decoded.accessLength);
+
+  proxy[proxyLength - 1] ^= 1;
+  TEST_ASSERT_FALSE(amaran_light::decodeProxyAccessMessage(
+      networkKey, appKey, proxy, proxyLength, 0, decoded));
 }
 
 void test_amaran_access_payloads_and_validation() {
@@ -2315,6 +2417,26 @@ void test_amaran_access_payloads_and_validation() {
   TEST_ASSERT_TRUE(amaran_light::buildPowerAccess(true, payload));
   const uint8_t powerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOn, payload.bytes, sizeof(powerOn));
+  TEST_ASSERT_TRUE(amaran_light::buildPowerStatusGetAccess(payload));
+  const uint8_t powerGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(powerGet, payload.bytes, sizeof(powerGet));
+  const uint8_t mcOff[] = {0x26,0xe8,0,0,0,0,0x20,0xa4,0x28,0xfa,0x02};
+  const uint8_t aceOn[] = {0x26,0xec,1,0,0,0,0x80,0x56,0x1a,0xfa,0x01};
+  amaran_light::VendorPowerStatus status;
+  TEST_ASSERT_TRUE(
+      amaran_light::parseVendorPowerStatus(mcOff, sizeof(mcOff), status));
+  TEST_ASSERT_FALSE(status.on);
+  TEST_ASSERT_EQUAL_UINT8(250, status.storedIntensity);
+  TEST_ASSERT_EQUAL_UINT8(2, status.profile);
+  TEST_ASSERT_TRUE(
+      amaran_light::parseVendorPowerStatus(aceOn, sizeof(aceOn), status));
+  TEST_ASSERT_TRUE(status.on);
+  TEST_ASSERT_EQUAL_UINT8(1, status.profile);
+  uint8_t corruptStatus[sizeof(aceOn)];
+  std::memcpy(corruptStatus, aceOn, sizeof(aceOn));
+  corruptStatus[6] ^= 1;
+  TEST_ASSERT_FALSE(amaran_light::parseVendorPowerStatus(
+      corruptStatus, sizeof(corruptStatus), status));
   TEST_ASSERT_TRUE(amaran_light::buildCctAccess(5000, 0, 89, payload));
   const uint8_t cct[] = {0x26,0x80,0,0,0,0,0x40,0x41,0x9f,0xde,0x82};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(cct, payload.bytes, sizeof(cct));
@@ -2576,6 +2698,7 @@ int main(int, char**) {
   RUN_TEST(test_admin_mutations_roll_back_when_persistence_fails);
   RUN_TEST(test_manager_holds_concurrent_active_links);
   RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
+  RUN_TEST(test_manager_counts_shared_mesh_as_one_ble_slot);
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
   RUN_TEST(test_scene_store_round_trip_and_corruption);

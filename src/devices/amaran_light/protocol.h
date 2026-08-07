@@ -25,12 +25,33 @@ struct NetworkPduBatch {
   uint8_t count = 0;
 };
 
+struct VendorPowerStatus {
+  bool on = false;
+  uint8_t storedIntensity = 0;
+  uint8_t profile = 0;
+};
+
+struct DecodedAccessMessage {
+  uint32_t sequence = 0;
+  uint16_t source = 0;
+  uint16_t destination = 0;
+  uint8_t access[15] = {};
+  size_t accessLength = 0;
+};
+
 bool buildPowerAccess(bool on, AccessPayload& output);
+bool buildPowerStatusGetAccess(AccessPayload& output);
 bool buildCctAccess(uint16_t kelvin, int16_t tintPermille,
                     uint8_t brightness, AccessPayload& output);
 bool buildRgbAccess(uint32_t rgb, uint8_t brightness,
                     AccessPayload& output);
 bool buildNodeResetAccess(AccessPayload& output);
+bool parseVendorPowerStatus(const uint8_t* access, size_t length,
+                            VendorPowerStatus& output);
+bool decodeProxyAccessMessage(const uint8_t networkKey[16],
+                              const uint8_t applicationKey[16],
+                              const uint8_t* proxyPdu, size_t proxyLength,
+                              uint32_t ivIndex, DecodedAccessMessage& output);
 
 bool encodeAccessMessage(const uint8_t networkKey[16],
                          const uint8_t applicationKey[16],

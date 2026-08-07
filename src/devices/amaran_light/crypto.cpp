@@ -223,4 +223,68 @@ bool aesCcmEncrypt(const uint8_t key[16], const uint8_t* nonce,
   return true;
 }
 
+bool aesCcmDecrypt(const uint8_t key[16], const uint8_t* nonce,
+                   size_t nonceLength, const uint8_t* ciphertext,
+                   size_t ciphertextLength, const uint8_t* tag,
+                   size_t tagLength, uint8_t* plaintext) {
+  const size_t lengthBytes = 15 - nonceLength;
+  if (key == nullptr || nonce == nullptr || ciphertext == nullptr ||
+      tag == nullptr || plaintext == nullptr || lengthBytes < 2 ||
+      lengthBytes > 8 || tagLength < 4 || tagLength > 16 ||
+      (tagLength & 1) != 0 || ciphertextLength > 0xffff) {
+    return false;
+  }
+
+  uint8_t counter[16] = {};
+  counter[0] = static_cast<uint8_t>(lengthBytes - 1);
+  std::memcpy(counter + 1, nonce, nonceLength);
+  uint8_t stream[16];
+  for (size_t offset = 0, index = 1; offset < ciphertextLength;
+       offset += 16, ++index) {
+    for (size_t i = 0; i < lengthBytes; ++i) {
+      counter[15 - i] = static_cast<uint8_t>(index >> (8 * i));
+    }
+    aes128EncryptBlock(key, counter, stream);
+    const size_t count = ciphertextLength - offset < 16
+                             ? ciphertextLength - offset
+                             : 16;
+    for (size_t i = 0; i < count; ++i) {
+      plaintext[offset + i] =
+          static_cast<uint8_t>(ciphertext[offset + i] ^ stream[i]);
+    }
+  }
+
+  uint8_t mac[16] = {};
+  uint8_t block[16] = {};
+  block[0] = static_cast<uint8_t>(((tagLength - 2) / 2) << 3 |
+                                  (lengthBytes - 1));
+  std::memcpy(block + 1, nonce, nonceLength);
+  for (size_t i = 0; i < lengthBytes; ++i) {
+    block[15 - i] = static_cast<uint8_t>(ciphertextLength >> (8 * i));
+  }
+  cbcMacBlock(key, mac, block);
+  for (size_t offset = 0; offset < ciphertextLength; offset += 16) {
+    std::memset(block, 0, sizeof(block));
+    const size_t count = ciphertextLength - offset < 16
+                             ? ciphertextLength - offset
+                             : 16;
+    std::memcpy(block, plaintext + offset, count);
+    cbcMacBlock(key, mac, block);
+  }
+
+  std::memset(counter, 0, sizeof(counter));
+  counter[0] = static_cast<uint8_t>(lengthBytes - 1);
+  std::memcpy(counter + 1, nonce, nonceLength);
+  aes128EncryptBlock(key, counter, stream);
+  uint8_t difference = 0;
+  for (size_t i = 0; i < tagLength; ++i) {
+    difference |= static_cast<uint8_t>(tag[i] ^ mac[i] ^ stream[i]);
+  }
+  if (difference != 0) {
+    std::memset(plaintext, 0, ciphertextLength);
+    return false;
+  }
+  return true;
+}
+
 }  // namespace amaran_light
