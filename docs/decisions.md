@@ -565,6 +565,31 @@ the replacement.
   the CrowPanel. Optical output must be observed separately from protocol
   readback.
 
+## ADR-029: One multi-instance Zhiyun Light driver selects captured model profiles
+
+- Status: Experimental; extends ADR-028 without changing persisted driver ID 9.
+- Decision: present one discoverable `Zhiyun Light` catalog entry. Repeating
+  Add Device may create up to four X100 or X60RGB instances. Each session
+  accepts only product-qualified `pl105`/`PL105_` or `plx104`/`X104_`
+  advertising, remembers the detected profile through provisioning, and
+  validates the same marker in the direct identity response. Existing X100
+  records remain compatible because the numeric driver ID is unchanged.
+- Reuse boundary: both profiles share PB-GATT, mesh ownership and persistence,
+  post-provision discovery, retained multi-link lifecycle, `0xFEE9` transport,
+  frame scanner, CRC, initialization state machine, power, brightness, and CCT
+  control. A profile supplies the state selector byte and identity markers.
+- X60RGB extension: selector `01 80` adds captured float32 hue `0x1004` and
+  saturation `0x1005`. RGB commands convert packed RGB to HSV, then require
+  correlated hue, saturation, and brightness write replies before success.
+  Effects and current-mode readback are not inferred.
+- Capability caveat: the compile-time catalog advertises the union of supported
+  Zhiyun capabilities so RGB authoring is available for X60RGB. An RGB command
+  sent to an identified X100 fails rather than becoming optimistic. A future
+  per-instance capability model may make that distinction earlier in authoring.
+- Gate: add an already provisioned and a reset X60RGB from the panel; verify
+  CCT, RGB, brightness, power, reconnect, simultaneous X100/X60 retention,
+  scenes, timeout recovery, and observed optical output.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

@@ -13,4 +13,8 @@ void tick();
 void handleShortPress();
 void handleLongPress();
 
+#ifdef UI_SIMULATOR
+void simShowRgb();
+#endif
+
 }  // namespace zhiyun_x100_ui

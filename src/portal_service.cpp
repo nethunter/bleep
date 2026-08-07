@@ -211,7 +211,7 @@ const char* driverName(studio::DriverId id) {
     case studio::DriverId::AmaranLight: return "Amaran Light";
     case studio::DriverId::AmaranPano120c: return "Amaran Pano 120c";
     case studio::DriverId::AmaranAce25c: return "Amaran Ace 25c";
-    case studio::DriverId::ZhiyunX100: return "ZHIYUN MOLUS X100";
+    case studio::DriverId::ZhiyunLight: return "ZHIYUN Light";
     default: return "Unavailable driver";
   }
 }

@@ -27,9 +27,11 @@ class X100Client : public studio::ble::BleCentralDelegate,
   bool protocolReady() const;
   bool setPower(bool on);
   bool setCct(uint16_t kelvin, uint8_t brightness);
+  bool setRgb(uint32_t rgb, uint8_t brightness);
   bool refresh();
   void startScan();
   void forgetDevice();
+  void ignorePeerAddress(const char* address);
   bool consumePairingUpdate(char* address, size_t addressCapacity,
                             uint8_t& addressType, char* name,
                             size_t nameCapacity, bool& paired);
@@ -40,10 +42,19 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void onBleEvent(studio::ble::LinkHandle link,
                   const studio::ble::Event& event) override;
   void onNotifyBytes(const uint8_t* data, size_t length);
+  bool ownsNotifyCharacteristic(
+      const NimBLERemoteCharacteristic* characteristic) const;
   bool sendProvisioningPdu(const uint8_t* pdu, size_t length) override;
 
  private:
-  enum class Operation : uint8_t { None, Initialize, Power, Cct, Refresh };
+  enum class Operation : uint8_t {
+    None,
+    Initialize,
+    Power,
+    Cct,
+    Rgb,
+    Refresh
+  };
 
   void begin();
   void beginScan();
@@ -60,15 +71,20 @@ class X100Client : public studio::ble::BleCentralDelegate,
                  size_t payloadLength = 0);
   bool sendInitializationStep();
   bool sendVerificationStep();
+  bool sendRgbStep();
   bool retryCctVerification();
   void handleFrame(const ParsedFrame& frame);
   void finishInitialization();
   void finishCommand(bool success, const char* error = nullptr);
   uint16_t nextSequence();
+  uint8_t selector() const { return selectorFor(state_.model); }
+  const char* identityMarker() const;
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* writeCharacteristic_ = nullptr;
+  NimBLERemoteCharacteristic* notifyCharacteristic_ = nullptr;
   NimBLERemoteCharacteristic* provisioningIn_ = nullptr;
+  NimBLERemoteCharacteristic* provisioningOut_ = nullptr;
   FrameScanner scanner_;
   X100State state_;
   void* notifyStream_ = nullptr;
@@ -84,6 +100,8 @@ class X100Client : public studio::ble::BleCentralDelegate,
   char targetAddress_[20] = "";
   uint8_t targetAddressType_ = 0;
   char targetName_[40] = "";
+  char ignoredAddresses_[CONFIG_BLE_MAX_SKIP_ADDRESSES][20] = {};
+  uint8_t ignoredAddressCount_ = 0;
   uint16_t sequence_ = 2;
   uint16_t expectedSequence_ = 0;
   uint16_t expectedCommand_ = 0;
@@ -94,6 +112,9 @@ class X100Client : public studio::ble::BleCentralDelegate,
   bool desiredPower_ = false;
   float desiredBrightness_ = 0.0f;
   uint16_t desiredKelvin_ = 5600;
+  uint32_t desiredRgb_ = 0xffffff;
+  uint16_t desiredHue_ = 0;
+  uint8_t desiredSaturation_ = 0;
   uint32_t setupAtMs_ = 0;
   uint32_t verifyAtMs_ = 0;
   uint32_t responseDeadlineMs_ = 0;

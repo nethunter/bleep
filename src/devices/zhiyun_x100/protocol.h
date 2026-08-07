@@ -6,6 +6,16 @@
 
 namespace zhiyun_x100 {
 
+enum class MolusModel : uint8_t { Unknown, X100, X60Rgb };
+
+constexpr uint8_t selectorFor(MolusModel model) {
+  return model == MolusModel::X60Rgb ? 1 : 0;
+}
+
+constexpr bool supportsRgb(MolusModel model) {
+  return model == MolusModel::X60Rgb;
+}
+
 constexpr const char* kProxyServiceUuid =
     "00001828-0000-1000-8000-00805f9b34fb";
 constexpr const char* kProxyAdvertisedService = "1828";
@@ -22,6 +32,8 @@ constexpr uint16_t kCommandStatus = 0x2001;
 constexpr uint16_t kCommandMode = 0x0006;
 constexpr uint16_t kCommandBrightness = 0x1001;
 constexpr uint16_t kCommandCct = 0x1002;
+constexpr uint16_t kCommandHue = 0x1004;
+constexpr uint16_t kCommandSaturation = 0x1005;
 constexpr uint16_t kCommandPower = 0x1008;
 constexpr uint16_t kMinKelvin = 2700;
 constexpr uint16_t kMaxKelvin = 6500;
@@ -44,15 +56,31 @@ struct ParsedFrame {
 uint16_t crc16Xmodem(const uint8_t* data, size_t length);
 FrameBytes buildRequest(uint16_t sequence, uint16_t command,
                         const uint8_t* payload, size_t payloadLength);
-FrameBytes buildReadRequest(uint16_t sequence, uint16_t command);
-FrameBytes buildPowerWrite(uint16_t sequence, bool on);
-FrameBytes buildBrightnessWrite(uint16_t sequence, float percent);
-FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin);
+FrameBytes buildReadRequest(uint16_t sequence, uint16_t command,
+                            uint8_t selector = 0);
+FrameBytes buildPowerWrite(uint16_t sequence, bool on,
+                           uint8_t selector = 0);
+FrameBytes buildBrightnessWrite(uint16_t sequence, float percent,
+                                uint8_t selector = 0);
+FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin,
+                         uint8_t selector = 0);
+FrameBytes buildHueWrite(uint16_t sequence, float degrees,
+                         uint8_t selector = 1);
+FrameBytes buildSaturationWrite(uint16_t sequence, float percent,
+                                uint8_t selector = 1);
 uint16_t normalizeCct(uint16_t kelvin);
 
-bool parseBrightness(const ParsedFrame& frame, float& percent);
-bool parseCct(const ParsedFrame& frame, uint16_t& kelvin);
-bool parsePower(const ParsedFrame& frame, bool& on);
+bool parseBrightness(const ParsedFrame& frame, float& percent,
+                     uint8_t selector = 0, bool writeReply = false);
+bool parseCct(const ParsedFrame& frame, uint16_t& kelvin,
+              uint8_t selector = 0, bool writeReply = false);
+bool parseHue(const ParsedFrame& frame, float& degrees,
+              uint8_t selector = 1, bool writeReply = true);
+bool parseSaturation(const ParsedFrame& frame, float& percent,
+                     uint8_t selector = 1, bool writeReply = true);
+bool parsePower(const ParsedFrame& frame, bool& on, uint8_t selector = 0,
+                bool writeReply = false);
+bool identityContains(const ParsedFrame& frame, const char* marker);
 bool identityIsX100(const ParsedFrame& frame);
 
 class FrameScanner {

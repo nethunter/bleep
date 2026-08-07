@@ -17,8 +17,9 @@ uint16_t get16(const uint8_t* source) {
 }
 
 FrameBytes buildStateWrite(uint16_t sequence, uint16_t command,
-                           const uint8_t* value, size_t valueLength) {
-  uint8_t payload[7] = {0x00, 0x80, 0x01};
+                           const uint8_t* value, size_t valueLength,
+                           uint8_t selector) {
+  uint8_t payload[7] = {selector, 0x80, 0x01};
   if (value == nullptr || valueLength > sizeof(payload) - 3) {
     return {};
   }
@@ -27,11 +28,12 @@ FrameBytes buildStateWrite(uint16_t sequence, uint16_t command,
 }
 
 bool statePayload(const ParsedFrame& frame, uint16_t command,
-                  size_t valueLength, const uint8_t*& value) {
+                  size_t valueLength, uint8_t selector, bool writeReply,
+                  const uint8_t*& value) {
   if (!frame.response || frame.command != command ||
       frame.payloadLength != valueLength + 3 || frame.payload == nullptr ||
-      frame.payload[0] != 0x00 || frame.payload[1] != 0x80 ||
-      frame.payload[2] != 0x00) {
+      frame.payload[0] != selector || frame.payload[1] != 0x80 ||
+      frame.payload[2] != (writeReply ? 0x01 : 0x00)) {
     return false;
   }
   value = frame.payload + 3;
@@ -77,26 +79,30 @@ FrameBytes buildRequest(uint16_t sequence, uint16_t command,
   return frame;
 }
 
-FrameBytes buildReadRequest(uint16_t sequence, uint16_t command) {
-  uint8_t payload[7] = {0x00, 0x80, 0x00};
+FrameBytes buildReadRequest(uint16_t sequence, uint16_t command,
+                            uint8_t selector) {
+  uint8_t payload[7] = {selector, 0x80, 0x00};
   size_t valueLength = 0;
-  if (command == kCommandBrightness) valueLength = 4;
+  if (command == kCommandBrightness || command == kCommandHue ||
+      command == kCommandSaturation) valueLength = 4;
   else if (command == kCommandCct) valueLength = 2;
   else if (command == kCommandPower) valueLength = 1;
   else return {};
   return buildRequest(sequence, command, payload, valueLength + 3);
 }
 
-FrameBytes buildPowerWrite(uint16_t sequence, bool on) {
+FrameBytes buildPowerWrite(uint16_t sequence, bool on, uint8_t selector) {
   const uint8_t value = on ? 1 : 0;
-  return buildStateWrite(sequence, kCommandPower, &value, 1);
+  return buildStateWrite(sequence, kCommandPower, &value, 1, selector);
 }
 
-FrameBytes buildBrightnessWrite(uint16_t sequence, float percent) {
+FrameBytes buildBrightnessWrite(uint16_t sequence, float percent,
+                                uint8_t selector) {
   if (!std::isfinite(percent) || percent < 0.0f || percent > 100.0f) return {};
   uint8_t value[4];
   std::memcpy(value, &percent, sizeof(value));
-  return buildStateWrite(sequence, kCommandBrightness, value, sizeof(value));
+  return buildStateWrite(sequence, kCommandBrightness, value, sizeof(value),
+                         selector);
 }
 
 uint16_t normalizeCct(uint16_t kelvin) {
@@ -106,41 +112,84 @@ uint16_t normalizeCct(uint16_t kelvin) {
       ((kelvin + kCctStepKelvin / 2) / kCctStepKelvin) * kCctStepKelvin);
 }
 
-FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin) {
+FrameBytes buildCctWrite(uint16_t sequence, uint16_t kelvin,
+                         uint8_t selector) {
   if (kelvin < kMinKelvin || kelvin > kMaxKelvin) return {};
   uint8_t value[2];
   put16(value, kelvin);
-  return buildStateWrite(sequence, kCommandCct, value, sizeof(value));
+  return buildStateWrite(sequence, kCommandCct, value, sizeof(value), selector);
 }
 
-bool parseBrightness(const ParsedFrame& frame, float& percent) {
-  const uint8_t* value = nullptr;
-  if (!statePayload(frame, kCommandBrightness, 4, value)) return false;
-  std::memcpy(&percent, value, sizeof(percent));
-  return std::isfinite(percent) && percent >= 0.0f && percent <= 100.0f;
+FrameBytes buildHueWrite(uint16_t sequence, float degrees, uint8_t selector) {
+  if (!std::isfinite(degrees) || degrees < 0.0f || degrees > 360.0f) return {};
+  uint8_t value[4];
+  std::memcpy(value, &degrees, sizeof(value));
+  return buildStateWrite(sequence, kCommandHue, value, sizeof(value), selector);
 }
 
-bool parseCct(const ParsedFrame& frame, uint16_t& kelvin) {
+FrameBytes buildSaturationWrite(uint16_t sequence, float percent,
+                                uint8_t selector) {
+  if (!std::isfinite(percent) || percent < 0.0f || percent > 100.0f) return {};
+  uint8_t value[4];
+  std::memcpy(value, &percent, sizeof(value));
+  return buildStateWrite(sequence, kCommandSaturation, value, sizeof(value),
+                         selector);
+}
+
+bool parseFloatState(const ParsedFrame& frame, uint16_t command,
+                     float minimum, float maximum, uint8_t selector,
+                     bool writeReply, float& valueOut) {
   const uint8_t* value = nullptr;
-  if (!statePayload(frame, kCommandCct, 2, value)) return false;
+  if (!statePayload(frame, command, 4, selector, writeReply, value))
+    return false;
+  std::memcpy(&valueOut, value, sizeof(valueOut));
+  return std::isfinite(valueOut) && valueOut >= minimum && valueOut <= maximum;
+}
+
+bool parseBrightness(const ParsedFrame& frame, float& percent,
+                     uint8_t selector, bool writeReply) {
+  return parseFloatState(frame, kCommandBrightness, 0.0f, 100.0f, selector,
+                         writeReply, percent);
+}
+
+bool parseCct(const ParsedFrame& frame, uint16_t& kelvin, uint8_t selector,
+              bool writeReply) {
+  const uint8_t* value = nullptr;
+  if (!statePayload(frame, kCommandCct, 2, selector, writeReply, value))
+    return false;
   kelvin = get16(value);
   return kelvin >= kMinKelvin && kelvin <= kMaxKelvin;
 }
 
-bool parsePower(const ParsedFrame& frame, bool& on) {
+bool parseHue(const ParsedFrame& frame, float& degrees, uint8_t selector,
+              bool writeReply) {
+  return parseFloatState(frame, kCommandHue, 0.0f, 360.0f, selector,
+                         writeReply, degrees);
+}
+
+bool parseSaturation(const ParsedFrame& frame, float& percent,
+                     uint8_t selector, bool writeReply) {
+  return parseFloatState(frame, kCommandSaturation, 0.0f, 100.0f, selector,
+                         writeReply, percent);
+}
+
+bool parsePower(const ParsedFrame& frame, bool& on, uint8_t selector,
+                bool writeReply) {
   const uint8_t* value = nullptr;
-  if (!statePayload(frame, kCommandPower, 1, value) || value[0] > 1) return false;
+  if (!statePayload(frame, kCommandPower, 1, selector, writeReply, value) ||
+      value[0] > 1) return false;
   on = value[0] != 0;
   return true;
 }
 
-bool identityIsX100(const ParsedFrame& frame) {
+bool identityContains(const ParsedFrame& frame, const char* marker) {
   if (!frame.response || frame.command != kCommandIdentity ||
-      frame.payload == nullptr || frame.payloadLength < 5) return false;
-  constexpr char marker[] = "pl105";
-  for (size_t i = 0; i + sizeof(marker) - 1 <= frame.payloadLength; ++i) {
+      frame.payload == nullptr || marker == nullptr || marker[0] == '\0')
+    return false;
+  const size_t markerLength = std::strlen(marker);
+  for (size_t i = 0; i + markerLength <= frame.payloadLength; ++i) {
     bool match = true;
-    for (size_t j = 0; j < sizeof(marker) - 1; ++j) {
+    for (size_t j = 0; j < markerLength; ++j) {
       uint8_t value = frame.payload[i + j];
       if (value >= 'A' && value <= 'Z') value = static_cast<uint8_t>(value + 32);
       if (value != static_cast<uint8_t>(marker[j])) {
@@ -151,6 +200,10 @@ bool identityIsX100(const ParsedFrame& frame) {
     if (match) return true;
   }
   return false;
+}
+
+bool identityIsX100(const ParsedFrame& frame) {
+  return identityContains(frame, "pl105");
 }
 
 void FrameScanner::feed(const uint8_t* data, size_t length,

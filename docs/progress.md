@@ -21,6 +21,10 @@ short, factual, and reproducible.
   aliases for persisted records. Crypto, persistence, parameterized
   scenes, and UI are implemented; real-fixture configuration status and safe
   reset gates remain open.
+- One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
+  and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
+  direct CCT/power control; X60RGB adds captured hue/saturation control. X100
+  is live-verified; X60RGB panel-originated verification remains open.
 - Last updated: 2026-08-07.
 
 ## Completed planning
@@ -44,6 +48,14 @@ short, factual, and reproducible.
   server, then releases them completely on exit.
 
 ## Next task
+
+Exercise the newly flashed X60RGB profile: add the already provisioned fixture
+through **Add device -> Light -> ZHIYUN -> Zhiyun Light**, verify initial state,
+power, several CCT/brightness boundaries, RGB hue/saturation/brightness,
+retained navigation, reconnect, then add/retain the X100 concurrently. Record
+physical output separately from protocol confirmation.
+
+After that, continue the existing production gates:
 
 Exercise ADR-024 on target fixtures before promoting native Amaran support:
 
@@ -2177,6 +2189,68 @@ Record values with the exact build environment and commit/worktree state.
   +3 dBm image flashed successfully to `/dev/cu.usbserial-211240`, verified all
   written-region hashes, and hard-reset. RF range/current behavior at +3 dBm
   was not measured during this build-and-flash check.
+
+### 2026-08-07: Generic Zhiyun Light driver and MOLUS X60RGB profile
+
+- Generated an Android bug report over ADB and analyzed its rotated Bluetooth
+  HCI snoop log outside the repository. The relevant sanitized evidence has
+  SHA-256 `052ee361c6223db63951045c6318fb2a3a011176472cee76116e4d2f830dec12`.
+  It identifies `X104_`/`plx104`, PB-GATT `0x1827`, post-provision Mesh Proxy
+  `0x1828`, and the same direct `0xFEE9` transport used by X100.
+- The X60RGB capture retains the X100 `24 3c` frame, CRC-16/XMODEM, and command
+  IDs, with selector `01 80` instead of `00 80`. Added golden vectors for CCT,
+  power, float32 hue, and float32 saturation, plus captured initialization
+  order and firmware `1.7.0`. Effects and mode readback remain unimplemented.
+- Replaced the catalog-visible X100-only entry with one `Zhiyun Light` driver
+  while retaining numeric Driver ID 9 compatibility. Repeated Add light actions
+  create up to four independent X100/X60RGB instances, infer their profile from
+  product-qualified advertising and identity, exclude already saved peer
+  addresses during subsequent scans, and automatically name committed records.
+- Shared PB-GATT, mesh persistence, retained connections, frame parsing,
+  power, CCT, and brightness paths remain common. X60RGB adds a debounced,
+  optimistic-feeling RGB UI, while command completion waits for correlated
+  device replies for hue, saturation, and brightness. X100 rejects RGB at
+  runtime; the current catalog capability union is documented in ADR-029.
+- Native tests passed 49/49. `ui_sim` built and completed its full capture run;
+  `20g_zhiyun_x100_confirmed.png` and `20h_zhiyun_x60rgb_confirmed.png` show the
+  two profiles, ending with 11,472 bytes free, 20,788 bytes peak used, and 1%
+  fragmentation.
+- All eight final-source firmware profiles built successfully. Flash/RAM bytes
+  were: `crowpanel_128` 1,809,690 / 168,708;
+  `crowpanel_128_roboto` 1,779,234 / 168,708; `canon_ble` 1,800,742 / 162,580;
+  `canon_trigger` 1,797,188 / 161,588; `tascam_x8` 1,798,596 / 161,492;
+  `home_assistant` 1,793,834 / 161,108; `amaran_light` 1,758,992 / 155,884;
+  and `zhiyun_x100` 1,748,538 / 160,212. One first-pass Home Assistant link
+  process crashed with host signal 11; the immediate individual retry and the
+  final-source rerun both succeeded.
+- The final combined image flashed to `/dev/cu.usbserial-211240`, every written
+  region's hash verified, and the board hard-reset. X60RGB add/control from the
+  panel and simultaneous X100/X60RGB retention remain operator-assisted
+  hardware gates; build and capture evidence do not claim physical output.
+
+### 2026-08-07: X60RGB swatch semantics and RGB write ordering
+
+- Matched the operator-recorded swatch order to the chronological HCI writes:
+  red 0 degrees, blue 240, magenta 300, cyan 180, orange 30, and green 120,
+  each at 100% saturation, followed by a return to red. The later independent
+  ramps confirm `0x1005` saturation and `0x1001` brightness before `0x1008`
+  power off/on. This upgrades the hue/saturation interpretation from structural
+  inference to operator-annotated capture evidence.
+- Changed the combined X60RGB transaction from the provisional
+  brightness/hue/saturation sequence to hue, saturation, then brightness. Each
+  step still requires its same-sequence, same-command device reply; state is
+  published as the requested RGB look only after the final brightness reply.
+- Added all six captured swatches to the host RGB-to-HSV test. Native tests
+  passed 49/49. All eight firmware profiles built successfully: `crowpanel_128`
+  1,809,716 / 168,708 bytes flash/RAM; `crowpanel_128_roboto` 1,779,260 /
+  168,708; `canon_ble` 1,800,768 / 162,580; `canon_trigger` 1,797,214 /
+  161,588; `tascam_x8` 1,798,622 / 161,492; `home_assistant` 1,793,860 /
+  161,108; `amaran_light` 1,759,018 / 155,884; and `zhiyun_x100` 1,748,564 /
+  160,212.
+- The updated combined image flashed successfully to
+  `/dev/cu.usbserial-211240`, every written-region hash verified, and the board
+  hard-reset. Cycling the annotated swatches from Bleep remains the physical
+  output gate.
 
 ### 2026-08-07: BLE transmit-power default increased to +6 dBm
 

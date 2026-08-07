@@ -50,7 +50,7 @@ DeviceManager& devices() {
   static AmaranLightDriver amaranAce25c(DriverId::AmaranAce25c);
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
-  static ZhiyunX100Driver zhiyunX100Driver;
+  static ZhiyunLightDriver zhiyunLightDriver;
 #endif
   static DeviceDriver* drivers[] = {
 #if CONFIG_DRIVER_SHARK_NANO_II
@@ -74,7 +74,7 @@ DeviceManager& devices() {
       &amaranAce25c,
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
-      &zhiyunX100Driver,
+      &zhiyunLightDriver,
 #endif
       nullptr,
   };

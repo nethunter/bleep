@@ -390,7 +390,7 @@ class SimTascamDriver : public DeviceDriver {
 
 class SimZhiyunX100Driver : public DeviceDriver {
  public:
-  DriverId driverId() const override { return DriverId::ZhiyunX100; }
+  DriverId driverId() const override { return DriverId::ZhiyunLight; }
   bool activate(const DeviceRecord& record) override {
     activeInstance_ = record.instanceId;
     state_.link = zhiyun_x100::X100State::Link::Connected;
@@ -445,6 +445,7 @@ class SimZhiyunX100Driver : public DeviceDriver {
     return instanceId == activeInstance_ ? &state_ : nullptr;
   }
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
+  zhiyun_x100::X100State& state() { return state_; }
 
  private:
   InstanceId activeInstance_ = kInvalidInstanceId;
@@ -483,6 +484,9 @@ canon_trigger::CanonTriggerState& simCanonTriggerState() {
 }
 tascam_x8::TascamX8State& simTascamState() {
   return gTascamDriver.state();
+}
+zhiyun_x100::X100State& simZhiyunState() {
+  return gZhiyunX100Driver.state();
 }
 
 void simSetConnectedDemoState() {

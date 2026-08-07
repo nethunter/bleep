@@ -815,20 +815,21 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::DriverId::AmaranPano120c)->discoverable);
   TEST_ASSERT_FALSE(studio::DriverCatalog::find(
       studio::DriverId::AmaranAce25c)->discoverable);
-  const studio::DriverDescriptor* x100 =
-      studio::DriverCatalog::find(studio::DriverId::ZhiyunX100);
-  TEST_ASSERT_NOT_NULL(x100);
-  TEST_ASSERT_EQUAL_STRING("zhiyun.molus_x100", x100->stableId);
-  TEST_ASSERT_EQUAL_UINT8(1, x100->maxInstances);
+  const studio::DriverDescriptor* zhiyun =
+      studio::DriverCatalog::find(studio::DriverId::ZhiyunLight);
+  TEST_ASSERT_NOT_NULL(zhiyun);
+  TEST_ASSERT_EQUAL_STRING("zhiyun.light", zhiyun->stableId);
+  TEST_ASSERT_EQUAL_STRING("Zhiyun Light", zhiyun->model);
+  TEST_ASSERT_EQUAL_UINT8(4, zhiyun->maxInstances);
   TEST_ASSERT_BITS_HIGH(
       studio::capabilityBit(studio::Capability::TurnOn) |
           studio::capabilityBit(studio::Capability::TurnOff) |
-          studio::capabilityBit(studio::Capability::SetLightCct),
-      x100->capabilities);
+          studio::capabilityBit(studio::Capability::SetLightCct) |
+          studio::capabilityBit(studio::Capability::SetLightRgb),
+      zhiyun->capabilities);
   TEST_ASSERT_BITS_LOW(
-      studio::capabilityBit(studio::Capability::SetLightRgb) |
-          studio::capabilityBit(studio::Capability::SetLightTint),
-      x100->capabilities);
+      studio::capabilityBit(studio::Capability::SetLightTint),
+      zhiyun->capabilities);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
 }
 
@@ -2426,6 +2427,53 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
                                 sizeof(expectedCct));
   TEST_ASSERT_EQUAL_UINT32(0,
       zhiyun_x100::buildCctWrite(1, 2699).length);
+
+  const zhiyun_x100::FrameBytes x60Cct =
+      zhiyun_x100::buildCctWrite(0x000b, 5100, 1);
+  const uint8_t expectedX60Cct[] = {
+      0x24,0x3c,0x0b,0x00,0x00,0x01,0x0b,0x00,0x02,0x10,
+      0x01,0x80,0x01,0xec,0x13,0x4d,0x26};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedX60Cct), x60Cct.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedX60Cct, x60Cct.bytes,
+                                sizeof(expectedX60Cct));
+  const zhiyun_x100::FrameBytes x60Hue =
+      zhiyun_x100::buildHueWrite(0x013b, 240.0f);
+  const uint8_t expectedX60Hue[] = {
+      0x24,0x3c,0x0d,0x00,0x00,0x01,0x3b,0x01,0x04,0x10,
+      0x01,0x80,0x01,0x00,0x00,0x70,0x43,0xb6,0x5e};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedX60Hue), x60Hue.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedX60Hue, x60Hue.bytes,
+                                sizeof(expectedX60Hue));
+  const uint8_t x60SaturationReply[] = {
+      0x24,0x3c,0x0d,0x00,0x01,0x00,0x39,0x01,0x05,0x10,
+      0x01,0x80,0x01,0x00,0x00,0xc8,0x42,0xb5,0xd4};
+  bool parsedSaturation = false;
+  scanner.feed(x60SaturationReply, sizeof(x60SaturationReply),
+               [&](const zhiyun_x100::ParsedFrame& frame) {
+                 float saturation = -1.0f;
+                 parsedSaturation = zhiyun_x100::parseSaturation(
+                     frame, saturation, 1, true);
+                 TEST_ASSERT_FLOAT_WITHIN(0.001f, 100.0f, saturation);
+               });
+  TEST_ASSERT_TRUE(parsedSaturation);
+  uint16_t hue = 99;
+  uint8_t saturation = 99;
+  zhiyun_x100::rgbToHsv(0x0000ff, hue, saturation);
+  TEST_ASSERT_EQUAL_UINT16(240, hue);
+  TEST_ASSERT_EQUAL_UINT8(100, saturation);
+  struct CapturedSwatch {
+    uint32_t rgb;
+    uint16_t hue;
+  };
+  const CapturedSwatch capturedSwatches[] = {
+      {0xff0000, 0},   {0x0000ff, 240}, {0xff00ff, 300},
+      {0x00ffff, 180}, {0xff8000, 30},  {0x00ff00, 120},
+  };
+  for (const CapturedSwatch& swatch : capturedSwatches) {
+    zhiyun_x100::rgbToHsv(swatch.rgb, hue, saturation);
+    TEST_ASSERT_EQUAL_UINT16(swatch.hue, hue);
+    TEST_ASSERT_EQUAL_UINT8(100, saturation);
+  }
 }
 
 void test_zhiyun_x100_identity_and_advertisement_match() {
@@ -2442,6 +2490,18 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
                  identified = zhiyun_x100::identityIsX100(frame);
                });
   TEST_ASSERT_TRUE(identified);
+  const uint8_t x60IdentityReply[] = {
+      0x24,0x3c,0x22,0x00,0x01,0x00,0x02,0x00,0x03,0x20,
+      0x30,0x39,0x63,0x37,0x30,0x63,0x34,0x30,0x65,0x35,
+      0x31,0x32,0x30,0x30,0x37,0x31,0x00,0x70,0x6c,0x78,
+      0x31,0x30,0x34,0x00,0x00,0x00,0x00,0x00,0xce,0xd6};
+  bool identifiedX60 = false;
+  scanner.feed(x60IdentityReply, sizeof(x60IdentityReply),
+               [&](const zhiyun_x100::ParsedFrame& frame) {
+                 identifiedX60 =
+                     zhiyun_x100::identityContains(frame, "plx104");
+               });
+  TEST_ASSERT_TRUE(identifiedX60);
   const studio::ble::Advertisement x100 =
       bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1828);
   TEST_ASSERT_TRUE(zhiyun_x100::matchesAdvertisement(x100));
@@ -2450,6 +2510,12 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
   TEST_ASSERT_FALSE(zhiyun_x100::matchesAdvertisement(unprovisioned));
   TEST_ASSERT_TRUE(
       zhiyun_x100::matchesUnprovisionedAdvertisement(unprovisioned));
+  const studio::ble::Advertisement x60 =
+      bleAdvertisement("55:66:77:88:99:aa", "X104_C957", 0x1828);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
+      static_cast<int>(zhiyun_x100::advertisementModel(x60)));
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesMolusAdvertisement(x60, true));
   studio::ble::Advertisement manufacturerOnly =
       bleAdvertisement("44:55:66:77:88:99", "Other", 0x1827);
   const uint8_t manufacturer[] = {

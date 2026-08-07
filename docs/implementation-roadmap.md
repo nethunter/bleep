@@ -246,35 +246,47 @@ Completion gate:
 - commands and mixed-device sequences target individual lights;
 - credentials never leak into normal logs or unprotected exports.
 
-### Phase 4b: ZHIYUN MOLUS X100 direct-control tranche
+### Phase 4b: Zhiyun Light direct-control tranche
 
-Status: Experimental factory-reset provisioning and confirmed direct-control
-driver implemented under ADR-028; panel hardware gate remains open.
+Status: Experimental generic multi-instance driver for MOLUS X100 and X60RGB
+implemented under ADR-028/ADR-029. X100 has passed panel control checks;
+X60RGB panel hardware verification remains open.
 
 Implemented boundary:
 
-- discover factory-reset `pl105` fixtures on `0x1827` and provision them into
-  the shared panel-owned mesh with durable Device Key/unicast allocation;
-- rediscover provisioned `pl105` fixtures advertising Mesh Proxy `0x1828`;
+- expose one `Zhiyun Light` Add light entry and create one normal persisted
+  instance per selected X100 or X60RGB fixture;
+- discover factory-reset `pl105` X100 or `plx104` X60RGB fixtures on `0x1827`
+  and provision them into the shared panel-owned mesh with durable Device
+  Key/unicast allocation;
+- rediscover provisioned product-qualified fixtures advertising Mesh Proxy
+  `0x1828`;
 - initialize and validate the direct proprietary `0xFEE9` session;
-- read power, float32 brightness, and CCT before reporting Ready;
-- expose power and CCT/brightness controls with correlated read-after-write;
+- select the X100 `00 80` or X60RGB `01 80` payload profile from captured
+  product identity, without creating separate catalog drivers;
+- read power, float32 brightness, and CCT before reporting Ready, and expose
+  power plus CCT/brightness with correlated confirmation on both models;
+- expose X60RGB hue/saturation control using its captured correlated setter
+  replies while keeping command completion non-optimistic;
 - persist the normal BLE identity transactionally and retain healthy sessions;
-- omit tint/RGB controls and constrain scenes to 2700-6500 K, 0-100%, tint 0.
+- constrain CCT to 2700-6500 K and brightness to 0-100%; X100 omits RGB at
+  runtime while X60RGB converts the shared RGB action to captured HSI writes.
 
 Deferred production work:
 
 - interrupted-after-Provisioning-Data reconciliation and verified reset/retry;
-- address-rotation recovery beyond service/product rescanning, multiple X100s,
-  firmware-version compatibility policy, and service-change handling;
+- address-rotation recovery beyond service/product rescanning, firmware-version
+  compatibility policy, effect modes, and service-change handling;
 - physical boundary, reconnect, scene, retained-pool, coexistence, latency,
-  and heap measurements listed in ADR-028.
+  and heap measurements listed in ADR-028/ADR-029, including two simultaneous
+  Zhiyun instances.
 
 Completion gate:
 
-- one factory-reset fixture provisions from the panel, reaches confirmed Ready,
-  controls power/CCT/brightness with observed light output, survives reboot,
-  and completes a scene without optimistic state;
+- one factory-reset X100 and one factory-reset X60RGB each provision through
+  repeated use of the same Add light entry, reach confirmed Ready, control
+  their captured capabilities with observed output, survive reboot, and
+  complete scenes without optimistic command completion;
 - failure and timeout paths preserve the last confirmed state and remain
   retryable;
 - the full profile passes mixed-device coexistence and memory recovery checks.
