@@ -257,7 +257,7 @@ int main() {
   studio::InstanceId zhiyunId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Key", pano60Id);
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Fill", pano120Id);
-  studio::devices().add(studio::DriverId::ZhiyunX100, "MOLUS X100", zhiyunId);
+  studio::devices().add(studio::DriverId::ZhiyunLight, "MOLUS X100", zhiyunId);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
       canonTriggerId == studio::kInvalidInstanceId ||
@@ -607,6 +607,17 @@ int main() {
   zhiyun_x100_ui::show(zhiyunId);
   pump(300);
   if (!capture("20g_zhiyun_x100_confirmed")) {
+    return 1;
+  }
+  studio::simZhiyunState().model = zhiyun_x100::MolusModel::X60Rgb;
+  studio::simZhiyunState().mode = zhiyun_x100::X100State::Mode::Rgb;
+  studio::simZhiyunState().rgb = 0x0066ff;
+  studio::simZhiyunState().saturation = 100;
+  studio::simZhiyunState().brightness = 42.0f;
+  studio::devices().rename(zhiyunId, "MOLUS X60RGB");
+  zhiyun_x100_ui::simShowRgb();
+  pump(300);
+  if (!capture("20h_zhiyun_x60rgb_confirmed")) {
     return 1;
   }
   zhiyun_x100_ui::hide();

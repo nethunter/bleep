@@ -107,9 +107,14 @@ Reference research:
 
 ## Zhiyun lights
 
+One discoverable `Zhiyun Light` driver owns the shared protocol family. Choose
+the entry once for each nearby fixture; the saved records remain independent,
+and each retained session selects its X100 or X60RGB profile from the
+product-qualified advertisement and identity response.
+
 ### MOLUS X100
 
-- Status: `Experimental`; the compile-time driver, panel UI, shared panel-owned
+- Status: `Experimental`; the compile-time shared driver, panel UI, panel-owned
   PB-GATT provisioning, direct GATT initialization, and deterministic command/
   readback path are implemented. Panel-originated hardware verification is open.
 - Product identity: internal BLE model marker `pl105`; captured local names use
@@ -125,21 +130,46 @@ Reference research:
   by correlated reads of power, brightness, and CCT was live-confirmed. A
   driver can therefore remain non-optimistic by publishing the value only
   after matching device-originated readback.
-- Implemented tranche: Add device selects either a factory-reset `pl105` on
+- Implemented tranche: Add light selects either a factory-reset `pl105` on
   `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
   panel-owned network and a durable Device Key/unicast allocation, then is
   rediscovered and validated on `0xFEE9`. The normal device record commits only
   after confirmed Ready. Power and CCT/
   brightness commands remain pending until matching correlated replies arrive;
   scenes therefore wait for confirmation instead of treating the write as
-  success. X100 exposes no tint or RGB capability.
+  success. X100 exposes no tint or RGB capability at runtime.
 - Missing before production: reconciliation when a light accepts Provisioning
   Data but completion/persistence is interrupted, verified reset/retry,
   boundary and power-cycle checks, rotating-address recovery, firmware
-  compatibility policy, multiple fixtures, retained/session and mixed-device
+  compatibility policy, multiple live fixtures, retained/session and mixed-device
   coexistence measurements, plus independently observed optical output.
 - Evidence and golden vectors:
   [protocols/zhiyun-x100.md](protocols/zhiyun-x100.md).
+
+### MOLUS X60RGB
+
+- Status: `Experimental`; Android HCI evidence, protocol builders/parsers,
+  shared-driver model selection, host tests, and panel UI are implemented.
+  Panel-originated control is the remaining immediate hardware gate.
+- Product identity: internal BLE marker `plx104`; captured local names use
+  `X104_` plus a device-specific suffix.
+- Transport: the same no-OOB PB-GATT `0x1827`, post-provision Mesh Proxy
+  `0x1828`, and proprietary `0xFEE9` direct-control service as the X100.
+- Captured capabilities: power, float32 brightness, uint16 CCT, float32 hue in
+  degrees, and float32 saturation percent. The state selector is `01 80`,
+  versus `00 80` on X100.
+- State quality: X60RGB setters returned replies correlated by sequence and
+  command. Ble(e)p confirms RGB hue, saturation, and brightness in the
+  capture-backed order;
+  shared power/CCT control keeps the conservative read-after-write path.
+- Implemented tranche: the same Add light entry detects X60RGB and opens CCT
+  and RGB tabs. RGB UI values remain responsive and debounced, while command
+  completion waits for matching device-originated replies.
+- Missing before production: physical panel verification, mode/effect command
+  research, reset and interrupted-provisioning recovery, firmware compatibility,
+  simultaneous-X100/X60RGB coexistence, and optical output checks.
+- Evidence and golden vectors:
+  [protocols/zhiyun-x60rgb.md](protocols/zhiyun-x60rgb.md).
 
 ## Canon cameras
 

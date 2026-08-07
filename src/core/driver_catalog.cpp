@@ -119,15 +119,16 @@ constexpr DriverDescriptor kDrivers[] = {
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
     {
-        DriverId::ZhiyunX100,
-        "zhiyun.molus_x100",
+        DriverId::ZhiyunLight,
+        "zhiyun.light",
         "ZHIYUN",
-        "MOLUS X100",
+        "Zhiyun Light",
         DeviceType::Light,
         capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
-            capabilityBit(Capability::SetLightCct),
-        1,
+            capabilityBit(Capability::SetLightCct) |
+            capabilityBit(Capability::SetLightRgb),
+        4,
     },
 #endif
     {},

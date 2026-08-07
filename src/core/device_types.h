@@ -21,6 +21,7 @@ enum class DriverId : uint16_t {
   AmaranPano60c = 6,
   AmaranPano120c = 7,
   AmaranAce25c = 8,
+  ZhiyunLight = 9,
   ZhiyunX100 = 9,
 };
 

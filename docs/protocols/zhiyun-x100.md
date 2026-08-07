@@ -174,23 +174,24 @@ is unknown.
 
 ## Implemented boundary
 
-The driver accepts a factory-reset X100 advertising `0x1827`, provisions it
-with the shared panel-owned no-OOB PB-GATT engine, stores its Device Key and
-unicast allocation in the existing versioned mesh store, then rediscovers
-`0x1828`. It discovers `0xFEE9` directly, subscribes to `...9601`, queries
-power, brightness, and CCT, then writes only the three captured setters. It
-does not decode or originate Bluetooth Mesh Network PDUs for direct controls.
+The multi-instance `Zhiyun Light` driver accepts a factory-reset X100
+advertising `0x1827`, provisions it with the shared panel-owned no-OOB PB-GATT
+engine, stores its Device Key and unicast allocation in the existing versioned
+mesh store, then rediscovers `0x1828`. It discovers `0xFEE9` directly,
+subscribes to `...9601`, queries power, brightness, and CCT, then writes only
+the three captured setters. It does not decode or originate Bluetooth Mesh
+Network PDUs for direct controls.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,
 disconnected, and changed from `0x1827` to `0x1828`. AppKey/model configuration
-was not needed for the separate direct `0xFEE9` control path. A production
-The shared repository preserves the existing `AMSH` version-1 NVS schema while
+was not needed for the separate direct `0xFEE9` control path. The shared
+repository preserves the existing `AMSH` version-1 NVS schema while
 making its multi-vendor ownership explicit. Durable save happens before the
 provisioning link is closed. Recovery when the light accepts Provisioning Data
 but completion or persistence is interrupted still requires reset/retry and
 hardware verification back to `0x1827`. Before
 enabling either tranche by default, verify advertisement matching without a
 stable address, 0/100% brightness, 2700/6500 K bounds, power off/on, reconnect,
-retention/eviction, multiple X100 instances, and coexistence with the existing
+retention/eviction, multiple Zhiyun instances, and coexistence with the existing
 retained BLE and Home Assistant sessions.

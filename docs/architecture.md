@@ -20,14 +20,14 @@ flowchart TB
   Groups --> DeviceManager
   DeviceManager --> SharkDriver
   DeviceManager --> AmaranDriver
-  DeviceManager --> ZhiyunX100Driver
+  DeviceManager --> ZhiyunLightDriver
   DeviceManager --> CanonTriggerDriver
   DeviceManager --> CanonSmartDriver
   DeviceManager --> HomeAssistantDriver
   DeviceManager --> FutureRecorderDrivers
   SharkDriver --> BluetoothRuntime
   AmaranDriver --> BluetoothRuntime
-  ZhiyunX100Driver --> BluetoothRuntime
+  ZhiyunLightDriver --> BluetoothRuntime
   CanonTriggerDriver --> BluetoothRuntime
   CanonSmartDriver --> BluetoothRuntime
   CanonSmartDriver --> WifiHttpRuntime
@@ -48,7 +48,8 @@ feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
   Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Amaran
-  Light entry, and an experimental provisioning-capable MOLUS X100 entry;
+  Light entry, and one experimental multi-instance Zhiyun Light entry for
+  captured MOLUS profiles;
   hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, a
@@ -71,7 +72,8 @@ feasibility spikes:
   Portal provisioning and four local HA entities. ADR-024 adds an experimental
   userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
   open. ADR-028 shares that panel-owned provisioning repository and PB-GATT
-  engine with X100, then adds direct `0xFEE9` control with confirmed readback;
+  engine with Zhiyun lights, then adds model-profiled direct `0xFEE9` control
+  with confirmed readback;
   generated reverse-Stop and groups remain deferred.
 
 ## Compile-time driver catalog
@@ -355,13 +357,14 @@ GATT is accessed through a transport facade:
 
 - all current BLE builds use one lazy NimBLE central;
 - Shark, Canon, and Tascam use their device-specific GATT services;
-- Amaran and X100 share one panel-owned mesh repository, durable unicast
+- Amaran and Zhiyun lights share one panel-owned mesh repository, durable unicast
   allocator, and userspace no-OOB PB-GATT provisioner over that central;
 - Amaran uses one Mesh Proxy GATT connection shared by its logical lights;
-- X100 accepts a reset `pl105` Provisioning advertiser or a provisioned
-  Mesh-Proxy advertiser, then initializes and controls the separate `0xFEE9`
-  GATT service. Its writes remain pending until correlated device replies
-  confirm the requested values;
+- The generic, multi-instance Zhiyun driver accepts reset or provisioned
+  product-qualified `pl105` X100 and `plx104` X60RGB advertisements. It uses
+  PB-GATT when provisioning is required, rediscovers the Mesh Proxy advertiser,
+  then initializes and controls the separate `0xFEE9` GATT service. Its writes
+  remain pending until correlated device replies confirm the requested values;
 - callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
   persistence, and writes remain on the main loop.
 

@@ -1195,7 +1195,7 @@ void showDevice(studio::InstanceId instanceId) {
   releaseDeviceRows();
   switch (record->driverId) {
 #if CONFIG_DRIVER_ZHIYUN_X100
-    case studio::DriverId::ZhiyunX100:
+    case studio::DriverId::ZhiyunLight:
       zhiyun_x100_ui::show(instanceId);
       break;
 #endif

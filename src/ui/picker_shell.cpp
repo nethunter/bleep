@@ -508,7 +508,7 @@ void refreshLightParameters() {
     lv_slider_set_value(parameter1, draftRgbBrightness, LV_ANIM_OFF);
   } else {
     const bool x100 = selected != nullptr &&
-                      selected->driverId == studio::DriverId::ZhiyunX100;
+                      selected->driverId == studio::DriverId::ZhiyunLight;
     labeledParameter(body, "K", x100 ? 2700 : 2300,
                      x100 ? 6500 : 10000, draftCctKelvin, parameter0);
     labeledParameter(body, "Bri", 0, 100, draftCctBrightness, parameter1);

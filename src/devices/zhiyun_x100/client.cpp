@@ -24,11 +24,33 @@ const NimBLEUUID kNotifyCharacteristic(kNotifyCharacteristicUuid);
 const NimBLEUUID kProvisionService("00001827-0000-1000-8000-00805f9b34fb");
 const NimBLEUUID kProvisionIn("00002adb-0000-1000-8000-00805f9b34fb");
 const NimBLEUUID kProvisionOut("00002adc-0000-1000-8000-00805f9b34fb");
-X100Client* gNotifyClient = nullptr;
+constexpr size_t kMaxMolusClients = 4;
+X100Client* gNotifyClients[kMaxMolusClients] = {};
 
-void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
+void notifyTrampoline(NimBLERemoteCharacteristic* characteristic, uint8_t* data,
                       size_t length, bool) {
-  if (gNotifyClient != nullptr) gNotifyClient->onNotifyBytes(data, length);
+  for (X100Client* client : gNotifyClients) {
+    if (client != nullptr && client->ownsNotifyCharacteristic(characteristic)) {
+      client->onNotifyBytes(data, length);
+      return;
+    }
+  }
+}
+
+void registerNotifyClient(X100Client* client) {
+  for (X100Client*& slot : gNotifyClients) {
+    if (slot == client) return;
+    if (slot == nullptr) {
+      slot = client;
+      return;
+    }
+  }
+}
+
+void unregisterNotifyClient(X100Client* client) {
+  for (X100Client*& slot : gNotifyClients) {
+    if (slot == client) slot = nullptr;
+  }
 }
 
 }  // namespace
@@ -40,10 +62,10 @@ void X100Client::begin() {
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 7000;
   policy.security = studio::ble::SecurityPolicy::None;
-  policy.diagnosticTag = "zhiyun_x100";
+  policy.diagnosticTag = "zhiyun_light";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
-  gNotifyClient = this;
+  registerNotifyClient(this);
 }
 
 void X100Client::activate(studio::InstanceId instanceId, const char* address,
@@ -54,6 +76,7 @@ void X100Client::activate(studio::InstanceId instanceId, const char* address,
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   targetAddress_[0] = '\0';
   targetName_[0] = '\0';
+  ignoredAddressCount_ = 0;
   targetAddressType_ = addressType;
   if (haveTarget_) {
     std::strncpy(targetAddress_, address, sizeof(targetAddress_) - 1);
@@ -64,6 +87,7 @@ void X100Client::activate(studio::InstanceId instanceId, const char* address,
     targetName_[sizeof(targetName_) - 1] = '\0';
   }
   state_.hasSavedDevice = haveTarget_;
+  state_.model = modelFromName(targetName_);
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   state_.error[0] = '\0';
@@ -83,8 +107,10 @@ void X100Client::deactivate() {
   initialized_ = false;
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
+  notifyCharacteristic_ = nullptr;
   provisioningIn_ = nullptr;
-  gNotifyClient = nullptr;
+  provisioningOut_ = nullptr;
+  unregisterNotifyClient(this);
   setupPending_ = false;
   awaitingResponse_ = false;
   operation_ = Operation::None;
@@ -108,7 +134,7 @@ void X100Client::loop() {
     setupPending_ = false;
     if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
       state_.phase = X100State::Phase::Failed;
-      std::strncpy(state_.error, "X100 setup failed",
+      std::strncpy(state_.error, "Zhiyun setup failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
@@ -153,6 +179,17 @@ bool X100Client::protocolReady() const {
          state_.phase == X100State::Phase::Ready;
 }
 
+bool X100Client::ownsNotifyCharacteristic(
+    const NimBLERemoteCharacteristic* characteristic) const {
+  return characteristic != nullptr &&
+         (characteristic == notifyCharacteristic_ ||
+          characteristic == provisioningOut_);
+}
+
+const char* X100Client::identityMarker() const {
+  return state_.model == MolusModel::X60Rgb ? "plx104" : "pl105";
+}
+
 uint16_t X100Client::nextSequence() {
   const uint16_t result = sequence_;
   ++sequence_;
@@ -169,7 +206,7 @@ bool X100Client::sendQuery(uint16_t command, const uint8_t* payload,
                            size_t payloadLength) {
   const uint16_t sequence = nextSequence();
   const FrameBytes frame = payload == nullptr
-                               ? buildReadRequest(sequence, command)
+                               ? buildReadRequest(sequence, command, selector())
                                : buildRequest(sequence, command, payload,
                                               payloadLength);
   if (!writeFrame(frame)) return false;
@@ -181,11 +218,17 @@ bool X100Client::sendQuery(uint16_t command, const uint8_t* payload,
 }
 
 bool X100Client::sendInitializationStep() {
-  static constexpr uint16_t commands[] = {
+  static constexpr uint16_t x100Commands[] = {
       kCommandIdentity, kCommandFirmware, kCommandStatus, kCommandMode,
       kCommandBrightness, kCommandCct, kCommandPower,
   };
-  if (step_ >= sizeof(commands) / sizeof(commands[0])) return false;
+  static constexpr uint16_t x60Commands[] = {
+      kCommandIdentity, kCommandFirmware, kCommandStatus, kCommandMode,
+      kCommandCct, kCommandPower, kCommandBrightness,
+  };
+  if (step_ >= sizeof(x100Commands) / sizeof(x100Commands[0])) return false;
+  const uint16_t* commands =
+      state_.model == MolusModel::X60Rgb ? x60Commands : x100Commands;
   if (step_ <= 2) {
     const uint16_t sequence = nextSequence();
     const FrameBytes frame = buildRequest(sequence, commands[step_], nullptr, 0);
@@ -197,7 +240,7 @@ bool X100Client::sendInitializationStep() {
     return true;
   }
   if (step_ == 3) {
-    const uint8_t modePayload[] = {0x00, 0x80, 0x00, 0x00};
+    const uint8_t modePayload[] = {selector(), 0x80, 0x00, 0x00};
     return sendQuery(kCommandMode, modePayload, sizeof(modePayload));
   }
   return sendQuery(commands[step_]);
@@ -209,11 +252,12 @@ bool X100Client::completeConnect() {
   NimBLERemoteService* service = client_->getService(kControlService);
   if (service == nullptr) return false;
   writeCharacteristic_ = service->getCharacteristic(kWriteCharacteristic);
-  NimBLERemoteCharacteristic* notify =
+  notifyCharacteristic_ =
       service->getCharacteristic(kNotifyCharacteristic);
-  if (writeCharacteristic_ == nullptr || notify == nullptr ||
-      !notify->subscribe(true, notifyTrampoline, true)) {
+  if (writeCharacteristic_ == nullptr || notifyCharacteristic_ == nullptr ||
+      !notifyCharacteristic_->subscribe(true, notifyTrampoline, true)) {
     writeCharacteristic_ = nullptr;
+    notifyCharacteristic_ = nullptr;
     return false;
   }
   scanner_.reset();
@@ -223,7 +267,7 @@ bool X100Client::completeConnect() {
   state_.link = X100State::Link::Connected;
   state_.phase = X100State::Phase::Initializing;
   studio::ble::logTiming(
-      "zhiyun_x100", linkHandle_, "gatt_setup", millis() - started,
+      "zhiyun_light", linkHandle_, "gatt_setup", millis() - started,
       millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
   return sendInitializationStep();
 }
@@ -236,10 +280,11 @@ bool X100Client::setupProvisioning() {
   NimBLERemoteService* service = client_->getService(kProvisionService);
   if (service == nullptr) return false;
   provisioningIn_ = service->getCharacteristic(kProvisionIn);
-  NimBLERemoteCharacteristic* out = service->getCharacteristic(kProvisionOut);
-  if (provisioningIn_ == nullptr || out == nullptr ||
-      !out->subscribe(true, notifyTrampoline, true) || !loadMesh()) {
+  provisioningOut_ = service->getCharacteristic(kProvisionOut);
+  if (provisioningIn_ == nullptr || provisioningOut_ == nullptr ||
+      !provisioningOut_->subscribe(true, notifyTrampoline, true) || !loadMesh()) {
     provisioningIn_ = nullptr;
+    provisioningOut_ = nullptr;
     return false;
   }
   provisioningLength_ = 0;
@@ -267,7 +312,7 @@ bool X100Client::finishProvisioning() {
   const studio::mesh::StoreData previous = meshData;
   studio::mesh::NodeRecord node;
   node.instanceId = instanceId_;
-  node.model = studio::DriverId::ZhiyunX100;
+  node.model = studio::DriverId::ZhiyunLight;
   node.unicastAddress = meshData.network.nextUnicastAddress;
   node.elementCount = provisioner_.elementCount();
   node.configured = true;
@@ -286,6 +331,7 @@ bool X100Client::finishProvisioning() {
   provisioner_.cancel();
   provisioningDeadlineMs_ = 0;
   provisioningIn_ = nullptr;
+  provisioningOut_ = nullptr;
   provisioningLink_ = false;
   scanAfterProvision_ = true;
   haveTarget_ = false;
@@ -353,13 +399,16 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
   awaitingResponse_ = false;
   if (operation_ == Operation::Initialize) {
     bool valid = true;
-    if (step_ == 0) valid = identityIsX100(frame);
-    else if (step_ == 4) valid = parseBrightness(frame, state_.brightness);
-    else if (step_ == 5) valid = parseCct(frame, state_.kelvin);
-    else if (step_ == 6) valid = parsePower(frame, state_.on);
+    if (step_ == 0) valid = identityContains(frame, identityMarker());
+    else if (frame.command == kCommandBrightness)
+      valid = parseBrightness(frame, state_.brightness, selector());
+    else if (frame.command == kCommandCct)
+      valid = parseCct(frame, state_.kelvin, selector());
+    else if (frame.command == kCommandPower)
+      valid = parsePower(frame, state_.on, selector());
     if (!valid) {
       state_.phase = X100State::Phase::Failed;
-      std::strncpy(state_.error, "Unexpected X100 response",
+      std::strncpy(state_.error, "Unexpected Zhiyun response",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
@@ -380,12 +429,12 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
   bool valid = false;
   if (operation_ == Operation::Power) {
     bool actual = false;
-    valid = parsePower(frame, actual) && actual == desiredPower_;
+    valid = parsePower(frame, actual, selector()) && actual == desiredPower_;
     if (valid) state_.on = actual;
   } else if (operation_ == Operation::Cct) {
     if (step_ == 0) {
       float actual = 0.0f;
-      valid = parseBrightness(frame, actual) &&
+      valid = parseBrightness(frame, actual, selector()) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
       state_.verificationField = 1;
       state_.readbackBrightness = actual;
@@ -397,7 +446,8 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
         step_ = 1;
         verificationAttempts_ = 0;
         state_.verificationField = 2;
-        if (!writeFrame(buildCctWrite(nextSequence(), desiredKelvin_))) {
+        if (!writeFrame(
+                buildCctWrite(nextSequence(), desiredKelvin_, selector()))) {
           finishCommand(false, "CCT write failed");
         } else {
           verifyAtMs_ = millis() + 250;
@@ -406,9 +456,12 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       }
     } else {
       uint16_t actual = 0;
-      valid = parseCct(frame, actual) && actual == desiredKelvin_;
+      valid = parseCct(frame, actual, selector()) && actual == desiredKelvin_;
       state_.readbackKelvin = actual;
-      if (valid) state_.kelvin = actual;
+      if (valid) {
+        state_.kelvin = actual;
+        state_.mode = X100State::Mode::Cct;
+      }
     }
     if (!valid && retryCctVerification()) return;
     if (!valid && step_ == 0 &&
@@ -421,13 +474,45 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       state_.maxBrightness =
           static_cast<uint8_t>(state_.readbackBrightness + 0.5f);
     }
+  } else if (operation_ == Operation::Rgb) {
+    if (step_ == 0) {
+      float actual = 0.0f;
+      valid = parseHue(frame, actual, selector(), true) &&
+              std::fabs(actual - desiredHue_) <= 0.05f;
+      state_.verificationField = 3;
+      state_.readbackHue = static_cast<uint16_t>(actual + 0.5f);
+      if (valid) state_.hue = state_.readbackHue;
+    } else if (step_ == 1) {
+      float actual = 0.0f;
+      valid = parseSaturation(frame, actual, selector(), true) &&
+              std::fabs(actual - desiredSaturation_) <= 0.05f;
+      state_.verificationField = 4;
+      state_.readbackSaturation = static_cast<uint8_t>(actual + 0.5f);
+      if (valid) state_.saturation = state_.readbackSaturation;
+    } else {
+      float actual = 0.0f;
+      valid = parseBrightness(frame, actual, selector(), true) &&
+              std::fabs(actual - desiredBrightness_) <= 0.05f;
+      state_.verificationField = 1;
+      state_.readbackBrightness = actual;
+      if (valid) {
+        state_.brightness = actual;
+        state_.rgb = desiredRgb_;
+        state_.mode = X100State::Mode::Rgb;
+      }
+    }
+    if (valid && step_ < 2) {
+      ++step_;
+      if (!sendRgbStep()) finishCommand(false, "RGB write failed");
+      return;
+    }
   } else if (operation_ == Operation::Refresh) {
     if (step_ == 0) {
-      valid = parseBrightness(frame, state_.brightness);
+      valid = parseBrightness(frame, state_.brightness, selector());
     } else if (step_ == 1) {
-      valid = parseCct(frame, state_.kelvin);
+      valid = parseCct(frame, state_.kelvin, selector());
     } else {
-      valid = parsePower(frame, state_.on);
+      valid = parsePower(frame, state_.on, selector());
     }
     if (valid && step_ < 2) {
       ++step_;
@@ -452,7 +537,7 @@ void X100Client::finishInitialization() {
 
 bool X100Client::setPower(bool on) {
   if (!protocolReady() || state_.commandPending) return false;
-  const FrameBytes frame = buildPowerWrite(nextSequence(), on);
+  const FrameBytes frame = buildPowerWrite(nextSequence(), on, selector());
   if (!writeFrame(frame)) return false;
   desiredPower_ = on;
   operation_ = Operation::Power;
@@ -472,7 +557,8 @@ bool X100Client::setCct(uint16_t kelvin, uint8_t brightness) {
   const uint16_t normalizedKelvin = normalizeCct(kelvin);
   // The X100 can acknowledge two immediate writes while dropping the first
   // state change. Apply and confirm brightness before sending CCT.
-  if (!writeFrame(buildBrightnessWrite(nextSequence(), brightness)))
+  if (!writeFrame(
+          buildBrightnessWrite(nextSequence(), brightness, selector())))
     return false;
   desiredBrightness_ = brightness;
   desiredKelvin_ = normalizedKelvin;
@@ -488,6 +574,29 @@ bool X100Client::setCct(uint16_t kelvin, uint8_t brightness) {
   state_.lastCommandFailed = false;
   verifyAtMs_ = millis() + 250;
   return true;
+}
+
+bool X100Client::setRgb(uint32_t rgb, uint8_t brightness) {
+  if (!protocolReady() || state_.commandPending ||
+      !supportsRgb(state_.model) || rgb > 0xffffff || brightness > 100)
+    return false;
+  desiredRgb_ = rgb;
+  rgbToHsv(rgb, desiredHue_, desiredSaturation_);
+  desiredBrightness_ = brightness;
+  state_.requestedBrightness = brightness;
+  state_.readbackBrightness = 0.0f;
+  state_.requestedHue = desiredHue_;
+  state_.readbackHue = 0;
+  state_.requestedSaturation = desiredSaturation_;
+  state_.readbackSaturation = 0;
+  state_.verificationField = 1;
+  operation_ = Operation::Rgb;
+  step_ = 0;
+  state_.commandPending = true;
+  state_.lastCommandFailed = false;
+  if (sendRgbStep()) return true;
+  finishCommand(false, "RGB write failed");
+  return false;
 }
 
 bool X100Client::refresh() {
@@ -508,6 +617,31 @@ bool X100Client::sendVerificationStep() {
                         : (step_ == 1 ? kCommandCct : kCommandPower);
   }
   return sendQuery(command);
+}
+
+bool X100Client::sendRgbStep() {
+  if (operation_ != Operation::Rgb || step_ > 2) return false;
+  const uint16_t sequence = nextSequence();
+  uint16_t command = kCommandHue;
+  FrameBytes frame;
+  if (step_ == 0) {
+    state_.verificationField = 3;
+    frame = buildHueWrite(sequence, desiredHue_, selector());
+  } else if (step_ == 1) {
+    state_.verificationField = 4;
+    command = kCommandSaturation;
+    frame = buildSaturationWrite(sequence, desiredSaturation_, selector());
+  } else {
+    state_.verificationField = 1;
+    command = kCommandBrightness;
+    frame = buildBrightnessWrite(sequence, desiredBrightness_, selector());
+  }
+  if (!writeFrame(frame)) return false;
+  expectedSequence_ = sequence;
+  expectedCommand_ = command;
+  awaitingResponse_ = true;
+  responseDeadlineMs_ = millis() + 2000;
+  return true;
 }
 
 bool X100Client::retryCctVerification() {
@@ -556,6 +690,19 @@ void X100Client::forgetDevice() {
   if (connectRequested_) startScan();
 }
 
+void X100Client::ignorePeerAddress(const char* address) {
+  if (address == nullptr || address[0] == '\0') return;
+  for (uint8_t i = 0; i < ignoredAddressCount_; ++i) {
+    if (std::strcmp(ignoredAddresses_[i], address) == 0) return;
+  }
+  if (ignoredAddressCount_ >= CONFIG_BLE_MAX_SKIP_ADDRESSES) return;
+  std::strncpy(ignoredAddresses_[ignoredAddressCount_], address,
+               sizeof(ignoredAddresses_[0]) - 1);
+  ignoredAddresses_[ignoredAddressCount_][sizeof(ignoredAddresses_[0]) - 1] =
+      '\0';
+  ++ignoredAddressCount_;
+}
+
 void X100Client::beginScan() {
   state_.link = X100State::Link::Scanning;
   state_.phase = X100State::Phase::Idle;
@@ -574,7 +721,9 @@ void X100Client::beginConnect() {
 void X100Client::handleDisconnect() {
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
+  notifyCharacteristic_ = nullptr;
   provisioningIn_ = nullptr;
+  provisioningOut_ = nullptr;
   setupPending_ = false;
   awaitingResponse_ = false;
   verifyAtMs_ = 0;
@@ -613,9 +762,19 @@ void X100Client::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
   if (link != linkHandle_) return;
-  const bool provisioned = matchesAdvertisement(advertisement);
-  const bool unprovisioned = matchesUnprovisionedAdvertisement(advertisement);
+  for (uint8_t i = 0; i < ignoredAddressCount_; ++i) {
+    if (std::strcmp(ignoredAddresses_[i], advertisement.address.value) == 0)
+      return;
+  }
+  const MolusModel advertisedModel = advertisementModel(advertisement);
+  if (advertisedModel == MolusModel::Unknown ||
+      (state_.model != MolusModel::Unknown &&
+       state_.model != advertisedModel))
+    return;
+  const bool provisioned = matchesMolusAdvertisement(advertisement, true);
+  const bool unprovisioned = matchesMolusAdvertisement(advertisement, false);
   if (!provisioned && !unprovisioned) return;
+  state_.model = advertisedModel;
   provisioningLink_ = unprovisioned;
   std::strncpy(targetAddress_, advertisement.address.value,
                sizeof(targetAddress_) - 1);
