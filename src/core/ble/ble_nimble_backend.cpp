@@ -25,10 +25,11 @@ struct BleNimbleBackend::Impl {
     LinkHandle link = kInvalidLinkHandle;
     int reason = 0;
     bool succeeded = false;
+    uint32_t generation = 0;
   };
 
-  bool ownsClient(LinkHandle link, NimBLEClient* client) const;
   NimBLEClient* clientFor(LinkHandle link) const;
+  uint32_t generationForClient(LinkHandle link, NimBLEClient* client) const;
 
   struct ScanCallbacks final : NimBLEScanCallbacks {
     explicit ScanCallbacks(Impl& owner) : owner(owner) {}
@@ -81,7 +82,11 @@ struct BleNimbleBackend::Impl {
 
     void onAuthenticationComplete(NimBLEConnInfo& info) override {
       NimBLEClient* client = owner.clientFor(link);
-      if (client != nullptr && client->isConnected()) {
+      // This callback does not receive its NimBLEClient. Match the physical
+      // connection too, so a late authentication result from an evicted
+      // client cannot be attributed to a replacement in the same slot.
+      if (client != nullptr && client->isConnected() &&
+          client->getConnHandle() == info.getConnHandle()) {
         emit(client, EventType::SecurityComplete, 0, info.isEncrypted());
       }
     }
@@ -91,7 +96,8 @@ struct BleNimbleBackend::Impl {
       // destroyLink detaches the client before requesting asynchronous
       // deletion. Ignore the old client's final callback if this logical slot
       // has already been released or reacquired with a replacement client.
-      if (!owner.ownsClient(link, client)) {
+      const uint32_t generation = owner.generationForClient(link, client);
+      if (generation == 0) {
         return;
       }
       Event event;
@@ -99,7 +105,7 @@ struct BleNimbleBackend::Impl {
       event.link = link;
       event.reason = reason;
       event.succeeded = succeeded;
-      owner.enqueue(event);
+      owner.enqueue(event, generation);
     }
 
     Impl& owner;
@@ -114,6 +120,7 @@ struct BleNimbleBackend::Impl {
     uint16_t connectTimeoutMs = 0;
     bool linkCreated = false;
     bool connectPending = false;
+    uint32_t generation = 0;
   };
 
   Impl() : scanCallbacks(*this) {}
@@ -130,7 +137,7 @@ struct BleNimbleBackend::Impl {
     if (advertisementQueue != nullptr) vQueueDelete(advertisementQueue);
   }
 
-  bool enqueue(const Event& event) {
+  bool enqueue(const Event& event, uint32_t generation = 0) {
     if (event.type == EventType::Advertisement) {
       if (advertisementQueue == nullptr ||
           xQueueSend(advertisementQueue, &event, 0) != pdTRUE) {
@@ -144,6 +151,7 @@ struct BleNimbleBackend::Impl {
     control.link = event.link;
     control.reason = event.reason;
     control.succeeded = event.succeeded;
+    control.generation = generation;
     if (controlQueue == nullptr ||
         xQueueSend(controlQueue, &control, 0) != pdTRUE) {
       ++droppedControl;
@@ -179,7 +187,7 @@ struct BleNimbleBackend::Impl {
       event.type = EventType::SecurityComplete;
       event.link = link;
       event.succeeded = true;
-      return enqueue(event);
+      return enqueue(event, slots[index].generation);
     }
     if (!slots[index].client->secureConnection(true)) {
       return false;
@@ -262,7 +270,7 @@ struct BleNimbleBackend::Impl {
         event.type = EventType::ConnectFailed;
         event.link = static_cast<LinkHandle>(index + 1);
         event.reason = -1;
-        enqueue(event);
+        enqueue(event, slot.generation);
       }
     }
   }
@@ -298,15 +306,17 @@ struct BleNimbleBackend::Impl {
   bool shutdownPending = false;
 };
 
-bool BleNimbleBackend::Impl::ownsClient(LinkHandle link,
-                                        NimBLEClient* client) const {
-  const size_t index = slotIndex(link);
-  return index < CONFIG_MAX_ACTIVE_LINKS && slots[index].client == client;
-}
-
 NimBLEClient* BleNimbleBackend::Impl::clientFor(LinkHandle link) const {
   const size_t index = slotIndex(link);
   return index < CONFIG_MAX_ACTIVE_LINKS ? slots[index].client : nullptr;
+}
+
+uint32_t BleNimbleBackend::Impl::generationForClient(
+    LinkHandle link, NimBLEClient* client) const {
+  const size_t index = slotIndex(link);
+  return index < CONFIG_MAX_ACTIVE_LINKS && slots[index].client == client
+             ? slots[index].generation
+             : 0;
 }
 
 BleNimbleBackend::BleNimbleBackend() : impl_(new Impl()) {}
@@ -418,6 +428,9 @@ bool BleNimbleBackend::createLink(LinkHandle link,
   }
   impl_->slots[index].linkCreated = true;
   impl_->slots[index].connectTimeoutMs = connectTimeoutMs;
+  if (++impl_->slots[index].generation == 0) {
+    ++impl_->slots[index].generation;
+  }
   // Failure here can simply mean the previous client for this slot is still
   // completing asynchronous deletion. pump() provisions the replacement as
   // soon as NimBLE releases capacity.
@@ -488,7 +501,9 @@ bool BleNimbleBackend::secure(LinkHandle link, SecurityPolicy security) {
     event.type = EventType::SecurityComplete;
     event.link = link;
     event.succeeded = true;
-    return impl_->enqueue(event);
+    const size_t index = slotIndex(link);
+    return index < CONFIG_MAX_ACTIVE_LINKS &&
+           impl_->enqueue(event, impl_->slots[index].generation);
   }
   if (impl_->activeSecurity != kInvalidLinkHandle) {
     impl_->queueSecurity(link, security);
@@ -524,8 +539,20 @@ void* BleNimbleBackend::nativeClient(LinkHandle link) {
 
 bool BleNimbleBackend::popEvent(Event& event) {
   Impl::ControlEvent control;
-  if (impl_->controlQueue != nullptr &&
-      xQueueReceive(impl_->controlQueue, &control, 0) == pdTRUE) {
+  bool haveControl = false;
+  while (impl_->controlQueue != nullptr &&
+         xQueueReceive(impl_->controlQueue, &control, 0) == pdTRUE) {
+    const size_t index = slotIndex(control.link);
+    if (control.generation != 0 &&
+        (index >= CONFIG_MAX_ACTIVE_LINKS ||
+         !impl_->slots[index].linkCreated ||
+         impl_->slots[index].generation != control.generation)) {
+      continue;
+    }
+    haveControl = true;
+    break;
+  }
+  if (haveControl) {
     event = {};
     event.type = control.type;
     event.link = control.link;

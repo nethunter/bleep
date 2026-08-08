@@ -42,6 +42,9 @@ bool FakeBleBackend::createLink(LinkHandle link, uint16_t connectTimeoutMs) {
   slots_[index] = {};
   slots_[index].created = true;
   slots_[index].timeoutMs = connectTimeoutMs;
+  if (++generations_[index] == 0) {
+    ++generations_[index];
+  }
   return true;
 }
 
@@ -105,13 +108,20 @@ void* FakeBleBackend::nativeClient(LinkHandle link) {
 }
 
 bool FakeBleBackend::popEvent(Event& event) {
-  if (eventCount_ == 0) {
-    return false;
+  while (eventCount_ > 0) {
+    const QueuedEvent queued = events_[eventRead_];
+    eventRead_ = (eventRead_ + 1) % CONFIG_BLE_EVENT_QUEUE_SIZE;
+    --eventCount_;
+    const size_t index = slotIndex(queued.event.link);
+    if (queued.generation != 0 &&
+        (index >= CONFIG_MAX_ACTIVE_LINKS || !slots_[index].created ||
+         generations_[index] != queued.generation)) {
+      continue;
+    }
+    event = queued.event;
+    return true;
   }
-  event = events_[eventRead_];
-  eventRead_ = (eventRead_ + 1) % CONFIG_BLE_EVENT_QUEUE_SIZE;
-  --eventCount_;
-  return true;
+  return false;
 }
 
 bool FakeBleBackend::emit(const Event& event) {
@@ -119,7 +129,13 @@ bool FakeBleBackend::emit(const Event& event) {
     ++droppedEvents_;
     return false;
   }
-  events_[eventWrite_] = event;
+  QueuedEvent queued;
+  queued.event = event;
+  const size_t index = slotIndex(event.link);
+  if (index < CONFIG_MAX_ACTIVE_LINKS && slots_[index].created) {
+    queued.generation = generations_[index];
+  }
+  events_[eventWrite_] = queued;
   eventWrite_ = (eventWrite_ + 1) % CONFIG_BLE_EVENT_QUEUE_SIZE;
   ++eventCount_;
   return true;

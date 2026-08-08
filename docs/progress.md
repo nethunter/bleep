@@ -115,6 +115,43 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Scene-to-scene BLE slot handoff
+
+- Date: 2026-08-08.
+- Diagnosis: scene cancellation correctly removed `Sequence` ownership and the
+  retained-pool LRU correctly selected safe idle transports. The failure was
+  below that layer: a NimBLE control event could already be queued when an
+  evicted client began asynchronous deletion, then be delivered to a new client
+  after the same logical link handle was reused.
+- Fix: each backend control event is tagged with the logical slot generation.
+  Events from a released generation are dropped before central dispatch; final
+  callbacks from a detached client remain rejected by client identity.
+- Follow-up diagnosis: switching from the lights scene to HML Studio still
+  retained the now-unowned light mesh transport while the new scene attempted
+  to allocate Wi-Fi for Home Assistant. NimBLE client deletion is asynchronous,
+  so starting Wi-Fi in the same preparation pass could race the returned heap.
+- Follow-up fix: after acquiring the new scene's physical targets, preparation
+  releases every idle active transport that is not a target. Shared targets are
+  preserved, and foreground ownership, pending work, or confirmed recording
+  prevents forced teardown. When cleanup releases a transport, HA activation is
+  deferred for a non-blocking 250 ms so the main loop can pump NimBLE teardown
+  before Wi-Fi starts.
+- Native tests: 59/59 passed, including release/reacquire of one logical handle
+  with a stale queued `Connected` event followed by a current-generation event,
+  plus a lights-to-mixed-scene handoff that verifies the old light is released,
+  the new physical target is preserved, and HA waits for the settle boundary.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `zhiyun_x100` succeeded sequentially.
+- Full profile size: 1,858,900 / 3,145,728 bytes flash (59.1%) and 142,156 /
+  327,680 bytes static RAM (43.4%).
+- Flash: `crowpanel_128` uploaded successfully to
+  `/dev/cu.usbserial-211240`. The pre-fix diagnostic capture had confirmed
+  normal boot with 150,332 bytes free heap, a 131,060-byte maximum allocation,
+  and Wi-Fi off; the bounded post-flash read produced no new lines because
+  opening the port did not reset the running panel. Physical lights-to-HML
+  Studio verification remains open.
+
 ### Capacity alignment and conditional Devices pagination
 
 - Date: 2026-08-08.

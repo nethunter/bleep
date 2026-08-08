@@ -661,6 +661,17 @@ CommandStatus DeviceManager::disconnect(InstanceId instanceId, bool confirmed) {
   return CommandStatus::Succeeded;
 }
 
+CommandStatus DeviceManager::disconnectIdle(InstanceId instanceId) {
+  const ActiveSlot* slot = slotFor(instanceId);
+  if (slot == nullptr) {
+    return CommandStatus::Unavailable;
+  }
+  if (slot->owners != 0) {
+    return CommandStatus::Busy;
+  }
+  return disconnect(instanceId);
+}
+
 void DeviceManager::deactivate(InstanceId instanceId) {
   if (!isActive(instanceId)) {
     return;

@@ -1291,15 +1291,18 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   LegacyBackend legacy;
   FakeDriver physicalDriver(studio::DriverId::CanonBle);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  FakeDriver retainedLightDriver(studio::DriverId::AmaranLight);
   int activationSequence = 0;
   physicalDriver.activationSequence = &activationSequence;
   homeAssistantDriver.activationSequence = &activationSequence;
-  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver,
+                                     &retainedLightDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 3);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
   studio::InstanceId helperId = studio::kInvalidInstanceId;
+  studio::InstanceId lightId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
@@ -1309,6 +1312,10 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
       static_cast<int>(devices.addHomeAssistantEntity(
           studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
           "Live", helperId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::AmaranLight, "Old light",
+                                   lightId)));
 
   studio::SceneService scenes(sceneBackend, devices);
   TEST_ASSERT_TRUE(scenes.begin());
@@ -1337,6 +1344,13 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
       devices.acquire(helperId, studio::ConnectionOwner::Foreground));
   devices.release(helperId, studio::ConnectionOwner::Foreground);
   TEST_ASSERT_TRUE(devices.isActive(helperId));
+  // Reproduce switching from a protocol-ready lights scene. Its retained mesh
+  // is not a target of the mixed studio scene and must be gone before Wi-Fi.
+  TEST_ASSERT_TRUE(
+      devices.acquire(lightId, studio::ConnectionOwner::Sequence));
+  devices.loop();
+  devices.release(lightId, studio::ConnectionOwner::Sequence);
+  TEST_ASSERT_TRUE(devices.isRetained(lightId));
   activationSequence = 0;
   physicalDriver.firstActivationOrder = 0;
   homeAssistantDriver.firstActivationOrder = 0;
@@ -1344,7 +1358,16 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.prepare(sceneId)));
   TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, retainedLightDriver.deactivationCount);
+  TEST_ASSERT_FALSE(devices.isActive(lightId));
+  TEST_ASSERT_EQUAL_INT(0, physicalDriver.deactivationCount);
   TEST_ASSERT_EQUAL_INT(1, physicalDriver.firstActivationOrder);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(1);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(250);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(251);
   TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
   scenes.cancel();
 }
@@ -2383,6 +2406,35 @@ void test_ble_central_timing_and_readiness_reset_on_release() {
   central.release(link);
 }
 
+void test_ble_central_ignores_queued_event_from_evicted_link_generation() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate first;
+  BleTestDelegate replacement;
+
+  const studio::ble::LinkHandle oldLink = central.acquire(first, {});
+  studio::ble::Event staleConnected;
+  staleConnected.type = studio::ble::EventType::Connected;
+  staleConnected.link = oldLink;
+  TEST_ASSERT_TRUE(backend.emit(staleConnected));
+
+  central.release(oldLink);
+  const studio::ble::LinkHandle newLink = central.acquire(replacement, {});
+  TEST_ASSERT_EQUAL_UINT32(oldLink, newLink);
+  central.loop(10);
+  TEST_ASSERT_EQUAL_UINT32(0, replacement.events);
+
+  studio::ble::Event currentConnected;
+  currentConnected.type = studio::ble::EventType::Connected;
+  currentConnected.link = newLink;
+  TEST_ASSERT_TRUE(backend.emit(currentConnected));
+  central.loop(20);
+  TEST_ASSERT_EQUAL_UINT32(1, replacement.events);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ble::EventType::Connected),
+                        static_cast<int>(replacement.lastEvent));
+  central.release(newLink);
+}
+
 void test_ble_central_shared_scan_claims_and_independent_release() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -3039,6 +3091,7 @@ int main(int, char**) {
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
+  RUN_TEST(test_ble_central_ignores_queued_event_from_evicted_link_generation);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);

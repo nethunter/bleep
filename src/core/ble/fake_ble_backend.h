@@ -58,8 +58,14 @@ class FakeBleBackend : public IBleCentralBackend {
     ConnectionParameters lastParameters;
   };
 
-  Event events_[CONFIG_BLE_EVENT_QUEUE_SIZE] = {};
+  struct QueuedEvent {
+    Event event;
+    uint32_t generation = 0;
+  };
+
+  QueuedEvent events_[CONFIG_BLE_EVENT_QUEUE_SIZE] = {};
   FakeSlot slots_[CONFIG_MAX_ACTIVE_LINKS] = {};
+  uint32_t generations_[CONFIG_MAX_ACTIVE_LINKS] = {};
   size_t eventRead_ = 0;
   size_t eventWrite_ = 0;
   size_t eventCount_ = 0;

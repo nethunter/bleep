@@ -223,7 +223,10 @@ client teardown has actually emptied NimBLE's global slots. An immediate
 reacquire can reserve links during that interval; the backend provisions their
 replacement clients as capacity returns. Backend callback objects have backend
 lifetime rather than link lifetime, and final GAP events are accepted only when
-their client pointer still owns the logical slot.
+their client pointer still owns the logical slot. Control events also carry the
+slot generation that queued them, so an event already waiting when LRU eviction
+reuses a logical handle is discarded instead of being delivered to the
+replacement device.
 
 ## Capabilities and unified UI
 
@@ -288,8 +291,14 @@ bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
 underlying BLE library to assert instead of returning a recoverable error.
 Before that ordering pass, preparation evicts every idle retained HA session so
 navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
-Pending HA work makes preparation fail safely. Action execution still follows
-the authored order after all targets prepare. The LVGL pool is held to 64 KiB
+After the required physical targets are acquired, preparation also evicts idle
+physical transports that are not targets of the new scene. Shared targets stay
+active, while foreground ownership, pending work, or confirmed recording makes
+the handoff fail safely instead of forcing teardown. When that cleanup starts
+an asynchronous NimBLE client deletion, HA activation is deferred for a
+non-blocking 250 ms so the main loop can return the released BLE allocations
+before Wi-Fi starts. Action execution still follows the authored order after
+all targets prepare. The LVGL pool is held to 64 KiB
 and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
 static SRAM compared with the earlier 96 KiB/40-row configuration. The full
 simulator flow is the regression gate for the LVGL allocation budget. HA keeps
