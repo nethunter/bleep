@@ -193,6 +193,8 @@ Completion gate:
 Work:
 
 - boot to Home without scanning, pairing, re-pairing, or reconnecting Shark;
+- initialize new and factory-reset panels with an empty device registry while
+  preserving migration of an actually paired legacy Shark;
 - request the first device connection only from a device screen or scene, then
   retain protocol-ready sessions until safe eviction or explicit release;
 - add versioned persistence and migrations;

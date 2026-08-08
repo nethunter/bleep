@@ -61,7 +61,9 @@ principles:
 ## What works now
 
 - A round, touch-first Home and Devices interface with persistent device
-  records, enable/disable, rename, forget/re-pair, and delete.
+  records, enable/disable, rename, forget/re-pair, and delete. A new or
+  factory-reset panel starts with an empty Devices list; add Shark or any other
+  physical device explicitly through **+ Add device**.
 - A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
   haptic enable/disable, a first-position scrollable About/build page (including
   commit date), sanitized runtime diagnostics, and a normal Factory Reset menu

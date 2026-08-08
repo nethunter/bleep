@@ -2727,3 +2727,21 @@ Record values with the exact build environment and commit/worktree state.
 - Documentation only; firmware behavior did not change. No build or flash was
   run, avoiding deployment of unrelated user-owned firmware changes already
   present in the worktree.
+
+### 2026-08-08: Remove the default Shark device
+
+- Changed missing-registry initialization to persist an empty Devices list.
+  A genuinely paired Shark in the pre-registry namespace still migrates, and
+  upgrades remove only the exact untouched unpaired `Shark Nano II` placeholder
+  with no BLE address or advertised name. Renamed, paired, and identified Shark
+  records remain intact.
+- Native passed 55/55, including empty first boot, one-time placeholder removal,
+  paired legacy migration, restart persistence, and preservation of a renamed
+  unpaired Shark. The complete `ui_sim` capture flow passed; its deliberately
+  paired legacy fixture remains in place for Shark-screen regression coverage.
+- All eight firmware profiles (`crowpanel_128`, Roboto, Canon Smart, Canon
+  Trigger, Tascam X8, Home Assistant, Amaran, and Zhiyun) built sequentially.
+  Default firmware used 169,852 / 327,680 bytes RAM (51.8%) and 1,851,688 /
+  3,145,728 bytes flash (58.9%). Upload to `/dev/cu.usbserial-211240` completed
+  with image hash verification and hard reset. NVS was not erased; the actual
+  post-migration Devices screen remains operator-unverified.

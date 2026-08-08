@@ -693,6 +693,20 @@ the replacement.
   preferences, and panel-owned mesh keys; provisioned mesh fixtures may need a
   separate manual factory reset before they can be added again.
 
+## ADR-032: New panels start with no default device
+
+- Status: Accepted.
+- Decision: A missing device registry is initialized and persisted empty.
+  Operators add Shark and every other physical device explicitly through the
+  normal transactional Add-device flow.
+- Compatibility: If the pre-registry `shark` namespace contains an actually
+  paired Shark, it still migrates into the registry. On upgrade, firmware
+  removes only the exact untouched placeholder produced by earlier releases:
+  an unpaired `Shark Nano II` record with no BLE address or advertised name.
+  Paired, renamed, or otherwise identified Shark records are preserved.
+- Consequence: Factory Reset returns to an empty Devices list and does not
+  silently recreate Shark, while existing owners keep real Shark pairings.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

@@ -59,6 +59,9 @@ feasibility spikes:
   namespace, migrates v1 BLE records unchanged, and retains records for
   unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
   separate checksummed records;
+- a missing registry is initialized empty. A paired Shark from the pre-registry
+  `shark` namespace is still migrated, while the untouched unpaired Shark
+  placeholder created by earlier firmware is removed on upgrade;
 - the catalog permits one Shark, up to three Canon Trigger instances, up to
   three Canon Smart instances, and one Tascam X8 within the eight-record
   registry;
