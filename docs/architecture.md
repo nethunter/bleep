@@ -55,7 +55,7 @@ feasibility spikes:
 - `DeviceManager` owns a fixed-capacity registry, command/result queues, up to
   eight logical active instances grouped onto four physical BLE transport
   slots, per-owner lifecycle, and persistence;
-- schema version 2 stores up to twelve device records in the `studio` NVS
+- schema version 2 stores up to twenty-four device records in the `studio` NVS
   namespace, migrates v1 BLE records unchanged, and retains records for
   unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
   separate checksummed records;
@@ -338,12 +338,11 @@ transition into failure.
 Stronger patterns take priority, and no pattern delays UI, transport, or scene
 work.
 
-The twelve-record Devices screen plus the largest specialized control screen
-exhausted the earlier 64 KiB LVGL pool. The final 76 KiB pool passes the full
-capture run and retains 14,192 bytes on its most demanding sequence-stop
-screen; 72 KiB was measured and rejected after stalling the simulator after
-the Shark run screen. Target heap recovery remains part of ADR-023's open
-hardware gate.
+The Devices screen renders at most six of its twenty-four records per page.
+This bounds resident LVGL objects without increasing the 76 KiB pool; rendering
+all records at once exhausted the simulator pool. The full capture run still
+includes the largest specialized control and sequence-stop screens. Target
+heap recovery remains part of ADR-023's open hardware gate.
 
 State fields carry a quality:
 

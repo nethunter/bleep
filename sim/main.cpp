@@ -231,9 +231,17 @@ int main() {
                         canonId);
   studio::InstanceId canonId2 = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonBle, "Camera B", canonId2);
+  studio::InstanceId canonId3 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonBle, "Camera C", canonId3);
   studio::InstanceId canonTriggerId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonTrigger, "EOS R6 Trigger",
                         canonTriggerId);
+  studio::InstanceId canonTriggerId2 = studio::kInvalidInstanceId;
+  studio::InstanceId canonTriggerId3 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::CanonTrigger, "Trigger B",
+                        canonTriggerId2);
+  studio::devices().add(studio::DriverId::CanonTrigger, "Trigger C",
+                        canonTriggerId3);
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::TascamX8, "Recorder A", tascamId);
   studio::InstanceId haLight = studio::kInvalidInstanceId;
@@ -258,10 +266,26 @@ int main() {
   studio::InstanceId zhiyunId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Key", pano60Id);
   studio::devices().add(studio::DriverId::AmaranLight, "Amaran Fill", pano120Id);
+  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Rim", ace25Id);
+  studio::InstanceId amaranFourthId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Background",
+                        amaranFourthId);
   studio::devices().add(studio::DriverId::ZhiyunLight, "MOLUS X100", zhiyunId);
+  studio::InstanceId zhiyunId2 = studio::kInvalidInstanceId;
+  studio::InstanceId zhiyunId3 = studio::kInvalidInstanceId;
+  studio::InstanceId zhiyunId4 = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::ZhiyunLight, "MOLUS X60RGB",
+                        zhiyunId2);
+  studio::devices().add(studio::DriverId::ZhiyunLight, "Zhiyun Fill",
+                        zhiyunId3);
+  studio::devices().add(studio::DriverId::ZhiyunLight, "Zhiyun Rim",
+                        zhiyunId4);
   if (canonId == studio::kInvalidInstanceId ||
       canonId2 == studio::kInvalidInstanceId ||
+      canonId3 == studio::kInvalidInstanceId ||
       canonTriggerId == studio::kInvalidInstanceId ||
+      canonTriggerId2 == studio::kInvalidInstanceId ||
+      canonTriggerId3 == studio::kInvalidInstanceId ||
       tascamId == studio::kInvalidInstanceId ||
       haLight == studio::kInvalidInstanceId ||
       haInputBoolean == studio::kInvalidInstanceId ||
@@ -269,8 +293,14 @@ int main() {
       haScene == studio::kInvalidInstanceId ||
       pano60Id == studio::kInvalidInstanceId ||
       pano120Id == studio::kInvalidInstanceId ||
-      zhiyunId == studio::kInvalidInstanceId) {
-    std::fprintf(stderr, "Failed to seed the maximum device configuration\n");
+      ace25Id == studio::kInvalidInstanceId ||
+      amaranFourthId == studio::kInvalidInstanceId ||
+      zhiyunId == studio::kInvalidInstanceId ||
+      zhiyunId2 == studio::kInvalidInstanceId ||
+      zhiyunId3 == studio::kInvalidInstanceId ||
+      zhiyunId4 == studio::kInvalidInstanceId) {
+    std::fprintf(stderr,
+                 "Failed to seed the maximum compiled-driver configuration\n");
     return 1;
   }
 
@@ -361,7 +391,7 @@ int main() {
 
   ui::showDevices();
   studio::simSetScanningState();
-  shark_ui::show(id);
+  ui::showDevice(id);
   if (!capture("05_shark_connect")) {
     return 1;
   }
@@ -384,7 +414,7 @@ int main() {
   ui::showDevices();
   pump(1);
   gHapticStateCount = 0;
-  shark_ui::show(id);
+  ui::showDevice(id);
   pump(1);
   pump(12);
   pump(24);

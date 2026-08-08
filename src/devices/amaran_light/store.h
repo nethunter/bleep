@@ -52,7 +52,7 @@ struct MeshStoreData {
 class MeshStore {
  public:
   static constexpr uint16_t kSchemaVersion = 2;
-  static constexpr size_t kMaxBlobSize = 1280;
+  static constexpr size_t kMaxBlobSize = 2048;
 
   explicit MeshStore(studio::IConfigBackend& backend) : backend_(backend) {}
   studio::ConfigLoadStatus load(MeshStoreData& data);

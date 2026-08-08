@@ -22,6 +22,9 @@ controller.
   remain before the first public push.
 - [Scenes](scenes.md) — ordered action model, waits, generated Stop behavior,
   execution journal, and failure handling.
+- [Multiple-Ble(e)p manufacturing](multi-bleep-manufacturing.md) — per-unit
+  identity, open setup APs, independent meshes, same-room coexistence, and
+  factory acceptance gates.
 - [Decisions](decisions.md) — accepted architectural decisions and their
   rationale.
 - [Progress](progress.md) — current phase, completed work, measurements,
