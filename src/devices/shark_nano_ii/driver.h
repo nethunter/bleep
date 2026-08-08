@@ -21,7 +21,8 @@ class SharkDriver : public DeviceDriver {
   struct Session {
     shark::SharkClient client;
     InstanceId instanceId = kInvalidInstanceId;
-  } session_;
+  };
+  Session* session_ = nullptr;
 };
 
 }  // namespace studio

@@ -14,9 +14,15 @@ enum class RegistryStatus : uint8_t {
 
 class DeviceRegistry {
  public:
+  DeviceRegistry() = default;
+  DeviceRegistry(const DeviceRegistry& other);
+  DeviceRegistry& operator=(const DeviceRegistry& other);
+  ~DeviceRegistry();
+
   size_t capacity() const { return CONFIG_MAX_DEVICE_INSTANCES; }
   size_t count() const { return count_; }
   bool initialized() const { return initialized_; }
+  bool valid() const { return valid_; }
   InstanceId nextInstanceId() const { return nextInstanceId_; }
 
   const DeviceRecord* at(size_t index) const;
@@ -44,10 +50,14 @@ class DeviceRegistry {
                bool initialized);
 
  private:
-  DeviceRecord records_[CONFIG_MAX_DEVICE_INSTANCES] = {};
+  bool reserve(size_t required);
+
+  DeviceRecord* records_ = nullptr;
+  size_t allocated_ = 0;
   size_t count_ = 0;
   InstanceId nextInstanceId_ = 1;
   bool initialized_ = false;
+  bool valid_ = true;
 };
 
 }  // namespace studio

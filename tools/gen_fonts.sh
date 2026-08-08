@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 TTF="tools/fontsrc/Roboto-Regular.ttf"
 TTF_URL="https://raw.githubusercontent.com/googlefonts/roboto-2/main/src/hinted/Roboto-Regular.ttf"
 OUT="src/fonts"
-SIZES=(14 16 20)
+SIZES=(12 14 16 20)
 RANGE="0x20-0x7F"   # printable ASCII; the UI uses no LVGL symbols
 
 mkdir -p "$OUT" "$(dirname "$TTF")"

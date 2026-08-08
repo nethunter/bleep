@@ -21,7 +21,8 @@ class TascamX8Driver : public DeviceDriver {
   struct Session {
     tascam_x8::TascamX8Client client;
     InstanceId instanceId = kInvalidInstanceId;
-  } session_;
+  };
+  Session* session_ = nullptr;
 };
 
 }  // namespace studio

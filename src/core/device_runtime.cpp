@@ -26,6 +26,37 @@
 
 namespace studio {
 
+// A compiled driver is a flash-backed factory shell, not a session pool.
+// Keep this guard beside the globals so adding mutable runtime state fails the
+// build before it quietly consumes the full profile's static RAM.
+#if CONFIG_DRIVER_SHARK_NANO_II
+static_assert(sizeof(SharkDriver) <= 64, "Shark driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+static_assert(sizeof(CanonTriggerDriver) <= 64,
+              "Canon Trigger driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+static_assert(sizeof(CanonBleDriver) <= 64,
+              "Canon Smart driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+static_assert(sizeof(TascamX8Driver) <= 64,
+              "Tascam driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+static_assert(sizeof(HomeAssistantDriver) <= 64,
+              "Home Assistant driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_AMARAN_LIGHT
+static_assert(sizeof(AmaranLightDriver) <= 64,
+              "Amaran driver shell must stay dormant");
+#endif
+#if CONFIG_DRIVER_ZHIYUN_X100
+static_assert(sizeof(ZhiyunLightDriver) <= 64,
+              "Zhiyun driver shell must stay dormant");
+#endif
+
 DeviceManager& devices() {
   static PreferencesConfigBackend backend;
   static PreferencesLegacySharkBackend legacyBackend;

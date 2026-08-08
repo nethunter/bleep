@@ -320,5 +320,26 @@ Every driver must define:
 9. hardware verification notes and known limitations;
 10. flash and runtime memory impact.
 
+It must also pass the dormant-resource checklist:
+
+- the compiled driver object contains no full client/session arrays or large
+  mutable buffers; immutable descriptors and protocol tables stay in flash;
+- driver translation units contain no non-trivial namespace-scope objects such
+  as constructed UUID wrappers or strings, because their startup constructors
+  force an otherwise disabled driver into the linked image; construct temporary
+  transport values only inside the activated session and confirm omitted-driver
+  symbols are absent from an isolated profile's ELF with
+  `scripts/check_driver_isolation.py`;
+- configured but inactive instances consume registry metadata only;
+- activation uses checked `nothrow` allocation and rolls back cleanly on
+  failure; deactivation frees the session;
+- shared transports/repositories use first-user/last-user ownership;
+- callbacks only enqueue compact data or flags, with parsing and mutation on
+  the main loop;
+- Wi-Fi starts only for an active network-backed instance or Portal and returns
+  to `WIFI_OFF` after its last owner;
+- the full profile records static RAM plus inactive, configured, active, and
+  post-deactivation heap/maximum-allocation measurements.
+
 A new brand must not add conditional behavior to `SceneRunner`. It integrates
 through capabilities and typed commands.

@@ -115,6 +115,92 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### All-driver dormant-resource audit
+
+- Date: 2026-08-08.
+- Driver lifecycle audit: Shark Nano II and Tascam each hold one dynamically
+  allocated session; Canon Smart and Canon Trigger allocate up to three session
+  objects individually; Zhiyun allocates up to four individually; HA allocates
+  its one shared client only for its first active entity; and Amaran allocates
+  its shared mesh runtime/repository only for its first direct or Zhiyun gateway
+  user. Every deactivation path releases its instance, and each shared runtime
+  is deleted by its final user. Compiled driver shells remain guarded at 64
+  bytes maximum; configured inactive records do not call driver activation.
+- Finding and fix: the shared NimBLE backend still allocated its implementation
+  object from the first main-loop tick. It now uses checked lazy allocation on
+  first BLE activation and deletes the object after final asynchronous client
+  teardown. Images with no BLE-backed driver compile the BLE pump out of the
+  main loop.
+- Finding and fix: non-trivial namespace-scope `NimBLEUUID` objects created
+  startup constructors that forced disabled GATT clients and the BLE runtime
+  into isolated images. UUIDs are now temporary activation-local values, so
+  omitted driver client symbols and those startup constructors are absent.
+- Profile audit: repaired `canon_ble`, `canon_trigger`, `tascam_x8`, and
+  `home_assistant` so later-added HA/Amaran drivers are explicitly disabled;
+  added `shark_nano_ii`. ELF symbol inspection confirms each of the seven
+  isolated profiles contains only its selected driver. `zhiyun_x100`
+  intentionally includes the shared Amaran mesh transport but not the Amaran
+  driver adapter. The HA-only ELF contains no physical client or BLE-central
+  symbol. `scripts/check_driver_isolation.py` preserves these checks as a
+  seven-profile regression gate.
+- Native tests: 59/59 passed.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  and `zhiyun_x100` succeeded sequentially. The existing full/Roboto caches
+  resolved NimBLE-Arduino 2.5.0 and LovyanGFX 1.2.21; isolated profiles resolved
+  NimBLE-Arduino 2.5.1 and LovyanGFX 1.2.26.
+- Flash/static RAM bytes: full 1,858,600 / 141,676; Roboto 1,821,576 / 141,676;
+  Shark 1,750,800 / 140,980; Canon Smart 1,757,658 / 141,060; Canon Trigger
+  1,744,704 / 141,020; Tascam 1,751,472 / 141,052; HA 1,552,032 / 130,892;
+  Amaran 1,766,984 / 141,140; Zhiyun 1,783,328 / 141,148. Removing dormant UUID
+  objects recovered 480 bytes of full-profile static RAM. The now-genuinely
+  isolated HA profile is 267,900 bytes smaller in flash and 10,696 bytes smaller
+  in static RAM than its pre-audit build.
+- Flash: the full profile uploaded successfully to
+  `/dev/cu.usbserial-211240`. A forced cold-boot capture reported Wi-Fi `Off`,
+  150,812 bytes free heap, 142,372 bytes minimum free heap, and a 131,060-byte
+  maximum allocation before any device activation. Free/minimum heap are each
+  480 bytes higher than the preceding full build, matching the recovered static
+  UUID storage. Real peripherals are still required to exercise every driver's
+  activation and post-deactivation heap return path.
+
+### Scene-to-scene BLE slot handoff
+
+- Date: 2026-08-08.
+- Diagnosis: scene cancellation correctly removed `Sequence` ownership and the
+  retained-pool LRU correctly selected safe idle transports. The failure was
+  below that layer: a NimBLE control event could already be queued when an
+  evicted client began asynchronous deletion, then be delivered to a new client
+  after the same logical link handle was reused.
+- Fix: each backend control event is tagged with the logical slot generation.
+  Events from a released generation are dropped before central dispatch; final
+  callbacks from a detached client remain rejected by client identity.
+- Follow-up diagnosis: switching from the lights scene to HML Studio still
+  retained the now-unowned light mesh transport while the new scene attempted
+  to allocate Wi-Fi for Home Assistant. NimBLE client deletion is asynchronous,
+  so starting Wi-Fi in the same preparation pass could race the returned heap.
+- Follow-up fix: after acquiring the new scene's physical targets, preparation
+  releases every idle active transport that is not a target. Shared targets are
+  preserved, and foreground ownership, pending work, or confirmed recording
+  prevents forced teardown. When cleanup releases a transport, HA activation is
+  deferred for a non-blocking 250 ms so the main loop can pump NimBLE teardown
+  before Wi-Fi starts.
+- Native tests: 59/59 passed, including release/reacquire of one logical handle
+  with a stale queued `Connected` event followed by a current-generation event,
+  plus a lights-to-mixed-scene handoff that verifies the old light is released,
+  the new physical target is preserved, and HA waits for the settle boundary.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `zhiyun_x100` succeeded sequentially.
+- Full profile size: 1,858,900 / 3,145,728 bytes flash (59.1%) and 142,156 /
+  327,680 bytes static RAM (43.4%).
+- Flash: `crowpanel_128` uploaded successfully to
+  `/dev/cu.usbserial-211240`. The pre-fix diagnostic capture had confirmed
+  normal boot with 150,332 bytes free heap, a 131,060-byte maximum allocation,
+  and Wi-Fi off; the bounded post-flash read produced no new lines because
+  opening the port did not reset the running panel. Physical lights-to-HML
+  Studio verification remains open.
+
 ### Capacity alignment and conditional Devices pagination
 
 - Date: 2026-08-08.
@@ -2804,3 +2890,83 @@ Record values with the exact build environment and commit/worktree state.
   (59.0%). It uploaded to `/dev/cu.usbserial-211240` with image hash
   verification and hard reset. Physical two-stage button timing remains
   operator-unverified.
+
+### 2026-08-08: Dormant drivers and on-demand Wi-Fi memory recovery
+
+- Diagnosed the simultaneous BLE/Home Assistant failure on the attached build
+  as contiguous internal-SRAM exhaustion: live free heap was 7.3-9.2 KiB,
+  largest allocation 5.1-7.7 KiB, minimum heap 340 bytes, and HA REST returned
+  transport failures while NimBLE still requires roughly `0x7800` contiguous
+  bytes to initialize.
+- Implemented ADR-035 across Shark, Canon Smart, Canon Trigger, Tascam X8,
+  Home Assistant, Amaran, and Zhiyun. Compiled driver globals are now pointer-
+  sized shells with a 64-byte build guard; full clients/sessions allocate only
+  when an instance activates. The shared mesh repository/runtime and HA client,
+  WebSocket, and Wi-Fi runtime use first-user/last-user ownership. Configured HA
+  entities alone do not start Wi-Fi; only active HA or Portal does, and final
+  teardown sets `WIFI_OFF`.
+- Changed the device registry from 24 permanent records to checked four-record
+  heap blocks without changing persistence schema 2 or the 24-record ceiling.
+  Split NimBLE callback traffic into a compact 16-entry control queue and an
+  independent 8-entry advertisement queue. HA initial REST reads are serialized,
+  heap-gated, use fixed URL/auth/subscription buffers, and back off after
+  transient failures. Reduced LVGL from 76 to 64 KiB; the two 15-row display
+  DMA strips were not changed.
+- Native passed 57/57. The complete `ui_sim` capture flow passed with the 64 KiB
+  pool; peak incremental LVGL use was 10,906 bytes and the tightest reported
+  point retained 18,000 bytes free. All eight firmware profiles built
+  sequentially. Full `crowpanel_128` uses 142,148 / 327,680 bytes static RAM
+  (43.4%) and 1,846,218 / 3,145,728 bytes flash (58.7%), recovering 33,696 bytes
+  of static RAM from the 175,844-byte failing build. Alternate profiles use
+  141,612-142,148 bytes static RAM.
+- The full image uploaded to `/dev/cu.usbserial-211240` with hash verification
+  and hard reset. A bounded boot capture at neutral Home reported Wi-Fi `Off`,
+  BLE disconnected, 151,052 bytes free heap, 142,612 bytes minimum free heap,
+  and a 131,060-byte largest free block. Active-driver deltas, mixed BLE+HA
+  operation, and post-deactivation recovery remain target-hardware gates.
+
+### 2026-08-08: Canon Smart incomplete-discovery recovery
+
+- Diagnosed an EOS R6 Mark II connection that appeared stuck. Serial evidence
+  showed physical connection and encryption succeeded with 98,612 bytes free
+  heap and a 77,812-byte largest block, but filtered GATT discovery returned
+  pairing command `00010006` without the required pairing data `0001000a`.
+  The subsequent clean disconnect exposed a UI bug: the disconnected Canon
+  screen unconditionally replaced its retry state with a disabled `WAITING`
+  action.
+- Canon Smart now retries an incomplete pairing-service discovery once with a
+  full characteristic refresh. If setup remains incomplete it stops automatic
+  reconnect churn, reports `CONNECTION FAILED / CANON SETUP INCOMPLETE`, and
+  enables `RETRY`. Retrying a saved camera preserves its address and bond;
+  rejected or new pairing returns to discovery. Other drivers retain the shared
+  BLE coordinator's existing automatic protocol-failure retry behavior.
+- Native passed 58/58, including the no-reconnect terminal-failure path. The
+  complete `ui_sim` capture flow passed with 18,000
+  bytes free at its tightest reported point. All eight firmware profiles built
+  sequentially. Default `crowpanel_128` used 142,148 / 327,680 bytes static RAM
+  (43.4%) and 1,846,706 / 3,145,728 bytes flash (58.7%), then uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and hard reset.
+- A bounded hardware capture reached the saved R6 II after three radio-level
+  connection misses, discovered `00010006` and `0001000a`, received wake result
+  `04`, and logged `protocol_ready`. The same capture subsequently brought up
+  Tascam X8 and Home Assistant together and logged all sequence targets ready.
+  Canon's forced full-refresh failure path remains intentionally difficult to
+  reproduce, but it is bounded and its retry UI is compile/simulator verified.
+
+### 2026-08-08: Muted Devices-list status typography
+
+- Split each Devices row into independent name and runtime-status labels. The
+  device name remains 14 px, while `connected`, `ready`, `connecting`,
+  `scanning`, and `disabled` now use a 12 px muted-gray label. Added matching
+  12 px Montserrat and generated Roboto faces so both supported UI font
+  profiles retain the same hierarchy.
+- The complete `ui_sim` capture flow passed. `02_devices.png` confirms the
+  smaller gray status stays aligned and unclipped beneath each device name.
+  Max-device initialization retained 43,048 bytes of LVGL memory, 344 bytes
+  less than the preceding layout; the tightest reported point retained 17,984
+  bytes.
+- Native passed 58/58. All eight firmware profiles built sequentially. Default
+  `crowpanel_128` used 142,156 / 327,680 bytes static RAM (43.4%) and 1,858,230
+  / 3,145,728 bytes flash (59.1%). Upload to `/dev/cu.usbserial-211240`
+  completed with image hash verification and hard reset. Physical-panel text
+  appearance remains operator-verifiable.

@@ -9,6 +9,8 @@
 namespace studio {
 namespace {
 
+constexpr uint32_t kHomeAssistantReclaimSettleMs = 250;
+
 void copyDetail(char (&destination)[48], const char* text) {
   if (text == nullptr) {
     destination[0] = '\0';
@@ -125,6 +127,16 @@ bool SceneRunner::collectTargets(const SceneRecord& record, TargetSet& out) cons
 }
 
 bool SceneRunner::activateTargets(const TargetSet& targets) {
+  homeAssistantDeferred_ = false;
+  homeAssistantActivationAtMs_ = 0;
+  const auto isTarget = [&targets](InstanceId instanceId) {
+    for (uint8_t i = 0; i < targets.count; ++i) {
+      if (targets.ids[i] == instanceId) {
+        return true;
+      }
+    }
+    return false;
+  };
   bool hasPhysicalTarget = false;
   bool hasHomeAssistantTarget = false;
   for (uint8_t i = 0; i < targets.count; ++i) {
@@ -145,7 +157,7 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
           !devices_.isActive(record->instanceId)) {
         continue;
       }
-      const CommandStatus status = devices_.disconnect(record->instanceId);
+      const CommandStatus status = devices_.disconnectIdle(record->instanceId);
       if (status != CommandStatus::Succeeded &&
           status != CommandStatus::Unavailable) {
         return false;
@@ -155,10 +167,18 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
 
   InstanceId acquiredIds[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   uint8_t acquiredCount = 0;
+  bool reclaimedIdleSession = false;
   // BLE initialization needs one large contiguous allocation. Bring physical
   // transports up before HA starts Wi-Fi, regardless of authored step order.
   for (uint8_t pass = 0; pass < 2; ++pass) {
     const bool homeAssistantPass = pass == 1;
+    if (homeAssistantPass && reclaimedIdleSession) {
+      // NimBLE client deletion completes asynchronously. Let the main loop
+      // pump teardown before Home Assistant asks the Wi-Fi stack for its
+      // contiguous allocations.
+      homeAssistantDeferred_ = true;
+      break;
+    }
     for (uint8_t i = 0; i < targets.count; ++i) {
       const DeviceRecord* record = devices_.find(targets.ids[i]);
       const bool homeAssistant =
@@ -174,6 +194,51 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
       }
       acquiredIds[acquiredCount++] = targets.ids[i];
     }
+    if (!homeAssistantPass && hasHomeAssistantTarget) {
+      // Wi-Fi is the final transport allocation. Reclaim retained sessions
+      // from the previous scene that the new scene does not target, after its
+      // required BLE links are reserved but before HA starts Wi-Fi. Shared
+      // targets stay active; owned, pending, and recording sessions abort
+      // preparation instead of being torn down.
+      for (size_t i = 0; i < devices_.count(); ++i) {
+        const DeviceRecord* record = devices_.at(i);
+        if (record == nullptr || isTarget(record->instanceId) ||
+            !devices_.isActive(record->instanceId)) {
+          continue;
+        }
+        const CommandStatus status =
+            devices_.disconnectIdle(record->instanceId);
+        if (status != CommandStatus::Succeeded &&
+            status != CommandStatus::Unavailable) {
+          for (uint8_t acquired = 0; acquired < acquiredCount; ++acquired) {
+            devices_.release(acquiredIds[acquired],
+                             ConnectionOwner::Sequence);
+          }
+          return false;
+        }
+        reclaimedIdleSession =
+            reclaimedIdleSession || status == CommandStatus::Succeeded;
+      }
+    }
+  }
+  return true;
+}
+
+bool SceneRunner::activateDeferredHomeAssistantTargets() {
+  InstanceId acquiredIds[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+  uint8_t acquiredCount = 0;
+  for (uint8_t i = 0; i < targets_.count; ++i) {
+    const DeviceRecord* record = devices_.find(targets_.ids[i]);
+    if (record == nullptr || record->driverId != DriverId::HomeAssistant) {
+      continue;
+    }
+    if (!devices_.acquire(targets_.ids[i], ConnectionOwner::Sequence)) {
+      for (uint8_t acquired = 0; acquired < acquiredCount; ++acquired) {
+        devices_.release(acquiredIds[acquired], ConnectionOwner::Sequence);
+      }
+      return false;
+    }
+    acquiredIds[acquiredCount++] = targets_.ids[i];
   }
   return true;
 }
@@ -503,6 +568,8 @@ void SceneRunner::cancel() {
   direction_ = Direction::None;
   waitingForResult_ = false;
   pendingRequestId_ = 0;
+  homeAssistantDeferred_ = false;
+  homeAssistantActivationAtMs_ = 0;
   releaseTargets(targets_);
   targets_ = TargetSet{};
   activeScene_ = SceneRecord{};
@@ -592,6 +659,23 @@ void SceneRunner::tick(uint32_t nowMs) {
   if (progress_.phase == ScenePhase::Idle ||
       progress_.phase == ScenePhase::Completed) {
     return;
+  }
+
+  if (progress_.phase == ScenePhase::Connecting && homeAssistantDeferred_) {
+    if (homeAssistantActivationAtMs_ == 0) {
+      homeAssistantActivationAtMs_ = nowMs + kHomeAssistantReclaimSettleMs;
+      return;
+    }
+    if (static_cast<int32_t>(nowMs - homeAssistantActivationAtMs_) < 0) {
+      return;
+    }
+    homeAssistantDeferred_ = false;
+    homeAssistantActivationAtMs_ = 0;
+    if (!activateDeferredHomeAssistantTargets()) {
+      releaseTargets(targets_);
+      fail(SceneRunStatus::ActionFailed, "Activate failed");
+      return;
+    }
   }
 
   if (phaseStartedMs_ == 0) {

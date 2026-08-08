@@ -3,12 +3,25 @@
 #ifdef UI_SIMULATOR
 
 #include <cstring>
+#include <new>
 
 namespace amaran_light {
 namespace {
-AmaranRuntime instance;
+AmaranRuntime* instance = nullptr;
 }
-AmaranRuntime& runtime() { return instance; }
+AmaranRuntime* runtime() {
+  if (instance == nullptr) {
+    instance = new (std::nothrow) AmaranRuntime;
+  }
+  return instance;
+}
+AmaranRuntime* runtimeIfActive() { return instance; }
+void releaseRuntimeIfIdle() {
+  if (instance != nullptr && instance->idle()) {
+    delete instance;
+    instance = nullptr;
+  }
+}
 AmaranRuntime::Session* AmaranRuntime::sessionFor(studio::InstanceId id) {
   for (auto& session : sessions_) if (session.instanceId == id) return &session;
   return nullptr;
@@ -107,6 +120,7 @@ bool AmaranRuntime::isPreferredGatewayAddress(const char*) const { return true; 
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <new>
 
 #include <cstring>
 
@@ -129,7 +143,7 @@ constexpr const char* kProxyOut = "00002ade-0000-1000-8000-00805f9b34fb";
 constexpr uint32_t kPowerPollIntervalMs = 5000;
 constexpr uint32_t kNodeFreshnessMs = 15000;
 
-AmaranRuntime instance;
+AmaranRuntime* runtimeInstance = nullptr;
 AmaranRuntime* activeRuntime = nullptr;
 
 void notificationCallback(NimBLERemoteCharacteristic*, uint8_t* data,
@@ -146,7 +160,23 @@ studio::ble::Address addressFrom(const char* value, uint8_t type) {
 
 }  // namespace
 
-AmaranRuntime& runtime() { return instance; }
+AmaranRuntime* runtime() {
+  if (runtimeInstance == nullptr) {
+    if (!studio::mesh::retainRepository()) return nullptr;
+    runtimeInstance = new (std::nothrow) AmaranRuntime;
+    if (runtimeInstance == nullptr) studio::mesh::releaseRepository();
+  }
+  return runtimeInstance;
+}
+AmaranRuntime* runtimeIfActive() { return runtimeInstance; }
+void releaseRuntimeIfIdle() {
+  if (runtimeInstance != nullptr && runtimeInstance->idle()) {
+    if (activeRuntime == runtimeInstance) activeRuntime = nullptr;
+    delete runtimeInstance;
+    runtimeInstance = nullptr;
+    studio::mesh::releaseRepository();
+  }
+}
 
 AmaranRuntime::Session* AmaranRuntime::sessionFor(studio::InstanceId id) {
   for (auto& session : sessions_) if (session.instanceId == id) return &session;
@@ -231,6 +261,7 @@ bool AmaranRuntime::acquireGateway(const studio::DeviceRecord& record) {
     return false;
   }
   bool registered = false;
+  bool added = false;
   for (studio::InstanceId id : gatewayUsers_) {
     registered = registered || id == record.instanceId;
   }
@@ -239,13 +270,20 @@ bool AmaranRuntime::acquireGateway(const studio::DeviceRecord& record) {
       if (id != studio::kInvalidInstanceId) continue;
       id = record.instanceId;
       registered = true;
+      added = true;
       break;
     }
   }
   if (!registered) return false;
   const studio::InstanceId preferred = preferredGatewayInstance();
   if (link_ == studio::ble::kInvalidLinkHandle) {
-    return beginLink(preferred, false);
+    if (beginLink(preferred, false)) return true;
+    if (added) {
+      for (studio::InstanceId& id : gatewayUsers_) {
+        if (id == record.instanceId) id = studio::kInvalidInstanceId;
+      }
+    }
+    return false;
   }
   if (linkInstance_ != preferred) {
     linkInstance_ = preferred;

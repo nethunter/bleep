@@ -16,9 +16,6 @@ namespace tascam_x8 {
 
 namespace {
 
-const NimBLEUUID kPrimaryService(kPrimaryServiceUuid);
-const NimBLEUUID kDataCharacteristic(kDataCharacteristicUuid);
-const NimBLEUUID kSessionCharacteristic(kSessionCharacteristicUuid);
 TascamX8Client* gNotifyClient = nullptr;
 
 void dataNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
@@ -266,7 +263,8 @@ void TascamX8Client::beginConnect() {
 
 bool TascamX8Client::completeConnect() {
   const uint32_t discoveryStartedMs = millis();
-  NimBLERemoteService* service = client_->getService(kPrimaryService);
+  NimBLERemoteService* service =
+      client_->getService(NimBLEUUID(kPrimaryServiceUuid));
   if (service == nullptr) {
     studio::ble::logTiming(
         "tascam_x8", linkHandle_, "gatt_setup",
@@ -275,8 +273,10 @@ bool TascamX8Client::completeConnect() {
         "failed");
     return false;
   }
-  dataChar_ = service->getCharacteristic(kDataCharacteristic);
-  sessionChar_ = service->getCharacteristic(kSessionCharacteristic);
+  dataChar_ =
+      service->getCharacteristic(NimBLEUUID(kDataCharacteristicUuid));
+  sessionChar_ =
+      service->getCharacteristic(NimBLEUUID(kSessionCharacteristicUuid));
   if (dataChar_ == nullptr || sessionChar_ == nullptr ||
       !sessionChar_->subscribe(true, sessionNotifyTrampoline, true) ||
       !dataChar_->subscribe(true, dataNotifyTrampoline, true)) {

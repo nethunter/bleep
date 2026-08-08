@@ -205,6 +205,14 @@ six-link profile remains a separate measured experiment and must pass
 full-profile BLE, Mesh Proxy, Wi-Fi, navigation, reconnect, latency, and
 contiguous-heap gates before adoption.
 
+Implemented dormant-resource tranche (ADR-035): driver adapters no longer
+embed their maximum session count. Device records grow in four-record heap
+blocks, per-instance sessions and shared mesh/HA runtimes allocate on first
+activation, BLE advertisements have a separate smaller event queue, and Wi-Fi
+exists only during active HA or Portal ownership. The LVGL pool is 64 KiB while
+the display DMA strips remain unchanged. Mixed-radio target measurements remain
+part of the completion gate.
+
 Completion gate:
 
 - Shark passes Phase 0 behavior through the new interfaces;

@@ -378,17 +378,23 @@ void refreshDevices() {
 
     const studio::DeviceRuntimeState runtime =
         studio::devices().runtimeState(record->instanceId);
-    char rowText[studio::kDeviceNameCapacity + 20];
-    std::snprintf(rowText, sizeof(rowText), "%s\n%s", record->displayName,
-                  record->enabled ? linkText(runtime.link) : "disabled");
-    lv_obj_t* label = lv_label_create(row);
-    lv_label_set_text(label, rowText);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_size(label, 132, 38);
-    lv_obj_set_style_text_font(label, UI_FONT_14, 0);
+    lv_obj_t* name = lv_label_create(row);
+    lv_label_set_text(name, record->displayName);
+    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(name, 132, 20);
+    lv_obj_set_style_text_font(name, UI_FONT_14, 0);
     lv_obj_set_style_text_color(
-        label, lv_color_hex(record->enabled ? kColText : kColMuted), 0);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 4, 0);
+        name, lv_color_hex(record->enabled ? kColText : kColMuted), 0);
+    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 4, 3);
+
+    lv_obj_t* status = lv_label_create(row);
+    lv_label_set_text(status,
+                      record->enabled ? linkText(runtime.link) : "disabled");
+    lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(status, 132, 16);
+    lv_obj_set_style_text_font(status, UI_FONT_12, 0);
+    lv_obj_set_style_text_color(status, lv_color_hex(kColMuted), 0);
+    lv_obj_align(status, LV_ALIGN_BOTTOM_LEFT, 4, -3);
 
     lv_obj_t* manage = lv_label_create(row);
     lv_label_set_text(manage, LV_SYMBOL_SETTINGS);

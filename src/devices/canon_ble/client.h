@@ -28,6 +28,7 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   }
   bool protocolReady() const;
 
+  void retry();
   void startScan();
   void forgetDevice();
   void forgetBond(const char* address, uint8_t addressType);
@@ -56,6 +57,7 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   void beginScan();
   void beginConnect();
   bool completeConnect();
+  void failProtocol();
   bool sendNewHandshakeIdentity();
   bool finishAcceptedHandshake();
   bool subscribePairingInfo();

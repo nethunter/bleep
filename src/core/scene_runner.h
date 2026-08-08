@@ -35,6 +35,7 @@ class SceneRunner {
 
   bool collectTargets(const SceneRecord& record, TargetSet& out) const;
   bool activateTargets(const TargetSet& targets);
+  bool activateDeferredHomeAssistantTargets();
   void releaseTargets(const TargetSet& targets);
   bool ownsTargets(const TargetSet& targets) const;
   bool allTargetsConnected(const TargetSet& targets, InstanceId& waiting) const;
@@ -54,7 +55,9 @@ class SceneRunner {
   Direction direction_ = Direction::None;
   uint32_t phaseStartedMs_ = 0;
   uint32_t waitUntilMs_ = 0;
+  uint32_t homeAssistantActivationAtMs_ = 0;
   uint32_t pendingRequestId_ = 0;
+  bool homeAssistantDeferred_ = false;
   bool waitingForResult_ = false;
   bool waitingForConfirmation_ = false;
 };

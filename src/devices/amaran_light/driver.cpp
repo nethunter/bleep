@@ -5,27 +5,48 @@
 namespace studio {
 
 bool AmaranLightDriver::activate(const DeviceRecord& record) {
-  return amaran_light::runtime().activate(record);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtime();
+  if (runtime == nullptr) return false;
+  if (runtime->activate(record)) return true;
+  amaran_light::releaseRuntimeIfIdle();
+  return false;
 }
 void AmaranLightDriver::deactivate(InstanceId instanceId) {
-  amaran_light::runtime().deactivate(instanceId);
+  if (amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive()) {
+    runtime->deactivate(instanceId);
+    amaran_light::releaseRuntimeIfIdle();
+  }
 }
-void AmaranLightDriver::loop() { amaran_light::runtime().loop(); }
+void AmaranLightDriver::loop() {
+  if (amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive()) {
+    runtime->loop();
+  }
+}
 CommandStatus AmaranLightDriver::dispatch(const DeviceCommand& command) {
-  return amaran_light::runtime().dispatch(command);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive();
+  return runtime != nullptr ? runtime->dispatch(command)
+                            : CommandStatus::Unavailable;
 }
 DeviceRuntimeState AmaranLightDriver::runtimeState(InstanceId instanceId) const {
-  return amaran_light::runtime().runtimeState(instanceId);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive();
+  return runtime != nullptr ? runtime->runtimeState(instanceId)
+                            : DeviceRuntimeState{};
 }
 const void* AmaranLightDriver::specializedState(InstanceId instanceId) const {
-  return amaran_light::runtime().state(instanceId);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive();
+  return runtime != nullptr ? runtime->state(instanceId) : nullptr;
 }
 void AmaranLightDriver::forgetPairing(const DeviceRecord& record) {
-  amaran_light::runtime().forgetLocal(record.instanceId);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtime();
+  if (runtime == nullptr) return;
+  runtime->forgetLocal(record.instanceId);
+  amaran_light::releaseRuntimeIfIdle();
 }
 bool AmaranLightDriver::consumePairingUpdate(InstanceId instanceId,
                                              DeviceRecord& record) {
-  return amaran_light::runtime().consumePairingUpdate(instanceId, record);
+  amaran_light::AmaranRuntime* runtime = amaran_light::runtimeIfActive();
+  return runtime != nullptr &&
+         runtime->consumePairingUpdate(instanceId, record);
 }
 
 }  // namespace studio

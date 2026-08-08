@@ -19,5 +19,7 @@ class Repository {
 };
 
 Repository& repository();
+bool retainRepository();
+void releaseRepository();
 
 }  // namespace studio::mesh

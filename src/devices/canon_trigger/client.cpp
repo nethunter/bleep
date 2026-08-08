@@ -15,9 +15,6 @@ namespace canon_trigger {
 
 namespace {
 
-const NimBLEUUID kPrimaryService(kPrimaryServiceUuid);
-const NimBLEUUID kPairingCharacteristic(kPairingCharacteristicUuid);
-const NimBLEUUID kControlCharacteristic(kControlCharacteristicUuid);
 }  // namespace
 
 void CanonTriggerClient::begin() {
@@ -124,7 +121,6 @@ void CanonTriggerClient::forgetBond(const char* address, uint8_t addressType) {
   if (address == nullptr || address[0] == '\0') {
     return;
   }
-  begin();
   studio::ble::Address peer;
   std::strncpy(peer.value, address, sizeof(peer.value) - 1);
   peer.type = addressType;
@@ -175,7 +171,8 @@ void CanonTriggerClient::beginConnect() {
 
 bool CanonTriggerClient::completeConnect() {
   const uint32_t discoveryStartedMs = millis();
-  NimBLERemoteService* service = client_->getService(kPrimaryService);
+  NimBLERemoteService* service =
+      client_->getService(NimBLEUUID(kPrimaryServiceUuid));
   if (service == nullptr) {
     studio::ble::logTiming(
         "canon_trigger", linkHandle_, "gatt_setup",
@@ -184,8 +181,10 @@ bool CanonTriggerClient::completeConnect() {
         "failed");
     return false;
   }
-  pairingChar_ = service->getCharacteristic(kPairingCharacteristic);
-  controlChar_ = service->getCharacteristic(kControlCharacteristic);
+  pairingChar_ =
+      service->getCharacteristic(NimBLEUUID(kPairingCharacteristicUuid));
+  controlChar_ =
+      service->getCharacteristic(NimBLEUUID(kControlCharacteristicUuid));
   if (pairingChar_ == nullptr || controlChar_ == nullptr) {
     return false;
   }

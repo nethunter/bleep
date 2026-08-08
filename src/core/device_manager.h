@@ -66,6 +66,7 @@ class DeviceManager {
 
   bool acquire(InstanceId instanceId, ConnectionOwner owner);
   void release(InstanceId instanceId, ConnectionOwner owner);
+  CommandStatus disconnectIdle(InstanceId instanceId);
   CommandStatus disconnect(InstanceId instanceId, bool confirmed = false);
   void deactivateAll();
   bool enqueue(DeviceCommand command);

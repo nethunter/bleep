@@ -37,7 +37,9 @@ class ZhiyunLightDriver : public DeviceDriver {
 
   Session* find(InstanceId instanceId);
   const Session* find(InstanceId instanceId) const;
-  Session sessions_[kMaxSessions];
+  Session* sessions_[kMaxSessions] = {};
+  size_t sessionCount_ = 0;
+  bool repositoryHeld_ = false;
 };
 
 using ZhiyunX100Driver = ZhiyunLightDriver;

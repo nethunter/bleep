@@ -30,7 +30,7 @@ class BleCentral {
   bool requestSecurity(LinkHandle link);
   bool deleteBond(const Address& address);
   void markProtocolReady(LinkHandle link);
-  void markProtocolFailed(LinkHandle link);
+  void markProtocolFailed(LinkHandle link, bool reconnect = true);
   bool protocolReady(LinkHandle link) const;
   uint32_t timingStartedAt(LinkHandle link) const;
 

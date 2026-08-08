@@ -18,12 +18,6 @@
 namespace zhiyun_x100 {
 namespace {
 
-const NimBLEUUID kControlService(kControlServiceUuid);
-const NimBLEUUID kWriteCharacteristic(kWriteCharacteristicUuid);
-const NimBLEUUID kNotifyCharacteristic(kNotifyCharacteristicUuid);
-const NimBLEUUID kProvisionService("00001827-0000-1000-8000-00805f9b34fb");
-const NimBLEUUID kProvisionIn("00002adb-0000-1000-8000-00805f9b34fb");
-const NimBLEUUID kProvisionOut("00002adc-0000-1000-8000-00805f9b34fb");
 constexpr size_t kMaxMolusClients = 4;
 X100Client* gNotifyClients[kMaxMolusClients] = {};
 uint16_t gSharedSequence = 2;
@@ -332,11 +326,13 @@ bool X100Client::sendInitializationStep() {
 bool X100Client::completeConnect() {
   if (provisioningLink_) return setupProvisioning();
   const uint32_t started = millis();
-  NimBLERemoteService* service = client_->getService(kControlService);
+  NimBLERemoteService* service =
+      client_->getService(NimBLEUUID(kControlServiceUuid));
   if (service == nullptr) return false;
-  writeCharacteristic_ = service->getCharacteristic(kWriteCharacteristic);
+  writeCharacteristic_ =
+      service->getCharacteristic(NimBLEUUID(kWriteCharacteristicUuid));
   notifyCharacteristic_ =
-      service->getCharacteristic(kNotifyCharacteristic);
+      service->getCharacteristic(NimBLEUUID(kNotifyCharacteristicUuid));
   if (writeCharacteristic_ == nullptr || notifyCharacteristic_ == nullptr ||
       !notifyCharacteristic_->subscribe(true, notifyTrampoline, true)) {
     writeCharacteristic_ = nullptr;
@@ -360,10 +356,13 @@ bool X100Client::loadMesh() {
 }
 
 bool X100Client::setupProvisioning() {
-  NimBLERemoteService* service = client_->getService(kProvisionService);
+  NimBLERemoteService* service = client_->getService(
+      NimBLEUUID("00001827-0000-1000-8000-00805f9b34fb"));
   if (service == nullptr) return false;
-  provisioningIn_ = service->getCharacteristic(kProvisionIn);
-  provisioningOut_ = service->getCharacteristic(kProvisionOut);
+  provisioningIn_ = service->getCharacteristic(
+      NimBLEUUID("00002adb-0000-1000-8000-00805f9b34fb"));
+  provisioningOut_ = service->getCharacteristic(
+      NimBLEUUID("00002adc-0000-1000-8000-00805f9b34fb"));
   if (provisioningIn_ == nullptr || provisioningOut_ == nullptr ||
       !provisioningOut_->subscribe(true, notifyTrampoline, true) || !loadMesh()) {
     provisioningIn_ = nullptr;

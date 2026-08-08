@@ -26,7 +26,7 @@ class CanonTriggerDriver : public DeviceDriver {
   };
   Session* sessionFor(InstanceId instanceId);
   const Session* sessionFor(InstanceId instanceId) const;
-  Session sessions_[kMaxSessions];
+  Session* sessions_[kMaxSessions] = {};
 };
 
 }  // namespace studio

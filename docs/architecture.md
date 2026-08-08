@@ -52,9 +52,9 @@ feasibility spikes:
   captured MOLUS profiles;
   hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
-- `DeviceManager` owns a fixed-capacity registry, command/result queues, up to
-  eight logical active instances grouped onto four physical BLE transport
-  slots, per-owner lifecycle, and persistence;
+- `DeviceManager` owns a dynamically allocated registry with a fixed persisted
+  ceiling, command/result queues, up to eight logical active instances grouped
+  onto four physical BLE transport slots, per-owner lifecycle, and persistence;
 - schema version 2 stores up to twenty-four device records in the `studio` NVS
   namespace, migrates v1 BLE records unchanged, and retains records for
   unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
@@ -63,7 +63,7 @@ feasibility spikes:
   `shark` namespace is still migrated, while the untouched unpaired Shark
   placeholder created by earlier firmware is removed on upgrade;
 - the catalog permits one Shark, up to three Canon Trigger instances, up to
-  three Canon Smart instances, and one Tascam X8 within the eight-record
+  three Canon Smart instances, and one Tascam X8 within the twenty-four-record
   registry;
 - Home and Devices load without initializing NimBLE; the first requested BLE
   device lazily starts one shared central runtime, and the last release shuts
@@ -100,6 +100,18 @@ Selected drivers register immutable metadata in `DriverCatalog`:
 Disabled drivers must not link protocol code, tasks, buffers, assets, or UI
 extensions into the firmware.
 
+Compiled drivers are also dormant in RAM until used. Their global adapter is a
+small shell containing only pointers/counters; clients, protocol sessions,
+transport queues, and shared repositories are allocated on first activation.
+Configured-but-inactive devices occupy only registry metadata. Maximum-instance
+values constrain configuration and concurrency and must never size eager arrays
+of full sessions. Allocation failure is reported through the normal activation
+or registry status path without partially activating a driver. The shared BLE
+backend follows the same boundary: its implementation state is allocated by the
+first BLE activation and released after the last asynchronous client teardown.
+When no BLE-backed driver is compiled, its main-loop pump and implementation are
+omitted from the linked image.
+
 ## Runtime device registry
 
 A device instance is separate from its compiled driver. It stores:
@@ -116,8 +128,8 @@ previously used driver, its stored instance remains dormant and can reappear
 when that driver is compiled back in.
 
 Runtime disable prevents discovery, connections, polling, commands, and menu
-presence. It does not recover flash or static allocations; that requires
-disabling the driver in menuconfig.
+presence. It releases that instance's runtime session but does not recover the
+driver's flash code; removing the driver at compile time recovers flash.
 
 ## Startup and connection lifecycle
 
@@ -215,7 +227,10 @@ client teardown has actually emptied NimBLE's global slots. An immediate
 reacquire can reserve links during that interval; the backend provisions their
 replacement clients as capacity returns. Backend callback objects have backend
 lifetime rather than link lifetime, and final GAP events are accepted only when
-their client pointer still owns the logical slot.
+their client pointer still owns the logical slot. Control events also carry the
+slot generation that queued them, so an event already waiting when LRU eviction
+reuses a logical handle is discarded instead of being delivered to the
+replacement device.
 
 ## Capabilities and unified UI
 
@@ -258,18 +273,20 @@ receives at most 24 bounded summaries and may select four. Secrets are password
 fields and never appear in `/api/config`. Exit or ten minutes of inactivity
 stops HTTP/mDNS, disconnects STA, and returns Wi-Fi to off.
 
-Opening an HA screen or preparing an HA scene target acquires the shared
-`HomeAssistantRuntime`. It joins Wi-Fi, authenticates `/api/websocket`, fetches
+Opening an HA screen or preparing an HA scene target allocates and acquires the
+shared `HomeAssistantRuntime`. It joins Wi-Fi, authenticates `/api/websocket`, fetches
 each active entity's initial state through REST, and installs a
 `subscribe_trigger` state subscription containing only active entity IDs.
 Callbacks copy at most two 2048-byte frames; the main loop parses them with
 ArduinoJson, mutates state, sends service calls, and updates LVGL. Malformed,
 oversized, or dropped frames mark state unknown and schedule a bounded REST
 refresh. When a subscribed confirmation has not arrived after five seconds,
-the runtime reconciles the individual entity through REST before reporting
-failure. A matching refreshed state succeeds; only HTTP 404 means missing,
+the runtime reconciles the individual entity through a heap-gated REST request
+before reporting failure. A matching refreshed state succeeds; only HTTP 404 means missing,
 while transport and parse failures remain unknown. The runtime disconnects
-Wi-Fi after its final HA instance is evicted or explicitly unlinked.
+Wi-Fi after its final HA instance is evicted or explicitly unlinked. Merely
+saving HA entities or credentials does not allocate the client or start Wi-Fi;
+outside Portal and active HA ownership the radio is explicitly `WIFI_OFF`.
 
 Mixed sequences initialize every physical transport before acquiring any Home
 Assistant target, independent of authored action order. On the ESP32-C3,
@@ -278,8 +295,14 @@ bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
 underlying BLE library to assert instead of returning a recoverable error.
 Before that ordering pass, preparation evicts every idle retained HA session so
 navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
-Pending HA work makes preparation fail safely. Action execution still follows
-the authored order after all targets prepare. The LVGL pool is held to 76 KiB
+After the required physical targets are acquired, preparation also evicts idle
+physical transports that are not targets of the new scene. Shared targets stay
+active, while foreground ownership, pending work, or confirmed recording makes
+the handoff fail safely instead of forcing teardown. When that cleanup starts
+an asynchronous NimBLE client deletion, HA activation is deferred for a
+non-blocking 250 ms so the main loop can return the released BLE allocations
+before Wi-Fi starts. Action execution still follows the authored order after
+all targets prepare. The LVGL pool is held to 64 KiB
 and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
 static SRAM compared with the earlier 96 KiB/40-row configuration. The full
 simulator flow is the regression gate for the LVGL allocation budget. HA keeps

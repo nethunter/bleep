@@ -1,13 +1,14 @@
 #include "devices/canon_ble/driver.h"
 
 #include <cstring>
+#include <new>
 
 namespace studio {
 
 CanonBleDriver::Session* CanonBleDriver::sessionFor(InstanceId instanceId) {
-  for (Session& session : sessions_) {
-    if (session.instanceId == instanceId) {
-      return &session;
+  for (Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) {
+      return session;
     }
   }
   return nullptr;
@@ -15,9 +16,9 @@ CanonBleDriver::Session* CanonBleDriver::sessionFor(InstanceId instanceId) {
 
 const CanonBleDriver::Session* CanonBleDriver::sessionFor(
     InstanceId instanceId) const {
-  for (const Session& session : sessions_) {
-    if (session.instanceId == instanceId) {
-      return &session;
+  for (const Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) {
+      return session;
     }
   }
   return nullptr;
@@ -27,12 +28,12 @@ bool CanonBleDriver::activate(const DeviceRecord& record) {
   if (sessionFor(record.instanceId) != nullptr) {
     return true;
   }
-  for (Session& session : sessions_) {
-    if (session.instanceId != kInvalidInstanceId) {
-      continue;
-    }
-    session.instanceId = record.instanceId;
-    session.client.activate(record.bleAddress, record.bleAddressType,
+  for (Session*& session : sessions_) {
+    if (session != nullptr) continue;
+    session = new (std::nothrow) Session;
+    if (session == nullptr) return false;
+    session->instanceId = record.instanceId;
+    session->client.activate(record.bleAddress, record.bleAddressType,
                             record.bleName[0] != '\0' ? record.bleName
                                                       : record.displayName,
                             record.paired);
@@ -63,15 +64,18 @@ void CanonBleDriver::deactivate(InstanceId instanceId) {
   Session* session = sessionFor(instanceId);
   if (session != nullptr) {
     session->client.deactivate();
-    session->instanceId = kInvalidInstanceId;
+    for (Session*& candidate : sessions_) {
+      if (candidate != session) continue;
+      delete candidate;
+      candidate = nullptr;
+      break;
+    }
   }
 }
 
 void CanonBleDriver::loop() {
-  for (Session& session : sessions_) {
-    if (session.instanceId != kInvalidInstanceId) {
-      session.client.loop();
-    }
+  for (Session* session : sessions_) {
+    if (session != nullptr) session->client.loop();
   }
 }
 
@@ -82,7 +86,7 @@ CommandStatus CanonBleDriver::dispatch(const DeviceCommand& command) {
   }
   switch (command.type) {
     case CommandType::Connect:
-      session->client.startScan();
+      session->client.retry();
       return CommandStatus::Succeeded;
     case CommandType::ForgetPairing:
       session->client.forgetDevice();
@@ -143,8 +147,12 @@ const void* CanonBleDriver::specializedState(InstanceId instanceId) const {
 
 void CanonBleDriver::forgetPairing(const DeviceRecord& record) {
   Session* session = sessionFor(record.instanceId);
-  (session != nullptr ? session->client : sessions_[0].client)
-      .forgetBond(record.bleAddress, record.bleAddressType);
+  if (session != nullptr) {
+    session->client.forgetBond(record.bleAddress, record.bleAddressType);
+    return;
+  }
+  canon_ble::CanonBleClient transient;
+  transient.forgetBond(record.bleAddress, record.bleAddressType);
 }
 
 void CanonBleDriver::cancelOnboarding(const DeviceRecord& record) {

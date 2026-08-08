@@ -11,16 +11,19 @@
 
 #ifdef UI_FONT_ROBOTO
 
+LV_FONT_DECLARE(lv_font_roboto_12)
 LV_FONT_DECLARE(lv_font_roboto_14)
 LV_FONT_DECLARE(lv_font_roboto_16)
 LV_FONT_DECLARE(lv_font_roboto_20)
 
+#define UI_FONT_12 (&lv_font_roboto_12)
 #define UI_FONT_14 (&lv_font_roboto_14)
 #define UI_FONT_16 (&lv_font_roboto_16)
 #define UI_FONT_20 (&lv_font_roboto_20)
 
 #else
 
+#define UI_FONT_12 (&lv_font_montserrat_12)
 #define UI_FONT_14 (&lv_font_montserrat_14)
 #define UI_FONT_16 (&lv_font_montserrat_16)
 #define UI_FONT_20 (&lv_font_montserrat_20)

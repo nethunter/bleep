@@ -41,18 +41,6 @@ void buildStableControllerId(uint8_t id[16]) {
   }
 }
 
-const NimBLEUUID kHandshakeService(kHandshakeServiceUuid);
-const NimBLEUUID kPairingCommandCharacteristic(
-    kPairingCommandCharacteristicUuid);
-const NimBLEUUID kPairingDataCharacteristic(kPairingDataCharacteristicUuid);
-const NimBLEUUID kPairingInfoCharacteristic(kPairingInfoCharacteristicUuid);
-const NimBLEUUID kCoreService(kCoreServiceUuid);
-const NimBLEUUID kModeCommandCharacteristic(kModeCommandCharacteristicUuid);
-const NimBLEUUID kModeResultCharacteristic(kModeResultCharacteristicUuid);
-const NimBLEUUID kShootingCommandCharacteristic(
-    kShootingCommandCharacteristicUuid);
-const NimBLEUUID kShootingStateCharacteristic(
-    kShootingStateCharacteristicUuid);
 CanonBleClient* gNotifyClient = nullptr;
 
 void pairingNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
@@ -215,7 +203,7 @@ void CanonBleClient::loop() {
     if (!completeConnect()) {
       CANON_LOG.printf("canon setup failed newHandshake=%d addr=%s\n",
                     newHandshake_ ? 1 : 0, targetAddr_);
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      failProtocol();
       return;
     }
     CANON_LOG.printf("canon setup ok phase=%d\n", static_cast<int>(state_.phase));
@@ -292,6 +280,16 @@ void CanonBleClient::loop() {
 
 }
 
+void CanonBleClient::retry() {
+  if (newHandshake_ || targetAddr_[0] == '\0') {
+    startScan();
+    return;
+  }
+  connectRequested_ = true;
+  resetTransientState(state_);
+  beginConnect();
+}
+
 void CanonBleClient::startScan() {
   connectRequested_ = true;
   if (initialized_) {
@@ -333,7 +331,6 @@ void CanonBleClient::forgetBond(const char* address, uint8_t addressType) {
   if (address == nullptr || address[0] == '\0') {
     return;
   }
-  begin();
   studio::ble::Address peer;
   std::strncpy(peer.value, address, sizeof(peer.value) - 1);
   peer.value[sizeof(peer.value) - 1] = '\0';
@@ -458,7 +455,8 @@ bool CanonBleClient::completeConnect() {
     return false;
   }
   const uint32_t discoveryStartedMs = millis();
-  NimBLERemoteService* handshake = client_->getService(kHandshakeService);
+  NimBLERemoteService* handshake =
+      client_->getService(NimBLEUUID(kHandshakeServiceUuid));
   if (handshake == nullptr) {
     CANON_LOG.println("canon setup: handshake service missing");
     studio::ble::logTiming(
@@ -469,17 +467,40 @@ bool CanonBleClient::completeConnect() {
     return false;
   }
   pairingCommandChar_ =
-      handshake->getCharacteristic(kPairingCommandCharacteristic);
-  pairingDataChar_ = handshake->getCharacteristic(kPairingDataCharacteristic);
-  pairingInfoChar_ = handshake->getCharacteristic(kPairingInfoCharacteristic);
+      handshake->getCharacteristic(NimBLEUUID(kPairingCommandCharacteristicUuid));
+  pairingDataChar_ = handshake->getCharacteristic(
+      NimBLEUUID(kPairingDataCharacteristicUuid));
+  pairingInfoChar_ = handshake->getCharacteristic(
+      NimBLEUUID(kPairingInfoCharacteristicUuid));
   // Pairing-info (0001000c) is present on R6 III Camera Connect captures but
   // absent on EOS R6 Mark II; initial handshake only needs command + data.
   if (pairingCommandChar_ == nullptr || pairingDataChar_ == nullptr) {
-    CANON_LOG.printf("canon setup: pairing chars missing cmd=%d data=%d info=%d\n",
+    CANON_LOG.printf("canon setup: pairing chars incomplete cmd=%d data=%d info=%d; refreshing\n",
                      pairingCommandChar_ != nullptr ? 1 : 0,
                      pairingDataChar_ != nullptr ? 1 : 0,
                      pairingInfoChar_ != nullptr ? 1 : 0);
-    return false;
+    handshake->getCharacteristics(true);
+    pairingCommandChar_ =
+        handshake->getCharacteristic(
+            NimBLEUUID(kPairingCommandCharacteristicUuid));
+    pairingDataChar_ =
+        handshake->getCharacteristic(NimBLEUUID(kPairingDataCharacteristicUuid));
+    pairingInfoChar_ =
+        handshake->getCharacteristic(NimBLEUUID(kPairingInfoCharacteristicUuid));
+    if (pairingCommandChar_ == nullptr || pairingDataChar_ == nullptr) {
+      CANON_LOG.printf("canon setup: pairing chars missing after refresh cmd=%d data=%d info=%d\n",
+                       pairingCommandChar_ != nullptr ? 1 : 0,
+                       pairingDataChar_ != nullptr ? 1 : 0,
+                       pairingInfoChar_ != nullptr ? 1 : 0);
+      for (NimBLERemoteCharacteristic* characteristic :
+           handshake->getCharacteristics(false)) {
+        if (characteristic != nullptr) {
+          CANON_LOG.printf("canon handshake char uuid=%s\n",
+                           characteristic->getUUID().toString().c_str());
+        }
+      }
+      return false;
+    }
   }
   studio::ble::logTiming(
       "canon_smart", linkHandle_, "gatt_handshake_discovery",
@@ -591,7 +612,7 @@ bool CanonBleClient::openCoreSession() {
   // Targeted lookup performs a filtered discovery when the service was hidden
   // until pairing, without walking every service and descriptor twice.
   const uint32_t discoveryStartedMs = millis();
-  NimBLERemoteService* core = client_->getService(kCoreService);
+  NimBLERemoteService* core = client_->getService(NimBLEUUID(kCoreServiceUuid));
   if (core == nullptr) {
     CANON_LOG.println("canon core: service 00030000 missing");
     for (NimBLERemoteService* service : client_->getServices(false)) {
@@ -607,12 +628,14 @@ bool CanonBleClient::openCoreSession() {
         "failed");
     return false;
   }
-  modeCommandChar_ = core->getCharacteristic(kModeCommandCharacteristic);
-  modeResultChar_ = core->getCharacteristic(kModeResultCharacteristic);
+  modeCommandChar_ =
+      core->getCharacteristic(NimBLEUUID(kModeCommandCharacteristicUuid));
+  modeResultChar_ =
+      core->getCharacteristic(NimBLEUUID(kModeResultCharacteristicUuid));
   shootingCommandChar_ =
-      core->getCharacteristic(kShootingCommandCharacteristic);
+      core->getCharacteristic(NimBLEUUID(kShootingCommandCharacteristicUuid));
   shootingStateChar_ =
-      core->getCharacteristic(kShootingStateCharacteristic);
+      core->getCharacteristic(NimBLEUUID(kShootingStateCharacteristicUuid));
   if (modeCommandChar_ == nullptr || modeResultChar_ == nullptr ||
       shootingCommandChar_ == nullptr || shootingStateChar_ == nullptr) {
     CANON_LOG.printf(
@@ -677,6 +700,7 @@ bool CanonBleClient::openCoreSession() {
 
 void CanonBleClient::handleDisconnect() {
   const bool pairingRejected = state_.pairingRejected;
+  const bool protocolFailed = state_.protocolFailed;
   const bool poweredOff =
       state_.phase == State::Phase::PoweringOff && !connectRequested_;
   const bool recoverPairing = bondRecoveryPending_;
@@ -702,6 +726,7 @@ void CanonBleClient::handleDisconnect() {
   postPairStep_ = 0;
   resetTransientState(state_);
   state_.pairingRejected = pairingRejected;
+  state_.protocolFailed = protocolFailed;
   state_.hasSavedDevice = haveTarget_;
   state_.link = Link::Disconnected;
   if (poweredOff) {
@@ -719,6 +744,12 @@ void CanonBleClient::handleSecurityFailure() {
   ++securityFails_;
   bondRecoveryPending_ = haveTarget_ && securityFails_ >= 2;
   studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+}
+
+void CanonBleClient::failProtocol() {
+  connectRequested_ = false;
+  state_.protocolFailed = true;
+  studio::ble::bleCentral().markProtocolFailed(linkHandle_, false);
 }
 
 void CanonBleClient::readInitialRecordingState() {
