@@ -739,8 +739,9 @@ the replacement.
 - Persistence: Device schema 2 remains unchanged and continues to read older
   blobs. Its larger bounded scratch buffers are heap-backed; save allocates only
   the encoded length. Mesh storage is sized for the same 24-record ceiling.
-- UI: Devices renders six records per page so record capacity does not imply 24
-  simultaneous LVGL row trees.
+- UI: Devices shows no pagination controls through six configured records. At
+  seven or more, it pages six records at a time. Row trees are released before
+  specialized device screens and rename overlays are allocated.
 - Boundary: Six links are not a production setting. Raising the physical-link
   limit requires target measurements with the intended mix of encrypted GATT,
   Mesh Proxy, Home Assistant Wi-Fi, navigation, and reconnect activity. The

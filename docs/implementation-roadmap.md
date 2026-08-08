@@ -199,9 +199,11 @@ remain open; this implementation does not claim Mesh/GATT coexistence.
 Implemented capacity tranche (ADR-034): saved-device capacity is 24, NimBLE
 bond capacity is 16, and the application and NimBLE controller are explicitly
 aligned at four physical links while retaining eight logical active instances.
-The Devices UI pages records to bound LVGL use. A six-link profile remains a
-separate measured experiment and must pass full-profile BLE, Mesh Proxy, Wi-Fi,
-navigation, reconnect, latency, and contiguous-heap gates before adoption.
+The Devices UI stays unpaged through six configured records, then pages six at
+a time; it releases list rows before allocating specialized screens. A
+six-link profile remains a separate measured experiment and must pass
+full-profile BLE, Mesh Proxy, Wi-Fi, navigation, reconnect, latency, and
+contiguous-heap gates before adoption.
 
 Completion gate:
 

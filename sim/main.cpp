@@ -226,6 +226,11 @@ int main() {
       studio::devices().rename(record->instanceId, "Slider A");
     }
   }
+  ui::init();
+  ui::showDevices();
+  if (!capture("00_devices_unpaged")) {
+    return 1;
+  }
   studio::InstanceId canonId = studio::kInvalidInstanceId;
   studio::devices().add(studio::DriverId::CanonBle, "EOS R6 Mark III",
                         canonId);
@@ -304,7 +309,6 @@ int main() {
     return 1;
   }
 
-  ui::init();
   printLvglMemory("after max-device init");
 
   ui::showHome();

@@ -257,8 +257,6 @@ bool driverCanAdd(const studio::DriverDescriptor* descriptor) {
          instanceCount(descriptor->id) < descriptor->maxInstances;
 }
 
-constexpr size_t kDeviceRowsPerPage = 6;
-
 bool canAddDevice() {
   for (size_t i = 0; i < studio::DriverCatalog::count(); ++i) {
     if (driverCanAdd(studio::DriverCatalog::at(i))) return true;
@@ -266,10 +264,13 @@ bool canAddDevice() {
   return false;
 }
 
-size_t devicePageCount(bool canAdd) {
-  const size_t items = studio::devices().count() + (canAdd ? 1 : 0);
-  return items == 0 ? 1 : (items + kDeviceRowsPerPage - 1) /
-                                  kDeviceRowsPerPage;
+constexpr size_t kDeviceRowsPerPage = 6;
+
+size_t devicePageCount() {
+  const size_t count = studio::devices().count();
+  return count <= kDeviceRowsPerPage
+             ? 1
+             : (count + kDeviceRowsPerPage - 1) / kDeviceRowsPerPage;
 }
 
 const char* linkText(studio::LinkState link) {
@@ -311,7 +312,7 @@ void onDevicePagePrevious(lv_event_t*) {
 }
 
 void onDevicePageNext(lv_event_t*) {
-  const size_t pageCount = devicePageCount(canAddDevice());
+  const size_t pageCount = devicePageCount();
   if (devicePage + 1 < pageCount) {
     ++devicePage;
     refreshDevices();
@@ -350,8 +351,10 @@ void refreshDevices() {
   lv_obj_clean(deviceList);
   addButton = nullptr;
   const bool canAdd = canAddDevice();
-  const size_t pageCount = devicePageCount(canAdd);
+  const size_t pageCount = devicePageCount();
+  const bool paged = pageCount > 1;
   if (devicePage >= pageCount) devicePage = pageCount - 1;
+  lv_obj_set_height(deviceList, paged ? 126 : 158);
   const size_t first = devicePage * kDeviceRowsPerPage;
   const size_t last = first + kDeviceRowsPerPage < studio::devices().count()
                           ? first + kDeviceRowsPerPage
@@ -373,30 +376,30 @@ void refreshDevices() {
     lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(row, onOpenDevice, LV_EVENT_CLICKED, userData);
 
-    lv_obj_t* name = lv_label_create(row);
-    lv_label_set_text(name, record->displayName);
-    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(name, 128);
-    lv_obj_set_style_text_font(name, UI_FONT_14, 0);
-    lv_obj_set_style_text_color(
-        name, lv_color_hex(record->enabled ? kColText : kColMuted), 0);
-    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 4, 4);
-
-    lv_obj_t* detail = lv_label_create(row);
     const studio::DeviceRuntimeState runtime =
         studio::devices().runtimeState(record->instanceId);
-    lv_label_set_text(detail, record->enabled ? linkText(runtime.link) : "disabled");
-    lv_obj_set_style_text_font(detail, UI_FONT_14, 0);
-    lv_obj_set_style_text_color(detail, lv_color_hex(kColMuted), 0);
-    lv_obj_align(detail, LV_ALIGN_TOP_LEFT, 4, 24);
+    char rowText[studio::kDeviceNameCapacity + 20];
+    std::snprintf(rowText, sizeof(rowText), "%s\n%s", record->displayName,
+                  record->enabled ? linkText(runtime.link) : "disabled");
+    lv_obj_t* label = lv_label_create(row);
+    lv_label_set_text(label, rowText);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(label, 132, 38);
+    lv_obj_set_style_text_font(label, UI_FONT_14, 0);
+    lv_obj_set_style_text_color(
+        label, lv_color_hex(record->enabled ? kColText : kColMuted), 0);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 4, 0);
 
-    lv_obj_t* manage = makeButton(row, LV_SYMBOL_SETTINGS, nullptr);
-    lv_obj_set_size(manage, 34, 34);
+    lv_obj_t* manage = lv_label_create(row);
+    lv_label_set_text(manage, LV_SYMBOL_SETTINGS);
+    lv_obj_set_size(manage, 36, 44);
+    lv_obj_set_style_text_align(manage, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_pad_top(manage, 13, 0);
+    lv_obj_add_flag(manage, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(manage, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_add_event_cb(manage, onOpenManage, LV_EVENT_CLICKED, userData);
   }
-  const size_t addIndex = studio::devices().count();
-  if (canAdd && addIndex >= first && addIndex < first + kDeviceRowsPerPage) {
+  if (canAdd && devicePage + 1 == pageCount) {
     lv_obj_t* addRow = lv_obj_create(deviceList);
     lv_obj_set_size(addRow, lv_pct(100), studio::devices().count() > 0 ? 42 : 34);
     lv_obj_set_style_bg_opa(addRow, LV_OPA_TRANSP, 0);
@@ -408,6 +411,18 @@ void refreshDevices() {
     lv_obj_align(addButton, LV_ALIGN_BOTTOM_MID, 0, 0);
   }
 
+  lv_obj_update_layout(deviceList);
+  lv_obj_scroll_to_y(deviceList, 0, LV_ANIM_OFF);
+  if (!paged) {
+    lv_obj_add_flag(devicePagePrevious, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(devicePageLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(devicePageNext, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+
+  lv_obj_clear_flag(devicePagePrevious, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(devicePageLabel, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(devicePageNext, LV_OBJ_FLAG_HIDDEN);
   char pageText[16];
   std::snprintf(pageText, sizeof(pageText), "%u/%u",
                 static_cast<unsigned>(devicePage + 1),
@@ -1001,7 +1016,7 @@ void buildDevices() {
   lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
 
   deviceList = lv_obj_create(scrDevices);
-  lv_obj_set_size(deviceList, 200, 126);
+  lv_obj_set_size(deviceList, 200, 158);
   lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 68);
   lv_obj_set_style_bg_opa(deviceList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(deviceList, 0, 0);
@@ -1755,7 +1770,7 @@ bool renamePromptActive() {
 
 #ifdef UI_SIMULATOR
 bool simAddDeviceAtListEnd() {
-  devicePage = devicePageCount(canAddDevice()) - 1;
+  devicePage = devicePageCount() - 1;
   refreshDevices();
   if (addButton == nullptr || lv_obj_get_parent(addButton) == nullptr) {
     return false;
