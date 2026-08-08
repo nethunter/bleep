@@ -338,11 +338,12 @@ transition into failure.
 Stronger patterns take priority, and no pattern delays UI, transport, or scene
 work.
 
-The Devices screen renders at most six of its twenty-four records per page.
-This bounds resident LVGL objects without increasing the 76 KiB pool; rendering
-all records at once exhausted the simulator pool. The full capture run still
-includes the largest specialized control and sequence-stop screens. Target
-heap recovery remains part of ADR-023's open hardware gate.
+The Devices screen remains unpaged through six records. Pagination controls
+appear only at seven or more records, with six records per page. Device rows
+are released before a specialized control screen or rename overlay is
+allocated. The full capture run still includes the largest specialized control
+and sequence-stop screens. Target heap recovery remains part of ADR-023's open
+hardware gate.
 
 State fields carry a quality:
 

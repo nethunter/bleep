@@ -115,7 +115,7 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
-### Capacity alignment and paged Devices UI
+### Capacity alignment and conditional Devices pagination
 
 - Date: 2026-08-08.
 - Configuration: 24 saved device records, 16 NimBLE bonds, eight logical active
@@ -127,17 +127,19 @@ Record values with the exact build environment and commit/worktree state.
 - Native tests: 57/57 passed in `native`, including full-capacity device and
   mesh-store round trips.
 - Simulator: the maximum compiled-driver configuration uses 20 records. The
-  Devices list renders six per page; the full ASan capture suite completed with
-  no sanitizer finding. At sequence stop the simulator reported 30,008 bytes
-  free in the 76 KiB LVGL pool, 13,951-byte peak allocation, and 13%
+  Devices screen stays unpaged through six records and pages six at a time
+  above that threshold; it releases rows before opening specialized screens.
+  The full ASan capture suite completed with no sanitizer finding. At sequence
+  stop the simulator reported 30,024 bytes free in the 76 KiB LVGL pool,
+  10,906-byte peak allocation, and 13%
   fragmentation. A clean release-mode rebuild then completed the same capture
-  suite with the same reported sequence-stop memory values; the paged 240x240
+  suite with the same reported sequence-stop memory values; the 240x240
   Devices screenshot was visually checked for round-edge clearance.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
   `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
   `zhiyun_x100` succeeded sequentially with NimBLE-Arduino 2.5.1.
-- Full profile size: 1,861,324 / 3,145,728 bytes flash (59.2%) and 175,844 /
-  327,680 bytes static RAM (53.7%). This is 46,288 bytes flash and 6,112 bytes
+- Full profile size: 1,861,386 / 3,145,728 bytes flash (59.2%) and 175,844 /
+  327,680 bytes static RAM (53.7%). This is 46,350 bytes flash and 6,112 bytes
   static RAM above the preceding recorded full-profile build; the dependency
   resolver also advanced NimBLE-Arduino from 2.5.0 to 2.5.1.
 - Flash: the first upload to `/dev/cu.usbserial-211240` lost its serial
