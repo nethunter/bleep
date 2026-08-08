@@ -12,7 +12,9 @@ short, factual, and reproducible.
   lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
   (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
   Home/Devices resident; scene UI loads on demand.
-- Universal driver framework: Eight logical active instances map onto four
+- Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
+  are independent of runtime concurrency. Eight logical active instances map
+  onto four explicitly configured
   retained physical BLE transport groups for manual and sequence sessions,
   including multiple instances of one Canon driver. All members of the single
   panel-owned Amaran/Aputure/Zhiyun mesh now share one cross-brand transport
@@ -57,6 +59,10 @@ short, factual, and reproducible.
   automatic Shark pairing/reconnect at boot.
 - Selected a dedicated Portal mode that temporarily runs a WPA2 SoftAP and HTTP
   server, then releases them completely on exit.
+- Accepted the multiple-panel manufacturing plan: stable eFuse-derived unit
+  identity, full-identity open setup SSID, per-panel random mesh keys, explicit
+  same-room fixture selection, shared `bleep.local` with numeric-IP fallback,
+  and a two-panel physical release gate.
 
 ## Next task
 
@@ -108,6 +114,41 @@ Amaran/Aputure support:
 ## Measurements
 
 Record values with the exact build environment and commit/worktree state.
+
+### Capacity alignment and paged Devices UI
+
+- Date: 2026-08-08.
+- Configuration: 24 saved device records, 16 NimBLE bonds, eight logical active
+  instances, and four application/NimBLE physical links. A compile-time guard
+  rejects an application link limit above the NimBLE connection pool.
+- Persistence: schema 2 remains readable; device and mesh stores round-trip at
+  the 24-record capacity. Large device-store scratch arrays moved off the task
+  stack, and save allocates only its encoded length.
+- Native tests: 57/57 passed in `native`, including full-capacity device and
+  mesh-store round trips.
+- Simulator: the maximum compiled-driver configuration uses 20 records. The
+  Devices list renders six per page; the full ASan capture suite completed with
+  no sanitizer finding. At sequence stop the simulator reported 30,008 bytes
+  free in the 76 KiB LVGL pool, 13,951-byte peak allocation, and 13%
+  fragmentation. A clean release-mode rebuild then completed the same capture
+  suite with the same reported sequence-stop memory values; the paged 240x240
+  Devices screenshot was visually checked for round-edge clearance.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `zhiyun_x100` succeeded sequentially with NimBLE-Arduino 2.5.1.
+- Full profile size: 1,861,324 / 3,145,728 bytes flash (59.2%) and 175,844 /
+  327,680 bytes static RAM (53.7%). This is 46,288 bytes flash and 6,112 bytes
+  static RAM above the preceding recorded full-profile build; the dependency
+  resolver also advanced NimBLE-Arduino from 2.5.0 to 2.5.1.
+- Flash: the first upload to `/dev/cu.usbserial-211240` lost its serial
+  connection at 21% after the cable was accidentally disconnected. After
+  reconnection, an explicit-port retry uploaded successfully. A bounded serial
+  read confirmed normal ESP32-C3 boot, touch-controller detection, and the
+  application `runtime event=boot` report with the BLE link disconnected. NVS
+  was not explicitly erased.
+- Open hardware gate: four simultaneous real links and BLE plus Home Assistant
+  coexistence have not been exercised by this simulator/build evidence. Six
+  links remain deliberately disabled pending measured target testing.
 
 ### Cross-brand panel-owned mesh routing
 
@@ -2727,3 +2768,21 @@ Record values with the exact build environment and commit/worktree state.
 - Documentation only; firmware behavior did not change. No build or flash was
   run, avoiding deployment of unrelated user-owned firmware changes already
   present in the worktree.
+
+### 2026-08-08: Remove the default Shark device
+
+- Changed missing-registry initialization to persist an empty Devices list.
+  A genuinely paired Shark in the pre-registry namespace still migrates, and
+  upgrades remove only the exact untouched unpaired `Shark Nano II` placeholder
+  with no BLE address or advertised name. Renamed, paired, and identified Shark
+  records remain intact.
+- Native passed 55/55, including empty first boot, one-time placeholder removal,
+  paired legacy migration, restart persistence, and preservation of a renamed
+  unpaired Shark. The complete `ui_sim` capture flow passed; its deliberately
+  paired legacy fixture remains in place for Shark-screen regression coverage.
+- All eight firmware profiles (`crowpanel_128`, Roboto, Canon Smart, Canon
+  Trigger, Tascam X8, Home Assistant, Amaran, and Zhiyun) built sequentially.
+  Default firmware used 169,852 / 327,680 bytes RAM (51.8%) and 1,851,688 /
+  3,145,728 bytes flash (58.9%). Upload to `/dev/cu.usbserial-211240` completed
+  with image hash verification and hard reset. NVS was not erased; the actual
+  post-migration Devices screen remains operator-unverified.

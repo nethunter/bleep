@@ -13,6 +13,11 @@ constexpr size_t kNodeV1Size = 4 + 2 + 2 + 1 + 1 + 16 + 16 +
 constexpr size_t kNodeV2Size = kNodeV1Size + 2 + 2 + 2 + 1;
 constexpr size_t kChecksumSize = 4;
 
+static_assert(kHeaderSize + kNetworkSize + kMaxMeshNodes * kNodeV2Size +
+                      kChecksumSize <=
+                  MeshStore::kMaxBlobSize,
+              "MeshStore blob is too small for configured node capacity");
+
 uint32_t checksum(const uint8_t* data, size_t length) {
   uint32_t value = 2166136261u;
   for (size_t i = 0; i < length; ++i) {

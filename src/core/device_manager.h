@@ -76,6 +76,7 @@ class DeviceManager {
 
  private:
   DeviceDriver* driverFor(DriverId driverId) const;
+  bool removeLegacyDefaultShark();
   struct ActiveSlot {
     InstanceId instanceId = kInvalidInstanceId;
     uint8_t owners = 0;

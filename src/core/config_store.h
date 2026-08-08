@@ -33,7 +33,8 @@ enum class ConfigLoadStatus : uint8_t {
 class ConfigStore {
  public:
   static constexpr uint16_t kSchemaVersion = 2;
-  static constexpr size_t kMaxBlobSize = 2560;
+  // Header/checksum plus 24 schema-v2 records requires 4,168 bytes.
+  static constexpr size_t kMaxBlobSize = 4224;
 
   explicit ConfigStore(IConfigBackend& backend) : backend_(backend) {}
 

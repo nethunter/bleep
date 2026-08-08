@@ -693,12 +693,65 @@ the replacement.
   preferences, and panel-owned mesh keys; provisioned mesh fixtures may need a
   separate manual factory reset before they can be added again.
 
+## ADR-032: New panels start with no default device
+
+- Status: Accepted.
+- Decision: A missing device registry is initialized and persisted empty.
+  Operators add Shark and every other physical device explicitly through the
+  normal transactional Add-device flow.
+- Compatibility: If the pre-registry `shark` namespace contains an actually
+  paired Shark, it still migrates into the registry. On upgrade, firmware
+  removes only the exact untouched placeholder produced by earlier releases:
+  an unpaired `Shark Nano II` record with no BLE address or advertised name.
+  Paired, renamed, or otherwise identified Shark records are preserved.
+- Consequence: Factory Reset returns to an empty Devices list and does not
+  silently recreate Shark, while existing owners keep real Shark pairings.
+
+## ADR-033: Each panel owns a stable identity and independent setup domain
+
+- Status: Accepted; implementation planned in
+  `docs/multi-bleep-manufacturing.md`.
+- Identity: Derive canonical unit ID `BLP-XXXXXXXXXXXX` from all 48 bits of the
+  factory eFuse MAC. It survives NVS erasure and is never allocated by a shared
+  counter or compiled into a per-unit firmware image.
+- Setup AP: Use `Bleep-Setup-XXXXXXXXXXXX` and an open initial SoftAP. The QR
+  payload declares `nopass`; the panel clearly labels the AP open. Physical
+  Portal entry, bounded lifetime, session mutation nonce, and teardown remain,
+  but proximity access is an accepted consequence of removing WPA2.
+- Mesh: Missing mesh storage creates and immediately persists random Network
+  and App Keys. Keys are never derived from the public identity. Separate
+  panels therefore own separate mesh security domains even when their mesh
+  addresses overlap.
+- LAN: Every panel continues to request `bleep.local`. The numeric DHCP address
+  displayed beside the canonical unit ID is authoritative when mDNS conflicts.
+- Manufacturing: Flash one common image, never clone configured NVS, record the
+  eFuse-derived identity against the enclosure, and require a two-panel
+  same-room release test.
+
+## ADR-034: Saved, bonded, logical-active, and linked capacity stay separate
+
+- Status: Accepted; four-link hardware coexistence gate open.
+- Decision: The full CrowPanel profile stores up to 24 device records, retains
+  up to 16 NimBLE bonds, schedules up to eight logical active instances, and
+  permits four simultaneous physical BLE transport groups. Build flags now set
+  the NimBLE connection pool to four explicitly, and compilation fails if the
+  application link limit exceeds it.
+- Persistence: Device schema 2 remains unchanged and continues to read older
+  blobs. Its larger bounded scratch buffers are heap-backed; save allocates only
+  the encoded length. Mesh storage is sized for the same 24-record ceiling.
+- UI: Devices renders six records per page so record capacity does not imply 24
+  simultaneous LVGL row trees.
+- Boundary: Six links are not a production setting. Raising the physical-link
+  limit requires target measurements with the intended mix of encrypted GATT,
+  Mesh Proxy, Home Assistant Wi-Fi, navigation, and reconnect activity. The
+  ESP32-C3/NimBLE compile-time ceiling is not evidence that those workloads fit
+  safely or remain responsive.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
 
 - whether hardware evidence justifies reliable Amaran state readback or native groups;
-- whether to add a user-configurable setup password;
 - execution-journal persistence and power-loss recovery policy;
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;

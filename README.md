@@ -61,7 +61,10 @@ principles:
 ## What works now
 
 - A round, touch-first Home and Devices interface with persistent device
-  records, enable/disable, rename, forget/re-pair, and delete.
+  records, enable/disable, rename, forget/re-pair, and delete. A new or
+  factory-reset panel starts with an empty Devices list; add Shark or any other
+  physical device explicitly through **+ Add device**. The registry holds up
+  to 24 saved devices and the Devices list pages six entries at a time.
 - A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
   haptic enable/disable, a first-position scrollable About/build page (including
   commit date), sanitized runtime diagnostics, and a normal Factory Reset menu
@@ -73,7 +76,8 @@ principles:
   remain immediately reusable while healthy. Ordinary devices consume one
   group each; every Amaran, Aputure, and Zhiyun member provisioned into the
   same panel-owned mesh shares one group and one proxy connection. An ownerless retained session is parked
-  after an unexpected drop instead of reconnecting indefinitely.
+  after an unexpected drop instead of reconnecting indefinitely. The controller
+  retains up to 16 NimBLE bond records independently of the saved-device limit.
 - A battery-conscious runtime policy uses compile-time configurable BLE
   transmit power (+6 dBm by default), bounded
   low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem

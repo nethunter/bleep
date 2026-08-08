@@ -1054,6 +1054,38 @@ void test_config_round_trip_preserves_dormant_records_and_detects_corruption() {
       static_cast<int>(store.load(rejected)));
 }
 
+void test_config_round_trip_at_twenty_four_record_capacity() {
+  MemoryBackend backend;
+  studio::ConfigStore store(backend);
+  studio::DeviceRecord records[CONFIG_MAX_DEVICE_INSTANCES] = {};
+  for (size_t i = 0; i < CONFIG_MAX_DEVICE_INSTANCES; ++i) {
+    records[i].instanceId = static_cast<studio::InstanceId>(i + 1);
+    records[i].driverId = static_cast<studio::DriverId>(100 + i);
+    records[i].enabled = (i % 2) == 0;
+    records[i].paired = (i % 3) == 0;
+    std::strcpy(records[i].displayName, "Dormant device");
+  }
+
+  studio::DeviceRegistry source;
+  TEST_ASSERT_EQUAL_UINT32(24, source.capacity());
+  TEST_ASSERT_TRUE(source.restore(records, CONFIG_MAX_DEVICE_INSTANCES,
+                                  CONFIG_MAX_DEVICE_INSTANCES + 1, true));
+  TEST_ASSERT_TRUE(store.save(source));
+
+  studio::DeviceRegistry restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, restored.count());
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES,
+                           restored.at(CONFIG_MAX_DEVICE_INSTANCES - 1)
+                               ->instanceId);
+  TEST_ASSERT_EQUAL_INT(
+      100 + CONFIG_MAX_DEVICE_INSTANCES - 1,
+      static_cast<int>(
+          restored.at(CONFIG_MAX_DEVICE_INSTANCES - 1)->driverId));
+}
+
 void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   MemoryBackend deviceBackend;
   MemoryBackend secretBackend;
@@ -1338,6 +1370,64 @@ void test_manager_migrates_legacy_without_boot_activation() {
   TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
 }
 
+void test_manager_starts_empty_without_legacy_shark() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+
+  TEST_ASSERT_TRUE(manager.begin());
+  TEST_ASSERT_EQUAL_UINT32(0, manager.count());
+
+  studio::DeviceManager restarted(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(restarted.begin());
+  TEST_ASSERT_EQUAL_UINT32(0, restarted.count());
+}
+
+void test_manager_removes_old_unpaired_default_shark_only() {
+  MemoryBackend backend;
+  studio::ConfigStore store(backend);
+  studio::DeviceRegistry registry;
+  studio::InstanceId defaultId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.add(studio::DriverId::SharkNanoII,
+                                    "Shark Nano II", 1, defaultId)));
+  TEST_ASSERT_TRUE(store.save(registry));
+
+  LegacyBackend legacy;
+  FakeDriver driver;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  TEST_ASSERT_EQUAL_UINT32(0, manager.count());
+
+  studio::DeviceManager restarted(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(restarted.begin());
+  TEST_ASSERT_EQUAL_UINT32(0, restarted.count());
+}
+
+void test_manager_preserves_renamed_unpaired_shark() {
+  MemoryBackend backend;
+  studio::ConfigStore store(backend);
+  studio::DeviceRegistry registry;
+  studio::InstanceId sharkId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(registry.add(studio::DriverId::SharkNanoII,
+                                    "Main Slider", 1, sharkId)));
+  TEST_ASSERT_TRUE(store.save(registry));
+
+  LegacyBackend legacy;
+  FakeDriver driver;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  TEST_ASSERT_EQUAL_UINT32(1, manager.count());
+  TEST_ASSERT_EQUAL_STRING("Main Slider", manager.at(0)->displayName);
+}
+
 void test_manager_routes_commands_and_blocks_disabled_device() {
   MemoryBackend backend;
   LegacyBackend legacy;
@@ -1345,7 +1435,11 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
   studio::DeviceDriver* drivers[] = {&driver};
   studio::DeviceManager manager(backend, legacy, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
-  const studio::InstanceId instanceId = manager.at(0)->instanceId;
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", instanceId)));
   TEST_ASSERT_TRUE(manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(1, driver.activationCount);
 
@@ -1494,8 +1588,12 @@ void test_removed_registry_stays_empty_after_restart() {
   studio::DeviceDriver* firstDrivers[] = {&firstDriver};
   studio::DeviceManager first(backend, legacy, firstDrivers, 1);
   TEST_ASSERT_TRUE(first.begin());
+  studio::InstanceId removedId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(first.add(studio::DriverId::SharkNanoII,
+                                 "Main Slider", removedId)));
   TEST_ASSERT_EQUAL_UINT32(1, first.count());
-  const studio::InstanceId removedId = first.at(0)->instanceId;
   TEST_ASSERT_TRUE(
       first.acquire(removedId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(
@@ -1634,7 +1732,11 @@ void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
                                      &homeAssistantDriver};
   studio::DeviceManager manager(backend, legacy, drivers, 4);
   TEST_ASSERT_TRUE(manager.begin());
-  const studio::InstanceId sharkId = manager.at(0)->instanceId;
+  studio::InstanceId sharkId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", sharkId)));
   studio::InstanceId canonIds[3] = {};
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
   for (studio::InstanceId& id : canonIds) {
@@ -1720,7 +1822,11 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
       &sharkDriver, &canonDriver, &tascamDriver, &meshDriver, &zhiyunDriver};
   studio::DeviceManager manager(backend, legacy, drivers, 5);
   TEST_ASSERT_TRUE(manager.begin());
-  const studio::InstanceId sharkId = manager.at(0)->instanceId;
+  studio::InstanceId sharkId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", sharkId)));
   studio::InstanceId canonId = studio::kInvalidInstanceId;
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
   studio::InstanceId meshIds[2] = {};
@@ -2644,6 +2750,31 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_UINT32(amaran_light::kSequenceBlockSize, sequence);
 }
 
+void test_mesh_store_round_trip_at_device_capacity() {
+  MemoryBackend backend;
+  amaran_light::MeshStore store(backend);
+  amaran_light::MeshStoreData data;
+  data.network.initialized = true;
+  for (size_t i = 0; i < CONFIG_MAX_DEVICE_INSTANCES; ++i) {
+    amaran_light::MeshNodeRecord node;
+    node.instanceId = static_cast<studio::InstanceId>(i + 1);
+    node.model = studio::DriverId::AmaranLight;
+    node.unicastAddress = static_cast<uint16_t>(i + 2);
+    node.configured = true;
+    TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
+  }
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, data.nodeCount);
+  TEST_ASSERT_TRUE(store.save(data));
+
+  amaran_light::MeshStoreData restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, restored.nodeCount);
+  TEST_ASSERT_NOT_NULL(
+      amaran_light::findNode(restored, CONFIG_MAX_DEVICE_INSTANCES));
+}
+
 void test_mesh_v1_store_migrates_zhiyun_routing_selectors() {
   V1MeshBackend backend;
   amaran_light::MeshStore store(backend);
@@ -2852,12 +2983,16 @@ int main(int, char**) {
   RUN_TEST(test_transactional_add_commits_only_after_pairing_and_readiness);
   RUN_TEST(test_transactional_add_cancel_and_failed_save_do_not_register_device);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
+  RUN_TEST(test_config_round_trip_at_twenty_four_record_capacity);
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
   RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
+  RUN_TEST(test_manager_starts_empty_without_legacy_shark);
+  RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
+  RUN_TEST(test_manager_preserves_renamed_unpaired_shark);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
@@ -2883,6 +3018,7 @@ int main(int, char**) {
   RUN_TEST(test_amaran_crypto_and_network_vectors);
   RUN_TEST(test_amaran_access_payloads_and_validation);
   RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);
   RUN_TEST(test_zhiyun_x100_identity_and_advertisement_match);

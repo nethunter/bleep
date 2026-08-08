@@ -25,6 +25,10 @@ bool DeviceManager::begin() {
     begun_ = true;
     return false;
   }
+  if (status == ConfigLoadStatus::Loaded && !removeLegacyDefaultShark()) {
+    begun_ = true;
+    return false;
+  }
   begun_ = true;
   return true;
 }
@@ -32,22 +36,40 @@ bool DeviceManager::begin() {
 bool DeviceManager::seedInitialRegistry() {
   registry_.clear(false);
 #if CONFIG_DRIVER_SHARK_NANO_II
-  const DriverDescriptor* descriptor = DriverCatalog::find(DriverId::SharkNanoII);
-  if (descriptor != nullptr) {
+  LegacySharkConfig legacy;
+  if (legacyBackend_.readLegacyShark(legacy) && legacy.paired) {
+    const DriverDescriptor* descriptor =
+        DriverCatalog::find(DriverId::SharkNanoII);
+    if (descriptor == nullptr) return false;
     InstanceId instanceId = kInvalidInstanceId;
     if (registry_.add(descriptor->id, descriptor->model, descriptor->maxInstances,
                       instanceId) != RegistryStatus::Ok) {
       return false;
     }
-
-    LegacySharkConfig legacy;
-    if (legacyBackend_.readLegacyShark(legacy) && legacy.paired) {
-      registry_.updatePairing(instanceId, legacy.address, legacy.addressType,
-                              legacy.advertisedName);
-    }
+    registry_.updatePairing(instanceId, legacy.address, legacy.addressType,
+                            legacy.advertisedName);
   }
 #endif
   return save();
+}
+
+bool DeviceManager::removeLegacyDefaultShark() {
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    const DeviceRecord* record = registry_.at(i);
+    if (record == nullptr || record->driverId != DriverId::SharkNanoII ||
+        record->paired || record->bleAddress[0] != '\0' ||
+        record->bleName[0] != '\0' ||
+        std::strcmp(record->displayName, "Shark Nano II") != 0) {
+      continue;
+    }
+    const DeviceRegistry previous = registry_;
+    if (registry_.remove(record->instanceId) != RegistryStatus::Ok || !save()) {
+      registry_ = previous;
+      return false;
+    }
+    break;
+  }
+  return true;
 }
 
 uint8_t DeviceManager::ownerBit(ConnectionOwner owner) {

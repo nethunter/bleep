@@ -158,6 +158,20 @@ Completion gate:
 - the selected Bluetooth and USB-network designs are recorded as decisions;
 - a failed gate is reported as a hardware/stack constraint before refactoring.
 
+### Multi-panel manufacturing tranche
+
+Before producing multiple panels, complete the ordered plan in
+`multi-bleep-manufacturing.md`: stable eFuse-derived identity, full-identity
+open setup SSID, independent mesh-key validation, explicit same-room fixture
+selection, and numeric-IP LAN disambiguation while retaining `bleep.local`.
+
+Completion gate:
+
+- two physical panels pass simultaneous AP, LAN Portal, independent-mesh,
+  overlapping-scan, reboot, teardown, and factory-reset checks;
+- the factory process flashes one common image and never clones configured NVS;
+- build and simulator results remain labeled separately from two-panel proof.
+
 ## Phase 2: Kconfig and core driver framework
 
 Work:
@@ -182,6 +196,13 @@ show blocking GATT work reaches 25% of median readiness for a driver or the
 Canon Smart + Tascam pair. The Phase 1 physical coexistence and heap gates
 remain open; this implementation does not claim Mesh/GATT coexistence.
 
+Implemented capacity tranche (ADR-034): saved-device capacity is 24, NimBLE
+bond capacity is 16, and the application and NimBLE controller are explicitly
+aligned at four physical links while retaining eight logical active instances.
+The Devices UI pages records to bound LVGL use. A six-link profile remains a
+separate measured experiment and must pass full-profile BLE, Mesh Proxy, Wi-Fi,
+navigation, reconnect, latency, and contiguous-heap gates before adoption.
+
 Completion gate:
 
 - Shark passes Phase 0 behavior through the new interfaces;
@@ -193,6 +214,8 @@ Completion gate:
 Work:
 
 - boot to Home without scanning, pairing, re-pairing, or reconnecting Shark;
+- initialize new and factory-reset panels with an empty device registry while
+  preserving migration of an actually paired legacy Shark;
 - request the first device connection only from a device screen or scene, then
   retain protocol-ready sessions until safe eviction or explicit release;
 - add versioned persistence and migrations;

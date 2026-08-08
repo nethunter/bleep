@@ -1,6 +1,8 @@
 #include "core/config_store.h"
 
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace studio {
 
@@ -13,6 +15,12 @@ constexpr size_t kEncodedV1RecordSize =
 constexpr size_t kEncodedRecordSize =
     kEncodedV1RecordSize + 1 + kHomeAssistantEntityIdCapacity;
 constexpr size_t kChecksumSize = 4;
+
+static_assert(kHeaderSize +
+                      CONFIG_MAX_DEVICE_INSTANCES * kEncodedRecordSize +
+                      kChecksumSize <=
+                  ConfigStore::kMaxBlobSize,
+              "ConfigStore blob is too small for configured device capacity");
 
 uint32_t checksum(const uint8_t* data, size_t length) {
   uint32_t value = 2166136261u;
@@ -59,17 +67,19 @@ void decodeText(char (&destination)[N], const uint8_t*& in) {
 }  // namespace
 
 ConfigLoadStatus ConfigStore::load(DeviceRegistry& registry) {
-  uint8_t blob[kMaxBlobSize];
-  const size_t length = backend_.read(blob, sizeof(blob));
+  std::unique_ptr<uint8_t[]> blob(
+      new (std::nothrow) uint8_t[kMaxBlobSize]);
+  if (!blob) return ConfigLoadStatus::Corrupt;
+  const size_t length = backend_.read(blob.get(), kMaxBlobSize);
   if (length == 0) {
     return ConfigLoadStatus::Missing;
   }
   if (length < kHeaderSize + kChecksumSize ||
-      std::memcmp(blob, kMagic, sizeof(kMagic)) != 0) {
+      std::memcmp(blob.get(), kMagic, sizeof(kMagic)) != 0) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  const uint8_t* cursor = blob + sizeof(kMagic);
+  const uint8_t* cursor = blob.get() + sizeof(kMagic);
   const uint16_t version = getU16(cursor);
   const bool initialized = *cursor++ != 0;
   const uint8_t count = *cursor++;
@@ -84,13 +94,15 @@ ConfigLoadStatus ConfigStore::load(DeviceRegistry& registry) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  const uint8_t* storedChecksumCursor = blob + length - kChecksumSize;
+  const uint8_t* storedChecksumCursor = blob.get() + length - kChecksumSize;
   const uint32_t storedChecksum = getU32(storedChecksumCursor);
-  if (storedChecksum != checksum(blob, length - kChecksumSize)) {
+  if (storedChecksum != checksum(blob.get(), length - kChecksumSize)) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  DeviceRecord records[CONFIG_MAX_DEVICE_INSTANCES] = {};
+  std::unique_ptr<DeviceRecord[]> records(
+      new (std::nothrow) DeviceRecord[CONFIG_MAX_DEVICE_INSTANCES]());
+  if (!records) return ConfigLoadStatus::Corrupt;
   for (size_t i = 0; i < count; ++i) {
     DeviceRecord& record = records[i];
     record.instanceId = getU32(cursor);
@@ -108,7 +120,7 @@ ConfigLoadStatus ConfigStore::load(DeviceRegistry& registry) {
     }
   }
 
-  if (!registry.restore(records, count, nextInstanceId, initialized)) {
+  if (!registry.restore(records.get(), count, nextInstanceId, initialized)) {
     return ConfigLoadStatus::Corrupt;
   }
   return ConfigLoadStatus::Loaded;
@@ -121,8 +133,10 @@ bool ConfigStore::save(const DeviceRegistry& registry) {
     return false;
   }
 
-  uint8_t blob[kMaxBlobSize] = {};
-  uint8_t* cursor = blob;
+  std::unique_ptr<uint8_t[]> blob(
+      new (std::nothrow) uint8_t[length]());
+  if (!blob) return false;
+  uint8_t* cursor = blob.get();
   std::memcpy(cursor, kMagic, sizeof(kMagic));
   cursor += sizeof(kMagic);
   putU16(cursor, kSchemaVersion);
@@ -149,8 +163,9 @@ bool ConfigStore::save(const DeviceRegistry& registry) {
     cursor += sizeof(record->homeAssistantEntityId);
   }
 
-  putU32(cursor, checksum(blob, length - kChecksumSize));
-  return static_cast<size_t>(cursor - blob) == length && backend_.write(blob, length);
+  putU32(cursor, checksum(blob.get(), length - kChecksumSize));
+  return static_cast<size_t>(cursor - blob.get()) == length &&
+         backend_.write(blob.get(), length);
 }
 
 }  // namespace studio
