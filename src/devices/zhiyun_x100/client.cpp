@@ -26,13 +26,13 @@ const NimBLEUUID kProvisionIn("00002adb-0000-1000-8000-00805f9b34fb");
 const NimBLEUUID kProvisionOut("00002adc-0000-1000-8000-00805f9b34fb");
 constexpr size_t kMaxMolusClients = 4;
 X100Client* gNotifyClients[kMaxMolusClients] = {};
+uint16_t gSharedSequence = 2;
 
 void notifyTrampoline(NimBLERemoteCharacteristic* characteristic, uint8_t* data,
                       size_t length, bool) {
   for (X100Client* client : gNotifyClients) {
     if (client != nullptr && client->ownsNotifyCharacteristic(characteristic)) {
       client->onNotifyBytes(data, length);
-      return;
     }
   }
 }
@@ -68,9 +68,17 @@ void X100Client::begin() {
   registerNotifyClient(this);
 }
 
-void X100Client::activate(studio::InstanceId instanceId, const char* address,
-                          uint8_t addressType, const char* name, bool paired) {
-  begin();
+void X100Client::beginShared() {
+  if (initialized_ && sharedTransport_) return;
+  if (notifyStream_ == nullptr) notifyStream_ = xStreamBufferCreate(512, 1);
+  initialized_ = notifyStream_ != nullptr;
+  sharedTransport_ = true;
+  registerNotifyClient(this);
+}
+
+void X100Client::prepareActivation(studio::InstanceId instanceId,
+                                   const char* address, uint8_t addressType,
+                                   const char* name, bool paired) {
   instanceId_ = instanceId;
   connectRequested_ = initialized_;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
@@ -94,17 +102,77 @@ void X100Client::activate(studio::InstanceId instanceId, const char* address,
   state_.lastCommandFailed = false;
   state_.brightnessLimited = false;
   state_.maxBrightness = 100;
+}
+
+void X100Client::activate(studio::InstanceId instanceId, const char* address,
+                          uint8_t addressType, const char* name, bool paired) {
+  sharedTransport_ = false;
+  begin();
+  prepareActivation(instanceId, address, addressType, name, paired);
+  routingSelector_ = 0;
+  if (loadMesh()) {
+    const studio::mesh::NodeRecord* node =
+        studio::mesh::findNode(studio::mesh::repository().data(), instanceId);
+    if (node != nullptr && node->routingSelector != 0xff) {
+      routingSelector_ = node->routingSelector;
+    }
+  }
   if (!connectRequested_) return;
   if (haveTarget_) beginConnect();
   else beginScan();
 }
 
+void X100Client::activateShared(studio::InstanceId instanceId,
+                                const char* address, uint8_t addressType,
+                                const char* name, bool paired) {
+  beginShared();
+  prepareActivation(instanceId, address, addressType, name, paired);
+  routingSelector_ = 0;
+  if (loadMesh()) {
+    const studio::mesh::NodeRecord* node =
+        studio::mesh::findNode(studio::mesh::repository().data(), instanceId);
+    if (node != nullptr && node->routingSelector != 0xff) {
+      routingSelector_ = node->routingSelector;
+    }
+  }
+  state_.link = X100State::Link::Connecting;
+  state_.phase = X100State::Phase::Idle;
+}
+
+bool X100Client::attachShared(void* nativeClient,
+                              studio::ble::LinkHandle link) {
+  if (!sharedTransport_ || nativeClient == nullptr ||
+      link == studio::ble::kInvalidLinkHandle) return false;
+  NimBLEClient* client = static_cast<NimBLEClient*>(nativeClient);
+  if (client_ == client && state_.phase == X100State::Phase::Ready) return true;
+  client_ = client;
+  linkHandle_ = link;
+  setupPending_ = false;
+  awaitingResponse_ = false;
+  operation_ = Operation::None;
+  return client_->isConnected() && completeConnect();
+}
+
+void X100Client::detachShared() {
+  if (!sharedTransport_) return;
+  client_ = nullptr;
+  writeCharacteristic_ = nullptr;
+  notifyCharacteristic_ = nullptr;
+  awaitingResponse_ = false;
+  operation_ = Operation::None;
+  state_.link = X100State::Link::Disconnected;
+  state_.phase = X100State::Phase::Idle;
+  state_.commandPending = false;
+  linkHandle_ = studio::ble::kInvalidLinkHandle;
+}
+
 void X100Client::deactivate() {
   connectRequested_ = false;
-  if (linkHandle_ != studio::ble::kInvalidLinkHandle)
+  if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle)
     studio::ble::bleCentral().release(linkHandle_);
   linkHandle_ = studio::ble::kInvalidLinkHandle;
   initialized_ = false;
+  sharedTransport_ = false;
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
   notifyCharacteristic_ = nullptr;
@@ -137,7 +205,7 @@ void X100Client::loop() {
       std::strncpy(state_.error, "Zhiyun setup failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      markProtocolFailed();
       return;
     }
   }
@@ -150,7 +218,7 @@ void X100Client::loop() {
     std::strncpy(state_.error, "Provisioning timeout",
                  sizeof(state_.error) - 1);
     state_.error[sizeof(state_.error) - 1] = '\0';
-    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    markProtocolFailed();
     return;
   }
   if (awaitingResponse_ &&
@@ -160,7 +228,7 @@ void X100Client::loop() {
       std::strncpy(state_.error, "Initialization timeout",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      markProtocolFailed();
     } else {
       finishCommand(false, "No state confirmation");
     }
@@ -175,8 +243,9 @@ void X100Client::loop() {
 
 bool X100Client::protocolReady() const {
   return linkHandle_ != studio::ble::kInvalidLinkHandle &&
-         studio::ble::bleCentral().protocolReady(linkHandle_) &&
-         state_.phase == X100State::Phase::Ready;
+         state_.phase == X100State::Phase::Ready &&
+         (sharedTransport_ ||
+          studio::ble::bleCentral().protocolReady(linkHandle_));
 }
 
 bool X100Client::ownsNotifyCharacteristic(
@@ -191,10 +260,24 @@ const char* X100Client::identityMarker() const {
 }
 
 uint16_t X100Client::nextSequence() {
+  if (sharedTransport_) {
+    const uint16_t result = gSharedSequence;
+    ++gSharedSequence;
+    if (gSharedSequence == 0) gSharedSequence = 1;
+    return result;
+  }
   const uint16_t result = sequence_;
   ++sequence_;
   if (sequence_ == 0) sequence_ = 1;
   return result;
+}
+
+void X100Client::markProtocolReady() {
+  if (!sharedTransport_) studio::ble::bleCentral().markProtocolReady(linkHandle_);
+}
+
+void X100Client::markProtocolFailed() {
+  if (!sharedTransport_) studio::ble::bleCentral().markProtocolFailed(linkHandle_);
 }
 
 bool X100Client::writeFrame(const FrameBytes& frame) {
@@ -316,6 +399,9 @@ bool X100Client::finishProvisioning() {
   node.unicastAddress = meshData.network.nextUnicastAddress;
   node.elementCount = provisioner_.elementCount();
   node.configured = true;
+  node.routingSelector =
+      studio::mesh::nextZhiyunRoutingSelector(meshData);
+  if (node.routingSelector == 0xff) return false;
   std::memcpy(node.deviceKey, provisioner_.deviceKey(), sizeof(node.deviceKey));
   std::strncpy(node.bleAddress, targetAddress_, sizeof(node.bleAddress) - 1);
   node.bleAddress[sizeof(node.bleAddress) - 1] = '\0';
@@ -328,6 +414,7 @@ bool X100Client::finishProvisioning() {
     meshData = previous;
     return false;
   }
+  routingSelector_ = node.routingSelector;
   provisioner_.cancel();
   provisioningDeadlineMs_ = 0;
   provisioningIn_ = nullptr;
@@ -348,7 +435,7 @@ void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
     std::strncpy(state_.error, "Provisioning data overflow",
                  sizeof(state_.error) - 1);
     state_.error[sizeof(state_.error) - 1] = '\0';
-    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    markProtocolFailed();
     return;
   }
   std::memcpy(provisioningBytes_ + provisioningLength_, data, length);
@@ -385,7 +472,7 @@ void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
       std::strncpy(state_.error, "Provisioning failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      markProtocolFailed();
       return;
     }
   }
@@ -411,7 +498,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       std::strncpy(state_.error, "Unexpected Zhiyun response",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      markProtocolFailed();
       return;
     }
     ++step_;
@@ -421,7 +508,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       std::strncpy(state_.error, "Initialization write failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      markProtocolFailed();
     }
     return;
   }
@@ -532,7 +619,7 @@ void X100Client::finishInitialization() {
   haveTarget_ = true;
   pairingChanged_ = true;
   operation_ = Operation::None;
-  studio::ble::bleCentral().markProtocolReady(linkHandle_);
+  markProtocolReady();
 }
 
 bool X100Client::setPower(bool on) {

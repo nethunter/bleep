@@ -1,6 +1,11 @@
 #include "devices/zhiyun_x100/driver.h"
 
+#include <Arduino.h>
+
 #include <cstring>
+
+#include "core/mesh/mesh_repository.h"
+#include "devices/amaran_light/runtime.h"
 
 namespace studio {
 
@@ -24,10 +29,28 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
   Session* session = find(kInvalidInstanceId);
   if (session == nullptr) return false;
   session->instanceId = record.instanceId;
-  session->client.activate(
-      record.instanceId, record.bleAddress, record.bleAddressType,
-      record.bleName[0] != '\0' ? record.bleName : record.displayName,
-      record.paired);
+  session->record = record;
+  const bool hasMeshNode = studio::mesh::repository().begin() &&
+      studio::mesh::findNode(studio::mesh::repository().data(),
+                             record.instanceId) != nullptr;
+  session->sharedGateway = record.paired && hasMeshNode;
+  if (session->sharedGateway) {
+    if (!amaran_light::runtime().acquireGateway(record)) {
+      session->instanceId = kInvalidInstanceId;
+      session->record = {};
+      session->sharedGateway = false;
+      return false;
+    }
+    session->client.activateShared(
+        record.instanceId, record.bleAddress, record.bleAddressType,
+        record.bleName[0] != '\0' ? record.bleName : record.displayName,
+        record.paired);
+  } else {
+    session->client.activate(
+        record.instanceId, record.bleAddress, record.bleAddressType,
+        record.bleName[0] != '\0' ? record.bleName : record.displayName,
+        record.paired);
+  }
   return true;
 }
 
@@ -35,12 +58,46 @@ void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
   Session* session = find(instanceId);
   if (session == nullptr) return;
   session->client.deactivate();
+  if (session->sharedGateway) {
+    amaran_light::runtime().releaseGateway(instanceId);
+  }
   session->instanceId = kInvalidInstanceId;
+  session->record = {};
+  session->sharedGateway = false;
+  session->gatewayAttached = false;
+  session->gatewayGeneration = 0xffffffffu;
+  session->gatewayAttachRetryAt = 0;
 }
 
 void ZhiyunLightDriver::loop() {
+  amaran_light::runtime().loop();
   for (Session& session : sessions_) {
-    if (session.instanceId != kInvalidInstanceId) session.client.loop();
+    if (session.instanceId == kInvalidInstanceId) continue;
+    if (session.sharedGateway) {
+      amaran_light::AmaranRuntime& gateway = amaran_light::runtime();
+      const uint32_t generation = gateway.gatewayGeneration();
+      if (!gateway.gatewayConnected()) {
+        if (session.gatewayAttached) session.client.detachShared();
+        session.gatewayAttached = false;
+        session.gatewayGeneration = generation;
+        session.gatewayAttachRetryAt = 0;
+      } else if (!session.gatewayAttached ||
+                 session.gatewayGeneration != generation) {
+        const uint32_t now = millis();
+        if (session.gatewayGeneration == generation &&
+            static_cast<int32_t>(now - session.gatewayAttachRetryAt) < 0) {
+          session.client.loop();
+          continue;
+        }
+        session.client.detachShared();
+        session.gatewayAttached = session.client.attachShared(
+            gateway.gatewayClient(), gateway.gatewayLink());
+        session.gatewayGeneration = generation;
+        session.gatewayAttachRetryAt =
+            session.gatewayAttached ? 0 : now + 1000;
+      }
+    }
+    session.client.loop();
   }
 }
 
@@ -50,6 +107,11 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   zhiyun_x100::X100Client& client = session->client;
   switch (command.type) {
     case CommandType::Connect:
+      if (session->sharedGateway) {
+        return amaran_light::runtime().acquireGateway(session->record)
+                   ? CommandStatus::Succeeded
+                   : CommandStatus::Unavailable;
+      }
       client.startScan();
       return CommandStatus::Succeeded;
     case CommandType::ForgetPairing:

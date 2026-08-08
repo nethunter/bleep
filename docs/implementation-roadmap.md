@@ -43,7 +43,7 @@ non-destructive Back behavior.
 ADR-022 replaces screen-scoped teardown with retained logical sessions mapped
 onto four physical BLE transport groups. Protocol-ready manual and sequence
 sessions survive navigation, multiple instances may coexist, shared transports
-such as one Amaran/Aputure mesh consume one slot, and safe group-aware LRU
+such as the panel-owned Amaran/Aputure/Zhiyun mesh consume one slot, and safe group-aware LRU
 eviction protects foreground, sequence, pending-command, and confirmed-recording
 sessions.
 
@@ -243,7 +243,9 @@ groups, HSIC, interpolation, and confirmed color-property readback. The
 panel-owned vendor-model group and physically correlated power status are now
 research-confirmed for Ace 25c/MC Pro. Firmware now performs authenticated
 group status polling with per-source freshness; enabling the correlated group
-power Set path and completing real-panel verification remain open.
+power Set path is integrated. Deterministic per-member vendor groups are also
+integrated from the optically verified MC-red/Ace-green test. Decoded
+configuration-status gating and the remaining real-panel checks stay open.
 
 Completion gate:
 
@@ -268,13 +270,15 @@ Implemented boundary:
 - rediscover provisioned product-qualified fixtures advertising Mesh Proxy
   `0x1828`;
 - initialize and validate the direct proprietary `0xFEE9` session;
-- select the X100 `00 80` or X60RGB `01 80` payload profile from captured
-  product identity, without creating separate catalog drivers;
+- persist an ordinal member-routing selector instead of deriving it from the
+  X100/X60RGB model; selector `0` is live-verified for an X60RGB that was the
+  first Zhiyun member and third standards-mesh node;
 - read power, float32 brightness, and CCT before reporting Ready, and expose
   power plus CCT/brightness with correlated confirmation on both models;
 - expose X60RGB hue/saturation control using its captured correlated setter
   replies while keeping command completion non-optimistic;
-- persist the normal BLE identity transactionally and retain healthy sessions;
+- persist the normal BLE identity transactionally and attach saved sessions to
+  the panel-owned mesh's one retained proxy client;
 - constrain CCT to 2700-6500 K and brightness to 0-100%; X100 omits RGB at
   runtime while X60RGB converts the shared RGB action to captured HSI writes.
 

@@ -96,11 +96,12 @@ power, stored intensity, product profile, and checksum validity.
 `zhiyun_probe.py` performs the captured read-only `0xFEE9` initialization and
 state sequence against a provisioned X100/X60RGB gateway. It reports only the
 resolved model and decoded light values; raw identity payloads are intentionally
-not printed. X60RGB currently uses its captured selector `1`:
+not printed. Pass the member's persisted selector. The first Zhiyun member in
+the mixed panel-owned test mesh was an X60RGB and used selector `0`:
 
 ```sh
 python3 tools/mesh_lab/zhiyun_probe.py \
-  --address COREBLUETOOTH-IDENTIFIER --selector 1
+  --address COREBLUETOOTH-IDENTIFIER --selector 0
 ```
 
 Pass `--power on` or `--power off` only when a deliberate physical state

@@ -9,7 +9,7 @@ class AmaranLightDriver : public DeviceDriver {
   explicit AmaranLightDriver(DriverId id) : id_(id) {}
   DriverId driverId() const override { return id_; }
   BleSlotKey bleSlotKey(const DeviceRecord&) const override {
-    return {DriverId::AmaranLight, 1};
+    return {DriverId::PanelOwnedMesh, 1};
   }
   bool activate(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;

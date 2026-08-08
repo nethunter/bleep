@@ -30,4 +30,13 @@ inline bool removeNode(StoreData& data, InstanceId instanceId) {
   return amaran_light::removeNode(data, instanceId);
 }
 
+inline uint16_t defaultControlGroupAddress(const StoreData& data,
+                                           const NodeRecord& node) {
+  return amaran_light::defaultControlGroupAddress(data, node);
+}
+
+inline uint8_t nextZhiyunRoutingSelector(const StoreData& data) {
+  return amaran_light::nextZhiyunRoutingSelector(data);
+}
+
 }  // namespace studio::mesh

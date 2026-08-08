@@ -23,6 +23,8 @@ enum class DriverId : uint16_t {
   AmaranAce25c = 8,
   ZhiyunLight = 9,
   ZhiyunX100 = 9,
+  // Internal transport identity. Never persisted as a device driver.
+  PanelOwnedMesh = 0xfffe,
 };
 
 enum class DeviceType : uint8_t {

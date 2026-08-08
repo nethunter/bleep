@@ -20,6 +20,10 @@ class X100Client : public studio::ble::BleCentralDelegate,
  public:
   void activate(studio::InstanceId instanceId, const char* address,
                 uint8_t addressType, const char* name, bool paired);
+  void activateShared(studio::InstanceId instanceId, const char* address,
+                      uint8_t addressType, const char* name, bool paired);
+  bool attachShared(void* nativeClient, studio::ble::LinkHandle link);
+  void detachShared();
   void deactivate();
   void loop();
 
@@ -57,6 +61,9 @@ class X100Client : public studio::ble::BleCentralDelegate,
   };
 
   void begin();
+  void beginShared();
+  void prepareActivation(studio::InstanceId instanceId, const char* address,
+                         uint8_t addressType, const char* name, bool paired);
   void beginScan();
   void beginConnect();
   bool completeConnect();
@@ -76,8 +83,10 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void handleFrame(const ParsedFrame& frame);
   void finishInitialization();
   void finishCommand(bool success, const char* error = nullptr);
+  void markProtocolReady();
+  void markProtocolFailed();
   uint16_t nextSequence();
-  uint8_t selector() const { return selectorFor(state_.model); }
+  uint8_t selector() const { return routingSelector_; }
   const char* identityMarker() const;
 
   NimBLEClient* client_ = nullptr;
@@ -91,6 +100,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   studio::ble::LinkHandle linkHandle_ = studio::ble::kInvalidLinkHandle;
   studio::InstanceId instanceId_ = studio::kInvalidInstanceId;
   bool initialized_ = false;
+  bool sharedTransport_ = false;
   bool connectRequested_ = false;
   bool haveTarget_ = false;
   bool pairingChanged_ = false;
@@ -102,6 +112,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   char targetName_[40] = "";
   char ignoredAddresses_[CONFIG_BLE_MAX_SKIP_ADDRESSES][20] = {};
   uint8_t ignoredAddressCount_ = 0;
+  uint8_t routingSelector_ = 0;
   uint16_t sequence_ = 2;
   uint16_t expectedSequence_ = 0;
   uint16_t expectedCommand_ = 0;

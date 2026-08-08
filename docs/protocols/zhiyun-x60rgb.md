@@ -133,10 +133,35 @@ emitting while the two Sidus fixtures remained dark.
 
 This proves that one X60RGB BLE connection can expose both the standard Mesh
 Proxy bearer for cross-brand traffic and the proprietary Zhiyun control
-service. It strengthens the one-slot-per-panel-owned-mesh architecture. The
-current firmware still has separate Amaran proxy and per-Zhiyun client owners,
-so slot accounting must not be merged until one shared gateway runtime
-multiplexes both GATT services.
+service. It supports the one-slot-per-panel-owned-mesh architecture now used by
+the shared embedded gateway runtime.
+
+## Selector-zero and coordinated three-light proof
+
+The same X60RGB was later controlled as the first Zhiyun member of the mixed
+panel-owned mesh, after MC Pro and Ace 25c already occupied unicast addresses
+`0x0002` and `0x0003`. Selector `1` did not retain the requested hue, while
+selector `0` independently read back all four requested fields:
+
+- hue 240 degrees;
+- saturation 100%;
+- brightness 5%;
+- power On.
+
+A camera frame showed the left X60RGB blue/violet while MC Pro was red and Ace
+25c was cyan-green. After the observation interval, selector-0 power Off read
+back Off and a second camera frame showed all three fixtures dark. This
+disproves the earlier model-derived X60RGB selector assumption: selector `0`
+can address an X60RGB, and the value is independent of standards-mesh unicast
+address. It supports the narrower hypothesis that selectors are ordinal among
+Zhiyun members. A second same-model fixture is still required to prove that
+allocation rule.
+
+The embedded driver now persists the selector in mesh-node schema 2. Existing
+schema-1 Zhiyun records receive selectors in saved-node order during load.
+Saved Zhiyun sessions attach `0xFEE9` to the mesh runtime's native proxy client,
+so standard Mesh Proxy traffic and proprietary control share one retained BLE
+connection. Onboarding still uses its temporary PB-GATT connection.
 
 ## Implemented boundary
 
@@ -148,10 +173,9 @@ PB-GATT provisioner, mesh repository, retained BLE lifecycle, frame scanner,
 and CCT/power client. The X60RGB additionally exposes RGB controls translated
 to the captured HSI writes.
 
-The current model-derived selector and per-instance direct-client ownership are
-implementation limitations exposed by the later capture. Mesh members need
-persisted routing selectors and one shared gateway session; a second same-model
-fixture is required to determine the selector allocation rule safely.
+The prior model-derived selector and per-instance steady-client limitations are
+removed. A second same-model fixture is still required to validate ordinal
+selector allocation and simultaneous routed state handling.
 
 The raw capture did not establish effect-mode commands, current-mode readback,
 reset, interrupted provisioning recovery, multiple simultaneous fixtures, or

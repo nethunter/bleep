@@ -37,7 +37,13 @@ studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& comma
     return studio::CommandStatus::Succeeded;
   }
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) {
-    s->state.on = command.type == studio::CommandType::TurnOn; s->state.optimistic = true; s->state.powerOptimistic = true; return studio::CommandStatus::Succeeded;
+    for (auto& member : sessions_) {
+      if (member.instanceId == studio::kInvalidInstanceId) continue;
+      member.state.on = command.type == studio::CommandType::TurnOn;
+      member.state.optimistic = true;
+      member.state.powerOptimistic = true;
+    }
+    return studio::CommandStatus::Succeeded;
   }
   if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) {
     s->state.mode = AmaranLightState::Mode::Cct; s->state.kelvin = command.value0; s->state.cctBrightness = command.value1; s->state.tintPermille = command.value2; s->state.optimistic = true; s->state.powerOptimistic = false; return studio::CommandStatus::Succeeded;
@@ -64,6 +70,9 @@ studio::DeviceRuntimeState AmaranRuntime::runtimeState(studio::InstanceId id) co
 const AmaranLightState* AmaranRuntime::state(studio::InstanceId id) const { const Session* s = sessionFor(id); return s ? &s->state : nullptr; }
 bool AmaranRuntime::consumePairingUpdate(studio::InstanceId, studio::DeviceRecord&) { return false; }
 void AmaranRuntime::forgetLocal(studio::InstanceId id) { if (auto* s = sessionFor(id)) s->state = AmaranLightState{}; }
+bool AmaranRuntime::acquireGateway(const studio::DeviceRecord&) { return true; }
+void AmaranRuntime::releaseGateway(studio::InstanceId) {}
+void* AmaranRuntime::gatewayClient() const { return nullptr; }
 void AmaranRuntime::onBleAdvertisement(studio::ble::LinkHandle, const studio::ble::Advertisement&) {}
 void AmaranRuntime::onBleEvent(studio::ble::LinkHandle, const studio::ble::Event&) {}
 void AmaranRuntime::enqueueNotification(const uint8_t*, size_t) {}
@@ -85,9 +94,13 @@ bool AmaranRuntime::completeProvisioning() { return false; }
 bool AmaranRuntime::configureNext() { return false; }
 bool AmaranRuntime::sendAccess(studio::InstanceId, const uint8_t*, size_t) { return false; }
 bool AmaranRuntime::sendAccessTo(uint16_t, const uint8_t*, size_t) { return false; }
+uint16_t AmaranRuntime::controlGroupFor(studio::InstanceId) const { return 0; }
 bool AmaranRuntime::refreshGroupPower() { return false; }
 void AmaranRuntime::fail(Session& s, const char* error) { s.state.phase = AmaranLightState::Phase::Failed; std::strncpy(s.state.error, error, sizeof(s.state.error)-1); }
 void AmaranRuntime::updateSharedReady() {}
+studio::InstanceId AmaranRuntime::preferredGatewayInstance() const { return studio::kInvalidInstanceId; }
+bool AmaranRuntime::hasActiveUsers() const { return false; }
+bool AmaranRuntime::isPreferredGatewayAddress(const char*) const { return true; }
 }  // namespace amaran_light
 
 #else
@@ -168,30 +181,130 @@ bool AmaranRuntime::activate(const studio::DeviceRecord& record) {
     if (connected_) studio::ble::bleCentral().disconnect(link_, false);
     else studio::ble::bleCentral().requestScan(link_, true);
   } else if (!provisioningLink_) {
-    linkInstance_ = record.instanceId;
     if (connected_ && !node->configured) {
+      linkInstance_ = record.instanceId;
       configStep_ = 0;
       nextConfigAt_ = millis();
     } else if (connected_) {
       updateSharedReady();
     } else {
-      studio::ble::bleCentral().requestScan(link_, true);
+      beginLink(preferredGatewayInstance(), false);
     }
   }
   return true;
 }
 
+studio::InstanceId AmaranRuntime::preferredGatewayInstance() const {
+  for (studio::InstanceId id : gatewayUsers_) {
+    if (id != studio::kInvalidInstanceId) return id;
+  }
+  for (const Session& session : sessions_) {
+    if (session.instanceId != studio::kInvalidInstanceId) {
+      return session.instanceId;
+    }
+  }
+  return studio::kInvalidInstanceId;
+}
+
+bool AmaranRuntime::hasActiveUsers() const {
+  return preferredGatewayInstance() != studio::kInvalidInstanceId;
+}
+
+bool AmaranRuntime::isPreferredGatewayAddress(const char* address) const {
+  bool hasGatewayUsers = false;
+  const MeshStoreData& meshData = studio::mesh::repository().data();
+  for (studio::InstanceId id : gatewayUsers_) {
+    if (id == studio::kInvalidInstanceId) continue;
+    hasGatewayUsers = true;
+    const MeshNodeRecord* node = findNode(meshData, id);
+    if (node != nullptr && node->bleAddress[0] != '\0' &&
+        address != nullptr && std::strcmp(node->bleAddress, address) == 0) {
+      return true;
+    }
+  }
+  return !hasGatewayUsers;
+}
+
+bool AmaranRuntime::acquireGateway(const studio::DeviceRecord& record) {
+  if (!ensureLoaded() ||
+      findNode(studio::mesh::repository().data(), record.instanceId) == nullptr) {
+    return false;
+  }
+  bool registered = false;
+  for (studio::InstanceId id : gatewayUsers_) {
+    registered = registered || id == record.instanceId;
+  }
+  if (!registered) {
+    for (studio::InstanceId& id : gatewayUsers_) {
+      if (id != studio::kInvalidInstanceId) continue;
+      id = record.instanceId;
+      registered = true;
+      break;
+    }
+  }
+  if (!registered) return false;
+  const studio::InstanceId preferred = preferredGatewayInstance();
+  if (link_ == studio::ble::kInvalidLinkHandle) {
+    return beginLink(preferred, false);
+  }
+  if (linkInstance_ != preferred) {
+    linkInstance_ = preferred;
+    provisioningLink_ = false;
+    connected_ = false;
+    ++gatewayGeneration_;
+    studio::ble::bleCentral().disconnect(link_, false);
+  } else if (!connected_) {
+    beginLink(preferred, false);
+  }
+  return true;
+}
+
+void AmaranRuntime::releaseGateway(studio::InstanceId instanceId) {
+  for (studio::InstanceId& id : gatewayUsers_) {
+    if (id == instanceId) id = studio::kInvalidInstanceId;
+  }
+  if (!hasActiveUsers() && link_ != studio::ble::kInvalidLinkHandle) {
+    studio::ble::bleCentral().release(link_);
+    link_ = studio::ble::kInvalidLinkHandle;
+    connected_ = false;
+    dataIn_ = nullptr;
+    activeRuntime = nullptr;
+    ++gatewayGeneration_;
+    return;
+  }
+  const studio::InstanceId preferred = preferredGatewayInstance();
+  if (preferred != studio::kInvalidInstanceId && preferred != linkInstance_) {
+    linkInstance_ = preferred;
+    connected_ = false;
+    ++gatewayGeneration_;
+    studio::ble::bleCentral().disconnect(link_, false);
+  }
+}
+
+void* AmaranRuntime::gatewayClient() const {
+  return gatewayConnected()
+             ? studio::ble::bleCentral().nativeClient(link_)
+             : nullptr;
+}
+
 void AmaranRuntime::deactivate(studio::InstanceId id) {
   if (Session* session = sessionFor(id)) *session = Session{};
-  bool any = false;
-  for (const auto& session : sessions_) any = any || session.instanceId != studio::kInvalidInstanceId;
-  if (!any && link_ != studio::ble::kInvalidLinkHandle) {
+  if (!hasActiveUsers() && link_ != studio::ble::kInvalidLinkHandle) {
     provisioner_.cancel();
     studio::ble::bleCentral().release(link_);
     link_ = studio::ble::kInvalidLinkHandle;
     connected_ = false;
     dataIn_ = nullptr;
     activeRuntime = nullptr;
+    ++gatewayGeneration_;
+  } else if (id == linkInstance_) {
+    const studio::InstanceId preferred = preferredGatewayInstance();
+    if (preferred != studio::kInvalidInstanceId) {
+      linkInstance_ = preferred;
+      connected_ = false;
+      ++gatewayGeneration_;
+      studio::ble::bleCentral().disconnect(link_, false);
+    }
   }
 }
 
@@ -220,11 +333,15 @@ void AmaranRuntime::onBleAdvertisement(
   if (link != link_) return;
   const char* wanted = provisioningLink_ ? kProvisionAdvertisedService
                                          : kProxyAdvertisedService;
-  if (studio::ble::advertisesService(advertisement, wanted)) {
+  if (studio::ble::advertisesService(advertisement, wanted) &&
+      (provisioningLink_ ||
+       isPreferredGatewayAddress(advertisement.address.value))) {
     if (provisioningLink_) {
       std::strncpy(provisioningAddress_, advertisement.address.value,
                    sizeof(provisioningAddress_) - 1);
       provisioningAddressType_ = advertisement.address.type;
+      studio::ble::advertisementName(advertisement, provisioningName_,
+                                     sizeof(provisioningName_));
     }
     if (Session* session = sessionFor(linkInstance_)) {
       session->state.phase = provisioningLink_
@@ -248,6 +365,7 @@ void AmaranRuntime::onBleEvent(studio::ble::LinkHandle link,
   } else if (event.type == studio::ble::EventType::Disconnected) {
     connected_ = false;
     dataIn_ = nullptr;
+    ++gatewayGeneration_;
     for (auto& session : sessions_) {
       if (session.instanceId == studio::kInvalidInstanceId) continue;
       session.state.proxyConnected = false;
@@ -258,9 +376,18 @@ void AmaranRuntime::onBleEvent(studio::ble::LinkHandle link,
         session.state.phase = AmaranLightState::Phase::ConnectingProxy;
       }
     }
+    const studio::InstanceId preferred = preferredGatewayInstance();
     if (link_ != studio::ble::kInvalidLinkHandle &&
-        linkInstance_ != studio::kInvalidInstanceId) {
-      studio::ble::bleCentral().requestScan(link_, true);
+        preferred != studio::kInvalidInstanceId) {
+      linkInstance_ = preferred;
+      const MeshNodeRecord* node =
+          findNode(studio::mesh::repository().data(), preferred);
+      if (node != nullptr && node->bleAddress[0] != '\0') {
+        studio::ble::bleCentral().requestConnect(
+            link_, addressFrom(node->bleAddress, node->bleAddressType));
+      } else {
+        studio::ble::bleCentral().requestScan(link_, true);
+      }
     }
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
     if (Session* session = sessionFor(linkInstance_)) {
@@ -291,6 +418,7 @@ bool AmaranRuntime::setupProxy() {
   dataIn_ = service->getCharacteristic(NimBLEUUID(kProxyIn));
   NimBLERemoteCharacteristic* out = service->getCharacteristic(NimBLEUUID(kProxyOut));
   if (dataIn_ == nullptr || out == nullptr || !out->subscribe(true, notificationCallback, true)) return false;
+  ++gatewayGeneration_;
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node != nullptr && !node->configured) {
     configStep_ = 0;
@@ -414,6 +542,14 @@ bool AmaranRuntime::completeProvisioning() {
   std::memcpy(node.deviceKey, provisioner_.deviceKey(), 16);
   std::strncpy(node.bleAddress, provisioningAddress_, sizeof(node.bleAddress)-1);
   node.bleAddressType = provisioningAddressType_;
+  if (std::strstr(provisioningName_, "SLCK") != nullptr) {
+    node.vendorCompanyId = 0x0211;
+    node.vendorModelId = 0x0000;
+  } else if (std::strstr(provisioningName_, "Mesh Device") != nullptr) {
+    node.vendorCompanyId = 0x03f6;
+    node.vendorModelId = 0x1000;
+  }
+  node.controlGroupAddress = defaultControlGroupAddress(meshData, node);
   if (node.unicastAddress > 0x7fff - node.elementCount ||
       !upsertNode(meshData, node))
     return false;
@@ -435,11 +571,59 @@ bool AmaranRuntime::configureNext() {
   MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node == nullptr || dataIn_ == nullptr) return false;
   uint8_t access[24] = {}; size_t length = 0;
+  const uint16_t element = node->unicastAddress;
+  const uint16_t commonGroup =
+      studio::mesh::repository().data().network.groupAddress;
+  const uint16_t controlGroup = controlGroupFor(node->instanceId);
+  const auto put16le = [](uint8_t* out, uint16_t value) {
+    out[0] = static_cast<uint8_t>(value);
+    out[1] = static_cast<uint8_t>(value >> 8);
+  };
   switch (configStep_) {
-    case 0: access[0]=0x80; access[1]=0x08; access[2]=0; length=3; break;
-    case 1: access[0]=0; access[1]=access[2]=access[3]=0; std::memcpy(access+4, studio::mesh::repository().data().network.applicationKey, 16); length=20; break;
-    case 2: access[0]=0x80; access[1]=0x3d; access[2]=static_cast<uint8_t>(node->unicastAddress); access[3]=static_cast<uint8_t>(node->unicastAddress>>8); access[4]=access[5]=0; access[6]=0x11; access[7]=0x02; access[8]=access[9]=0; length=10; break;
-    case 3: access[0]=0x80; access[1]=0x1b; access[2]=static_cast<uint8_t>(node->unicastAddress); access[3]=static_cast<uint8_t>(node->unicastAddress>>8); access[4]=static_cast<uint8_t>(studio::mesh::repository().data().network.groupAddress); access[5]=static_cast<uint8_t>(studio::mesh::repository().data().network.groupAddress>>8); access[6]=0x11; access[7]=0x02; access[8]=access[9]=0; length=10; break;
+    case 0:
+      access[0] = 0x80; access[1] = 0x08; access[2] = 0; length = 3;
+      break;
+    case 1:
+      access[0] = 0; access[1] = access[2] = access[3] = 0;
+      std::memcpy(access + 4,
+                  studio::mesh::repository().data().network.applicationKey,
+                  16);
+      length = 20;
+      break;
+    case 2:
+      if (node->vendorCompanyId == 0) {
+        if (Session* session = sessionFor(node->instanceId)) {
+          fail(*session, "Unknown vendor model");
+        }
+        return false;
+      }
+      access[0] = 0x80; access[1] = 0x3d;
+      put16le(access + 2, element); put16le(access + 4, 0);
+      put16le(access + 6, node->vendorCompanyId);
+      put16le(access + 8, node->vendorModelId);
+      length = 10;
+      break;
+    case 3:
+    case 4:
+      access[0] = 0x80; access[1] = 0x1b;
+      put16le(access + 2, element);
+      put16le(access + 4, configStep_ == 3 ? commonGroup : controlGroup);
+      put16le(access + 6, node->vendorCompanyId);
+      put16le(access + 8, node->vendorModelId);
+      length = 10;
+      break;
+    case 5:
+      access[0] = 0x80; access[1] = 0x3d;
+      put16le(access + 2, element); put16le(access + 4, 0);
+      put16le(access + 6, 0x1000);
+      length = 8;
+      break;
+    case 6:
+      access[0] = 0x80; access[1] = 0x1b;
+      put16le(access + 2, element); put16le(access + 4, commonGroup);
+      put16le(access + 6, 0x1000);
+      length = 8;
+      break;
     default: {
       node->configured = true;
       if (!studio::mesh::repository().save()) return false;
@@ -474,6 +658,12 @@ bool AmaranRuntime::sendAccess(studio::InstanceId id, const uint8_t* access, siz
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (node == nullptr || !node->configured) return false;
   return sendAccessTo(node->unicastAddress, access, length);
+}
+
+uint16_t AmaranRuntime::controlGroupFor(studio::InstanceId id) const {
+  const MeshStoreData& meshData = studio::mesh::repository().data();
+  const MeshNodeRecord* node = findNode(meshData, id);
+  return node != nullptr ? defaultControlGroupAddress(meshData, *node) : 0;
 }
 
 bool AmaranRuntime::sendAccessTo(uint16_t destination, const uint8_t* access,
@@ -519,14 +709,29 @@ studio::CommandStatus AmaranRuntime::dispatch(const studio::DeviceCommand& comma
   else return studio::CommandStatus::Unsupported;
   if (!valid) return studio::CommandStatus::InvalidArgument;
   session->state.commandPending = true;
-  const bool sent = sendAccess(command.instanceId, payload.bytes, payload.length);
+  uint16_t destination = 0;
+  if (command.type == studio::CommandType::TurnOn ||
+      command.type == studio::CommandType::TurnOff) {
+    destination = studio::mesh::repository().data().network.groupAddress;
+  } else {
+    destination = controlGroupFor(command.instanceId);
+  }
+  const bool sent = destination != 0 &&
+                    sendAccessTo(destination, payload.bytes, payload.length);
   session->state.commandPending = false; session->state.lastCommandFailed = !sent;
   if (!sent) return studio::CommandStatus::Unavailable;
   session->state.optimistic = true;
   session->state.powerOptimistic =
       command.type == studio::CommandType::TurnOn ||
       command.type == studio::CommandType::TurnOff;
-  if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) session->state.on = command.type == studio::CommandType::TurnOn;
+  if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) {
+    for (auto& member : sessions_) {
+      if (member.instanceId == studio::kInvalidInstanceId) continue;
+      member.state.on = command.type == studio::CommandType::TurnOn;
+      member.state.optimistic = true;
+      member.state.powerOptimistic = true;
+    }
+  }
   else if (command.type == studio::CommandType::SetLightCct) { session->state.mode=AmaranLightState::Mode::Cct; session->state.kelvin=command.value0; session->state.cctBrightness=command.value1; session->state.tintPermille=command.value2; }
   else { session->state.mode=AmaranLightState::Mode::Rgb; session->state.rgb=command.value0; session->state.rgbBrightness=command.value1; }
   return studio::CommandStatus::Succeeded;

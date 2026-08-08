@@ -8,6 +8,12 @@
 
 # Ble(e)p
 
+**Bluetooth Links Everything, Eventually, Probably.**
+
+The serious expansion is **Bluetooth Low Energy Equipment Panel**: a compact
+description of the hardware and its purpose when the joke needs a straight
+face.
+
 Ble(e)p is firmware for a small, touch-first hardware remote that can control
 many kinds of studio equipment from one place. It started as a replacement
 remote for the iFootage Shark Nano II camera slider. The longer-term goal is
@@ -59,8 +65,8 @@ principles:
 - On-demand Bluetooth LE connections through one shared NimBLE central. Up to
   four physical BLE transport groups stay connected across navigation and
   remain immediately reusable while healthy. Ordinary devices consume one
-  group each; all logical Amaran/Aputure members of the panel-owned mesh share
-  one group and one proxy connection. An ownerless retained session is parked
+  group each; every Amaran, Aputure, and Zhiyun member provisioned into the
+  same panel-owned mesh shares one group and one proxy connection. An ownerless retained session is parked
   after an unexpected drop instead of reconnecting indefinitely.
 - A battery-conscious runtime policy uses compile-time configurable BLE
   transmit power (+6 dBm by default), bounded
@@ -79,16 +85,19 @@ principles:
   remove existing devices and create, duplicate, reorder, and edit sequences;
   physical pairing and runtime control remain on the panel.
 - Experimental native `Amaran Light` support with panel-owned PB-GATT
-  provisioning, one shared Mesh Proxy connection, optimistic color-property
+  provisioning, one cross-brand shared Mesh Proxy connection, per-member
+  vendor color groups, optimistic color-property
   controls, and a unified parameterized `Set color` sequence action. The
   firmware periodically polls the captured group-addressed physical-power path,
   authenticates each Ace 25c/MC Pro response, and keeps member reachability
-  separate from the proxy link. Physical power writes remain a bounded
-  research path rather than a general Amaran/Aputure command claim.
+  separate from the proxy link. The tested Ace 25c/MC Pro mesh now uses the
+  physically verified common-group power path; its per-member RGB groups are
+  enabled from the live red/green test vectors.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
-  fixture when needed, and uses confirmed direct controls; X60RGB also exposes
-  RGB hue/saturation.
+  fixture when needed, persists its mesh-routing selector, and uses confirmed
+  proprietary controls through the mesh's retained gateway; X60RGB also
+  exposes RGB hue/saturation.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -111,8 +120,8 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
-| Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to one panel-owned mesh whose logical members consume one physical BLE slot. Host probes confirm Ace 25c/MC Pro provisioning, routing, proxy fallback, and group physical-power Set/Get; firmware still needs that confirmed power path, composition parsing, reset/recovery, and Pano validation. |
-| Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Add each fixture through the same entry. Ble(e)p recognizes `PL105` X100 and `PLX104`/`X104` X60RGB advertisements, provisions a reset fixture into the shared panel-owned mesh when needed, then uses confirmed direct GATT control. Both models support power and 2700-6500 K CCT/brightness; X60RGB adds RGB hue/saturation. X60RGB panel hardware verification remains open. |
+| Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to the panel-owned mesh. Ace 25c/MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and Pano validation remain open. |
+| Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Adds each fixture as a logical member of the same one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
 Compatibility claims are deliberately narrow. Read

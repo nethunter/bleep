@@ -348,9 +348,8 @@ the replacement.
   manual single-active restriction. Their boot, power safety, sequence
   readiness, and borrowed-control decisions remain accepted.
 - Consequence: The shared BLE runtime remains initialized while any retained
-  transport group owns a central slot. The panel-owned Amaran/Aputure mesh has
-  one shared key; Home Assistant has none. Zhiyun remains per-instance until
-  its captured proprietary gateway routing replaces the current direct clients.
+  transport group owns a central slot. Under ADR-030 the panel-owned
+  Amaran/Aputure/Zhiyun mesh has one shared key; Home Assistant has none.
   Static per-driver session storage must remain within measured ESP32-C3 RAM.
 
 ## ADR-023: Bounded local Home Assistant entity client
@@ -469,9 +468,9 @@ the replacement.
   PDUs, rejects non-AppKey traffic and replayed per-source sequence numbers,
   polls vendor power at five-second intervals, and expires a member after a
   fifteen-second response gap. This confirms emitter power and reachability
-  without interpreting a missing response as Off. Group power writes remain
-  disabled pending the per-member/group UI decision and panel hardware proof.
-  CCT/tint/RGB,
+  without interpreting a missing response as Off. ADR-030 enables the now
+  hardware-verified group power writes and deterministic per-member RGB-group
+  writes. CCT/tint readback,
   HSIC, interpolation, and vendor-property readback remain deferred.
 - Safety gate: AppKey/model/subscription configuration uses segmented lower
   transport where required and advances only after decoded success status.
@@ -617,10 +616,9 @@ the replacement.
   control. A profile supplies the state selector byte and identity markers.
 - Gateway boundary: the mixed X100/X60RGB capture proves one `0xFEE9` gateway
   can route multiple members, but selector `00`/`01` still covaries with model
-  and onboarding order. Until a same-model or reversed-order capture resolves
-  allocation and the driver owns one real gateway client, Zhiyun instances
-  retain separate `BleSlotKey`s. Merely changing slot accounting before the
-  transport is shared would overbook the four-client central.
+  and onboarding order. ADR-030 supersedes the temporary per-instance
+  `BleSlotKey` boundary after the selector-zero X60RGB test and shared-client
+  implementation.
   A later live test provisioned X60RGB into the same panel-owned standards mesh
   as MC Pro and Ace 25c; one X60RGB BLE connection both returned its own
   `0xFEE9` state and routed authenticated responses from the other brands.
@@ -638,6 +636,42 @@ the replacement.
 - Gate: add an already provisioned and a reset X60RGB from the panel; verify
   CCT, RGB, brightness, power, reconnect, simultaneous X100/X60 retention,
   scenes, timeout recovery, and observed optical output.
+
+## ADR-030: One panel-owned mesh is one cross-brand transport group
+
+- Status: Experimental; mixed-mesh hardware control verified, embedded soak
+  gate open.
+- Decision: Every Amaran, Aputure, and Zhiyun fixture provisioned into the one
+  Ble(e)p-owned Bluetooth Mesh shares `BleSlotKey {PanelOwnedMesh, 1}`. Saved
+  Zhiyun sessions attach their proprietary `0xFEE9` service to the mesh
+  runtime's retained native proxy client, while Sidus-family access messages
+  use Mesh Proxy Data In/Out on the same connection. PB-GATT onboarding remains
+  a temporary exclusive operation and is not a second retained device slot.
+- Routing: Persist routing independently from product identity. Each
+  Sidus-family node receives a deterministic vendor-model control group derived
+  from its provisioned address; common group `0xC000` owns mesh-wide physical
+  power. Each Zhiyun node receives a persisted ordinal `0xFEE9` member selector.
+  Mesh-store schema 2 reads schema 1, assigns existing Zhiyun selectors in
+  saved-node order, and preserves keys and sequence high-water state.
+- Evidence: In one panel-owned mesh, MC Pro `0x0002` vendor model
+  `0x03F6:0x1000` subscribed to `0xC001`, Ace 25c `0x0003` model
+  `0x0211:0x0000` subscribed to `0xC002`, and X60RGB occupied `0x0004`.
+  Through one proxy, independent 5% vendor writes produced visibly red MC and
+  green/cyan-green Ace output; X60RGB selector `0` produced confirmed blue
+  output. Common-group power then turned the Sidus pair on and off, X60 power
+  used confirmed `0xFEE9` readback, and camera frames verified all three lit
+  distinctly and all three dark afterward.
+- State: A live proxy is only mesh bearer state. Sidus members are individually
+  reachable only after authenticated source-addressed status, and emitter power
+  comes only from the physically correlated vendor status. Zhiyun values are
+  confirmed only by selector/sequence-correlated `0xFEE9` replies. Missing
+  replies expire reachability; they never imply Off.
+- Boundaries: The first-Zhiyun selector-zero result disproves model-derived
+  selectors but does not prove same-model allocation beyond the persisted
+  ordinal hypothesis. Amaran configuration still needs decoded status-gated
+  composition enforcement, and the embedded shared runtime still needs reboot,
+  fallback-gateway, multiple-Zhiyun, and four-slot coexistence soaks before
+  promotion.
 
 ## Open decisions
 

@@ -274,12 +274,55 @@ reported settled Off while the same proxy session continued to route
 authenticated statuses. Reachability must come from response freshness, never
 from a power-like model value.
 
-The production runtime now implements the read-only half of this path. It sends
+## Per-member vendor groups and mixed-light optical test
+
+The panel-owned mesh was extended with dedicated vendor-model subscriptions
+while retaining `0xC000` as the common physical-power/status group:
+
+- MC Pro `0x0002`, vendor model `0x03F6:0x1000` -> `0xC001`;
+- Ace 25c `0x0003`, vendor model `0x0211:0x0000` -> `0xC002`.
+
+Config Model Subscription Status decoded as success for both. The Ace
+configuration initially produced no response while X60RGB was the proxy, then
+succeeded unchanged through MC Pro. This is a retry/fallback observation, not
+evidence that X60RGB cannot proxy configuration traffic; the same X60RGB had
+already routed authenticated application statuses.
+
+With both emitters Off, these exact group-addressed RGB payloads staged
+independent low-brightness colors:
+
+```text
+MC Pro red, 5%, destination C001
+26 87 06 03 00 00 00 00 00 FA 84
+
+Ace 25c green, 5%, destination C002
+26 4B 06 03 00 00 00 80 3E 00 84
+```
+
+One common-group power On then lit both. In the same camera frame, MC Pro was
+visibly red and Ace was visibly cyan-green; a separately controlled X60RGB was
+blue/violet. The camera's clipped centers do not support colorimetry, but the
+three outputs were plainly distinct and matched the intended channel families.
+After more than three seconds, common-group Off visibly darkened both Sidus
+fixtures. The first failed three-light attempt occurred while MC Pro's battery
+was depleted; repeating after it was powered produced the result above.
+
+Dedicated-group color is therefore `Physically verified` for these exact
+Ace/MC firmware paths. Dedicated-group power did not produce an observed
+emitter change during the probe, so firmware keeps physical power on the common
+group and must not infer individual power support from the color subscriptions.
+CCT and arbitrary RGB/brightness combinations remain `Optimistic` outside the
+captured vectors until broader optical checks land.
+
+The production runtime implements both the confirmed common-group power path
+and its authenticated readback. It sends
 the vendor Get to the panel-owned group every five seconds, authenticates and
 decrypts complete unsegmented Proxy Network PDUs with the stored network and
 application keys, maps each response source to its provisioned node, validates
 the vendor checksum/profile, and records physical power plus `lastSeen`.
-Per-source replayed sequence numbers are ignored. A node becomes stale after a
+Per-source replayed sequence numbers are ignored. Color/CCT writes target each
+node's deterministic vendor-model group and remain optimistic because no
+property-status decoder exists. A node becomes stale after a
 fifteen-second gap (three poll intervals); the shared Proxy connection remains
 a separate bearer state. One missed group response therefore does not
 immediately mark a fixture offline. Segmented Proxy SAR receive and IV Update
@@ -310,9 +353,9 @@ cannot be treated as emitter state.
 
 Native golden tests lock AES, CMAC, a known encrypted network packet, vendor power,
 CCT, RGB, validation bounds, segmented configuration shape, checksummed store,
-and durable sequence reservation. The group-addressed vendor power subset is
-physically confirmed for Ace 25c and MC Pro; other vendor writes remain
-`Optimistic`. Decoded standard status responses can confirm the corresponding
+and durable sequence reservation. The group-addressed vendor power subset and
+the exact per-member 5% red/green vectors are physically confirmed for Ace 25c
+and MC Pro; other vendor writes remain `Optimistic`. Decoded standard status responses can confirm the corresponding
 model field and node reachability, not automatically physical output.
 
 ## Hardware gate

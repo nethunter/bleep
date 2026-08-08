@@ -14,7 +14,9 @@ short, factual, and reproducible.
   Home/Devices resident; scene UI loads on demand.
 - Universal driver framework: Eight logical active instances map onto four
   retained physical BLE transport groups for manual and sequence sessions,
-  including multiple instances of one Canon driver. All four GATT
+  including multiple instances of one Canon driver. All members of the single
+  panel-owned Amaran/Aputure/Zhiyun mesh now share one cross-brand transport
+  key and one retained proxy client. All four GATT
   clients now share one lazy NimBLE scanner/runtime and async link slots,
   targeted discovery, explicit protocol readiness, and BLE timing telemetry.
 - One discoverable generic `Amaran Light` entry now uses the shared userspace
@@ -25,11 +27,14 @@ short, factual, and reproducible.
   Light Lightness model transactions, cross-proxy routing, and group messaging
   are host-proven. Group-addressed vendor power Set/Get is physically correlated
   on the Ace 25c/MC Pro pair;
-  firmware integration of those findings and safe reset gates remain open.
+  firmware common-power/per-member-color integration is complete; decoded
+  configuration-status enforcement and safe reset gates remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
   and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
-  direct CCT/power control; X60RGB adds captured hue/saturation control. X100
-  is live-verified; X60RGB panel-originated verification remains open.
+  routed CCT/power control; X60RGB adds captured hue/saturation control. Saved
+  nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
+  proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
+  verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-07.
 
 ## Completed planning
@@ -55,21 +60,23 @@ short, factual, and reproducible.
 
 ## Next task
 
-Exercise the newly flashed X60RGB profile: add the already provisioned fixture
-through **Add device -> Light -> ZHIYUN -> Zhiyun Light**, verify initial state,
-power, several CCT/brightness boundaries, RGB hue/saturation/brightness,
-retained navigation, reconnect, then add/retain the X100 concurrently. Record
-physical output separately from protocol confirmation.
+Exercise the newly flashed cross-brand mesh runtime from the panel: add or open
+MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts
+them as one physical slot, and verify that the retained X60RGB proxy carries
+both Mesh Proxy and selector-0 `0xFEE9` traffic. Repeat the observed MC-red,
+Ace-green, X60-blue cycle, then test retained navigation, reconnect, fallback,
+and a second Zhiyun member. Record physical output separately from protocol
+confirmation.
 
 After that, continue the existing production gates:
 
 Integrate the Ace 25c/MC Pro findings into the firmware before promoting native
 Amaran/Aputure support:
 
-1. Parse Composition Data, select each reported SIG/vendor model, require
-   decoded configuration success, and complete fallback proxy selection. Core
-   slot accounting now charges the complete Amaran/Aputure mesh one retained
-   physical link.
+1. Parse Composition Data in firmware, select each reported SIG/vendor model,
+   require decoded configuration success, and complete fallback proxy
+   selection. Core slot accounting and the saved-session runtime now charge the
+   complete cross-brand panel-owned mesh one retained physical link.
 2. Implement Generic OnOff only as Ace/MC reachability/shadow state, Ace Light
    Lightness as model state, and the confirmed group-addressed vendor power
    Set/Get as emitter control/state. Resolve each member by authenticated source
@@ -101,6 +108,35 @@ Amaran/Aputure support:
 ## Measurements
 
 Record values with the exact build environment and commit/worktree state.
+
+### Cross-brand panel-owned mesh routing
+
+- Date: 2026-08-07.
+- Hardware evidence: One host-controlled X60RGB proxy carried authenticated
+  MC Pro/Ace 25c Mesh traffic and its own `0xFEE9` traffic. Dedicated groups
+  `0xC001`/`0xC002` staged MC red/Ace green at 5%; selector-0 set X60RGB blue at
+  5%. A camera frame showed three distinct lit fixtures. Common Sidus group
+  Off plus confirmed X60 Off then produced a camera frame with all three dark.
+- Firmware: mesh-store schema 2 persists per-node vendor group/model metadata
+  and Zhiyun routing selectors; schema 1 remains readable. All three brands use
+  `PanelOwnedMesh` slot key 1. Saved Zhiyun clients attach to the mesh runtime's
+  retained native proxy client. Common-group Sidus power and per-node RGB/CCT
+  routing are enabled; authenticated vendor status remains the power truth.
+- Native tests: 51/51 passed in `native`, including shared cross-driver slot
+  accounting, schema-1 migration, schema-2 routing persistence, and exact live
+  5% RGB vectors.
+- Simulator: `ui_sim` build succeeded; no layout changed in this tranche.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `zhiyun_x100` succeeded sequentially.
+- Full profile size: 1,815,036 / 3,145,728 bytes flash (57.7%) and 169,732 /
+  327,680 bytes static RAM (51.8%).
+- Flash: `crowpanel_128` uploaded successfully to auto-detected
+  `/dev/cu.usbserial-211240` and reset.
+- Open hardware gate: the light behavior above was driven from the host probe,
+  not the newly flashed shared embedded runtime. Panel-originated shared-link
+  control, reboot migration, fallback, two-Zhiyun routing, and coexistence soak
+  remain unverified.
 
 ### Baseline Shark build
 
@@ -2546,3 +2582,28 @@ Record values with the exact build environment and commit/worktree state.
   BLE connection can carry its proprietary state and cross-brand standards
   mesh traffic. Firmware still needs one shared gateway owner before Zhiyun and
   Amaran logical members can honestly consume the same physical slot.
+
+### 2026-08-07: Portal Home Assistant entity-picker repair
+
+- Fixed the LAN Portal entity picker to address entity-rack fields in their
+  actual sibling container instead of incorrectly searching beneath `haForm`.
+  The rack controls are now explicitly associated with `haForm`, so selected
+  entity IDs, names, and instance IDs are included when saving.
+- Added `autocomplete="current-password"` to the long-lived token field and
+  disabled autocomplete on generated entity/name fields.
+- Focused Bun validation passed for JavaScript syntax, corrected selectors,
+  form association, and token autocomplete. Native passed 51/51.
+- `home_assistant` built at 161,380 / 327,680 bytes RAM and 1,797,980 /
+  3,145,728 bytes flash. `crowpanel_128` built at 169,732 / 327,680 bytes RAM
+  and 1,815,180 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240` with written-region hash verification.
+- Live browser selection and save against the operator's Home Assistant remain
+  to be exercised; compile and flash do not prove that external round trip.
+
+### 2026-08-07: Project-name expansions
+
+- Documented **Bluetooth Links Everything, Eventually, Probably** as Ble(e)p's
+  playful expansion and **Bluetooth Low Energy Equipment Panel** as its serious
+  descriptive expansion in the public README and documentation index.
+- Documentation only; firmware behavior and BLE identity are unchanged. No
+  build or flash was run for this wording-only update.

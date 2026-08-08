@@ -8,8 +8,9 @@ namespace {
 constexpr uint8_t kMagic[] = {'A','M','S','H'};
 constexpr size_t kHeaderSize = 8;
 constexpr size_t kNetworkSize = 1 + 16 + 16 + 4 + 2 + 2 + 2 + 4;
-constexpr size_t kNodeSize = 4 + 2 + 2 + 1 + 1 + 16 + 16 +
-                             studio::kBleAddressCapacity + 1;
+constexpr size_t kNodeV1Size = 4 + 2 + 2 + 1 + 1 + 16 + 16 +
+                               studio::kBleAddressCapacity + 1;
+constexpr size_t kNodeV2Size = kNodeV1Size + 2 + 2 + 2 + 1;
 constexpr size_t kChecksumSize = 4;
 
 uint32_t checksum(const uint8_t* data, size_t length) {
@@ -55,9 +56,11 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
   const uint16_t version = get16(cursor);
   const uint8_t count = *cursor++;
   ++cursor;
+  const size_t nodeSize = version == 1 ? kNodeV1Size : kNodeV2Size;
   const size_t expected = kHeaderSize + kNetworkSize +
-                          static_cast<size_t>(count) * kNodeSize + kChecksumSize;
-  if (version != kSchemaVersion || count > kMaxMeshNodes || length != expected) {
+                          static_cast<size_t>(count) * nodeSize + kChecksumSize;
+  if ((version != 1 && version != kSchemaVersion) ||
+      count > kMaxMeshNodes || length != expected) {
     return studio::ConfigLoadStatus::Corrupt;
   }
   const uint8_t* checksumCursor = blob + length - 4;
@@ -86,6 +89,21 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
     node.bleAddress[sizeof(node.bleAddress) - 1] = '\0';
     cursor += sizeof(node.bleAddress);
     node.bleAddressType = *cursor++;
+    if (version >= 2) {
+      node.controlGroupAddress = get16(cursor);
+      node.vendorCompanyId = get16(cursor);
+      node.vendorModelId = get16(cursor);
+      node.routingSelector = *cursor++;
+    }
+  }
+  if (version == 1) {
+    uint8_t zhiyunSelector = 0;
+    for (uint8_t i = 0; i < count; ++i) {
+      MeshNodeRecord& node = data.nodes[i];
+      if (node.model == studio::DriverId::ZhiyunLight) {
+        node.routingSelector = zhiyunSelector++;
+      }
+    }
   }
   return studio::ConfigLoadStatus::Loaded;
 }
@@ -93,7 +111,7 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
 bool MeshStore::save(const MeshStoreData& data) {
   if (data.nodeCount > kMaxMeshNodes) return false;
   const size_t length = kHeaderSize + kNetworkSize +
-                        static_cast<size_t>(data.nodeCount) * kNodeSize + 4;
+                        static_cast<size_t>(data.nodeCount) * kNodeV2Size + 4;
   if (length > kMaxBlobSize) return false;
   uint8_t blob[kMaxBlobSize] = {};
   uint8_t* cursor = blob;
@@ -121,6 +139,10 @@ bool MeshStore::save(const MeshStoreData& data) {
     std::memcpy(cursor, node.bleAddress, sizeof(node.bleAddress));
     cursor += sizeof(node.bleAddress);
     *cursor++ = node.bleAddressType;
+    put16(cursor, node.controlGroupAddress);
+    put16(cursor, node.vendorCompanyId);
+    put16(cursor, node.vendorModelId);
+    *cursor++ = node.routingSelector;
   }
   put32(cursor, checksum(blob, length - 4));
   return static_cast<size_t>(cursor - blob) == length && backend_.write(blob, length);
@@ -178,6 +200,31 @@ bool removeNode(MeshStoreData& data, studio::InstanceId instanceId) {
     return true;
   }
   return false;
+}
+
+uint16_t defaultControlGroupAddress(const MeshStoreData& data,
+                                    const MeshNodeRecord& node) {
+  if (node.controlGroupAddress != 0) return node.controlGroupAddress;
+  if (node.unicastAddress <= data.network.provisionerAddress) return 0;
+  const uint32_t address = static_cast<uint32_t>(data.network.groupAddress) +
+                           node.unicastAddress -
+                           data.network.provisionerAddress;
+  return address <= 0xfeff ? static_cast<uint16_t>(address) : 0;
+}
+
+uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data) {
+  bool used[0xff] = {};
+  for (uint8_t i = 0; i < data.nodeCount; ++i) {
+    const MeshNodeRecord& node = data.nodes[i];
+    if (node.model == studio::DriverId::ZhiyunLight &&
+        node.routingSelector != 0xff) {
+      used[node.routingSelector] = true;
+    }
+  }
+  for (uint16_t selector = 0; selector < 0xff; ++selector) {
+    if (!used[selector]) return static_cast<uint8_t>(selector);
+  }
+  return 0xff;
 }
 
 }  // namespace amaran_light

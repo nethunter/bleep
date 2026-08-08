@@ -106,9 +106,11 @@ identity rather than Zhiyun model or brand alone.
 The first payload byte is now best described as an observed **member-routing
 selector**, not a proven model selector. In this capture the X100 was selector
 `00` and the X60RGB was selector `01`, but model and onboarding order covary.
-The allocation rule remains a `Hypothesis` until a second fixture of the same
-model, or a different add order, demonstrates whether selectors are assigned
-by node order, unicast address, product role, or another mesh record.
+A later mixed-mesh test made X60RGB the first Zhiyun member but the third
+standards-mesh node; it responded on selector `00`, not its earlier
+model-derived `01`. This disproves product role and standards-mesh unicast as
+the selector rule, while ordinal allocation among Zhiyun members remains a
+`Hypothesis` until a second same-model fixture is tested.
 
 ## Multi-fixture state boundary
 
@@ -253,18 +255,19 @@ subscribes to `...9601`, queries power, brightness, and CCT, then writes only
 the three captured setters. It does not decode or originate Bluetooth Mesh
 Network PDUs for direct controls.
 
-That implementation still owns one direct client per saved Zhiyun fixture and
-selects `00` or `01` from the model profile. The multi-fixture capture shows
-that this is not the ZY Vega network model and cannot represent two same-model
-members safely. A future refactor must persist the routing selector per member
-and let all members of one Zhiyun mesh share one gateway session.
+Saved Zhiyun fixtures now persist their member selector in mesh-store schema 2
+and attach to the panel-owned mesh runtime's one retained gateway client.
+`0xFEE9` notifications fan out to each logical session, whose unique sequence,
+command, and selector correlation owns its state. PB-GATT onboarding remains a
+temporary direct connection. Same-model selector allocation and concurrent
+multi-Zhiyun behavior still require hardware verification.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,
 disconnected, and changed from `0x1827` to `0x1828`. AppKey/model configuration
 was not needed for the separate direct `0xFEE9` control path. The shared
-repository preserves the existing `AMSH` version-1 NVS schema while
-making its multi-vendor ownership explicit. Durable save happens before the
+repository reads the existing `AMSH` version-1 NVS schema and writes schema 2
+with routing metadata while making its multi-vendor ownership explicit. Durable save happens before the
 provisioning link is closed. Recovery when the light accepts Provisioning Data
 but completion or persistence is interrupted still requires reset/retry and
 hardware verification back to `0x1827`. Before

@@ -33,6 +33,14 @@ struct MeshNodeRecord {
   uint8_t deviceUuid[16] = {};
   char bleAddress[studio::kBleAddressCapacity] = "";
   uint8_t bleAddressType = 0;
+  // Vendor access messages are addressed to a model subscription rather than
+  // the node unicast address. Zero means this record predates per-node groups.
+  uint16_t controlGroupAddress = 0;
+  uint16_t vendorCompanyId = 0;
+  uint16_t vendorModelId = 0;
+  // Zhiyun's cleartext FEE9 protocol routes members with an ordinal selector.
+  // This is independent of product model and mesh unicast address.
+  uint8_t routingSelector = 0xff;
 };
 
 struct MeshStoreData {
@@ -43,7 +51,7 @@ struct MeshStoreData {
 
 class MeshStore {
  public:
-  static constexpr uint16_t kSchemaVersion = 1;
+  static constexpr uint16_t kSchemaVersion = 2;
   static constexpr size_t kMaxBlobSize = 1280;
 
   explicit MeshStore(studio::IConfigBackend& backend) : backend_(backend) {}
@@ -73,5 +81,8 @@ const MeshNodeRecord* findNode(const MeshStoreData& data,
                                studio::InstanceId instanceId);
 bool upsertNode(MeshStoreData& data, const MeshNodeRecord& node);
 bool removeNode(MeshStoreData& data, studio::InstanceId instanceId);
+uint16_t defaultControlGroupAddress(const MeshStoreData& data,
+                                    const MeshNodeRecord& node);
+uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data);
 
 }  // namespace amaran_light

@@ -1,5 +1,9 @@
 # Ble(e)p Documentation
 
+The name expands playfully to **Bluetooth Links Everything, Eventually,
+Probably**. Its serious descriptive expansion is **Bluetooth Low Energy
+Equipment Panel**.
+
 This directory is the durable source of truth for Ble(e)p as it evolves from an
 iFootage Shark Nano II remote into a compile-time configurable studio
 controller.

@@ -97,6 +97,71 @@ class MemoryBackend : public studio::IConfigBackend {
   size_t length_ = 0;
 };
 
+class V1MeshBackend : public studio::IConfigBackend {
+ public:
+  V1MeshBackend() {
+    uint8_t* out = data_;
+    const uint8_t magic[] = {'A', 'M', 'S', 'H'};
+    std::memcpy(out, magic, sizeof(magic));
+    out += sizeof(magic);
+    put16(out, 1);
+    *out++ = 2;
+    *out++ = 0;
+    *out++ = 1;
+    std::memset(out, 0, 32);
+    out += 32;
+    put32(out, 0);
+    put16(out, 1);
+    put16(out, 0xc000);
+    put16(out, 4);
+    put32(out, 256);
+    putNode(out, 41, 2);
+    putNode(out, 42, 3);
+    length_ = static_cast<size_t>(out - data_) + 4;
+    put32(out, checksum(data_, length_ - 4));
+  }
+
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (length_ > capacity) return 0;
+    std::memcpy(destination, data_, length_);
+    return length_;
+  }
+
+  bool write(const uint8_t*, size_t) override { return false; }
+
+ private:
+  static void put16(uint8_t*& out, uint16_t value) {
+    *out++ = static_cast<uint8_t>(value);
+    *out++ = static_cast<uint8_t>(value >> 8);
+  }
+  static void put32(uint8_t*& out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) {
+      *out++ = static_cast<uint8_t>(value >> shift);
+    }
+  }
+  static uint32_t checksum(const uint8_t* bytes, size_t length) {
+    uint32_t value = 2166136261u;
+    for (size_t i = 0; i < length; ++i) {
+      value = (value ^ bytes[i]) * 16777619u;
+    }
+    return value;
+  }
+  static void putNode(uint8_t*& out, studio::InstanceId instanceId,
+                      uint16_t unicastAddress) {
+    put32(out, instanceId);
+    put16(out, static_cast<uint16_t>(studio::DriverId::ZhiyunLight));
+    put16(out, unicastAddress);
+    *out++ = 1;
+    *out++ = 1;
+    std::memset(out, 0, 32 + studio::kBleAddressCapacity);
+    out += 32 + studio::kBleAddressCapacity;
+    *out++ = 0;
+  }
+
+  uint8_t data_[256] = {};
+  size_t length_ = 0;
+};
+
 class V1DeviceBackend : public studio::IConfigBackend {
  public:
   V1DeviceBackend() {
@@ -221,7 +286,9 @@ class FakeDriver : public studio::DeviceDriver {
   studio::BleSlotKey bleSlotKey(
       const studio::DeviceRecord& record) const override {
     if (noBleSlot || id_ == studio::DriverId::HomeAssistant) return {};
-    return {id_, sharedBleGroup != 0 ? sharedBleGroup : record.instanceId};
+    return {sharedBleFamily != studio::DriverId::Unknown ? sharedBleFamily
+                                                         : id_,
+            sharedBleGroup != 0 ? sharedBleGroup : record.instanceId};
   }
   bool activate(const studio::DeviceRecord& record) override {
     for (studio::InstanceId id : activeInstances) {
@@ -322,6 +389,7 @@ class FakeDriver : public studio::DeviceDriver {
   bool intentionalOffline = false;
   bool noBleSlot = false;
   uint32_t sharedBleGroup = 0;
+  studio::DriverId sharedBleFamily = studio::DriverId::Unknown;
   bool commandPending = false;
   bool recordingConfirmed = false;
   bool recording = false;
@@ -1610,10 +1678,14 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   FakeDriver meshDriver(studio::DriverId::AmaranLight);
+  FakeDriver zhiyunDriver(studio::DriverId::ZhiyunLight);
   meshDriver.sharedBleGroup = 1;
+  meshDriver.sharedBleFamily = studio::DriverId::PanelOwnedMesh;
+  zhiyunDriver.sharedBleGroup = 1;
+  zhiyunDriver.sharedBleFamily = studio::DriverId::PanelOwnedMesh;
   studio::DeviceDriver* drivers[] = {
-      &sharkDriver, &canonDriver, &tascamDriver, &meshDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 4);
+      &sharkDriver, &canonDriver, &tascamDriver, &meshDriver, &zhiyunDriver};
+  studio::DeviceManager manager(backend, legacy, drivers, 5);
   TEST_ASSERT_TRUE(manager.begin());
   const studio::InstanceId sharkId = manager.at(0)->instanceId;
   studio::InstanceId canonId = studio::kInvalidInstanceId;
@@ -1627,12 +1699,14 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(
           manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
-  for (studio::InstanceId& id : meshIds) {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(studio::RegistryStatus::Ok),
-        static_cast<int>(
-            manager.add(studio::DriverId::AmaranLight, "Mesh light", id)));
-  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::AmaranLight,
+                                   "Sidus mesh light", meshIds[0])));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::ZhiyunLight,
+                                   "Zhiyun mesh light", meshIds[1])));
 
   const studio::InstanceId initial[] = {
       meshIds[0], sharkId, canonId, tascamId};
@@ -1673,7 +1747,8 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
   TEST_ASSERT_FALSE(manager.isActive(meshIds[0]));
   TEST_ASSERT_FALSE(manager.isActive(meshIds[1]));
   TEST_ASSERT_EQUAL_UINT32(4, manager.bleSlotCount());
-  TEST_ASSERT_EQUAL_INT(2, meshDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, meshDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, zhiyunDriver.deactivationCount);
 }
 
 void test_manager_cancels_unready_release_and_reuses_ready_session() {
@@ -2443,6 +2518,14 @@ void test_amaran_access_payloads_and_validation() {
   TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0xff0000, 50, payload));
   const uint8_t rgb[] = {0x26,0xdd,0x40,0x1f,0,0,0,0,0,0xfa,0x84};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(rgb, payload.bytes, sizeof(rgb));
+  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0xff0000, 5, payload));
+  const uint8_t mcRed5[] = {
+      0x26,0x87,0x06,0x03,0,0,0,0,0,0xfa,0x84};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(mcRed5, payload.bytes, sizeof(mcRed5));
+  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0x00ff00, 5, payload));
+  const uint8_t aceGreen5[] = {
+      0x26,0x4b,0x06,0x03,0,0,0,0x80,0x3e,0,0x84};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(aceGreen5, payload.bytes, sizeof(aceGreen5));
   TEST_ASSERT_TRUE(amaran_light::validCctCommand(2300, 0, -1000));
   TEST_ASSERT_FALSE(amaran_light::validCctCommand(2299, 50, 0));
   TEST_ASSERT_TRUE(amaran_light::validRgbCommand(0xffffff, 100));
@@ -2478,12 +2561,42 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   node.model = studio::DriverId::AmaranLight;
   node.unicastAddress = 2;
   node.configured = true;
+  node.controlGroupAddress = 0xc001;
+  node.vendorCompanyId = 0x03f6;
+  node.vendorModelId = 0x1000;
   TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
+  amaran_light::MeshNodeRecord zhiyun;
+  zhiyun.instanceId = 43;
+  zhiyun.model = studio::DriverId::ZhiyunLight;
+  zhiyun.unicastAddress = 3;
+  zhiyun.configured = true;
+  zhiyun.routingSelector =
+      amaran_light::nextZhiyunRoutingSelector(data);
+  TEST_ASSERT_EQUAL_UINT8(0, zhiyun.routingSelector);
+  TEST_ASSERT_TRUE(amaran_light::upsertNode(data, zhiyun));
+  TEST_ASSERT_EQUAL_UINT8(1,
+      amaran_light::nextZhiyunRoutingSelector(data));
   TEST_ASSERT_TRUE(store.save(data));
   amaran_light::MeshStoreData loaded;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
                         static_cast<int>(store.load(loaded)));
-  TEST_ASSERT_NOT_NULL(amaran_light::findNode(loaded, 42));
+  const amaran_light::MeshNodeRecord* loadedNode =
+      amaran_light::findNode(loaded, 42);
+  TEST_ASSERT_NOT_NULL(loadedNode);
+  TEST_ASSERT_EQUAL_HEX16(0xc001, loadedNode->controlGroupAddress);
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, loadedNode->vendorCompanyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, loadedNode->vendorModelId);
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc001, amaran_light::defaultControlGroupAddress(loaded, *loadedNode));
+  const amaran_light::MeshNodeRecord fallbackGroupNode = {
+      44, studio::DriverId::AmaranLight, 4};
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc003,
+      amaran_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
+  const amaran_light::MeshNodeRecord* loadedZhiyun =
+      amaran_light::findNode(loaded, 43);
+  TEST_ASSERT_NOT_NULL(loadedZhiyun);
+  TEST_ASSERT_EQUAL_UINT8(0, loadedZhiyun->routingSelector);
   amaran_light::SequenceAllocator first;
   TEST_ASSERT_TRUE(first.begin(store, loaded));
   uint32_t sequence = 99;
@@ -2496,6 +2609,26 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_TRUE(second.begin(store, restarted));
   TEST_ASSERT_TRUE(second.next(sequence));
   TEST_ASSERT_EQUAL_UINT32(amaran_light::kSequenceBlockSize, sequence);
+}
+
+void test_mesh_v1_store_migrates_zhiyun_routing_selectors() {
+  V1MeshBackend backend;
+  amaran_light::MeshStore store(backend);
+  amaran_light::MeshStoreData data;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(data)));
+  TEST_ASSERT_EQUAL_UINT8(2, data.nodeCount);
+  const amaran_light::MeshNodeRecord* first =
+      amaran_light::findNode(data, 41);
+  const amaran_light::MeshNodeRecord* second =
+      amaran_light::findNode(data, 42);
+  TEST_ASSERT_NOT_NULL(first);
+  TEST_ASSERT_NOT_NULL(second);
+  TEST_ASSERT_EQUAL_UINT8(0, first->routingSelector);
+  TEST_ASSERT_EQUAL_UINT8(1, second->routingSelector);
+  TEST_ASSERT_EQUAL_HEX16(0, first->controlGroupAddress);
+  TEST_ASSERT_EQUAL_UINT32(256, data.network.sequenceHighWater);
 }
 
 void test_zhiyun_x100_frames_and_confirmed_state_replies() {
@@ -2716,6 +2849,7 @@ int main(int, char**) {
   RUN_TEST(test_amaran_crypto_and_network_vectors);
   RUN_TEST(test_amaran_access_payloads_and_validation);
   RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);
   RUN_TEST(test_zhiyun_x100_identity_and_advertisement_match);
   RUN_TEST(test_mesh_no_oob_policy_accepts_x100_static_oob_capability);

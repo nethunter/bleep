@@ -365,20 +365,23 @@ GATT is accessed through a transport facade:
 - Shark, Canon, and Tascam use their device-specific GATT services;
 - Amaran and Zhiyun lights share one panel-owned mesh repository, durable unicast
   allocator, and userspace no-OOB PB-GATT provisioner over that central;
-- Amaran uses one Mesh Proxy GATT connection shared by its logical lights;
-- `DeviceManager` charges that complete panel-owned Amaran/Aputure mesh one
+- the mesh runtime owns one retained proxy client. It exposes standard Mesh
+  Proxy Data In/Out to Amaran/Aputure access messages and lets saved Zhiyun
+  sessions attach their separate `0xFEE9` characteristics to that same native
+  client;
+- `DeviceManager` charges the complete panel-owned Amaran/Aputure/Zhiyun mesh one
   `BleSlotKey`, so adding or retaining another member does not consume another
   one of the four physical slots;
-- The generic, multi-instance Zhiyun driver accepts reset or provisioned
+- the generic, multi-instance Zhiyun driver accepts reset or provisioned
   product-qualified `pl105` X100 and `plx104` X60RGB advertisements. It uses
   PB-GATT when provisioning is required, rediscovers the Mesh Proxy advertiser,
   then initializes and controls the separate `0xFEE9` GATT service. Its writes
-  remain pending until correlated device replies confirm the requested values;
-- ZY Vega capture proves a future Zhiyun mesh should likewise share one
-  proprietary gateway connection. The current driver still owns one direct
-  client per member because same-model routing-selector allocation is not yet
-  known; it therefore keeps per-instance slot keys until that transport is
-  genuinely shared;
+  remain pending until correlated device replies confirm the requested values.
+  Saved members persist a routing selector and share one gateway notification
+  stream; unique transport sequences keep concurrent replies attributable;
+- PB-GATT onboarding is a temporary exclusive link. After a saved node is
+  reopened, steady-state control attaches to the shared proxy bearer rather
+  than allocating another central slot;
 - callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
   persistence, and writes remain on the main loop.
 

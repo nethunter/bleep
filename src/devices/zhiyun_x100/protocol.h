@@ -8,10 +8,6 @@ namespace zhiyun_x100 {
 
 enum class MolusModel : uint8_t { Unknown, X100, X60Rgb };
 
-constexpr uint8_t selectorFor(MolusModel model) {
-  return model == MolusModel::X60Rgb ? 1 : 0;
-}
-
 constexpr bool supportsRgb(MolusModel model) {
   return model == MolusModel::X60Rgb;
 }

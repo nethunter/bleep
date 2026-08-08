@@ -25,6 +25,15 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   bool consumePairingUpdate(studio::InstanceId instanceId,
                             studio::DeviceRecord& record);
   void forgetLocal(studio::InstanceId instanceId);
+  // Saved mesh members from other protocol families attach to this one
+  // physical proxy bearer. PB-GATT onboarding remains an exclusive temporary
+  // operation; steady-state control uses the shared native client below.
+  bool acquireGateway(const studio::DeviceRecord& record);
+  void releaseGateway(studio::InstanceId instanceId);
+  void* gatewayClient() const;
+  studio::ble::LinkHandle gatewayLink() const { return link_; }
+  bool gatewayConnected() const { return connected_ && !provisioningLink_; }
+  uint32_t gatewayGeneration() const { return gatewayGeneration_; }
 
   void onBleAdvertisement(studio::ble::LinkHandle link,
                           const studio::ble::Advertisement& advertisement) override;
@@ -64,11 +73,16 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
                   size_t length);
   bool sendAccessTo(uint16_t destination, const uint8_t* access,
                     size_t length);
+  uint16_t controlGroupFor(studio::InstanceId instanceId) const;
   bool refreshGroupPower();
   void fail(Session& session, const char* error);
   void updateSharedReady();
+  studio::InstanceId preferredGatewayInstance() const;
+  bool hasActiveUsers() const;
+  bool isPreferredGatewayAddress(const char* address) const;
 
   Session sessions_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+  studio::InstanceId gatewayUsers_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   studio::ble::LinkHandle link_ = studio::ble::kInvalidLinkHandle;
   studio::InstanceId linkInstance_ = studio::kInvalidInstanceId;
   bool provisioningLink_ = false;
@@ -77,12 +91,14 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   uint32_t nextConfigAt_ = 0;
   uint32_t lastPowerPollMs_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
+  uint32_t gatewayGeneration_ = 0;
   NimBLERemoteCharacteristic* dataIn_ = nullptr;
   Notification notifications_[8] = {};
   uint8_t notifyHead_ = 0;
   uint8_t notifyTail_ = 0;
   char provisioningAddress_[studio::kBleAddressCapacity] = "";
   uint8_t provisioningAddressType_ = 0;
+  char provisioningName_[studio::kBleNameCapacity] = "";
   studio::mesh::PbGattProvisioner provisioner_;
 };
 

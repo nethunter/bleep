@@ -8,6 +8,9 @@ namespace studio {
 class ZhiyunLightDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::ZhiyunLight; }
+  BleSlotKey bleSlotKey(const DeviceRecord&) const override {
+    return {DriverId::PanelOwnedMesh, 1};
+  }
   bool activate(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;
@@ -24,7 +27,12 @@ class ZhiyunLightDriver : public DeviceDriver {
   static constexpr size_t kMaxSessions = 4;
   struct Session {
     InstanceId instanceId = kInvalidInstanceId;
+    DeviceRecord record;
     zhiyun_x100::X100Client client;
+    bool sharedGateway = false;
+    bool gatewayAttached = false;
+    uint32_t gatewayGeneration = 0xffffffffu;
+    uint32_t gatewayAttachRetryAt = 0;
   };
 
   Session* find(InstanceId instanceId);

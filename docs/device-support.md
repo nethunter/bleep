@@ -20,8 +20,8 @@ remain hardware gates.
 
 ADR-022 retains protocol-ready sessions across navigation and sequences. Up to
 eight logical instances map onto four physical BLE transport groups. Ordinary
-GATT devices consume one group per instance; the panel-owned Amaran/Aputure
-mesh consumes one group for all its logical members, and Home Assistant
+GATT devices consume one group per instance; every Amaran, Aputure, and Zhiyun
+member in the panel-owned mesh consumes one group together, and Home Assistant
 consumes none. Multiple Canon instances retain independent client state.
 Unexpected drops retry while retained; unfinished first-time attempts stop
 when their last owner leaves.
@@ -82,7 +82,8 @@ of successful movement.
 
 - Status: `Experimental`; compiled implementation, real-fixture gate open.
 - Transport: PB-GATT provisioning and Mesh Proxy GATT over the shared NimBLE
-  central, with one proxy link shared by logical lights.
+  central, with one proxy link shared by logical lights across the three tested
+  brands.
 - Initial capabilities: power, independently remembered 2300-10000 K
   CCT/tint/brightness and RGB/saturation/brightness looks. Sequence authoring
   exposes one `Set color` action with CCT and RGB modes.
@@ -98,12 +99,15 @@ of successful movement.
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is
 charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
-composition-driven configuration, cross-node routing, proxy fallback, and
-group-addressed physical power Set/Get are confirmed. Standard Generic OnOff
-is only a writable shadow/reachability model on both fixtures. CCT/RGB,
-per-member vendor groups, physical group-power command integration,
-reboot/interruption recovery, Pano fixtures, and safe node reset remain open
-before this becomes Current. Firmware does implement authenticated vendor
+composition evidence, cross-node routing, proxy fallback, and group-addressed
+physical power Set/Get are confirmed. Standard Generic OnOff
+is only a writable shadow/reachability model on both fixtures. Firmware sends
+mesh power through the common vendor group and CCT/RGB through deterministic
+per-member vendor groups. MC red and Ace green were optically observed at 5%
+after separate group writes, followed by common-group On/Off. CCT, property
+readback, decoded configuration-status enforcement, reboot/interruption
+recovery, Pano fixtures, and safe node reset remain open before this becomes
+Current. Firmware does implement authenticated vendor
 power readback: one group poll updates each member by source address, polls
 every five seconds, and marks a member stale after three missed intervals while
 leaving the shared proxy bearer connected.
@@ -128,7 +132,8 @@ product-qualified advertisement and identity response.
   PB-GATT provisioning, direct GATT initialization, and deterministic command/
   readback path are implemented. Panel-originated hardware verification is open.
 - Product identity: internal BLE model marker `pl105`; captured local names use
-  `PL105_` plus a device-specific suffix.
+  `PL105_` plus a device-specific suffix. The first Zhiyun member in the tested
+  mixed mesh uses routing selector `0`, independent of product model.
 - Transport: standard no-OOB PB-GATT (`0x1827`) for factory-reset onboarding,
   Mesh Proxy (`0x1828`) after provisioning, and direct proprietary control on
   service `0xFEE9`.
@@ -166,8 +171,9 @@ product-qualified advertisement and identity response.
 - Transport: the same no-OOB PB-GATT `0x1827`, post-provision Mesh Proxy
   `0x1828`, and proprietary `0xFEE9` direct-control service as the X100.
 - Captured capabilities: power, float32 brightness, uint16 CCT, float32 hue in
-  degrees, and float32 saturation percent. The state selector is `01 80`,
-  versus `00 80` on X100.
+  degrees, and float32 saturation percent. Selector `0` was live-verified when
+  X60RGB was the first Zhiyun member but the third standards-mesh node; the
+  selector is persisted as a member route rather than derived from model.
 - State quality: X60RGB setters returned replies correlated by sequence and
   command. Ble(e)p confirms RGB hue, saturation, and brightness in the
   capture-backed order;
