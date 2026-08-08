@@ -920,21 +920,31 @@ int main() {
   if (!capture("27b_scenes_settings_after_stop")) {
     return 1;
   }
-  // First hold closes Settings; the next mirrors the run screen's touch Back,
-  // returns to the sequence list, and releases retained sequence ownership.
-  ui::handleLongPress();
+  // The first long-press stage performs one Back step. Continuing to hold
+  // safely unwinds the remaining navigation path and lands on Home.
   ui::handleLongPress();
   pump(200);
-  if (!scene_ui::simShowingList() || studio::scenes().holdsLinks() ||
+  if (!scene_ui::active() || scene_ui::simShowingList() ||
+      !studio::scenes().holdsLinks()) {
+    std::fprintf(stderr,
+                 "First long-press stage did more than one Back step\n");
+    return 1;
+  }
+  ui::handleLongPressToHome();
+  pump(200);
+  if (scene_ui::active() || !ui::simShowingHome() ||
+      studio::scenes().holdsLinks() ||
       studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||
       studio::devices().ownedBy(tascamId,
                                 studio::ConnectionOwner::Sequence)) {
     std::fprintf(stderr,
-                 "Sequence long press did not navigate Back and unlink\n");
+                 "Continued long press did not return Home and unlink\n");
     return 1;
   }
-  scene_ui::hide();
-  ui::showHome();
+  if (ui::handleLongPressToHome()) {
+    std::fprintf(stderr, "Continued long press should stop at Home\n");
+    return 1;
+  }
 
   scene_ui::simShowRun(sceneId);
   scene_ui::simShowSettings(sceneId);
