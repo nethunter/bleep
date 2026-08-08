@@ -36,8 +36,8 @@ void performPrimaryAction() {
   }
   const auto* current = static_cast<const canon_ble::CanonBleState*>(
       studio::devices().specializedState(instanceId));
-  if (studio::devices().isPendingAdd(instanceId) && current != nullptr &&
-      current->pairingRejected) {
+  if (current != nullptr &&
+      (current->pairingRejected || current->protocolFailed)) {
     enqueue(studio::CommandType::Connect);
     return;
   }
@@ -151,13 +151,20 @@ void refresh() {
       view.actionLabel = "RETRY";
       view.actionColor = kReady;
       view.actionEnabled = true;
+    } else if (state != nullptr && state->protocolFailed) {
+      view.status = "CONNECTION FAILED";
+      view.detail = "CANON SETUP INCOMPLETE";
+      view.actionLabel = "RETRY";
+      view.actionColor = kReady;
+      view.actionEnabled = true;
+    } else {
+      view.actionLabel = "WAITING";
+      view.actionColor = kAccent;
+      view.actionEnabled = false;
     }
     view.powerEnabled =
         state != nullptr &&
         state->phase == canon_ble::CanonBleState::Phase::PoweredOff;
-    view.actionLabel = "WAITING";
-    view.actionColor = kAccent;
-    view.actionEnabled = false;
     recorder_shell::apply(view);
     return;
   }

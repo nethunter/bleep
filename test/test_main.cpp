@@ -2491,6 +2491,35 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   central.release(secondLink);
 }
 
+void test_ble_central_protocol_failure_can_stop_retry() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  const studio::ble::LinkHandle link = central.acquire(delegate, {});
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = link;
+  backend.emit(connected);
+  central.loop(100);
+  central.markProtocolFailed(link, false);
+  TEST_ASSERT_EQUAL_UINT32(1, backend.disconnectCalls(link));
+
+  studio::ble::Event disconnected;
+  disconnected.type = studio::ble::EventType::Disconnected;
+  disconnected.link = link;
+  backend.emit(disconnected);
+  central.loop(101);
+  central.loop(10000);
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ble::LinkPhase::Idle),
+                        static_cast<int>(central.phase(link)));
+  central.release(link);
+}
+
 void test_ble_central_uses_bounded_scan_bursts() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -3012,6 +3041,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
+  RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
   RUN_TEST(test_ble_device_advertisement_matchers);

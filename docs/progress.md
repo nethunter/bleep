@@ -2838,3 +2838,49 @@ Record values with the exact build environment and commit/worktree state.
   BLE disconnected, 151,052 bytes free heap, 142,612 bytes minimum free heap,
   and a 131,060-byte largest free block. Active-driver deltas, mixed BLE+HA
   operation, and post-deactivation recovery remain target-hardware gates.
+
+### 2026-08-08: Canon Smart incomplete-discovery recovery
+
+- Diagnosed an EOS R6 Mark II connection that appeared stuck. Serial evidence
+  showed physical connection and encryption succeeded with 98,612 bytes free
+  heap and a 77,812-byte largest block, but filtered GATT discovery returned
+  pairing command `00010006` without the required pairing data `0001000a`.
+  The subsequent clean disconnect exposed a UI bug: the disconnected Canon
+  screen unconditionally replaced its retry state with a disabled `WAITING`
+  action.
+- Canon Smart now retries an incomplete pairing-service discovery once with a
+  full characteristic refresh. If setup remains incomplete it stops automatic
+  reconnect churn, reports `CONNECTION FAILED / CANON SETUP INCOMPLETE`, and
+  enables `RETRY`. Retrying a saved camera preserves its address and bond;
+  rejected or new pairing returns to discovery. Other drivers retain the shared
+  BLE coordinator's existing automatic protocol-failure retry behavior.
+- Native passed 58/58, including the no-reconnect terminal-failure path. The
+  complete `ui_sim` capture flow passed with 18,000
+  bytes free at its tightest reported point. All eight firmware profiles built
+  sequentially. Default `crowpanel_128` used 142,148 / 327,680 bytes static RAM
+  (43.4%) and 1,846,706 / 3,145,728 bytes flash (58.7%), then uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and hard reset.
+- A bounded hardware capture reached the saved R6 II after three radio-level
+  connection misses, discovered `00010006` and `0001000a`, received wake result
+  `04`, and logged `protocol_ready`. The same capture subsequently brought up
+  Tascam X8 and Home Assistant together and logged all sequence targets ready.
+  Canon's forced full-refresh failure path remains intentionally difficult to
+  reproduce, but it is bounded and its retry UI is compile/simulator verified.
+
+### 2026-08-08: Muted Devices-list status typography
+
+- Split each Devices row into independent name and runtime-status labels. The
+  device name remains 14 px, while `connected`, `ready`, `connecting`,
+  `scanning`, and `disabled` now use a 12 px muted-gray label. Added matching
+  12 px Montserrat and generated Roboto faces so both supported UI font
+  profiles retain the same hierarchy.
+- The complete `ui_sim` capture flow passed. `02_devices.png` confirms the
+  smaller gray status stays aligned and unclipped beneath each device name.
+  Max-device initialization retained 43,048 bytes of LVGL memory, 344 bytes
+  less than the preceding layout; the tightest reported point retained 17,984
+  bytes.
+- Native passed 58/58. All eight firmware profiles built sequentially. Default
+  `crowpanel_128` used 142,156 / 327,680 bytes static RAM (43.4%) and 1,858,230
+  / 3,145,728 bytes flash (59.1%). Upload to `/dev/cu.usbserial-211240`
+  completed with image hash verification and hard reset. Physical-panel text
+  appearance remains operator-verifiable.

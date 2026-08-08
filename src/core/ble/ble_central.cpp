@@ -263,7 +263,7 @@ void BleCentral::markProtocolReady(LinkHandle link) {
   }
 }
 
-void BleCentral::markProtocolFailed(LinkHandle link) {
+void BleCentral::markProtocolFailed(LinkHandle link, bool reconnect) {
   Slot* slot = slotFor(link);
   if (slot == nullptr) {
     return;
@@ -272,8 +272,8 @@ void BleCentral::markProtocolFailed(LinkHandle link) {
             nowMs_ - slot->stageStartedMs,
             nowMs_ - slot->timingStartedMs, "failed");
   slot->protocolReady = false;
-  slot->reconnectRequested = true;
-  slot->manualDisconnectPending = false;
+  slot->reconnectRequested = reconnect;
+  slot->manualDisconnectPending = !reconnect;
   backend_.disconnect(link);
 }
 

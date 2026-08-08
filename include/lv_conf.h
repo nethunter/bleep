@@ -32,9 +32,10 @@
 
 // UI font family is chosen at compile time. Default is Montserrat (bundled with
 // LVGL); define UI_FONT_ROBOTO to use the embedded Roboto faces in src/fonts/.
-// Only the three sizes the UI uses are enabled, and the unused family is gated
+// Only the four sizes the UI uses are enabled, and the unused family is gated
 // off so it costs no flash. See src/fonts/ui_fonts.h.
 #ifdef UI_FONT_ROBOTO
+#define LV_FONT_MONTSERRAT_12 0
 #define LV_FONT_MONTSERRAT_14 0
 #define LV_FONT_MONTSERRAT_16 0
 #define LV_FONT_MONTSERRAT_20 0
@@ -42,11 +43,13 @@
 #define LV_FONT_ROBOTO_16 1
 #define LV_FONT_ROBOTO_20 1
 #define LV_FONT_CUSTOM_DECLARE \
+  LV_FONT_DECLARE(lv_font_roboto_12) \
   LV_FONT_DECLARE(lv_font_roboto_14) \
   LV_FONT_DECLARE(lv_font_roboto_16) \
   LV_FONT_DECLARE(lv_font_roboto_20)
 #define LV_FONT_DEFAULT &lv_font_roboto_16
 #else
+#define LV_FONT_MONTSERRAT_12 1
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_20 1
@@ -55,7 +58,6 @@
 #define LV_FONT_ROBOTO_20 0
 #define LV_FONT_DEFAULT &lv_font_montserrat_16
 #endif
-#define LV_FONT_MONTSERRAT_12 0
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_ANTIALIAS 1

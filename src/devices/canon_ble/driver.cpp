@@ -86,7 +86,7 @@ CommandStatus CanonBleDriver::dispatch(const DeviceCommand& command) {
   }
   switch (command.type) {
     case CommandType::Connect:
-      session->client.startScan();
+      session->client.retry();
       return CommandStatus::Succeeded;
     case CommandType::ForgetPairing:
       session->client.forgetDevice();
