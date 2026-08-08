@@ -1460,67 +1460,83 @@ void handleShortPress() {
   }
 }
 
-void handleLongPress() {
+bool handleLongPress() {
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_AMARAN_LIGHT
   if (amaran_light_ui::active()) {
     amaran_light_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   if (shark_ui::active()) {
     shark_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_CANON_TRIGGER
   if (canon_trigger_ui::active()) {
     canon_trigger_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_CANON_BLE
   if (canon_ble_ui::active()) {
     canon_ble_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_TASCAM_X8
   if (tascam_x8_ui::active()) {
     tascam_x8_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
 #if CONFIG_DRIVER_HOME_ASSISTANT
   if (home_assistant_ui::active()) {
     home_assistant_ui::handleLongPress();
-    return;
+    return true;
   }
 #endif
   if (scene_ui::active()) {
     scene_ui::handleLongPress();
-    return;
+    return true;
   }
   if (picker_shell::handleBack()) {
-    return;
+    return true;
   }
   if (renameOverlay != nullptr) {
     onCancelRename(nullptr);
+    return true;
   } else if (deviceModal != nullptr) {
     closeDeviceModal();
+    return true;
   } else if (screen == Screen::Devices) {
     showHome();
+    return true;
   } else if (screen == Screen::Portal) {
     onExitPortal(nullptr);
+    return true;
   } else if (screen == Screen::Settings) {
     onSettingsBack(nullptr);
+    return true;
   }
+  return false;
+}
+
+bool handleLongPressToHome() {
+  bool handled = false;
+  // The deepest current path is bounded; use each screen's ordinary Back path
+  // so provisional pairing, borrowed controls, and sequence ownership clean up.
+  for (uint8_t depth = 0; depth < 8 && handleLongPress(); ++depth) {
+    handled = true;
+  }
+  return handled;
 }
 
 void showHome() {
@@ -1836,6 +1852,10 @@ void simSetHapticEnabled(bool enabled) {
 void simSetFactoryResetHolding(bool holding) {
   if (holding) onFactoryResetPressed(nullptr);
   else onFactoryResetReleased(nullptr);
+}
+
+bool simShowingHome() {
+  return screen == Screen::Home && lv_scr_act() == scrHome;
 }
 #endif
 

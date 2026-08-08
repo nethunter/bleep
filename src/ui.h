@@ -10,7 +10,10 @@ using RenameDoneFn = void (*)(const char* name);
 void init();
 void tick();
 void handleShortPress();
-void handleLongPress();
+// Performs one Back step. Returns false when already at Home.
+bool handleLongPress();
+// Safely unwinds all remaining Back paths and returns Home.
+bool handleLongPressToHome();
 void showHome();
 void showSettings();
 void showDevices();
@@ -45,6 +48,7 @@ void simScrollSettingsToEnd();
 void simScrollAboutToEnd();
 void simSetHapticEnabled(bool enabled);
 void simSetFactoryResetHolding(bool holding);
+bool simShowingHome();
 #endif
 
 }  // namespace ui

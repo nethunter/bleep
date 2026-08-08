@@ -73,6 +73,7 @@ constexpr uint16_t screenHeight = 240;
 constexpr uint16_t drawBufferRows = 15;
 constexpr uint32_t buttonDebounceMs = 35;
 constexpr uint32_t buttonLongPressMs = 700;
+constexpr uint32_t buttonHomePressMs = 2000;
 }  // namespace board
 
 class CrowPanelDisplay : public lgfx::LGFX_Device {
@@ -341,14 +342,22 @@ void handleShortPress() {
 }
 
 void handleLongPress() {
-  haptic_feedback::request(haptic_feedback::Pattern::Back);
-  ui::handleLongPress();
+  if (ui::handleLongPress()) {
+    haptic_feedback::request(haptic_feedback::Pattern::Back);
+  }
+}
+
+void handleHomePress() {
+  if (ui::handleLongPressToHome()) {
+    haptic_feedback::request(haptic_feedback::Pattern::Back);
+  }
 }
 
 void pollButton() {
   static bool lastRawPressed = false;
   static bool stablePressed = false;
   static bool longPressHandled = false;
+  static bool homePressHandled = false;
   static uint32_t lastChangeMs = 0;
   static uint32_t pressStartedMs = 0;
 
@@ -360,10 +369,16 @@ void pollButton() {
     lastChangeMs = now;
   }
 
-  if (stablePressed && !longPressHandled &&
-      (now - pressStartedMs) >= board::buttonLongPressMs) {
-    longPressHandled = true;
-    handleLongPress();
+  if (rawPressed && stablePressed) {
+    if (!longPressHandled &&
+        (now - pressStartedMs) >= board::buttonLongPressMs) {
+      longPressHandled = true;
+      handleLongPress();
+    } else if (longPressHandled && !homePressHandled &&
+               (now - pressStartedMs) >= board::buttonHomePressMs) {
+      homePressHandled = true;
+      handleHomePress();
+    }
   }
 
   if ((now - lastChangeMs) < board::buttonDebounceMs || rawPressed == stablePressed) {
@@ -374,12 +389,14 @@ void pollButton() {
   if (stablePressed) {
     pressStartedMs = now;
     longPressHandled = false;
+    homePressHandled = false;
   } else {
     pressStartedMs = 0;
     if (!longPressHandled) {
       handleShortPress();
     }
     longPressHandled = false;
+    homePressHandled = false;
   }
 }
 

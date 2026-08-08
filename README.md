@@ -166,9 +166,11 @@ values shown on the Shark screen come from the slider.
   sequence run screen it starts from Ready and stops once armed or while Start
   is running. Device screens similarly dispatch their primary Shark, Canon, or
   Tascam action. A 700 ms hold navigates Back, cancels, or closes the current
-  overlay. Recognized short presses use the normal tap, while a long press uses
-  the Back pattern. The button has no power behavior; the hardware SPDT switch
-  controls controller power.
+  overlay. Continuing the same hold to 2 seconds safely unwinds the remaining
+  navigation path and returns directly to Home. Recognized short presses use
+  the normal tap, while each handled hold stage uses the Back pattern. The
+  button has no power behavior; the hardware SPDT switch controls controller
+  power.
 
 ### Pin assumptions
 

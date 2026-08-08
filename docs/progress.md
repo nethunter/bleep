@@ -2786,3 +2786,19 @@ Record values with the exact build environment and commit/worktree state.
   3,145,728 bytes flash (58.9%). Upload to `/dev/cu.usbserial-211240` completed
   with image hash verification and hard reset. NVS was not erased; the actual
   post-migration Devices screen remains operator-unverified.
+
+### 2026-08-08: Two-stage action-button Back/Home hold
+
+- Kept the 700 ms action-button hold as exactly one ordinary Back step. If the
+  same press remains held to 2 seconds, the UI now follows each remaining
+  screen's normal Back path and lands on Home, preserving provisional pairing,
+  borrowed device-control, and sequence-link cleanup.
+- The simulator regression begins in sequence Settings with links held, checks
+  that the first stage only closes Settings, then checks that the continued
+  stage reaches Home and releases both sequence owners. The complete `ui_sim`
+  capture flow passed; native passed 52/52.
+- All eight firmware profiles built sequentially. Default `crowpanel_128` used
+  169,852 / 327,680 bytes RAM (51.8%) and 1,857,174 / 3,145,728 bytes flash
+  (59.0%). It uploaded to `/dev/cu.usbserial-211240` with image hash
+  verification and hard reset. Physical two-stage button timing remains
+  operator-unverified.
