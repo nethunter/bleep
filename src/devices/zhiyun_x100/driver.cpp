@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include <cstring>
+#include <new>
 
 #include "core/mesh/mesh_repository.h"
 #include "devices/amaran_light/runtime.h"
@@ -10,24 +11,41 @@
 namespace studio {
 
 ZhiyunLightDriver::Session* ZhiyunLightDriver::find(InstanceId instanceId) {
-  for (Session& session : sessions_) {
-    if (session.instanceId == instanceId) return &session;
+  for (Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) return session;
   }
   return nullptr;
 }
 
 const ZhiyunLightDriver::Session* ZhiyunLightDriver::find(
     InstanceId instanceId) const {
-  for (const Session& session : sessions_) {
-    if (session.instanceId == instanceId) return &session;
+  for (const Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) return session;
   }
   return nullptr;
 }
 
 bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
   if (find(record.instanceId) != nullptr) return true;
-  Session* session = find(kInvalidInstanceId);
-  if (session == nullptr) return false;
+  if (!repositoryHeld_) {
+    if (!studio::mesh::retainRepository()) return false;
+    repositoryHeld_ = true;
+  }
+  Session* session = nullptr;
+  for (Session*& candidate : sessions_) {
+    if (candidate != nullptr) continue;
+    candidate = new (std::nothrow) Session;
+    session = candidate;
+    break;
+  }
+  if (session == nullptr) {
+    if (sessionCount_ == 0 && repositoryHeld_) {
+      studio::mesh::releaseRepository();
+      repositoryHeld_ = false;
+    }
+    return false;
+  }
+  ++sessionCount_;
   session->instanceId = record.instanceId;
   session->record = record;
   const bool hasMeshNode = studio::mesh::repository().begin() &&
@@ -35,10 +53,20 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
                              record.instanceId) != nullptr;
   session->sharedGateway = record.paired && hasMeshNode;
   if (session->sharedGateway) {
-    if (!amaran_light::runtime().acquireGateway(record)) {
-      session->instanceId = kInvalidInstanceId;
-      session->record = {};
-      session->sharedGateway = false;
+    amaran_light::AmaranRuntime* gateway = amaran_light::runtime();
+    if (gateway == nullptr || !gateway->acquireGateway(record)) {
+      amaran_light::releaseRuntimeIfIdle();
+      for (Session*& candidate : sessions_) {
+        if (candidate != session) continue;
+        delete candidate;
+        candidate = nullptr;
+        break;
+      }
+      if (sessionCount_ > 0) --sessionCount_;
+      if (sessionCount_ == 0 && repositoryHeld_) {
+        studio::mesh::releaseRepository();
+        repositoryHeld_ = false;
+      }
       return false;
     }
     session->client.activateShared(
@@ -59,45 +87,58 @@ void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
   if (session == nullptr) return;
   session->client.deactivate();
   if (session->sharedGateway) {
-    amaran_light::runtime().releaseGateway(instanceId);
+    if (amaran_light::AmaranRuntime* gateway =
+            amaran_light::runtimeIfActive()) {
+      gateway->releaseGateway(instanceId);
+    }
   }
-  session->instanceId = kInvalidInstanceId;
-  session->record = {};
-  session->sharedGateway = false;
-  session->gatewayAttached = false;
-  session->gatewayGeneration = 0xffffffffu;
-  session->gatewayAttachRetryAt = 0;
+  for (Session*& candidate : sessions_) {
+    if (candidate != session) continue;
+    delete candidate;
+    candidate = nullptr;
+    break;
+  }
+  amaran_light::releaseRuntimeIfIdle();
+  if (sessionCount_ > 0) --sessionCount_;
+  if (sessionCount_ == 0 && repositoryHeld_) {
+    studio::mesh::releaseRepository();
+    repositoryHeld_ = false;
+  }
 }
 
 void ZhiyunLightDriver::loop() {
-  amaran_light::runtime().loop();
-  for (Session& session : sessions_) {
-    if (session.instanceId == kInvalidInstanceId) continue;
-    if (session.sharedGateway) {
-      amaran_light::AmaranRuntime& gateway = amaran_light::runtime();
-      const uint32_t generation = gateway.gatewayGeneration();
-      if (!gateway.gatewayConnected()) {
-        if (session.gatewayAttached) session.client.detachShared();
-        session.gatewayAttached = false;
-        session.gatewayGeneration = generation;
-        session.gatewayAttachRetryAt = 0;
-      } else if (!session.gatewayAttached ||
-                 session.gatewayGeneration != generation) {
+  if (amaran_light::AmaranRuntime* runtime =
+          amaran_light::runtimeIfActive()) {
+    runtime->loop();
+  }
+  for (Session* session : sessions_) {
+    if (session == nullptr) continue;
+    if (session->sharedGateway) {
+      amaran_light::AmaranRuntime* gateway = amaran_light::runtimeIfActive();
+      if (gateway == nullptr) continue;
+      const uint32_t generation = gateway->gatewayGeneration();
+      if (!gateway->gatewayConnected()) {
+        if (session->gatewayAttached) session->client.detachShared();
+        session->gatewayAttached = false;
+        session->gatewayGeneration = generation;
+        session->gatewayAttachRetryAt = 0;
+      } else if (!session->gatewayAttached ||
+                 session->gatewayGeneration != generation) {
         const uint32_t now = millis();
-        if (session.gatewayGeneration == generation &&
-            static_cast<int32_t>(now - session.gatewayAttachRetryAt) < 0) {
-          session.client.loop();
+        if (session->gatewayGeneration == generation &&
+            static_cast<int32_t>(now - session->gatewayAttachRetryAt) < 0) {
+          session->client.loop();
           continue;
         }
-        session.client.detachShared();
-        session.gatewayAttached = session.client.attachShared(
-            gateway.gatewayClient(), gateway.gatewayLink());
-        session.gatewayGeneration = generation;
-        session.gatewayAttachRetryAt =
-            session.gatewayAttached ? 0 : now + 1000;
+        session->client.detachShared();
+        session->gatewayAttached = session->client.attachShared(
+            gateway->gatewayClient(), gateway->gatewayLink());
+        session->gatewayGeneration = generation;
+        session->gatewayAttachRetryAt =
+            session->gatewayAttached ? 0 : now + 1000;
       }
     }
-    session.client.loop();
+    session->client.loop();
   }
 }
 
@@ -108,7 +149,8 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   switch (command.type) {
     case CommandType::Connect:
       if (session->sharedGateway) {
-        return amaran_light::runtime().acquireGateway(session->record)
+        amaran_light::AmaranRuntime* gateway = amaran_light::runtime();
+        return gateway != nullptr && gateway->acquireGateway(session->record)
                    ? CommandStatus::Succeeded
                    : CommandStatus::Unavailable;
       }

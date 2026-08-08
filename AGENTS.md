@@ -50,6 +50,13 @@ Follow these rules while building:
   unverified.
 - Preserve dormant configuration records for drivers omitted by a build. Keep
   compiled drivers separate from persistent runtime device instances.
+- Follow ADR-035 for every driver: a compiled-but-unused driver may keep only a
+  tiny adapter shell and immutable flash metadata. Do not place client/session
+  arrays, protocol buffers, queues, or repositories in static driver objects.
+  Allocate an instance session with checked `nothrow` activation, release it on
+  deactivation, and reference-count shared runtimes. Configured-but-inactive
+  instances use registry metadata only. Start Wi-Fi only for active HA/network
+  ownership or Portal, and return it to `WIFI_OFF` after the last owner.
 - Follow accepted architecture decisions, especially main-loop ownership,
   neutral Home boot, on-demand device connections, compile-time driver
   selection, and dedicated Portal mode. Add a new ADR instead of silently

@@ -486,7 +486,7 @@
             },
             "defines": [
                 "BLEEP_FIRMWARE_VERSION=\"0.1.0-dev\"",
-                "BLEEP_GIT_COMMIT=\"f6b58d2-dirty\"",
+                "BLEEP_GIT_COMMIT=\"9be4ada-dirty\"",
                 "BLEEP_GIT_DATE=\"2026-08-08\"",
                 "PLATFORMIO=60119",
                 "ARDUINO_ESP32C3_DEV",
@@ -509,7 +509,8 @@
                 "CONFIG_MAX_ACTIVE_INSTANCES=8",
                 "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4",
                 "CONFIG_BT_NIMBLE_MAX_BONDS=16",
-                "CONFIG_BLE_EVENT_QUEUE_SIZE=24",
+                "CONFIG_BLE_EVENT_QUEUE_SIZE=16",
+                "CONFIG_BLE_ADV_QUEUE_SIZE=8",
                 "CONFIG_BLE_ADV_PAYLOAD_SIZE=96",
                 "CONFIG_BLE_MAX_SKIP_ADDRESSES=4",
                 "HAVE_CONFIG_H",

@@ -1,13 +1,14 @@
 #include "devices/canon_trigger/driver.h"
 
 #include <cstring>
+#include <new>
 
 namespace studio {
 
 CanonTriggerDriver::Session* CanonTriggerDriver::sessionFor(InstanceId instanceId) {
-  for (Session& session : sessions_) {
-    if (session.instanceId == instanceId) {
-      return &session;
+  for (Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) {
+      return session;
     }
   }
   return nullptr;
@@ -15,9 +16,9 @@ CanonTriggerDriver::Session* CanonTriggerDriver::sessionFor(InstanceId instanceI
 
 const CanonTriggerDriver::Session* CanonTriggerDriver::sessionFor(
     InstanceId instanceId) const {
-  for (const Session& session : sessions_) {
-    if (session.instanceId == instanceId) {
-      return &session;
+  for (const Session* session : sessions_) {
+    if (session != nullptr && session->instanceId == instanceId) {
+      return session;
     }
   }
   return nullptr;
@@ -27,12 +28,12 @@ bool CanonTriggerDriver::activate(const DeviceRecord& record) {
   if (sessionFor(record.instanceId) != nullptr) {
     return true;
   }
-  for (Session& session : sessions_) {
-    if (session.instanceId != kInvalidInstanceId) {
-      continue;
-    }
-    session.instanceId = record.instanceId;
-    session.client.activate(record.bleAddress, record.bleAddressType,
+  for (Session*& session : sessions_) {
+    if (session != nullptr) continue;
+    session = new (std::nothrow) Session;
+    if (session == nullptr) return false;
+    session->instanceId = record.instanceId;
+    session->client.activate(record.bleAddress, record.bleAddressType,
                             record.bleName[0] != '\0' ? record.bleName
                                                       : record.displayName,
                             record.paired);
@@ -45,15 +46,18 @@ void CanonTriggerDriver::deactivate(InstanceId instanceId) {
   Session* session = sessionFor(instanceId);
   if (session != nullptr) {
     session->client.deactivate();
-    session->instanceId = kInvalidInstanceId;
+    for (Session*& candidate : sessions_) {
+      if (candidate != session) continue;
+      delete candidate;
+      candidate = nullptr;
+      break;
+    }
   }
 }
 
 void CanonTriggerDriver::loop() {
-  for (Session& session : sessions_) {
-    if (session.instanceId != kInvalidInstanceId) {
-      session.client.loop();
-    }
+  for (Session* session : sessions_) {
+    if (session != nullptr) session->client.loop();
   }
 }
 
@@ -113,7 +117,8 @@ void CanonTriggerDriver::forgetPairing(const DeviceRecord& record) {
     session->client.forgetBond(record.bleAddress, record.bleAddressType);
     return;
   }
-  sessions_[0].client.forgetBond(record.bleAddress, record.bleAddressType);
+  canon_trigger::CanonTriggerClient transient;
+  transient.forgetBond(record.bleAddress, record.bleAddressType);
 }
 
 void CanonTriggerDriver::cancelOnboarding(const DeviceRecord& record) {

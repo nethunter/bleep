@@ -412,14 +412,16 @@ the replacement.
   an interrupt-watchdog reset. Preparation now acquires all physical targets
   before HA targets regardless of authored action order. A subsequent live
   run proved that two BLE sessions left too little heap for the Wi-Fi driver's
-  four required RX buffers. The target now uses two 20-row DMA display strips,
+  four required RX buffers. At that tranche the target used two 20-row DMA display strips,
   a 76 KiB LVGL pool, and two 2 KiB HA frame slots. The complete simulator flow
   passes at those bounds; a measured 72 KiB LVGL pool was rejected. WebSocket
   disconnects now reset protocol state and schedule a main-loop reconnect
   instead of leaving the runtime permanently unauthenticated. These
   mitigations have native/simulator coverage, and one mixed
   HA/Canon/Tascam hardware run reached all-targets-ready in 8.6 seconds. The
-  ten-cycle teardown/heap-recovery gate remains open.
+  ten-cycle teardown/heap-recovery gate remains open. Later UI lifetime work
+  reduced the display strips to 15 rows, and ADR-035 now validates a 64 KiB
+  LVGL pool without changing those strips.
 
 ## ADR-024: Userspace PB-GATT and Mesh Proxy for the first Amaran tranche
 
@@ -747,6 +749,34 @@ the replacement.
   Mesh Proxy, Home Assistant Wi-Fi, navigation, and reconnect activity. The
   ESP32-C3/NimBLE compile-time ceiling is not evidence that those workloads fit
   safely or remain responsive.
+
+## ADR-035: Compiled drivers are flash metadata until an instance is active
+
+- Status: Accepted; mixed-radio hardware gate open.
+- Decision: Compiling a driver may add immutable descriptors and executable
+  code in flash, but must not reserve per-instance clients, protocol state,
+  queues, mesh repositories, sockets, or transport buffers in static RAM.
+  Configured instances allocate only persistent registry metadata. A driver's
+  full session is allocated with `nothrow` when `DeviceManager` activates that
+  instance and is released when the instance is deactivated or safely evicted.
+- Shared runtimes: NimBLE, the panel-owned mesh repository/runtime, and Home
+  Assistant networking are reference-counted resources. The first active user
+  allocates them and the last user releases them. Per-driver maximum instance
+  counts are persistence/concurrency limits, not permission to preallocate that
+  many sessions.
+- Wi-Fi boundary: saved Wi-Fi and Home Assistant configuration never starts the
+  radio. Wi-Fi is enabled only while Portal is open or at least one HA entity
+  is active, and is disconnected and returned to `WIFI_OFF` after the final
+  user. Portal first deactivates device sessions, so it cannot overlap an HA
+  runtime accidentally.
+- Registry and queues: the 24-record persistence/schema ceiling remains, while
+  RAM record storage grows in four-record blocks. BLE control and advertisement
+  events use separate bounded queues so bursty advertisements cannot consume
+  control-event capacity.
+- Memory floor: the target LVGL pool is 64 KiB. Display DMA strip geometry is
+  unchanged. The full profile's link-time static RAM must remain documented,
+  and mixed BLE plus HA operation must preserve enough contiguous heap for the
+  roughly `0x7800` NimBLE initialization allocation.
 
 ## Open decisions
 

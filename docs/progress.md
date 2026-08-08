@@ -2804,3 +2804,37 @@ Record values with the exact build environment and commit/worktree state.
   (59.0%). It uploaded to `/dev/cu.usbserial-211240` with image hash
   verification and hard reset. Physical two-stage button timing remains
   operator-unverified.
+
+### 2026-08-08: Dormant drivers and on-demand Wi-Fi memory recovery
+
+- Diagnosed the simultaneous BLE/Home Assistant failure on the attached build
+  as contiguous internal-SRAM exhaustion: live free heap was 7.3-9.2 KiB,
+  largest allocation 5.1-7.7 KiB, minimum heap 340 bytes, and HA REST returned
+  transport failures while NimBLE still requires roughly `0x7800` contiguous
+  bytes to initialize.
+- Implemented ADR-035 across Shark, Canon Smart, Canon Trigger, Tascam X8,
+  Home Assistant, Amaran, and Zhiyun. Compiled driver globals are now pointer-
+  sized shells with a 64-byte build guard; full clients/sessions allocate only
+  when an instance activates. The shared mesh repository/runtime and HA client,
+  WebSocket, and Wi-Fi runtime use first-user/last-user ownership. Configured HA
+  entities alone do not start Wi-Fi; only active HA or Portal does, and final
+  teardown sets `WIFI_OFF`.
+- Changed the device registry from 24 permanent records to checked four-record
+  heap blocks without changing persistence schema 2 or the 24-record ceiling.
+  Split NimBLE callback traffic into a compact 16-entry control queue and an
+  independent 8-entry advertisement queue. HA initial REST reads are serialized,
+  heap-gated, use fixed URL/auth/subscription buffers, and back off after
+  transient failures. Reduced LVGL from 76 to 64 KiB; the two 15-row display
+  DMA strips were not changed.
+- Native passed 57/57. The complete `ui_sim` capture flow passed with the 64 KiB
+  pool; peak incremental LVGL use was 10,906 bytes and the tightest reported
+  point retained 18,000 bytes free. All eight firmware profiles built
+  sequentially. Full `crowpanel_128` uses 142,148 / 327,680 bytes static RAM
+  (43.4%) and 1,846,218 / 3,145,728 bytes flash (58.7%), recovering 33,696 bytes
+  of static RAM from the 175,844-byte failing build. Alternate profiles use
+  141,612-142,148 bytes static RAM.
+- The full image uploaded to `/dev/cu.usbserial-211240` with hash verification
+  and hard reset. A bounded boot capture at neutral Home reported Wi-Fi `Off`,
+  BLE disconnected, 151,052 bytes free heap, 142,612 bytes minimum free heap,
+  and a 131,060-byte largest free block. Active-driver deltas, mixed BLE+HA
+  operation, and post-deactivation recovery remain target-hardware gates.

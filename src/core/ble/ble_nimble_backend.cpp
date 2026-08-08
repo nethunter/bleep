@@ -20,6 +20,13 @@ size_t slotIndex(LinkHandle link) {
 }  // namespace
 
 struct BleNimbleBackend::Impl {
+  struct ControlEvent {
+    EventType type = EventType::ScanEnded;
+    LinkHandle link = kInvalidLinkHandle;
+    int reason = 0;
+    bool succeeded = false;
+  };
+
   bool ownsClient(LinkHandle link, NimBLEClient* client) const;
   NimBLEClient* clientFor(LinkHandle link) const;
 
@@ -119,14 +126,27 @@ struct BleNimbleBackend::Impl {
       delete slot.callbacks;
       slot.callbacks = nullptr;
     }
-    if (queue != nullptr) {
-      vQueueDelete(queue);
-    }
+    if (controlQueue != nullptr) vQueueDelete(controlQueue);
+    if (advertisementQueue != nullptr) vQueueDelete(advertisementQueue);
   }
 
   bool enqueue(const Event& event) {
-    if (queue == nullptr || xQueueSend(queue, &event, 0) != pdTRUE) {
-      ++dropped;
+    if (event.type == EventType::Advertisement) {
+      if (advertisementQueue == nullptr ||
+          xQueueSend(advertisementQueue, &event, 0) != pdTRUE) {
+        ++droppedAdvertisements;
+        return false;
+      }
+      return true;
+    }
+    ControlEvent control;
+    control.type = event.type;
+    control.link = event.link;
+    control.reason = event.reason;
+    control.succeeded = event.succeeded;
+    if (controlQueue == nullptr ||
+        xQueueSend(controlQueue, &control, 0) != pdTRUE) {
+      ++droppedControl;
       return false;
     }
     return true;
@@ -255,8 +275,13 @@ struct BleNimbleBackend::Impl {
     NimBLEDevice::deinit(false);
     initialized = false;
     shutdownPending = false;
-    if (queue != nullptr) {
-      xQueueReset(queue);
+    if (controlQueue != nullptr) {
+      vQueueDelete(controlQueue);
+      controlQueue = nullptr;
+    }
+    if (advertisementQueue != nullptr) {
+      vQueueDelete(advertisementQueue);
+      advertisementQueue = nullptr;
     }
   }
 
@@ -264,9 +289,11 @@ struct BleNimbleBackend::Impl {
   LinkHandle securityQueue[CONFIG_MAX_ACTIVE_LINKS] = {};
   SecurityPolicy securityPolicies[CONFIG_MAX_ACTIVE_LINKS] = {};
   ScanCallbacks scanCallbacks;
-  QueueHandle_t queue = nullptr;
+  QueueHandle_t controlQueue = nullptr;
+  QueueHandle_t advertisementQueue = nullptr;
   LinkHandle activeSecurity = kInvalidLinkHandle;
-  uint32_t dropped = 0;
+  uint32_t droppedControl = 0;
+  uint32_t droppedAdvertisements = 0;
   bool initialized = false;
   bool shutdownPending = false;
 };
@@ -294,13 +321,27 @@ bool BleNimbleBackend::begin() {
     impl_->shutdownPending = false;
     return true;
   }
-  if (impl_->queue == nullptr) {
-    impl_->queue = xQueueCreate(CONFIG_BLE_EVENT_QUEUE_SIZE, sizeof(Event));
-    if (impl_->queue == nullptr) {
+  if (impl_->controlQueue == nullptr) {
+    impl_->controlQueue = xQueueCreate(CONFIG_BLE_EVENT_QUEUE_SIZE,
+                                      sizeof(Impl::ControlEvent));
+    if (impl_->controlQueue == nullptr) {
+      return false;
+    }
+  }
+  if (impl_->advertisementQueue == nullptr) {
+    impl_->advertisementQueue =
+        xQueueCreate(CONFIG_BLE_ADV_QUEUE_SIZE, sizeof(Event));
+    if (impl_->advertisementQueue == nullptr) {
+      vQueueDelete(impl_->controlQueue);
+      impl_->controlQueue = nullptr;
       return false;
     }
   }
   if (!NimBLEDevice::init("Ble(e)p")) {
+    vQueueDelete(impl_->controlQueue);
+    vQueueDelete(impl_->advertisementQueue);
+    impl_->controlQueue = nullptr;
+    impl_->advertisementQueue = nullptr;
     return false;
   }
   // Keep transmit power configurable for installations that need a different
@@ -482,8 +523,16 @@ void* BleNimbleBackend::nativeClient(LinkHandle link) {
 }
 
 bool BleNimbleBackend::popEvent(Event& event) {
-  if (impl_->queue == nullptr ||
-      xQueueReceive(impl_->queue, &event, 0) != pdTRUE) {
+  Impl::ControlEvent control;
+  if (impl_->controlQueue != nullptr &&
+      xQueueReceive(impl_->controlQueue, &control, 0) == pdTRUE) {
+    event = {};
+    event.type = control.type;
+    event.link = control.link;
+    event.reason = control.reason;
+    event.succeeded = control.succeeded;
+  } else if (impl_->advertisementQueue == nullptr ||
+             xQueueReceive(impl_->advertisementQueue, &event, 0) != pdTRUE) {
     return false;
   }
   if (event.type == EventType::SecurityComplete &&
@@ -494,7 +543,7 @@ bool BleNimbleBackend::popEvent(Event& event) {
 }
 
 uint32_t BleNimbleBackend::droppedEvents() const {
-  return impl_->dropped;
+  return impl_->droppedControl + impl_->droppedAdvertisements;
 }
 
 }  // namespace studio::ble

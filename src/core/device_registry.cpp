@@ -1,6 +1,7 @@
 #include "core/device_registry.h"
 
 #include <cstring>
+#include <new>
 
 namespace studio {
 
@@ -17,6 +18,68 @@ void copyText(char (&destination)[N], const char* source) {
 }
 
 }  // namespace
+
+DeviceRegistry::DeviceRegistry(const DeviceRegistry& other)
+    : count_(other.count_),
+      nextInstanceId_(other.nextInstanceId_),
+      initialized_(other.initialized_),
+      valid_(other.valid_) {
+  if (count_ == 0) return;
+  allocated_ = count_;
+  records_ = new (std::nothrow) DeviceRecord[allocated_];
+  if (records_ == nullptr) {
+    allocated_ = 0;
+    count_ = 0;
+    valid_ = false;
+    return;
+  }
+  std::memcpy(records_, other.records_, count_ * sizeof(DeviceRecord));
+}
+
+DeviceRegistry& DeviceRegistry::operator=(const DeviceRegistry& other) {
+  if (this == &other) return *this;
+  if (other.count_ > allocated_) {
+    DeviceRecord* replacement =
+        new (std::nothrow) DeviceRecord[other.count_];
+    if (replacement == nullptr) {
+      valid_ = false;
+      return *this;
+    }
+    delete[] records_;
+    records_ = replacement;
+    allocated_ = other.count_;
+  }
+  if (other.count_ > 0) {
+    std::memcpy(records_, other.records_, other.count_ * sizeof(DeviceRecord));
+  }
+  count_ = other.count_;
+  nextInstanceId_ = other.nextInstanceId_;
+  initialized_ = other.initialized_;
+  valid_ = other.valid_;
+  return *this;
+}
+
+DeviceRegistry::~DeviceRegistry() {
+  delete[] records_;
+}
+
+bool DeviceRegistry::reserve(size_t required) {
+  if (required <= allocated_) return true;
+  constexpr size_t kAllocationBlock = 4;
+  size_t requested =
+      ((required + kAllocationBlock - 1) / kAllocationBlock) * kAllocationBlock;
+  if (requested > capacity()) requested = capacity();
+  DeviceRecord* replacement =
+      new (std::nothrow) DeviceRecord[requested];
+  if (replacement == nullptr) return false;
+  if (count_ > 0) {
+    std::memcpy(replacement, records_, count_ * sizeof(DeviceRecord));
+  }
+  delete[] records_;
+  records_ = replacement;
+  allocated_ = requested;
+  return true;
+}
 
 const DeviceRecord* DeviceRegistry::at(size_t index) const {
   return index < count_ ? &records_[index] : nullptr;
@@ -67,6 +130,9 @@ RegistryStatus DeviceRegistry::add(DriverId driverId, const char* displayName,
   if (countByDriver(driverId) >= maxForDriver) {
     return RegistryStatus::DuplicateDriver;
   }
+  if (!reserve(count_ + 1)) {
+    return RegistryStatus::Full;
+  }
 
   DeviceRecord record;
   record.instanceId = nextInstanceId_++;
@@ -92,6 +158,9 @@ RegistryStatus DeviceRegistry::commitPrepared(const DeviceRecord& record,
   if (find(record.instanceId) != nullptr ||
       countByDriver(record.driverId) >= maxForDriver) {
     return RegistryStatus::DuplicateDriver;
+  }
+  if (!reserve(count_ + 1)) {
+    return RegistryStatus::Full;
   }
   records_[count_++] = record;
   if (nextInstanceId_ <= record.instanceId) {
@@ -196,12 +265,13 @@ RegistryStatus DeviceRegistry::configureHomeAssistant(
 }
 
 void DeviceRegistry::clear(bool initialized) {
-  for (size_t i = 0; i < capacity(); ++i) {
-    records_[i] = DeviceRecord{};
-  }
+  delete[] records_;
+  records_ = nullptr;
+  allocated_ = 0;
   count_ = 0;
   nextInstanceId_ = 1;
   initialized_ = initialized;
+  valid_ = true;
 }
 
 bool DeviceRegistry::restore(const DeviceRecord* records, size_t count,
@@ -211,6 +281,7 @@ bool DeviceRegistry::restore(const DeviceRecord* records, size_t count,
     return false;
   }
   clear(initialized);
+  if (!reserve(count)) return false;
   for (size_t i = 0; i < count; ++i) {
     if (records[i].instanceId == kInvalidInstanceId || find(records[i].instanceId) != nullptr) {
       clear(false);

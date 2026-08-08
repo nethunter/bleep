@@ -23,6 +23,8 @@ class HomeAssistantClient {
  public:
   static constexpr size_t kMaxEntities = 4;
 
+  ~HomeAssistantClient();
+
   bool activate(const studio::DeviceRecord& record);
   void deactivate(studio::InstanceId instanceId);
   void loop();
@@ -43,6 +45,7 @@ class HomeAssistantClient {
     uint32_t pendingSince = 0;
     bool refreshNeeded = false;
     uint32_t refreshAfterMs = 0;
+    uint8_t refreshFailures = 0;
   };
 
   Session* sessionFor(studio::InstanceId instanceId);

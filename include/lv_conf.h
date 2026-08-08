@@ -14,7 +14,7 @@
 
 #define LV_MEM_CUSTOM 0
 #ifndef LV_MEM_SIZE
-#define LV_MEM_SIZE (76U * 1024U)
+#define LV_MEM_SIZE (64U * 1024U)
 #endif
 
 #define LV_TICK_CUSTOM 0

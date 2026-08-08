@@ -8,6 +8,7 @@
 #include "core/ble/ble_runtime.h"
 #include "core/device_manager.h"
 #include "core/scene_service.h"
+#include "core/system_info.h"
 #include "haptic_feedback.h"
 #include "ui.h"
 #include "portal_service.h"
@@ -155,11 +156,14 @@ const char* linkLabel(studio::LinkState link) {
 }
 
 void logRuntimeStats(const char* event) {
-  DEBUG_PORT.printf("runtime event=%s uptime_ms=%lu link=%s free_heap=%lu min_free_heap=%lu\n",
+  const studio::SystemInfo info = studio::systemInfo();
+  DEBUG_PORT.printf("runtime event=%s uptime_ms=%lu link=%s free_heap=%lu min_free_heap=%lu max_alloc=%lu wifi=%s\n",
                     event, static_cast<unsigned long>(millis()),
                     linkLabel(currentLink()),
-                    static_cast<unsigned long>(ESP.getFreeHeap()),
-                    static_cast<unsigned long>(ESP.getMinFreeHeap()));
+                    static_cast<unsigned long>(info.freeHeap),
+                    static_cast<unsigned long>(info.minimumFreeHeap),
+                    static_cast<unsigned long>(info.largestFreeBlock),
+                    info.wifiState);
 }
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {

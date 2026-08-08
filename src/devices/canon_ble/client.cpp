@@ -333,7 +333,6 @@ void CanonBleClient::forgetBond(const char* address, uint8_t addressType) {
   if (address == nullptr || address[0] == '\0') {
     return;
   }
-  begin();
   studio::ble::Address peer;
   std::strncpy(peer.value, address, sizeof(peer.value) - 1);
   peer.value[sizeof(peer.value) - 1] = '\0';

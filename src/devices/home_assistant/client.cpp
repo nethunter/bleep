@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <cstring>
+#include <new>
 
 #include "core/preferences_store.h"
 #include "devices/home_assistant/protocol.h"
@@ -15,6 +16,8 @@
 #ifdef UI_SIMULATOR
 
 namespace home_assistant {
+
+HomeAssistantClient::~HomeAssistantClient() = default;
 
 HomeAssistantClient::Session* HomeAssistantClient::sessionFor(
     studio::InstanceId instanceId) {
@@ -109,7 +112,7 @@ namespace home_assistant {
 namespace {
 
 HomeAssistantClient* activeClient = nullptr;
-WebSocketsClient websocket;
+WebSocketsClient* websocket = nullptr;
 
 uint32_t nowMs() { return millis(); }
 
@@ -154,6 +157,8 @@ void websocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 }
 
 }  // namespace
+
+HomeAssistantClient::~HomeAssistantClient() { disconnectRuntime(); }
 
 HomeAssistantClient::Session* HomeAssistantClient::sessionFor(
     studio::InstanceId instanceId) {
@@ -228,8 +233,12 @@ bool HomeAssistantClient::connectRuntime() {
 }
 
 void HomeAssistantClient::disconnectRuntime() {
-  websocket.disconnect();
   activeClient = nullptr;
+  if (websocket != nullptr) {
+    websocket->disconnect();
+    delete websocket;
+    websocket = nullptr;
+  }
   WiFi.disconnect(true, false);
   WiFi.mode(WIFI_OFF);
   wifiStarted_ = websocketStarted_ = authenticated_ = subscribed_ = false;
@@ -307,7 +316,9 @@ void HomeAssistantClient::processMessage(const char* payload, size_t length) {
   if (std::strcmp(type, "auth_required") == 0) {
     HA_LOG.println("ha event=ws_auth_required");
     char auth[384];
-    if (buildAuth(auth, sizeof(auth), config_.token)) websocket.sendTXT(auth);
+    if (buildAuth(auth, sizeof(auth), config_.token) && websocket != nullptr) {
+      websocket->sendTXT(auth);
+    }
     return;
   }
   if (std::strcmp(type, "auth_invalid") == 0) {
@@ -377,21 +388,39 @@ void HomeAssistantClient::processMessage(const char* payload, size_t length) {
 void HomeAssistantClient::refreshInitialStates() {
   for (auto& session : sessions_) {
     if (session.instanceId == studio::kInvalidInstanceId) continue;
-    refreshSession(session);
+    session.refreshNeeded = true;
+    session.refreshAfterMs = 0;
+    session.refreshFailures = 0;
   }
 }
 
 void HomeAssistantClient::refreshSession(Session& session) {
+  constexpr uint32_t kMinimumRestFreeHeap = 20U * 1024U;
+  constexpr uint32_t kMinimumRestLargestBlock = 12U * 1024U;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t largestBlock = ESP.getMaxAllocHeap();
+  if (freeHeap < kMinimumRestFreeHeap ||
+      largestBlock < kMinimumRestLargestBlock) {
+    session.refreshNeeded = true;
+    session.refreshAfterMs = nowMs() + 5000;
+    HA_LOG.printf("ha event=rest_deferred free_heap=%lu max_alloc=%lu\n",
+                  static_cast<unsigned long>(freeHeap),
+                  static_cast<unsigned long>(largestBlock));
+    return;
+  }
   const bool confirmingCommand = session.state.commandPending;
   session.refreshNeeded = false;
   session.refreshAfterMs = 0;
   bool retry = false;
   int status = 0;
   HTTPClient http;
-  String url(config_.baseUrl);
-  if (url.endsWith("/")) url.remove(url.length() - 1);
-  url += "/api/states/";
-  url += session.entityId;
+  char url[studio::kHomeAssistantUrlCapacity +
+           studio::kHomeAssistantEntityIdCapacity + 16] = "";
+  const size_t baseLength = std::strlen(config_.baseUrl);
+  const bool trailingSlash =
+      baseLength > 0 && config_.baseUrl[baseLength - 1] == '/';
+  std::snprintf(url, sizeof(url), "%s%sapi/states/%s", config_.baseUrl,
+                trailingSlash ? "" : "/", session.entityId);
   http.setConnectTimeout(1500);
   http.setTimeout(1500);
   if (!http.begin(url)) {
@@ -402,8 +431,8 @@ void HomeAssistantClient::refreshSession(Session& session) {
       session.state.lastCommand = studio::CommandStatus::Unavailable;
     }
   } else {
-    String auth = "Bearer ";
-    auth += config_.token;
+    char auth[studio::kHomeAssistantTokenCapacity + 8] = "Bearer ";
+    std::strncat(auth, config_.token, sizeof(auth) - std::strlen(auth) - 1);
     http.addHeader("Authorization", auth);
     status = http.GET();
     if (status == 200) {
@@ -413,12 +442,14 @@ void HomeAssistantClient::refreshSession(Session& session) {
           ? doc["state"].as<const char*>() : nullptr;
       if (state != nullptr) {
         applyState(session, state);
+        session.refreshFailures = 0;
       } else {
         markStateUnknown(session.state);
         retry = true;
       }
     } else if (status == 404) {
       applyState(session, nullptr);
+      session.refreshFailures = 0;
     } else {
       markStateUnknown(session.state);
       retry = true;
@@ -431,7 +462,11 @@ void HomeAssistantClient::refreshSession(Session& session) {
   }
   if (retry) {
     session.refreshNeeded = true;
-    session.refreshAfterMs = nowMs() + 2000;
+    if (session.refreshFailures < 4) ++session.refreshFailures;
+    const uint32_t delay = session.refreshFailures >= 4
+                               ? 30000
+                               : 1000u << session.refreshFailures;
+    session.refreshAfterMs = nowMs() + delay;
     HA_LOG.printf("ha event=rest_retry status=%d free_heap=%lu max_alloc=%lu\n",
                   status, static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getMaxAllocHeap()));
@@ -447,7 +482,7 @@ void HomeAssistantClient::rebuildSubscription() {
                   "\"subscription\":%lu}",
                   static_cast<unsigned long>(nextMessageId_++),
                   static_cast<unsigned long>(subscriptionId_));
-    websocket.sendTXT(unsubscribe);
+    if (websocket != nullptr) websocket->sendTXT(unsubscribe);
   }
   subscriptionId_ = nextMessageId_++;
   JsonDocument doc;
@@ -460,10 +495,12 @@ void HomeAssistantClient::rebuildSubscription() {
     trigger["platform"] = "state";
     trigger["entity_id"] = session.entityId;
   }
-  String payload;
-  serializeJson(doc, payload);
+  char payload[512] = "";
+  const size_t payloadLength = serializeJson(doc, payload, sizeof(payload));
   subscribed_ = false;
-  websocket.sendTXT(payload);
+  if (websocket != nullptr && payloadLength < sizeof(payload)) {
+    websocket->sendTXT(reinterpret_cast<uint8_t*>(payload), payloadLength);
+  }
   subscriptionDirty_ = false;
 }
 
@@ -495,16 +532,24 @@ void HomeAssistantClient::loop() {
       setFailure(studio::CommandStatus::InvalidArgument);
       return;
     }
+    if (websocket == nullptr) {
+      websocket = new (std::nothrow) WebSocketsClient;
+      if (websocket == nullptr) {
+        setFailure(studio::CommandStatus::Unavailable);
+        retryAt_ = now + 2000;
+        return;
+      }
+    }
     activeClient = this;
     HA_LOG.printf("ha event=ws_begin free_heap=%lu max_alloc=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getMaxAllocHeap()));
-    websocket.begin(host, port, "/api/websocket");
-    websocket.onEvent(websocketEvent);
-    websocket.setReconnectInterval(0);
+    websocket->begin(host, port, "/api/websocket");
+    websocket->onEvent(websocketEvent);
+    websocket->setReconnectInterval(0);
     websocketStarted_ = true;
   }
-  websocket.loop();
+  websocket->loop();
   if (websocketDisconnected_) {
     websocketDisconnected_ = false;
     websocketStarted_ = authenticated_ = subscribed_ = false;
@@ -555,7 +600,7 @@ studio::CommandStatus HomeAssistantClient::dispatch(
   const uint32_t id = nextMessageId_++;
   if (!buildServiceCall(payload, sizeof(payload), id, session->domain,
                         command.type, session->entityId) ||
-      !websocket.sendTXT(payload)) {
+      websocket == nullptr || !websocket->sendTXT(payload)) {
     return studio::CommandStatus::QueueFull;
   }
   session->pendingMessageId = id;

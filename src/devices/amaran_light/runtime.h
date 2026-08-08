@@ -34,6 +34,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   studio::ble::LinkHandle gatewayLink() const { return link_; }
   bool gatewayConnected() const { return connected_ && !provisioningLink_; }
   uint32_t gatewayGeneration() const { return gatewayGeneration_; }
+  bool idle() const { return !hasActiveUsers(); }
 
   void onBleAdvertisement(studio::ble::LinkHandle link,
                           const studio::ble::Advertisement& advertisement) override;
@@ -102,6 +103,8 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   studio::mesh::PbGattProvisioner provisioner_;
 };
 
-AmaranRuntime& runtime();
+AmaranRuntime* runtime();
+AmaranRuntime* runtimeIfActive();
+void releaseRuntimeIfIdle();
 
 }  // namespace amaran_light

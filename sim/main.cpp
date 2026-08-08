@@ -593,7 +593,7 @@ int main() {
   amaran_light_ui::show(pano60Id);
   pump(300);
   if (!capture("20d_amaran_pairing")) return 1;
-  amaran_light::runtime().simSetPhase(
+  amaran_light::runtime()->simSetPhase(
       pano60Id, amaran_light::AmaranLightState::Phase::Ready);
   pump(300);
   studio::DeviceCommand lightOn;
@@ -604,7 +604,7 @@ int main() {
   amaran_light_ui::simSetCctLook(4300, 120, 72);
   pump(400);
   const amaran_light::AmaranLightState* lightState =
-      amaran_light::runtime().state(pano60Id);
+      amaran_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
       lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
     std::fprintf(stderr, "Amaran CCT draft was not applied\n");
@@ -612,7 +612,7 @@ int main() {
   }
   amaran_light_ui::simSetRgbLook(0x3366ff, 38);
   pump(400);
-  lightState = amaran_light::runtime().state(pano60Id);
+  lightState = amaran_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->rgb == 0xffffff ||
       lightState->rgbBrightness != 38) {
     std::fprintf(stderr, "Amaran RGB draft was not applied\n");
@@ -620,7 +620,7 @@ int main() {
   }
   amaran_light_ui::simShowCct();
   pump(400);
-  lightState = amaran_light::runtime().state(pano60Id);
+  lightState = amaran_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
       lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
     std::fprintf(stderr, "Amaran CCT look was not recalled\n");
@@ -629,7 +629,7 @@ int main() {
   if (!capture("20e_amaran_cct_optimistic")) return 1;
   amaran_light_ui::simShowRgb();
   pump(400);
-  lightState = amaran_light::runtime().state(pano60Id);
+  lightState = amaran_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->rgb == 0xffffff ||
       lightState->rgbBrightness != 38 ||
       lightState->mode != amaran_light::AmaranLightState::Mode::Rgb) {

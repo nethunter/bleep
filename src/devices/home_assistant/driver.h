@@ -18,7 +18,8 @@ class HomeAssistantDriver : public DeviceDriver {
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
 
  private:
-  home_assistant::HomeAssistantClient client_;
+  home_assistant::HomeAssistantClient* client_ = nullptr;
+  size_t activeCount_ = 0;
 };
 
 }  // namespace studio

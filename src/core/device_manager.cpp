@@ -63,6 +63,7 @@ bool DeviceManager::removeLegacyDefaultShark() {
       continue;
     }
     const DeviceRegistry previous = registry_;
+    if (!previous.valid()) return false;
     if (registry_.remove(record->instanceId) != RegistryStatus::Ok || !save()) {
       registry_ = previous;
       return false;
@@ -329,6 +330,7 @@ bool DeviceManager::commitPendingAdd() {
     return false;
   }
   const DeviceRegistry previous = registry_;
+  if (!previous.valid()) return false;
   if (registry_.commitPrepared(pendingRecord_, descriptor->maxInstances) !=
       RegistryStatus::Ok) {
     return false;
@@ -348,6 +350,7 @@ RegistryStatus DeviceManager::remove(InstanceId instanceId) {
   if (record == nullptr) return RegistryStatus::NotFound;
   const DeviceRecord removed = *record;
   const DeviceRegistry previous = registry_;
+  if (!previous.valid()) return RegistryStatus::Full;
   const RegistryStatus status = registry_.remove(instanceId);
   if (status != RegistryStatus::Ok) return status;
   if (!save()) {
@@ -379,6 +382,7 @@ RegistryStatus DeviceManager::update(InstanceId instanceId,
     std::strncpy(safeName, displayName, sizeof(safeName) - 1);
   }
   const DeviceRegistry previous = registry_;
+  if (!previous.valid()) return RegistryStatus::Full;
   RegistryStatus status = registry_.rename(instanceId, safeName);
   if (status != RegistryStatus::Ok) return status;
   status = registry_.setEnabled(instanceId, enabled);
@@ -465,6 +469,7 @@ RegistryStatus DeviceManager::replaceHomeAssistantEntities(
   }
 
   DeviceRegistry previous = registry_;
+  if (!previous.valid()) return RegistryStatus::Full;
   for (size_t i = 0; i < registry_.count(); ++i) {
     const DeviceRecord* record = registry_.at(i);
     if (record != nullptr && record->driverId == DriverId::HomeAssistant &&
