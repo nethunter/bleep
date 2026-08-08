@@ -12,15 +12,14 @@ Elecrow CrowPanel ESP32 1.28-inch round display and an SS12D00G slide switch.
 | Slide switch | SS12D00G SPDT slide switch with a 5 mm actuator | [Amazon](https://amzn.to/3RRJRAK) |
 | Battery | Battery used by this enclosure; confirm its voltage, connector, and polarity before assembly | [Amazon](https://amzn.to/4wzTu6d) |
 | Battery connector | JST SH 1.0 mm 2-pin connector with pigtails; replaces the battery's incompatible plug | [Amazon](https://amzn.to/4hNGGEG) |
-| Replacement battery-path diode | 1N5819 Schottky diode, DO-41, nominal 1 A / 40 V; external replacement for a failed-open CrowPanel D1 | [Amazon](https://www.amazon.com/dp/B079KG1TN2) |
+| Replacement battery-path diode | 1N5819 Schottky diode, DO-41, nominal 1 A / 40 V; external replacement for a failed-open CrowPanel D1 | [Amazon](https://amzn.to/45O7ehS) |
 | Heat-set inserts | 3x M3 x 6 x 5 mm brass heat-set inserts | [Amazon](https://amzn.to/4yYaTH8) |
 | Machine screws | 3x M3 x 8 mm socket-head machine screws | [Amazon](https://amzn.to/3S8nI18) |
 
 The shortened `amzn.to` links in this parts list are affiliate links. Purchases
 made through them may earn a commission at no additional cost to you and help
 support the
-[Hacking Modern Life YouTube channel](https://www.youtube.com/@hml). The direct
-replacement-diode link is not presented as an affiliate link.
+[Hacking Modern Life YouTube channel](https://www.youtube.com/@hml).
 
 ## Enclosure files
 
