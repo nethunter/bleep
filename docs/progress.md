@@ -115,6 +115,55 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### All-driver dormant-resource audit
+
+- Date: 2026-08-08.
+- Driver lifecycle audit: Shark Nano II and Tascam each hold one dynamically
+  allocated session; Canon Smart and Canon Trigger allocate up to three session
+  objects individually; Zhiyun allocates up to four individually; HA allocates
+  its one shared client only for its first active entity; and Amaran allocates
+  its shared mesh runtime/repository only for its first direct or Zhiyun gateway
+  user. Every deactivation path releases its instance, and each shared runtime
+  is deleted by its final user. Compiled driver shells remain guarded at 64
+  bytes maximum; configured inactive records do not call driver activation.
+- Finding and fix: the shared NimBLE backend still allocated its implementation
+  object from the first main-loop tick. It now uses checked lazy allocation on
+  first BLE activation and deletes the object after final asynchronous client
+  teardown. Images with no BLE-backed driver compile the BLE pump out of the
+  main loop.
+- Finding and fix: non-trivial namespace-scope `NimBLEUUID` objects created
+  startup constructors that forced disabled GATT clients and the BLE runtime
+  into isolated images. UUIDs are now temporary activation-local values, so
+  omitted driver client symbols and those startup constructors are absent.
+- Profile audit: repaired `canon_ble`, `canon_trigger`, `tascam_x8`, and
+  `home_assistant` so later-added HA/Amaran drivers are explicitly disabled;
+  added `shark_nano_ii`. ELF symbol inspection confirms each of the seven
+  isolated profiles contains only its selected driver. `zhiyun_x100`
+  intentionally includes the shared Amaran mesh transport but not the Amaran
+  driver adapter. The HA-only ELF contains no physical client or BLE-central
+  symbol. `scripts/check_driver_isolation.py` preserves these checks as a
+  seven-profile regression gate.
+- Native tests: 59/59 passed.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  and `zhiyun_x100` succeeded sequentially. The existing full/Roboto caches
+  resolved NimBLE-Arduino 2.5.0 and LovyanGFX 1.2.21; isolated profiles resolved
+  NimBLE-Arduino 2.5.1 and LovyanGFX 1.2.26.
+- Flash/static RAM bytes: full 1,858,600 / 141,676; Roboto 1,821,576 / 141,676;
+  Shark 1,750,800 / 140,980; Canon Smart 1,757,658 / 141,060; Canon Trigger
+  1,744,704 / 141,020; Tascam 1,751,472 / 141,052; HA 1,552,032 / 130,892;
+  Amaran 1,766,984 / 141,140; Zhiyun 1,783,328 / 141,148. Removing dormant UUID
+  objects recovered 480 bytes of full-profile static RAM. The now-genuinely
+  isolated HA profile is 267,900 bytes smaller in flash and 10,696 bytes smaller
+  in static RAM than its pre-audit build.
+- Flash: the full profile uploaded successfully to
+  `/dev/cu.usbserial-211240`. A forced cold-boot capture reported Wi-Fi `Off`,
+  150,812 bytes free heap, 142,372 bytes minimum free heap, and a 131,060-byte
+  maximum allocation before any device activation. Free/minimum heap are each
+  480 bytes higher than the preceding full build, matching the recovered static
+  UUID storage. Real peripherals are still required to exercise every driver's
+  activation and post-deactivation heap return path.
+
 ### Scene-to-scene BLE slot handoff
 
 - Date: 2026-08-08.

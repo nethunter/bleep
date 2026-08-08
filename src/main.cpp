@@ -5,7 +5,10 @@
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
+#include "driver_config.h"
+#if CONFIG_BLE_RUNTIME_ENABLED
 #include "core/ble/ble_runtime.h"
+#endif
 #include "core/device_manager.h"
 #include "core/scene_service.h"
 #include "core/system_info.h"
@@ -460,7 +463,9 @@ void loop() {
   lv_tick_inc(now - lastTickMs);
   lastTickMs = now;
 
+#if CONFIG_BLE_RUNTIME_ENABLED
   studio::ble::loopBleRuntime(now);
+#endif
   studio::devices().loop();
   studio::scenes().loop(now);
   portal::loop();

@@ -16,9 +16,6 @@ namespace shark {
 
 namespace {
 
-const NimBLEUUID kServiceUuid("fff0");
-const NimBLEUUID kWriteUuid("fff2");
-const NimBLEUUID kNotifyUuid("fff1");
 SharkClient* gNotifyClient = nullptr;
 
 void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data, size_t length, bool) {
@@ -166,7 +163,7 @@ void SharkClient::beginConnect() {
 
 void SharkClient::completeConnect() {
   const uint32_t discoveryStartedMs = millis();
-  NimBLERemoteService* service = client_->getService(kServiceUuid);
+  NimBLERemoteService* service = client_->getService(NimBLEUUID("fff0"));
   if (service == nullptr) {
     state_.link = Link::Disconnected;
     studio::ble::bleCentral().markProtocolFailed(linkHandle_);
@@ -178,8 +175,9 @@ void SharkClient::completeConnect() {
     return;
   }
 
-  writeChar_ = service->getCharacteristic(kWriteUuid);
-  NimBLERemoteCharacteristic* notifyChar = service->getCharacteristic(kNotifyUuid);
+  writeChar_ = service->getCharacteristic(NimBLEUUID("fff2"));
+  NimBLERemoteCharacteristic* notifyChar =
+      service->getCharacteristic(NimBLEUUID("fff1"));
   if (writeChar_ == nullptr || notifyChar == nullptr) {
     writeChar_ = nullptr;
     state_.link = Link::Disconnected;

@@ -763,7 +763,10 @@ the replacement.
   Assistant networking are reference-counted resources. The first active user
   allocates them and the last user releases them. Per-driver maximum instance
   counts are persistence/concurrency limits, not permission to preallocate that
-  many sessions.
+  many sessions. The main loop does not construct NimBLE backend bookkeeping;
+  the first BLE activation allocates it, and the final asynchronous client
+  teardown frees it. Builds without a BLE-backed driver compile the BLE runtime
+  pump out of the main loop.
 - Wi-Fi boundary: saved Wi-Fi and Home Assistant configuration never starts the
   radio. Wi-Fi is enabled only while Portal is open or at least one HA entity
   is active, and is disconnected and returned to `WIFI_OFF` after the final

@@ -30,6 +30,7 @@ class BleNimbleBackend final : public IBleCentralBackend {
 
  private:
   struct Impl;
+  void releaseImplIfIdle();
   Impl* impl_;
 };
 

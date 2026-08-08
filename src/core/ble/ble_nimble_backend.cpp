@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 #include <string>
 
 #include "freertos/FreeRTOS.h"
@@ -241,7 +242,8 @@ struct BleNimbleBackend::Impl {
     ClientCallbacks* callbacks = slots[index].callbacks;
     if (callbacks == nullptr) {
       callbacks =
-          new ClientCallbacks(*this, static_cast<LinkHandle>(index + 1));
+          new (std::nothrow)
+              ClientCallbacks(*this, static_cast<LinkHandle>(index + 1));
       if (callbacks == nullptr) {
         NimBLEDevice::deleteClient(client);
         return false;
@@ -319,14 +321,25 @@ uint32_t BleNimbleBackend::Impl::generationForClient(
              : 0;
 }
 
-BleNimbleBackend::BleNimbleBackend() : impl_(new Impl()) {}
+BleNimbleBackend::BleNimbleBackend() : impl_(nullptr) {}
 
 BleNimbleBackend::~BleNimbleBackend() {
   shutdown();
   delete impl_;
 }
 
+void BleNimbleBackend::releaseImplIfIdle() {
+  if (impl_ != nullptr && !impl_->initialized && !impl_->shutdownPending) {
+    delete impl_;
+    impl_ = nullptr;
+  }
+}
+
 bool BleNimbleBackend::begin() {
+  if (impl_ == nullptr) {
+    impl_ = new (std::nothrow) Impl;
+    if (impl_ == nullptr) return false;
+  }
   if (impl_->initialized) {
     impl_->shutdownPending = false;
     return true;
@@ -335,6 +348,7 @@ bool BleNimbleBackend::begin() {
     impl_->controlQueue = xQueueCreate(CONFIG_BLE_EVENT_QUEUE_SIZE,
                                       sizeof(Impl::ControlEvent));
     if (impl_->controlQueue == nullptr) {
+      releaseImplIfIdle();
       return false;
     }
   }
@@ -344,6 +358,7 @@ bool BleNimbleBackend::begin() {
     if (impl_->advertisementQueue == nullptr) {
       vQueueDelete(impl_->controlQueue);
       impl_->controlQueue = nullptr;
+      releaseImplIfIdle();
       return false;
     }
   }
@@ -352,6 +367,7 @@ bool BleNimbleBackend::begin() {
     vQueueDelete(impl_->advertisementQueue);
     impl_->controlQueue = nullptr;
     impl_->advertisementQueue = nullptr;
+    releaseImplIfIdle();
     return false;
   }
   // Keep transmit power configurable for installations that need a different
@@ -370,7 +386,11 @@ bool BleNimbleBackend::begin() {
 }
 
 void BleNimbleBackend::shutdown() {
+  if (impl_ == nullptr) {
+    return;
+  }
   if (!impl_->initialized) {
+    releaseImplIfIdle();
     return;
   }
   stopScan();
@@ -386,10 +406,18 @@ void BleNimbleBackend::shutdown() {
   // completes deinit once the global client list is empty.
   impl_->shutdownPending = true;
   impl_->finishShutdownIfPossible();
+  releaseImplIfIdle();
 }
 
 void BleNimbleBackend::pump() {
+  if (impl_ == nullptr) {
+    return;
+  }
   impl_->finishShutdownIfPossible();
+  releaseImplIfIdle();
+  if (impl_ == nullptr) {
+    return;
+  }
   if (!impl_->initialized) {
     return;
   }
@@ -570,7 +598,9 @@ bool BleNimbleBackend::popEvent(Event& event) {
 }
 
 uint32_t BleNimbleBackend::droppedEvents() const {
-  return impl_->droppedControl + impl_->droppedAdvertisements;
+  return impl_ != nullptr
+             ? impl_->droppedControl + impl_->droppedAdvertisements
+             : 0;
 }
 
 }  // namespace studio::ble

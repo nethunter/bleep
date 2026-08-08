@@ -106,7 +106,11 @@ transport queues, and shared repositories are allocated on first activation.
 Configured-but-inactive devices occupy only registry metadata. Maximum-instance
 values constrain configuration and concurrency and must never size eager arrays
 of full sessions. Allocation failure is reported through the normal activation
-or registry status path without partially activating a driver.
+or registry status path without partially activating a driver. The shared BLE
+backend follows the same boundary: its implementation state is allocated by the
+first BLE activation and released after the last asynchronous client teardown.
+When no BLE-backed driver is compiled, its main-loop pump and implementation are
+omitted from the linked image.
 
 ## Runtime device registry
 

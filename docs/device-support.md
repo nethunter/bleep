@@ -324,6 +324,12 @@ It must also pass the dormant-resource checklist:
 
 - the compiled driver object contains no full client/session arrays or large
   mutable buffers; immutable descriptors and protocol tables stay in flash;
+- driver translation units contain no non-trivial namespace-scope objects such
+  as constructed UUID wrappers or strings, because their startup constructors
+  force an otherwise disabled driver into the linked image; construct temporary
+  transport values only inside the activated session and confirm omitted-driver
+  symbols are absent from an isolated profile's ELF with
+  `scripts/check_driver_isolation.py`;
 - configured but inactive instances consume registry metadata only;
 - activation uses checked `nothrow` allocation and rolls back cleanly on
   failure; deactivation frees the session;
