@@ -81,6 +81,29 @@ bool PreferencesHomeAssistantBackend::write(const uint8_t* data,
   return ok;
 }
 
+size_t PreferencesPanelSettingsBackend::read(uint8_t* destination,
+                                             size_t capacity) {
+  Preferences preferences;
+  if (!preferences.begin("studio", true)) return 0;
+  const size_t length = preferences.getBytesLength("panel_settings");
+  const size_t read = length > 0 && length <= capacity
+                          ? preferences.getBytes("panel_settings", destination,
+                                                 length)
+                          : 0;
+  preferences.end();
+  return read;
+}
+
+bool PreferencesPanelSettingsBackend::write(const uint8_t* data,
+                                             size_t length) {
+  Preferences preferences;
+  if (!preferences.begin("studio", false)) return false;
+  const bool ok =
+      preferences.putBytes("panel_settings", data, length) == length;
+  preferences.end();
+  return ok;
+}
+
 size_t PreferencesAmaranBackend::read(uint8_t* destination, size_t capacity) {
   Preferences preferences;
   if (!preferences.begin("studio", true)) return 0;

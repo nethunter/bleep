@@ -9,6 +9,7 @@ does not ship raw packet captures.
 - [Canon smartphone-mode BLE](canon-smartphone-ble.md)
 - [Zhiyun MOLUS X100](zhiyun-x100.md)
 - [Zhiyun MOLUS X60RGB](zhiyun-x60rgb.md)
+- [Android screen-recording + HCI capture workflow](capture-workflow.md)
 
 Raw captures were removed before publication because radio traces can contain
 stable addresses, nearby device names, phone/camera identifiers, pairing
@@ -17,11 +18,14 @@ leak identifiers in metadata or advertisements.
 
 For contributions:
 
-1. extract the smallest golden request/response or notification vectors needed
+1. follow the [capture workflow](capture-workflow.md) so app actions, ATT
+   traffic, reported state, and physical behavior remain distinguishable;
+2. extract the smallest golden request/response or notification vectors needed
    to reproduce the conclusion;
-2. replace device-specific identifiers and omit credential-bearing values;
-3. document capture conditions, packet order, and original SHA-256 privately;
-4. keep confirmed behavior separate from `Research`, `Hypothesis`, and
+3. replace device-specific identifiers and omit credential-bearing values;
+4. document capture conditions, packet order, and the original capture's
+   SHA-256 while keeping the raw material private;
+5. keep confirmed behavior separate from `Research`, `Hypothesis`, and
    `Blocked` conclusions;
-5. do not attach raw captures or mobile bugreports to public issues or pull
+6. do not attach raw captures or mobile bugreports to public issues or pull
    requests.

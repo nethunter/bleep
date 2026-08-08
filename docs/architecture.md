@@ -422,6 +422,30 @@ Canon CCAPI is unavailable in Portal mode because normal station-mode control
 is intentionally suspended. The portal is exposed on the trusted studio LAN
 only for the lifetime of the active Portal screen.
 
+## Local settings and support information
+
+Home adds a cog without replacing Devices, Groups, Scenes, or Portal. Settings
+and its Wi-Fi, About, System Info, and Factory Reset views are created on entry
+and destroyed on exit. The Wi-Fi view reads only the saved SSID and accurately
+labels the normal state as radio-off; configuration transfers to dedicated
+Portal mode before any network resources start.
+
+About is the first Settings item. The menu and About body scroll independently
+within round-safe page regions, while Factory Reset remains a distinct top-level
+menu item. Destructive styling appears only after it opens the separate warning
+and hold-confirmation view.
+
+Haptic enablement is a separate checked NVS record and gates the shared
+non-blocking sequencer without changing its semantic patterns. About embeds a
+small LVGL logo and build identity. System Info samples heap, largest
+allocation, minimum heap, physical BLE groups, and Wi-Fi mode on the main loop
+without exposing secrets or stable device identifiers.
+
+Factory Reset is deliberately stronger than clearing an individual registry.
+After a three-second hold it cancels work, deactivates transports, erases the
+complete NVS partition (including BLE bonds and mesh identity), and reboots.
+The application partition and installed firmware remain untouched.
+
 ## Persistence
 
 Versioned persistent records cover:
@@ -431,6 +455,7 @@ Versioned persistent records cover:
 - Amaran mesh identity and keys;
 - scenes and execution metadata;
 - schema version and migration status.
+- panel preferences such as haptic enablement.
 
 Secrets are masked in UI and logs. Backups exclude keys and credentials unless
 the operator explicitly requests a protected full export.

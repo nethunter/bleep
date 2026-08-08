@@ -10,6 +10,7 @@
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
 #include "core/home_assistant_config.h"
+#include "core/panel_settings.h"
 #include "core/scene_service.h"
 #include "core/scene_store.h"
 #include "devices/canon_ble/ble_match.h"
@@ -1094,6 +1095,38 @@ void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("https://ha.local"));
   TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("ws://ha.local"));
   TEST_ASSERT_TRUE(studio::validLocalHomeAssistantUrl("http://10.0.0.5:8123"));
+}
+
+void test_panel_settings_default_round_trip_corruption_and_rollback() {
+  MemoryBackend backend;
+  studio::PanelSettingsStore store(backend);
+  studio::PanelSettings settings;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Missing),
+      static_cast<int>(store.load(settings)));
+  TEST_ASSERT_TRUE(settings.hapticEnabled);
+
+  studio::PanelSettingsService service(backend);
+  TEST_ASSERT_TRUE(service.begin());
+  TEST_ASSERT_TRUE(service.get().hapticEnabled);
+  TEST_ASSERT_TRUE(service.setHapticEnabled(false));
+  TEST_ASSERT_FALSE(service.get().hapticEnabled);
+
+  studio::PanelSettings restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_FALSE(restored.hapticEnabled);
+
+  backend.failWrites = true;
+  TEST_ASSERT_FALSE(service.setHapticEnabled(true));
+  TEST_ASSERT_FALSE(service.get().hapticEnabled);
+  backend.failWrites = false;
+  backend.corruptLastByte();
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Corrupt),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_TRUE(restored.hapticEnabled);
 }
 
 void test_v1_device_blob_migrates_without_changing_ble_identity() {
@@ -2820,6 +2853,7 @@ int main(int, char**) {
   RUN_TEST(test_transactional_add_cancel_and_failed_save_do_not_register_device);
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
+  RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);

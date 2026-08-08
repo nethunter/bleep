@@ -12,12 +12,15 @@ Elecrow CrowPanel ESP32 1.28-inch round display and an SS12D00G slide switch.
 | Slide switch | SS12D00G SPDT slide switch with a 5 mm actuator | [Amazon](https://amzn.to/3RRJRAK) |
 | Battery | Battery used by this enclosure; confirm its voltage, connector, and polarity before assembly | [Amazon](https://amzn.to/4wzTu6d) |
 | Battery connector | JST SH 1.0 mm 2-pin connector with pigtails; replaces the battery's incompatible plug | [Amazon](https://amzn.to/4hNGGEG) |
+| Replacement battery-path diode | 1N5819 Schottky diode, DO-41, nominal 1 A / 40 V; external replacement for a failed-open CrowPanel D1 | [Amazon](https://www.amazon.com/dp/B079KG1TN2) |
 | Heat-set inserts | 3x M3 x 6 x 5 mm brass heat-set inserts | [Amazon](https://amzn.to/4yYaTH8) |
 | Machine screws | 3x M3 x 8 mm socket-head machine screws | [Amazon](https://amzn.to/3S8nI18) |
 
-The Amazon links in this parts list are affiliate links. Purchases made through
-them may earn a commission at no additional cost to you and help support the
-[Hacking Modern Life YouTube channel](https://www.youtube.com/@hml).
+The shortened `amzn.to` links in this parts list are affiliate links. Purchases
+made through them may earn a commission at no additional cost to you and help
+support the
+[Hacking Modern Life YouTube channel](https://www.youtube.com/@hml). The direct
+replacement-diode link is not presented as an affiliate link.
 
 ## Enclosure files
 
@@ -47,6 +50,10 @@ Change only these process settings from the preset defaults:
 All other process and filament settings remain at the defaults supplied by the
 selected Bambu presets. Print the button first as a quick fit test before
 committing to both shells.
+
+Experimental mechanical models belong in the gitignored
+`hardware/.workbench/` directory. Promote a model into this tracked parts list
+only after its fit, printability, and assembly behavior feel final.
 
 ## Assembly notes
 
@@ -88,6 +95,60 @@ soldering iron directly to the battery cell or tabs.
 
 Do not charge, use, or enclose a damaged or swollen lithium battery. Prevent
 bare switch terminals and battery leads from contacting the PCB or each other.
+
+## CrowPanel D1 battery-path repair
+
+The [DIS12824D V1.0 schematic](https://www.elecrow.com/download/product/CrowPanel/ESP32-HMI/1.28-DIS12824D/CrowPanel_ESP32_1.28-inch_V1.0_240507.zip)
+identifies the CrowPanel's original D1 as a `B5819WT` Schottky diode in a small
+SOD-523 package, in series between `VBAT` and the board load. A failed-open D1
+can leave the panel functional from USB but unable to run from a known-good
+battery. Confirm the fault electrically; USB-only operation or a voltage
+difference across D1 does not by itself prove that the diode is the only failed
+component.
+
+The physically larger, through-hole 1N5819 listed above can be installed
+externally in parallel with an original D1 that has been confirmed failed open.
+Leave the original component in place. Do not replace D1 with a wire.
+Confirm the replacement's markings and supplier datasheet; its real current
+and thermal limits depend on the specific manufacturer and installation.
+
+Disconnect both USB and the battery before soldering. Identify the two D1 nets
+with a multimeter rather than relying on connector wire colors, especially
+after replacing or rewiring the JST SH pigtail:
+
+```text
+battery-positive / VBAT side ── unbanded end [ 1N5819 ] banded end ── board-load side
+                                 anode                       cathode
+```
+
+Installation procedure:
+
+1. With power disconnected, check that the board-load side is not shorted to
+   ground. A steady resistance near zero indicates another fault; do not fit
+   the replacement diode until that fault is resolved.
+2. Confirm which end of the original D1 is connected to actual battery
+   positive. Mark that as the `VBAT` side.
+3. Connect the 1N5819's **unbanded anode** to the `VBAT` side. The battery
+   connector's verified positive solder joint is a stronger alternative to
+   loading D1's tiny pad mechanically.
+4. Connect the 1N5819's **banded cathode** to D1's board-load side. Use short,
+   flexible insulated wire so the large DO-41 body cannot pull the SOD-523 pad
+   from the PCB.
+5. Insulate every exposed conductor with heat-shrink or Kapton tape. Secure the
+   diode body with strain relief and keep the assembly clear of the antenna,
+   USB connector, enclosure hardware, and other exposed pads.
+6. Inspect for solder bridges, then perform the first test from battery only.
+   Disconnect immediately if the diode heats rapidly, the board-side voltage
+   stays near zero, or the panel behaves abnormally.
+
+On the first repaired board, the operator measured 4.0 V on the battery side
+and 3.7 V on the board side while the panel ran from battery. The observed
+0.3 V forward drop is consistent with Schottky operation under that load and
+verifies the initial repair on that board. It does not establish the diode's
+temperature margin or long-term reliability. Before closing the enclosure,
+exercise representative BLE scanning and connection load, monitor diode
+temperature and voltage drop, and retain the longer ADR-025 battery-endurance
+gate.
 
 ## Firmware and pin details
 

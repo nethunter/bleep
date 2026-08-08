@@ -61,6 +61,11 @@ Wireless captures can expose more than the target protocol: addresses, device
 names, phone models, serial numbers, Wi-Fi details, pairing keys, credentials,
 hostnames, local paths, timestamps, and unrelated nearby devices.
 
+For Android vendor-app research, use the
+[screen-recording and HCI capture workflow](docs/protocols/capture-workflow.md).
+It defines the capture cadence, `adb bugreport` collection, log extraction,
+video/packet correlation, mesh-specific checks, and durable handoff format.
+
 - Do not commit raw `.pcap`, `.pcapng`, HCI snoop logs, mobile bugreports, or
   vendor-app exports.
 - Extract the smallest reproducible golden vectors into tests or protocol

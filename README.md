@@ -62,6 +62,12 @@ principles:
 
 - A round, touch-first Home and Devices interface with persistent device
   records, enable/disable, rename, forget/re-pair, and delete.
+- A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
+  haptic enable/disable, a first-position scrollable About/build page (including
+  commit date), sanitized runtime diagnostics, and a normal Factory Reset menu
+  item that opens a separate warning screen with a red three-second-hold button.
+  Wi-Fi changes still enter the temporary Portal; normal use of Home and
+  Settings leaves the radio off.
 - On-demand Bluetooth LE connections through one shared NimBLE central. Up to
   four physical BLE transport groups stay connected across navigation and
   remain immediately reusable while healthy. Ordinary devices consume one
@@ -330,8 +336,10 @@ A useful driver contribution usually includes:
    evidence is incomplete.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[device-driver checklist](docs/device-support.md#adding-a-future-driver). Raw
-wireless captures often contain identifiers from unrelated nearby devices;
+[device-driver checklist](docs/device-support.md#adding-a-future-driver). For
+Android vendor-app research, follow the
+[screen-recording and HCI capture workflow](docs/protocols/capture-workflow.md).
+Raw wireless captures often contain identifiers from unrelated nearby devices;
 do not open a pull request with an unreviewed capture.
 
 ## Roadmap

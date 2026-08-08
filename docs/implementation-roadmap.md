@@ -218,6 +218,11 @@ device settings and the current authored Start/Stop scene model from responsive
 phone/desktop views. Physical-device pairing, groups, backup, restore, reset,
 and the remaining Phase 3 completion gates are not advanced by this tranche.
 
+Implemented local tranche (ADR-031): the panel now provides radio-free Wi-Fi
+status, persistent haptic enablement, build/support information, sanitized live
+diagnostics, and warned full-NVS Factory Reset. Backup/restore, groups, and the
+remaining repeated-lifecycle and hardware gates remain open.
+
 ## Phase 4: Amaran light driver
 
 Status: Experimental bounded panel-owned-mesh tranche implemented under

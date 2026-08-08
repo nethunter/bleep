@@ -56,6 +56,9 @@ Follow these rules while building:
   changing an accepted decision.
 - Label protocol assumptions as `Research`, `Hypothesis`, or `Blocked`.
   Captured ACKs are not proof of device state or physical success.
+- For Android vendor-app reverse engineering, follow
+  `docs/protocols/capture-workflow.md`; keep raw screen recordings, HCI logs,
+  bugreports, identifiers, and key material outside the repository.
 - Update `docs/progress.md` at the end of every implementation session with the
   exact build environment, results, measurements, hardware checks, blockers,
   and next safe task. Update `README.md` when current user-visible behavior

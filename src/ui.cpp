@@ -8,9 +8,14 @@
 #include <cstring>
 
 #include "assets/ui_icons.h"
+#include "assets/about_logo.h"
+#include "build_info.h"
 #include "core/device_manager.h"
+#include "core/factory_reset.h"
+#include "core/panel_settings.h"
 #include "core/driver_catalog.h"
 #include "core/scene_service.h"
+#include "core/system_info.h"
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
@@ -56,12 +61,28 @@ constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr lv_coord_t kRoundBackX = 40;
 constexpr lv_coord_t kRoundBackY = 36;
 
-enum class Screen : uint8_t { Home, Devices, Portal };
+enum class Screen : uint8_t { Home, Devices, Portal, Settings };
+enum class SettingsView : uint8_t { Menu, Wifi, About, SystemInfo, FactoryReset };
 
 Screen screen = Screen::Home;
 lv_obj_t* scrHome = nullptr;
 lv_obj_t* scrDevices = nullptr;
 lv_obj_t* scrPortal = nullptr;
+lv_obj_t* scrSettings = nullptr;
+lv_obj_t* settingsScreens[5] = {};
+lv_obj_t* settingsHeaders[5] = {};
+lv_obj_t* settingsHeader = nullptr;
+lv_obj_t* settingsMenuList = nullptr;
+lv_obj_t* aboutContent = nullptr;
+lv_obj_t* systemInfoLabel = nullptr;
+lv_obj_t* factoryResetButton = nullptr;
+lv_obj_t* factoryResetProgress = nullptr;
+lv_obj_t* factoryResetStatus = nullptr;
+SettingsView settingsView = SettingsView::Menu;
+bool factoryResetHolding = false;
+bool factoryResetTriggered = false;
+bool settingsHeaderNeedsRefresh = false;
+uint32_t factoryResetStartedMs = 0;
 lv_obj_t* deviceList = nullptr;
 lv_obj_t* addButton = nullptr;
 lv_obj_t* portalStatus = nullptr;
@@ -373,6 +394,7 @@ void onShowHome(lv_event_t*) {
 }
 void onShowScenes(lv_event_t*) { scene_ui::show(); }
 void onShowPortal(lv_event_t*) { showPortal(); }
+void onShowSettings(lv_event_t*) { showSettings(); }
 void onExitPortal(lv_event_t*) {
   haptic_feedback::request(haptic_feedback::Pattern::Back);
   portal::stop();
@@ -564,6 +586,324 @@ void onSaveRename(lv_event_t*) {
 
 void onCancelRename(lv_event_t*) { closeRename(); }
 
+void destroySettingsScreen() {
+  if (scrSettings != nullptr && lv_scr_act() == scrSettings && scrHome != nullptr) {
+    lv_scr_load(scrHome);
+  }
+  for (lv_obj_t*& child : settingsScreens) {
+    if (child != nullptr) {
+      lv_obj_del(child);
+      child = nullptr;
+    }
+  }
+  for (lv_obj_t*& header : settingsHeaders) header = nullptr;
+  scrSettings = nullptr;
+  settingsHeader = nullptr;
+  settingsMenuList = nullptr;
+  aboutContent = nullptr;
+  systemInfoLabel = nullptr;
+  factoryResetButton = nullptr;
+  factoryResetProgress = nullptr;
+  factoryResetStatus = nullptr;
+  factoryResetHolding = false;
+  factoryResetTriggered = false;
+  settingsHeaderNeedsRefresh = false;
+}
+
+lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
+  scrSettings = lv_obj_create(nullptr);
+  styleScreen(scrSettings);
+  lv_obj_clear_flag(scrSettings, LV_OBJ_FLAG_SCROLLABLE);
+  settingsHeader = lv_obj_create(scrSettings);
+  lv_obj_set_size(settingsHeader, 240, 68);
+  lv_obj_align(settingsHeader, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_bg_color(settingsHeader, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_bg_opa(settingsHeader, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(settingsHeader, 0, 0);
+  lv_obj_set_style_pad_all(settingsHeader, 0, 0);
+  lv_obj_clear_flag(settingsHeader, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(settingsHeader, LV_OBJ_FLAG_FLOATING);
+  lv_obj_t* backButton = makeButton(settingsHeader, "", back);
+  lv_obj_set_size(backButton, 34, 30);
+  lv_obj_clear_flag(backButton, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(backButton, LV_OPA_TRANSP, 0);
+  lv_obj_align(backButton, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
+  lv_obj_t* heading = lv_label_create(settingsHeader);
+  char headerText[48];
+  std::snprintf(headerText, sizeof(headerText), "<     %s", title);
+  lv_label_set_text(heading, headerText);
+  lv_obj_set_style_text_font(heading, UI_FONT_16, 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 53, 43);
+  return scrSettings;
+}
+
+lv_obj_t* settingsRow(lv_obj_t* parent, const char* title, const char* detail,
+                      lv_event_cb_t callback, uint32_t color = kColPanel) {
+  lv_obj_t* row = lv_btn_create(parent);
+  lv_obj_set_size(row, lv_pct(100), 32);
+  lv_obj_set_style_bg_color(row, lv_color_hex(color), 0);
+  lv_obj_set_style_radius(row, 8, 0);
+  lv_obj_set_style_shadow_width(row, 0, 0);
+  lv_obj_set_style_pad_all(row, 0, 0);
+  if (callback != nullptr) lv_obj_add_event_cb(row, callback, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* label = lv_label_create(row);
+  lv_label_set_text(label, title);
+  lv_obj_set_style_text_font(label, UI_FONT_14, 0);
+  lv_obj_align(label, LV_ALIGN_LEFT_MID, 10, detail != nullptr ? -6 : 0);
+  if (detail != nullptr) {
+    lv_obj_t* sub = lv_label_create(row);
+    lv_label_set_text(sub, detail);
+    lv_obj_set_style_text_font(sub, UI_FONT_14, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(kColMuted), 0);
+    lv_obj_align(sub, LV_ALIGN_LEFT_MID, 10, 7);
+  }
+  if (callback != nullptr) {
+    lv_obj_t* arrow = lv_label_create(row);
+    lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_font(arrow, UI_FONT_14, 0);
+    lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -10, 0);
+  }
+  return row;
+}
+
+void showSettingsView(SettingsView view);
+
+void onSettingsBack(lv_event_t*) {
+  haptic_feedback::request(haptic_feedback::Pattern::Back);
+  if (settingsView == SettingsView::Menu) showHome();
+  else showSettingsView(SettingsView::Menu);
+}
+
+void onWifiSettings(lv_event_t*) { showSettingsView(SettingsView::Wifi); }
+void onAbout(lv_event_t*) { showSettingsView(SettingsView::About); }
+void onSystemInfo(lv_event_t*) { showSettingsView(SettingsView::SystemInfo); }
+void onFactoryReset(lv_event_t*) { showSettingsView(SettingsView::FactoryReset); }
+
+void onConfigureWifi(lv_event_t*) {
+  destroySettingsScreen();
+  showPortal();
+}
+
+void onHapticChanged(lv_event_t* event) {
+  lv_obj_t* toggle = lv_event_get_target(event);
+  const bool requested = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+  const bool previous = studio::panelSettings().get().hapticEnabled;
+  if (!studio::panelSettings().setHapticEnabled(requested)) {
+    if (previous) lv_obj_add_state(toggle, LV_STATE_CHECKED);
+    else lv_obj_clear_state(toggle, LV_STATE_CHECKED);
+    haptic_feedback::setEnabled(true);
+    haptic_feedback::request(haptic_feedback::Pattern::Error);
+    haptic_feedback::setEnabled(previous);
+    return;
+  }
+  haptic_feedback::setEnabled(requested);
+  if (requested) haptic_feedback::request(haptic_feedback::Pattern::Press);
+}
+
+void onFactoryResetPressed(lv_event_t*) {
+  if (factoryResetTriggered) return;
+  factoryResetHolding = true;
+  factoryResetStartedMs = millis();
+}
+
+void onFactoryResetReleased(lv_event_t*) {
+  if (factoryResetTriggered) return;
+  factoryResetHolding = false;
+  if (factoryResetProgress != nullptr) {
+    lv_bar_set_value(factoryResetProgress, 0, LV_ANIM_OFF);
+  }
+  if (factoryResetStatus != nullptr) {
+    lv_label_set_text(factoryResetStatus, "Hold for 3 seconds");
+  }
+}
+
+void onSettingsContentScrolled(lv_event_t*) {
+  settingsHeaderNeedsRefresh = true;
+}
+
+void buildSettingsMenu() {
+  settingsScreen("Settings", onSettingsBack);
+  lv_obj_t* list = lv_obj_create(scrSettings);
+  settingsMenuList = list;
+  lv_obj_set_size(list, 190, 162);
+  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(list, 0, 0);
+  lv_obj_set_style_pad_all(list, 2, 0);
+  lv_obj_set_style_pad_row(list, 3, 0);
+  lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_add_event_cb(list, onSettingsContentScrolled, LV_EVENT_SCROLL, nullptr);
+  settingsRow(list, "About", nullptr, onAbout);
+  settingsRow(list, "Wi-Fi", nullptr, onWifiSettings);
+  lv_obj_t* haptic = settingsRow(list, "Haptic feedback", nullptr, nullptr);
+  lv_obj_t* toggle = lv_switch_create(haptic);
+  lv_obj_set_size(toggle, 42, 22);
+  lv_obj_align(toggle, LV_ALIGN_RIGHT_MID, -10, 0);
+  if (studio::panelSettings().get().hapticEnabled) {
+    lv_obj_add_state(toggle, LV_STATE_CHECKED);
+  }
+  lv_obj_add_event_cb(toggle, onHapticChanged, LV_EVENT_VALUE_CHANGED, nullptr);
+  settingsRow(list, "System info", nullptr, onSystemInfo);
+  settingsRow(list, "Factory reset", nullptr, onFactoryReset);
+}
+
+void buildWifiSettings() {
+  settingsScreen("Wi-Fi", onSettingsBack);
+  const portal::SavedWifiSummary saved = portal::savedWifiSummary();
+  lv_obj_t* status = lv_label_create(scrSettings);
+  lv_obj_set_width(status, 176);
+  lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(status, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(status, lv_color_hex(saved.configured ? kColAccent
+                                                                    : kColMuted), 0);
+  lv_label_set_text(status, saved.configured ? "SAVED NETWORK\nRADIO OFF"
+                                              : "NOT CONFIGURED");
+  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 82);
+  lv_obj_t* ssid = lv_label_create(scrSettings);
+  lv_obj_set_width(ssid, 174);
+  lv_label_set_long_mode(ssid, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(ssid, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(ssid, UI_FONT_14, 0);
+  lv_label_set_text(ssid, saved.configured ? saved.ssid : "No studio Wi-Fi saved");
+  lv_obj_align(ssid, LV_ALIGN_TOP_MID, 0, 132);
+  lv_obj_t* configure =
+      makeButton(scrSettings, "OPEN PORTAL", onConfigureWifi, kColAccent);
+  lv_obj_set_size(configure, 158, 34);
+  lv_obj_align(configure, LV_ALIGN_BOTTOM_MID, 0, -28);
+}
+
+void buildAbout() {
+  settingsScreen("About", onSettingsBack);
+  lv_obj_t* content = lv_obj_create(scrSettings);
+  aboutContent = content;
+  lv_obj_set_size(content, 200, 162);
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(content, 0, 0);
+  lv_obj_set_style_pad_all(content, 2, 0);
+  lv_obj_set_scroll_dir(content, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_add_event_cb(content, onSettingsContentScrolled, LV_EVENT_SCROLL, nullptr);
+
+  lv_obj_t* logo = lv_img_create(content);
+  lv_img_set_src(logo, &ui_about_logo);
+  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_t* description = lv_label_create(content);
+  lv_label_set_text(description, "Bluetooth Low Energy\nEquipment Panel");
+  lv_obj_set_width(description, 190);
+  lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(description, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(description, lv_color_hex(kColMuted), 0);
+  lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 64);
+  char identity[96];
+  std::snprintf(identity, sizeof(identity), "v%s\n%s  |  %s",
+                build_info::kFirmwareVersion, build_info::kGitCommit,
+                build_info::kGitDate);
+  lv_obj_t* version = lv_label_create(content);
+  lv_label_set_text(version, identity);
+  lv_obj_set_width(version, 190);
+  lv_obj_set_style_text_align(version, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(version, UI_FONT_14, 0);
+  lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 106);
+  char detail[64];
+  std::snprintf(detail, sizeof(detail), "%s\nApache-2.0",
+                build_info::kHardware);
+  lv_obj_t* hardware = lv_label_create(content);
+  lv_label_set_text(hardware, detail);
+  lv_obj_set_width(hardware, 180);
+  lv_obj_set_style_text_align(hardware, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(hardware, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(hardware, lv_color_hex(kColMuted), 0);
+  lv_obj_align(hardware, LV_ALIGN_TOP_MID, 0, 150);
+}
+
+void refreshSystemInfo() {
+  if (systemInfoLabel == nullptr) return;
+  const studio::SystemInfo info = studio::systemInfo();
+  char text[220];
+  std::snprintf(text, sizeof(text),
+                "%s\n%s\n\nHeap free   %lu\nLargest     %lu\nMinimum     %lu\nBLE groups  %u\nWi-Fi       %s",
+                build_info::kHardware, build_info::kGitCommit,
+                static_cast<unsigned long>(info.freeHeap),
+                static_cast<unsigned long>(info.largestFreeBlock),
+                static_cast<unsigned long>(info.minimumFreeHeap),
+                static_cast<unsigned>(info.activeBleGroups), info.wifiState);
+  lv_label_set_text(systemInfoLabel, text);
+}
+
+void buildSystemInfo() {
+  settingsScreen("System info", onSettingsBack);
+  systemInfoLabel = lv_label_create(scrSettings);
+  lv_obj_set_width(systemInfoLabel, 174);
+  lv_obj_set_style_text_font(systemInfoLabel, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(systemInfoLabel, lv_color_hex(kColText), 0);
+  lv_obj_align(systemInfoLabel, LV_ALIGN_TOP_LEFT, 38, 76);
+  refreshSystemInfo();
+}
+
+void buildFactoryReset() {
+  settingsScreen("Factory reset", onSettingsBack);
+  lv_obj_t* warning = lv_label_create(scrSettings);
+  lv_label_set_text(warning,
+      "ERASE ALL SAVED DATA?\nDevices + scenes + networks\nBLE bonds + haptics + mesh keys\nReset mesh lights manually\nFirmware stays / cannot undo");
+  lv_obj_set_width(warning, 220);
+  lv_obj_set_style_text_align(warning, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(warning, UI_FONT_14, 0);
+  lv_obj_set_style_text_line_space(warning, -2, 0);
+  lv_obj_set_style_text_color(warning, lv_color_hex(kColText), 0);
+  lv_obj_align(warning, LV_ALIGN_TOP_MID, 0, 70);
+  factoryResetProgress = lv_bar_create(scrSettings);
+  lv_obj_set_size(factoryResetProgress, 150, 5);
+  lv_obj_align(factoryResetProgress, LV_ALIGN_BOTTOM_MID, 0, -48);
+  lv_bar_set_range(factoryResetProgress, 0, 3000);
+  lv_bar_set_value(factoryResetProgress, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(factoryResetProgress, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_bg_color(factoryResetProgress, lv_color_hex(kColDanger),
+                            LV_PART_INDICATOR);
+  factoryResetButton = makeButton(scrSettings, "HOLD TO RESET", nullptr, kColDanger);
+  lv_obj_set_size(factoryResetButton, 126, 32);
+  lv_obj_align(factoryResetButton, LV_ALIGN_BOTTOM_MID, 0, -12);
+  lv_obj_add_event_cb(factoryResetButton, onFactoryResetPressed, LV_EVENT_PRESSED,
+                      nullptr);
+  lv_obj_add_event_cb(factoryResetButton, onFactoryResetReleased, LV_EVENT_RELEASED,
+                      nullptr);
+  lv_obj_add_event_cb(factoryResetButton, onFactoryResetReleased,
+                      LV_EVENT_PRESS_LOST, nullptr);
+  factoryResetStatus = lv_label_create(scrSettings);
+  lv_label_set_text(factoryResetStatus, "Hold for 3 seconds");
+  lv_obj_set_style_text_font(factoryResetStatus, UI_FONT_14, 0);
+  lv_obj_set_style_text_color(factoryResetStatus, lv_color_hex(kColMuted), 0);
+  lv_obj_align(factoryResetStatus, LV_ALIGN_TOP_MID, 0, 163);
+}
+
+void showSettingsView(SettingsView view) {
+  factoryResetHolding = false;
+  settingsView = view;
+  screen = Screen::Settings;
+  const size_t index = static_cast<size_t>(view);
+  if (settingsScreens[index] == nullptr) {
+    scrSettings = nullptr;
+    switch (view) {
+      case SettingsView::Menu: buildSettingsMenu(); break;
+      case SettingsView::Wifi: buildWifiSettings(); break;
+      case SettingsView::About: buildAbout(); break;
+      case SettingsView::SystemInfo: buildSystemInfo(); break;
+      case SettingsView::FactoryReset: buildFactoryReset(); break;
+    }
+    settingsScreens[index] = scrSettings;
+    settingsHeaders[index] = settingsHeader;
+  } else {
+    scrSettings = settingsScreens[index];
+    settingsHeader = settingsHeaders[index];
+  }
+  lv_obj_move_foreground(settingsHeader);
+  lv_scr_load(scrSettings);
+  lv_obj_invalidate(scrSettings);
+  settingsHeaderNeedsRefresh = true;
+}
+
 void buildHome() {
   scrHome = lv_obj_create(nullptr);
   styleScreen(scrHome);
@@ -572,6 +912,10 @@ void buildHome() {
   lv_label_set_text(title, "Ble(e)p");
   lv_obj_set_style_text_font(title, UI_FONT_20, 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+
+  lv_obj_t* settings = makeButton(scrHome, LV_SYMBOL_SETTINGS, onShowSettings);
+  lv_obj_set_size(settings, 30, 30);
+  lv_obj_align(settings, LV_ALIGN_TOP_RIGHT, -34, 24);
 
   lv_obj_t* grid = lv_obj_create(scrHome);
   lv_obj_set_size(grid, 164, 158);
@@ -833,6 +1177,8 @@ void releaseDeviceUis() {
 }
 
 void init() {
+  studio::panelSettings().begin();
+  haptic_feedback::setEnabled(studio::panelSettings().get().hapticEnabled);
   buildHome();
   buildDevices();
   buildPortal();
@@ -908,6 +1254,11 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
+  if (settingsHeaderNeedsRefresh && settingsHeader != nullptr) {
+    settingsHeaderNeedsRefresh = false;
+    lv_obj_move_foreground(settingsHeader);
+    lv_obj_invalidate(scrSettings);
+  }
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::tick();
@@ -954,6 +1305,34 @@ void tick() {
     scene_ui::tick();
     return;
   }
+  if (screen == Screen::Settings &&
+      settingsView == SettingsView::FactoryReset && factoryResetHolding &&
+      !factoryResetTriggered) {
+    const uint32_t elapsed = millis() - factoryResetStartedMs;
+    if (factoryResetProgress != nullptr) {
+      lv_bar_set_value(factoryResetProgress,
+                       static_cast<int32_t>(elapsed > 3000 ? 3000 : elapsed),
+                       LV_ANIM_OFF);
+    }
+    if (elapsed >= 3000) {
+      factoryResetTriggered = true;
+      factoryResetHolding = false;
+      lv_label_set_text(factoryResetStatus, "Erasing saved data...");
+      lv_obj_add_state(factoryResetButton, LV_STATE_DISABLED);
+      studio::scenes().cancel();
+      if (portal::active()) portal::stop();
+      studio::devices().deactivateAll();
+      haptic_feedback::setEnabled(false);
+      if (!studio::factory_reset::eraseAndRestart()) {
+        factoryResetTriggered = false;
+        lv_label_set_text(factoryResetStatus, "Reset failed");
+        lv_obj_clear_state(factoryResetButton, LV_STATE_DISABLED);
+        haptic_feedback::setEnabled(
+            studio::panelSettings().get().hapticEnabled);
+        haptic_feedback::request(haptic_feedback::Pattern::Error);
+      }
+    }
+  }
   const uint32_t now = millis();
   if (now - lastRefreshMs < 500) {
     return;
@@ -961,6 +1340,9 @@ void tick() {
   lastRefreshMs = now;
   if (screen == Screen::Portal) {
     refreshPortal();
+  } else if (screen == Screen::Settings &&
+             settingsView == SettingsView::SystemInfo) {
+    refreshSystemInfo();
   }
 }
 
@@ -1071,6 +1453,8 @@ void handleLongPress() {
     showHome();
   } else if (screen == Screen::Portal) {
     onExitPortal(nullptr);
+  } else if (screen == Screen::Settings) {
+    onSettingsBack(nullptr);
   }
 }
 
@@ -1122,6 +1506,16 @@ void showHome() {
   releaseDeviceRows();
   screen = Screen::Home;
   lv_scr_load(scrHome);
+  destroySettingsScreen();
+  releaseDeviceUis();
+}
+
+void showSettings() {
+  closeDeviceModal();
+  closeRename();
+  closeAddPicker();
+  releaseDeviceRows();
+  showSettingsView(SettingsView::Menu);
   releaseDeviceUis();
 }
 
@@ -1177,6 +1571,7 @@ void showPortal() {
   closeDeviceModal();
   closeRename();
   closeAddPicker();
+  destroySettingsScreen();
   if (!portal::begin()) {
     return;
   }
@@ -1344,6 +1739,36 @@ void simShowRename(studio::InstanceId instanceId) {
 }
 
 void simRequestManagedDisconnect() { onDisconnect(nullptr); }
+
+void simShowWifiSettings() { showSettingsView(SettingsView::Wifi); }
+void simShowAbout() { showSettingsView(SettingsView::About); }
+void simShowSystemInfo() { showSettingsView(SettingsView::SystemInfo); }
+void simShowFactoryReset() { showSettingsView(SettingsView::FactoryReset); }
+
+void simScrollSettingsToEnd() {
+  if (settingsMenuList != nullptr) {
+    lv_obj_scroll_to_y(settingsMenuList, lv_obj_get_scroll_bottom(settingsMenuList),
+                       LV_ANIM_OFF);
+  }
+}
+
+void simScrollAboutToEnd() {
+  if (aboutContent != nullptr) {
+    lv_obj_scroll_to_y(aboutContent, lv_obj_get_scroll_bottom(aboutContent),
+                       LV_ANIM_OFF);
+  }
+}
+
+void simSetHapticEnabled(bool enabled) {
+  if (studio::panelSettings().setHapticEnabled(enabled)) {
+    haptic_feedback::setEnabled(enabled);
+  }
+}
+
+void simSetFactoryResetHolding(bool holding) {
+  if (holding) onFactoryResetPressed(nullptr);
+  else onFactoryResetReleased(nullptr);
+}
 #endif
 
 }  // namespace ui

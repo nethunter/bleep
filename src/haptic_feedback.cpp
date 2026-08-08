@@ -26,6 +26,7 @@ Pattern activePattern = Pattern::Press;
 bool active = false;
 bool outputEnabled = false;
 bool connectedPending = false;
+bool feedbackEnabled = true;
 
 uint8_t priority(Pattern pattern) {
   switch (pattern) {
@@ -89,6 +90,7 @@ void begin(OutputFn output) {
 }
 
 void request(Pattern pattern) {
+  if (!feedbackEnabled) return;
   // Preserve a stronger pattern already in progress. A Back request replaces
   // the generic Press generated for the same LVGL click.
   if (active && priority(pattern) < priority(activePattern)) {
@@ -108,6 +110,19 @@ void request(Pattern pattern) {
   setOutput(segments[0].enabled);
   segmentDeadlineMs = millis() + segments[0].durationMs;
 }
+
+void setEnabled(bool enabled) {
+  feedbackEnabled = enabled;
+  if (enabled) return;
+  active = false;
+  connectedPending = false;
+  segments = nullptr;
+  segmentCount = 0;
+  segmentIndex = 0;
+  setOutput(false);
+}
+
+bool enabled() { return feedbackEnabled; }
 
 void loop(uint32_t now) {
   while (active && static_cast<int32_t>(now - segmentDeadlineMs) >= 0) {

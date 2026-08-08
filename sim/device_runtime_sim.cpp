@@ -1,4 +1,5 @@
 #include "core/device_manager.h"
+#include "core/panel_settings.h"
 #include "core/scene_service.h"
 
 #include <cstring>
@@ -454,6 +455,7 @@ class SimZhiyunX100Driver : public DeviceDriver {
 
 MemoryConfigBackend gBackend;
 MemoryConfigBackend gScenesBackend;
+MemoryConfigBackend gPanelSettingsBackend;
 SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
 SimCanonTriggerDriver gCanonTriggerDriver;
@@ -470,12 +472,15 @@ DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gZhiyunX100Driver};
 DeviceManager gManager(gBackend, gLegacy, gDrivers, 9);
 SceneService gScenes(gScenesBackend, gManager);
+PanelSettingsService gPanelSettings(gPanelSettingsBackend);
 
 }  // namespace
 
 DeviceManager& devices() { return gManager; }
 
 SceneService& scenes() { return gScenes; }
+
+PanelSettingsService& panelSettings() { return gPanelSettings; }
 
 shark::SharkState& simSharkState() { return gSharkDriver.state(); }
 canon_ble::CanonBleState& simCanonState() { return gCanonDriver.state(); }

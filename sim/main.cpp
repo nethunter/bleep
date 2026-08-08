@@ -7,6 +7,7 @@
 
 #include "Arduino.h"
 #include "core/device_manager.h"
+#include "core/factory_reset.h"
 #include "core/scene_service.h"
 #include "devices/canon_ble/ui.h"
 #include "devices/canon_trigger/ui.h"
@@ -1001,6 +1002,53 @@ int main() {
     return 1;
   }
   if (!capture("30b_portal_lan")) {
+    return 1;
+  }
+  ui::showHome();
+
+  ui::showSettings();
+  if (!capture("31_settings")) return 1;
+  ui::simScrollSettingsToEnd();
+  if (!capture("31_settings_scrolled")) return 1;
+  ui::simShowWifiSettings();
+  if (!capture("31a_settings_wifi")) return 1;
+  portal::simSetSavedWifi("");
+  ui::showSettings();
+  ui::simShowWifiSettings();
+  if (!capture("31b_settings_wifi_empty")) return 1;
+  portal::simSetSavedWifi("Studio-WiFi");
+  ui::simShowAbout();
+  if (!capture("31c_settings_about")) return 1;
+  ui::simScrollAboutToEnd();
+  if (!capture("31c_settings_about_scrolled")) return 1;
+  ui::simShowSystemInfo();
+  if (!capture("31d_settings_system")) return 1;
+
+  ui::simSetHapticEnabled(false);
+  gHapticStateCount = 0;
+  haptic_feedback::request(haptic_feedback::Pattern::Press);
+  if (gHapticStateCount != 0) {
+    std::fprintf(stderr, "Disabled haptics still drove the output\n");
+    return 1;
+  }
+  ui::simSetHapticEnabled(true);
+
+  studio::factory_reset::clearSimulatedResetCount();
+  ui::showSettings();
+  pump(20);
+  ui::simShowFactoryReset();
+  if (!capture("31e_settings_factory_reset")) return 1;
+  ui::simSetFactoryResetHolding(true);
+  pump(2999);
+  if (studio::factory_reset::simulatedResetCount() != 0) {
+    std::fprintf(stderr, "Factory reset triggered before the hold completed\n");
+    return 1;
+  }
+  ui::simSetFactoryResetHolding(false);
+  ui::simSetFactoryResetHolding(true);
+  pump(3001);
+  if (studio::factory_reset::simulatedResetCount() != 1) {
+    std::fprintf(stderr, "Factory reset did not trigger exactly once\n");
     return 1;
   }
   ui::showHome();

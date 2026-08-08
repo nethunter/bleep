@@ -35,7 +35,7 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-07.
+- Last updated: 2026-08-08.
 
 ## Completed planning
 
@@ -2607,3 +2607,123 @@ Record values with the exact build environment and commit/worktree state.
   descriptive expansion in the public README and documentation index.
 - Documentation only; firmware behavior and BLE identity are unchanged. No
   build or flash was run for this wording-only update.
+
+### 2026-08-08: Horizontal-stem watch-crown print variant
+
+- Restored the watch-crown source and artifacts under the gitignored local
+  `hardware/.workbench/watch-crown/` area. The canonical geometry remains an
+  11.5 mm crown with the relieved 0.76 mm square drive for the CrowPanel
+  encoder. Hardware experiments now stay in `.workbench` until promoted as
+  reviewed deliverables.
+- Added STEP and STL variants rotated 90 degrees and grounded on the crown rim,
+  placing the 1.60 mm stem axis parallel to the build plate so its length is
+  formed within each layer instead of across weak layer bonds. Added focused
+  FDM orientation and support notes; the encoder fit remains unchanged.
+- Re-imported both STEP files as one valid solid each. Canonical bounds were
+  11.495 x 11.495 x 5.350 mm; horizontal-print bounds were
+  5.350 x 11.495 x 11.495 mm. Both measured 294.949 mm3. Physical printing,
+  support removal, encoder fit, and push travel remain unverified. No firmware
+  build or flash was applicable to this CAD-only change.
+
+### 2026-08-08: Android BLE capture workflow
+
+- Added a reusable protocol-research guide for synchronized phone screen
+  recording and Android HCI snoop capture through `adb bugreport`. It covers
+  experiment design, deliberate action spacing, rotated-log discovery,
+  video/ATT correlation, mesh proxy versus member identity, passive analysis,
+  bounded active probing, privacy, and the durable evidence handoff.
+- Linked the guide from the protocol index, public device-contribution section,
+  and contributor privacy guidance. Documentation only; firmware behavior is
+  unchanged, so no build or flash was run.
+
+### 2026-08-08: Local Settings, build identity, diagnostics, and Factory Reset
+
+- Added a round-safe Home cog while retaining all four mode tiles. The lazy
+  Settings session contains Wi-Fi status/Portal entry, persistent haptic
+  enablement, About, sanitized live System Info, and warned Factory Reset.
+  Settings reads the saved SSID without starting Wi-Fi; normal Home boot remains
+  radio-free.
+- Added checked schema-1 `PSET` persistence for haptic enablement. Disabled
+  feedback stops the current pattern and suppresses Press, Connected, Back, and
+  Error requests. Missing or corrupt settings preserve the prior enabled
+  default, and failed writes leave the last committed state unchanged.
+- About shows firmware `v0.1.0-dev`, the seven-character Git commit with a
+  dirty marker when applicable, its authored date, `crowpanel-1.28`, and the
+  Apache-2.0 license. The generated 176x58 LVGL wordmark uses separately scaled
+  mascot/lettering regions, authored transparency, Hamming resampling, and a
+  small face-feature mask so both eyes and the smile survive panel scaling.
+- System Info exposes only hardware/build identity, free/minimum/largest heap,
+  active physical BLE groups, and Wi-Fi state. Factory Reset requires a
+  continuous three-second touch hold, cancels scenes and transports, erases the
+  complete NVS partition including bonds and mesh keys, and reboots without
+  erasing firmware. The real destructive path was intentionally not triggered.
+- Native passed 52/52. The complete `ui_sim` flow passed and captured
+  `01_home.png` plus `31_settings.png` through
+  `31e_settings_factory_reset.png`; reset assertions rejected a 2,999 ms hold
+  and accepted one 3,001 ms hold. Visual review corrected the settings repaint
+  lifetime, reset-warning spacing, and smile-preserving logo conversion.
+- All eight firmware profiles built sequentially. Default `crowpanel_128` used
+  169,828 / 327,680 bytes RAM (51.8%) and 1,850,856 / 3,145,728 bytes flash
+  (58.8%); the other profiles remained between 47.7-51.8% RAM and 57.2-58.5%
+  flash. One upload streamed to `/dev/cu.usbserial-211240`, but its final status
+  was not captured; two confirmation retries then failed to open the same port
+  with `Operation not permitted`. Treat the final flash and all physical UI,
+  tactile persistence, Wi-Fi handoff, and reboot behavior as unverified.
+
+### 2026-08-08: Settings hierarchy and scrolling follow-up
+
+- Moved About to the first Settings row. The Settings list now has real vertical
+  overflow and an automatic position indicator instead of exactly filling its
+  viewport, and Factory Reset remains its own red top-level item and warned
+  child screen.
+- Made the About details independently scrollable below the project logo and
+  added the project expansion above the firmware version, commit/date,
+  hardware, and license details. Added simulator captures for both menu and
+  About scrolled-to-end states so the overflow path is exercised directly.
+- Native passed 52/52. The complete `ui_sim` flow passed with new
+  `31_settings_scrolled.png` and `31c_settings_about_scrolled.png` captures;
+  final LVGL peak remained 20,788 bytes with 1% fragmentation at completion.
+- All eight profiles (`crowpanel_128`, Roboto, Canon Smart, Canon Trigger,
+  Tascam X8, Home Assistant, Amaran, and Zhiyun) built sequentially. Default
+  firmware used 169,852 / 327,680 bytes RAM (51.8%) and 1,851,496 / 3,145,728
+  bytes flash (58.9%). Upload to `/dev/cu.usbserial-211240` completed with image
+  hash verification and hard reset. Physical touch scrolling and navigation
+  remain operator-unverified; Factory Reset was not triggered.
+
+### 2026-08-08: Factory Reset menu presentation
+
+- Changed the top-level Factory Reset row to the same neutral menu styling as
+  the other Settings destinations. Selecting it still opens the dedicated
+  warning screen; only that screen's hold-to-reset control is red.
+- The full `ui_sim` capture flow passed and visually confirms the neutral row
+  and separate warning screen. All eight firmware profiles rebuilt
+  successfully; default used 169,852 / 327,680 bytes RAM (51.8%) and
+  1,851,458 / 3,145,728 bytes flash (58.9%). Upload to
+  `/dev/cu.usbserial-211240` completed with image hash verification and hard
+  reset. The destructive reset action was not triggered.
+
+### 2026-08-08: About logo scroll behavior
+
+- Moved the project logo into the About page's scroll container so the logo,
+  project expansion, firmware/build identity, hardware, and license move as one
+  continuous document. The header remains outside the content region.
+- The full `ui_sim` flow passed and its initial/scrolled About captures confirm
+  that the smile remains visible while the logo moves with the document. All
+  eight firmware profiles rebuilt successfully; default remained at 169,852 /
+  327,680 bytes RAM (51.8%) and 1,851,458 / 3,145,728 bytes flash (58.9%). The
+  board upload completed with image hash verification and hard reset. Physical
+  touch scrolling remains operator-unverified.
+
+### 2026-08-08: External 1N5819 battery-path repair documentation
+
+- Documented the operator-installed through-hole 1N5819 replacement for a
+  failed-open CrowPanel D1 in `hardware/README.md`, including applicability,
+  polarity, solder points, strain relief, first-power checks, and the boundary
+  between an initial repair and the open ADR-025 endurance gate.
+- The repaired board ran from battery with 4.0 V measured on the battery side
+  and 3.7 V on the board-load side, an observed 0.3 V forward drop. Diode
+  temperature under representative BLE load and multi-day endurance remain
+  unverified.
+- Documentation only; firmware behavior did not change. No build or flash was
+  run, avoiding deployment of unrelated user-owned firmware changes already
+  present in the worktree.

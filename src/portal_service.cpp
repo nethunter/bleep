@@ -10,6 +10,7 @@ bool running = false;
 bool lan = false;
 Status simulatedStatus = Status::Ready;
 const char* simulatedMessage = "Set up studio Wi-Fi";
+char simulatedSavedSsid[33] = "Studio-WiFi";
 }
 bool begin() {
   if (running) return true;
@@ -31,6 +32,12 @@ const char* qrPayload() {
   return lan ? "http://192.168.1.84"
              : "WIFI:T:WPA;S:Bleep-Setup-SIM;P:12345678;;";
 }
+SavedWifiSummary savedWifiSummary() {
+  SavedWifiSummary summary;
+  summary.configured = simulatedSavedSsid[0] != '\0';
+  std::strncpy(summary.ssid, simulatedSavedSsid, sizeof(summary.ssid) - 1);
+  return summary;
+}
 void simSetLan(bool connected) {
   lan = connected;
   simulatedStatus = Status::Ready;
@@ -39,6 +46,11 @@ void simSetLan(bool connected) {
 void simSetWifiFeedback(Status status, const char* message) {
   simulatedStatus = status;
   simulatedMessage = message;
+}
+void simSetSavedWifi(const char* ssid) {
+  std::strncpy(simulatedSavedSsid, ssid != nullptr ? ssid : "",
+               sizeof(simulatedSavedSsid) - 1);
+  simulatedSavedSsid[sizeof(simulatedSavedSsid) - 1] = '\0';
 }
 }  // namespace portal
 
@@ -1187,6 +1199,19 @@ const char* qrPayload() {
   std::snprintf(qrPayloadValue, sizeof(qrPayloadValue),
                 "WIFI:T:WPA;S:%s;P:%s;;", apSsid, kSetupPassword);
   return qrPayloadValue;
+}
+
+SavedWifiSummary savedWifiSummary() {
+  SavedWifiSummary summary;
+  studio::PreferencesHomeAssistantBackend backend;
+  studio::HomeAssistantConfigStore store(backend);
+  studio::HomeAssistantConfig config;
+  const studio::ConfigLoadStatus status = store.load(config);
+  if (status != studio::ConfigLoadStatus::Corrupt && config.wifiSsid[0] != '\0') {
+    summary.configured = true;
+    std::strncpy(summary.ssid, config.wifiSsid, sizeof(summary.ssid) - 1);
+  }
+  return summary;
 }
 
 }  // namespace portal

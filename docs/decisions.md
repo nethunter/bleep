@@ -673,6 +673,26 @@ the replacement.
   fallback-gateway, multiple-Zhiyun, and four-slot coexistence soaks before
   promotion.
 
+## ADR-031: Local settings stay radio-free and factory reset erases all NVS
+
+- Status: Accepted.
+- Navigation: Home keeps its four mode tiles and adds a round-safe Settings
+  cog. Settings and its child screens are allocated only while open; Home and
+  Devices remain the only resident application screens.
+- Wi-Fi boundary: the panel may display the saved SSID and that the radio is
+  off, but credential changes continue through dedicated Portal mode. Opening
+  Settings or Wi-Fi status never starts Wi-Fi, a listener, or device links.
+- Preferences and support: haptic feedback defaults on and persists in its own
+  checked record. About identifies the semantic firmware version, Git commit
+  and commit date, hardware profile, and license. System Info exposes only
+  sanitized heap, physical-link-count, and radio-state diagnostics.
+- Reset: Factory Reset requires a continuous three-second on-screen hold. It
+  cancels scenes, tears down radios and device sessions, then erases the full
+  NVS partition and reboots without erasing firmware. The warning explicitly
+  includes devices, scenes, Wi-Fi/Home Assistant secrets, BLE bonds, haptic
+  preferences, and panel-owned mesh keys; provisioned mesh fixtures may need a
+  separate manual factory reset before they can be added again.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

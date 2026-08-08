@@ -18,3 +18,7 @@ bugreport-*/
 bugreport-*.zip
 
 canon-pairing*
+
+# Local mechanical prototypes stay out of version control until promoted as
+# reviewed hardware deliverables.
+hardware/.workbench/

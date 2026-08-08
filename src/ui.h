@@ -12,6 +12,7 @@ void tick();
 void handleShortPress();
 void handleLongPress();
 void showHome();
+void showSettings();
 void showDevices();
 void showPortal();
 void showDevice(studio::InstanceId instanceId);
@@ -36,6 +37,14 @@ void simShowAddDevice();
 void simShowManage(studio::InstanceId instanceId);
 void simRequestManagedDisconnect();
 void simShowRename(studio::InstanceId instanceId);
+void simShowWifiSettings();
+void simShowAbout();
+void simShowSystemInfo();
+void simShowFactoryReset();
+void simScrollSettingsToEnd();
+void simScrollAboutToEnd();
+void simSetHapticEnabled(bool enabled);
+void simSetFactoryResetHolding(bool holding);
 #endif
 
 }  // namespace ui
