@@ -195,8 +195,8 @@ void show(studio::InstanceId id) {
   ensureScreen();
   instanceId = id;
   const studio::DeviceRecord* record = studio::devices().find(id);
-  studio_ui::setRoundPageTitle(
-      titleLabel, record != nullptr ? record->displayName : "");
+  lv_label_set_text(titleLabel,
+                    record != nullptr ? record->displayName : "");
   visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) {
     instanceId = studio::kInvalidInstanceId;

@@ -683,10 +683,10 @@ void refreshList() {
 void refreshRun() {
   const studio::SceneRecord* record = studio::scenes().find(currentScene);
   if (record == nullptr) {
-    studio_ui::setRoundPageTitle(runTitle, "Missing");
+    lv_label_set_text(runTitle, "Missing");
     return;
   }
-  studio_ui::setRoundPageTitle(runTitle, record->name);
+  lv_label_set_text(runTitle, record->name);
   const studio::SceneProgress& progress = studio::scenes().progress();
   const bool forScene = progress.sceneId == currentScene;
   const bool targetsReady = allTargetsReady(*record);
@@ -881,8 +881,7 @@ void refreshEdit() {
   if (record == nullptr) {
     return;
   }
-  studio_ui::setRoundPageTitle(editTitle,
-                               editingStart ? "Start steps" : "Stop steps");
+  lv_label_set_text(editTitle, editingStart ? "Start steps" : "Stop steps");
   lv_obj_clean(editBody);
   const studio::SceneStep* steps =
       editingStart ? record->startSteps : record->stopSteps;

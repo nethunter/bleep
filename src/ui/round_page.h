@@ -21,7 +21,6 @@ struct RoundPageHeaderOptions {
   const char* actionSymbol = nullptr;
   lv_event_cb_t onAction = nullptr;
   const lv_font_t* titleFont = nullptr;
-  lv_coord_t titleWidth = kRoundHeaderTitleWidth;
   uint32_t panelColor = 0x12161D;
   uint32_t textColor = 0xF3F4F6;
 };
@@ -41,7 +40,5 @@ lv_obj_t* createRoundPageHeaderButton(lv_obj_t* parent, const char* symbol,
 
 RoundPageHeader createRoundPageHeader(
     lv_obj_t* parent, const RoundPageHeaderOptions& options);
-
-void setRoundPageTitle(lv_obj_t* title, const char* text);
 
 }  // namespace studio_ui

@@ -152,15 +152,22 @@ Record values with the exact build environment and commit/worktree state.
 - Devices, Scenes, Settings, and Settings subpage headers now share Home's
   vertical anchors (`y=28` title, `y=24` navigation control). Their page
   content moves upward with the header rather than leaving the title detached.
+- Follow-up refactoring replaced the duplicated Home, Devices, Scenes,
+  sequence editor/runner, Settings, pairing, picker, recorder, and generic
+  device-control header construction with one `RoundPageHeader` layout. It
+  owns the shared title width, marquee, navigation/action anchors, and the
+  `y=58` common content start. Specialized Shark motion screens retain their
+  intentionally different control geometry.
 - The simulator fixture uses `HML Studio` for the sequence-name regression.
   The complete `ui_sim` capture traversal passed, including sequence run,
-  Devices, Scenes, Settings, and About visual review. Native tests passed
-  71/71.
+  Devices, Scenes, pickers, device controls, Settings, and About visual review.
+  The completed traversal retained 20,392 bytes of LVGL memory after its final
+  device refresh. Native tests passed 71/71.
 - All 13 firmware profiles built sequentially: `crowpanel_128`,
   `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, `tascam_x8`,
   `home_assistant`, `shark_nano_ii`, `amaran_light`, `zhiyun_x100`, `gopro`,
   `phone_camera`, `insta360`, and `dji_osmo`. Default `crowpanel_128` used
-  142,316 / 327,680 bytes static RAM and 1,897,862 / 3,145,728 bytes flash.
+  142,308 / 327,680 bytes static RAM and 1,897,212 / 3,145,728 bytes flash.
   It uploaded to `/dev/cu.usbserial-211240` with image hash verification and
   hard reset. Live panel title motion and alignment remain operator checks.
 

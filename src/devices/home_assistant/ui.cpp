@@ -136,8 +136,8 @@ void refresh() {
        record->homeAssistantDomain == studio::HomeAssistantDomain::InputBoolean);
   const bool toggleOnly = record != nullptr &&
       record->homeAssistantDomain == studio::HomeAssistantDomain::InputBoolean;
-  studio_ui::setRoundPageTitle(
-      title, record != nullptr ? record->displayName : "HA Entity");
+  lv_label_set_text(title,
+                    record != nullptr ? record->displayName : "HA Entity");
   lv_label_set_text(entity, record != nullptr ? record->homeAssistantEntityId : "");
   if (runtime.link == studio::LinkState::Connecting) {
     lv_label_set_text(status, "CONNECTING");

@@ -10,7 +10,6 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/round_page.h"
-#include "ui/title_marquee.h"
 
 namespace picker_shell {
 namespace {
@@ -825,22 +824,23 @@ void ensureOverlay() {
   lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(overlay, LV_OBJ_FLAG_HIDDEN);
 
-  closeButton = makeButton(overlay, LV_SYMBOL_CLOSE, onClose);
-  lv_obj_set_size(closeButton, 30, 30);
-  lv_obj_align(closeButton, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  backButton = makeButton(overlay, LV_SYMBOL_LEFT, onBack);
-  lv_obj_set_size(backButton, 30, 30);
-  lv_obj_align(backButton, LV_ALIGN_TOP_LEFT, 34, 24);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.backSymbol = LV_SYMBOL_CLOSE;
+  headerOptions.onBack = onClose;
+  headerOptions.alternateBackSymbol = LV_SYMBOL_LEFT;
+  headerOptions.onAlternateBack = onBack;
+  headerOptions.panelColor = kColPanel;
+  headerOptions.textColor = kColText;
+  const studio_ui::RoundPageHeader header =
+      studio_ui::createRoundPageHeader(overlay, headerOptions);
+  closeButton = header.back;
+  titleLabel = header.title;
+  backButton = header.alternateBack;
   lv_obj_add_flag(backButton, LV_OBJ_FLAG_HIDDEN);
-
-  titleLabel = lv_label_create(overlay);
-  studio_ui::configureTitleMarquee(titleLabel, 140, UI_FONT_16);
-  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 10, 30);
 
   body = lv_obj_create(overlay);
   lv_obj_set_size(body, 176, 158);
-  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 56);
+  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, studio_ui::kRoundPageContentY);
   lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(body, 0, 0);
   lv_obj_set_style_pad_all(body, 2, 0);

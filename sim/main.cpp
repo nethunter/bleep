@@ -839,21 +839,8 @@ int main() {
   if (!capture("22d_scenes_add_action")) {
     return 1;
   }
-  lv_mem_monitor_t pageMemory{};
-  lv_mem_monitor(&pageMemory);
-  std::fprintf(stderr,
-               "LVGL memory before color editor: %u bytes free, %u largest, "
-               "%u%% fragmented\n",
-               pageMemory.free_size, pageMemory.free_biggest_size,
-               pageMemory.frag_pct);
   picker_shell::simShowLightColor(picker_shell::Mode::SceneStep, pano60Id,
                                   false);
-  lv_mem_monitor(&pageMemory);
-  std::fprintf(stderr,
-               "LVGL memory after color editor: %u bytes free, %u largest, "
-               "%u%% fragmented\n",
-               pageMemory.free_size, pageMemory.free_biggest_size,
-               pageMemory.frag_pct);
   pump(200);
   if (!capture("22e_scenes_set_color_cct")) {
     return 1;

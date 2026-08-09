@@ -253,8 +253,7 @@ void apply(const View& view) {
   if (root == nullptr) {
     return;
   }
-  studio_ui::setRoundPageTitle(titleLabel,
-                               view.title != nullptr ? view.title : "");
+  lv_label_set_text(titleLabel, view.title != nullptr ? view.title : "");
   lv_label_set_text(statusLabel, view.status != nullptr ? view.status : "");
   lv_label_set_text(detailLabel, view.detail != nullptr ? view.detail : "");
   setPowerEnabled(view.powerEnabled);

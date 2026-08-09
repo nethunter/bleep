@@ -342,8 +342,8 @@ void refresh() {
   if (state == nullptr || state->phase != zhiyun_x100::X100State::Phase::Ready)
     return;
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  studio_ui::setRoundPageTitle(
-      title, record != nullptr ? record->displayName : "Zhiyun Light");
+  lv_label_set_text(title,
+                    record != nullptr ? record->displayName : "Zhiyun Light");
   const bool rgbSupported = zhiyun_x100::supportsRgb(state->model);
   if (rgbSupported) {
     lv_obj_clear_flag(modeRgb, LV_OBJ_FLAG_HIDDEN);

@@ -86,7 +86,9 @@ void BlePairingScreen::destroy() {
 }
 
 void BlePairingScreen::setTitle(const char* title) {
-  studio_ui::setRoundPageTitle(title_, title != nullptr ? title : "Bluetooth");
+  if (title_ != nullptr) {
+    lv_label_set_text(title_, title != nullptr ? title : "Bluetooth");
+  }
 }
 
 void BlePairingScreen::setStatus(const char* status, const char* detail,
