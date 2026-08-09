@@ -11,6 +11,8 @@ constexpr lv_coord_t kRoundHeaderControlY = 24;
 constexpr lv_coord_t kRoundHeaderTitleY = 28;
 constexpr lv_coord_t kRoundPageContentY = 58;
 constexpr lv_coord_t kRoundHeaderTitleWidth = 92;
+constexpr lv_coord_t kRoundMenuWidth = 168;
+constexpr lv_coord_t kRoundMenuHeight = 158;
 
 struct RoundPageHeaderOptions {
   const char* title = "";
@@ -21,7 +23,6 @@ struct RoundPageHeaderOptions {
   const char* actionSymbol = nullptr;
   lv_event_cb_t onAction = nullptr;
   const lv_font_t* titleFont = nullptr;
-  lv_coord_t titleWidth = kRoundHeaderTitleWidth;
   uint32_t panelColor = 0x12161D;
   uint32_t textColor = 0xF3F4F6;
 };
@@ -42,6 +43,7 @@ lv_obj_t* createRoundPageHeaderButton(lv_obj_t* parent, const char* symbol,
 RoundPageHeader createRoundPageHeader(
     lv_obj_t* parent, const RoundPageHeaderOptions& options);
 
-void setRoundPageTitle(lv_obj_t* title, const char* text);
+lv_obj_t* createRoundPageMenuBody(lv_obj_t* parent,
+                                  lv_coord_t rowGap = 4);
 
 }  // namespace studio_ui

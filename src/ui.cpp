@@ -1125,48 +1125,61 @@ void buildDeviceModal() {
     return;
   }
   deviceModal = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(deviceModal, 236, 236);
+  lv_obj_set_size(deviceModal, 240, 240);
   lv_obj_center(deviceModal);
-  lv_obj_set_style_radius(deviceModal, 118, 0);
+  lv_obj_set_style_radius(deviceModal, 120, 0);
   lv_obj_set_style_bg_color(deviceModal, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_color(deviceModal, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(deviceModal, 0, 0);
   lv_obj_set_style_text_color(deviceModal, lv_color_hex(kColText), 0);
   lv_obj_set_style_pad_all(deviceModal, 0, 0);
   lv_obj_clear_flag(deviceModal, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
 
-  deviceModalTitle = lv_label_create(deviceModal);
-  studio_ui::configureTitleMarquee(deviceModalTitle, 160, UI_FONT_16);
-  lv_obj_align(deviceModalTitle, LV_ALIGN_TOP_MID, 0, 22);
+  studio_ui::RoundPageHeaderOptions header;
+  header.backSymbol = LV_SYMBOL_CLOSE;
+  header.onBack = onCloseModal;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  deviceModalTitle =
+      studio_ui::createRoundPageHeader(deviceModal, header).title;
 
-  lv_obj_t* rename = makeButton(deviceModal, "Rename", onOpenRename);
-  lv_obj_set_size(rename, 124, 32);
-  lv_obj_align(rename, LV_ALIGN_TOP_MID, 0, 50);
+  lv_obj_t* body = studio_ui::createRoundPageMenuBody(deviceModal, 5);
 
-  lv_obj_t* enabledLabel = lv_label_create(deviceModal);
+  lv_obj_t* rename = makeButton(body, "Rename", onOpenRename);
+  lv_obj_set_size(rename, lv_pct(100), 32);
+
+  lv_obj_t* enabledRow = lv_obj_create(body);
+  lv_obj_set_size(enabledRow, lv_pct(100), 34);
+  lv_obj_set_style_bg_color(enabledRow, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_radius(enabledRow, 8, 0);
+  lv_obj_set_style_border_width(enabledRow, 0, 0);
+  lv_obj_set_style_pad_all(enabledRow, 0, 0);
+  lv_obj_clear_flag(enabledRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* enabledLabel = lv_label_create(enabledRow);
   lv_label_set_text(enabledLabel, "Enabled");
   lv_obj_set_style_text_font(enabledLabel, UI_FONT_14, 0);
-  lv_obj_align(enabledLabel, LV_ALIGN_TOP_LEFT, 42, 96);
-  enabledSwitch = lv_switch_create(deviceModal);
+  lv_obj_align(enabledLabel, LV_ALIGN_LEFT_MID, 12, 0);
+  enabledSwitch = lv_switch_create(enabledRow);
   lv_obj_set_size(enabledSwitch, 44, 24);
-  lv_obj_align(enabledSwitch, LV_ALIGN_TOP_RIGHT, -42, 96);
+  lv_obj_align(enabledSwitch, LV_ALIGN_RIGHT_MID, -10, 0);
   lv_obj_add_event_cb(enabledSwitch, onEnabledChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t* repair = makeButton(deviceModal, "Forget", onRepair);
-  lv_obj_set_size(repair, 94, 30);
-  lv_obj_align(repair, LV_ALIGN_TOP_MID, -50, 132);
+  lv_obj_t* connectionRow = lv_obj_create(body);
+  lv_obj_set_size(connectionRow, lv_pct(100), 32);
+  lv_obj_set_style_bg_opa(connectionRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connectionRow, 0, 0);
+  lv_obj_set_style_pad_all(connectionRow, 0, 0);
+  lv_obj_clear_flag(connectionRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* repair = makeButton(connectionRow, "Forget", onRepair);
+  lv_obj_set_size(repair, 80, 32);
+  lv_obj_align(repair, LV_ALIGN_LEFT_MID, 0, 0);
 
-  disconnectButton = makeButton(deviceModal, "Disconnect", onDisconnect);
-  lv_obj_set_size(disconnectButton, 94, 30);
-  lv_obj_align(disconnectButton, LV_ALIGN_TOP_MID, 50, 132);
+  disconnectButton = makeButton(connectionRow, "Disconnect", onDisconnect);
+  lv_obj_set_size(disconnectButton, 80, 32);
+  lv_obj_align(disconnectButton, LV_ALIGN_RIGHT_MID, 0, 0);
 
-  removeButton = makeButton(deviceModal, "Remove", onRemove, kColDanger);
-  lv_obj_set_size(removeButton, 66, 30);
-  // Tighter pair, raised so outer corners clear the round bezel.
-  lv_obj_align(removeButton, LV_ALIGN_BOTTOM_MID, -37, -42);
-  lv_obj_t* close = makeButton(deviceModal, "Close", onCloseModal, kColAccent);
-  lv_obj_set_size(close, 66, 30);
-  lv_obj_align(close, LV_ALIGN_BOTTOM_MID, 37, -42);
+  removeButton = makeButton(body, "Remove", onRemove, kColDanger);
+  lv_obj_set_size(removeButton, lv_pct(100), 32);
 }
 
 void buildRenameOverlay() {

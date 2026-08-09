@@ -90,7 +90,7 @@ void showForState(const amaran_light::AmaranLightState* s){
   const char* detail=scanning?"Factory-reset light nearby":failed?"Check light and try again":"Keep the light powered on";
   pairingScreen.setStatus(phase(s),detail,!failed,scanning||failed,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());
 }
-void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));studio_ui::setRoundPageTitle(title,r?r->displayName:"Amaran");lv_label_set_text(status,phase(s));if(!s)return;
+void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Amaran");lv_label_set_text(status,phase(s));if(!s)return;
   if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=hsv.s;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==amaran_light::AmaranLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
   lv_obj_set_style_bg_color(power,lv_color_hex(s->on?kDanger:kAccent),0);
 }
