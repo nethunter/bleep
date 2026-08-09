@@ -3270,3 +3270,21 @@ Record values with the exact build environment and commit/worktree state.
   / 3,145,728 bytes flash (59.1%). Upload to `/dev/cu.usbserial-211240`
   completed with image hash verification and hard reset. Physical-panel text
   appearance remains operator-verifiable.
+
+### 2026-08-08: Canon Smart multi-instance notification routing
+
+- Diagnosed Sequence 4 failing to prepare its first of two Canon Smart targets.
+  Although the driver allocates an independent client/session per active camera,
+  all Canon characteristic callbacks still forwarded through one global client
+  pointer. Activating the second camera replaced that pointer, so the first
+  camera's wake and shooting notifications entered the second camera's queue.
+- Replaced the singleton callback destination with a bounded active-client
+  registry. Each pairing, mode, and shooting notification now routes to the
+  client that owns the originating `NimBLERemoteCharacteristic`; activation
+  fails cleanly if the registry cannot accept another client.
+- Native passed 67/67. `crowpanel_128` built with 142,332 / 327,680 bytes static
+  RAM (43.4%) and 1,902,838 / 3,145,728 bytes flash (60.5%); `canon_ble` built
+  with 141,084 bytes static RAM (43.1%) and 1,758,864 bytes flash (55.9%). The
+  full image uploaded to `/dev/cu.usbserial-211240` with hash verification and
+  hard reset. A live two-Canon Sequence 4 prepare and Start/Stop run remains the
+  required peripheral verification.

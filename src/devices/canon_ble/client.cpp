@@ -41,33 +41,66 @@ void buildStableControllerId(uint8_t id[16]) {
   }
 }
 
-CanonBleClient* gNotifyClient = nullptr;
+constexpr size_t kMaxNotifyClients = 3;
+CanonBleClient* gNotifyClients[kMaxNotifyClients] = {};
 
-void pairingNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
-                             size_t length, bool) {
-  if (gNotifyClient != nullptr) {
-    gNotifyClient->onPairingNotification(data, length);
+bool registerNotifyClient(CanonBleClient* client) {
+  for (CanonBleClient*& slot : gNotifyClients) {
+    if (slot == client) return true;
+    if (slot == nullptr) {
+      slot = client;
+      return true;
+    }
+  }
+  return false;
+}
+
+void unregisterNotifyClient(CanonBleClient* client) {
+  for (CanonBleClient*& slot : gNotifyClients) {
+    if (slot == client) slot = nullptr;
   }
 }
 
-void pairingInfoNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
-                                 size_t length, bool) {
-  if (gNotifyClient != nullptr) {
-    gNotifyClient->onPairingInfoNotification(data, length);
+CanonBleClient* notifyClientFor(
+    NimBLERemoteCharacteristic* characteristic) {
+  for (CanonBleClient* client : gNotifyClients) {
+    if (client != nullptr &&
+        client->ownsNotifyCharacteristic(characteristic)) {
+      return client;
+    }
+  }
+  return nullptr;
+}
+
+void pairingNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
+                             uint8_t* data, size_t length, bool) {
+  CanonBleClient* client = notifyClientFor(characteristic);
+  if (client != nullptr) {
+    client->onPairingNotification(data, length);
   }
 }
 
-void modeNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
-                          size_t length, bool) {
-  if (gNotifyClient != nullptr) {
-    gNotifyClient->onModeNotification(data, length);
+void pairingInfoNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
+                                 uint8_t* data, size_t length, bool) {
+  CanonBleClient* client = notifyClientFor(characteristic);
+  if (client != nullptr) {
+    client->onPairingInfoNotification(data, length);
   }
 }
 
-void shootingNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
-                              size_t length, bool) {
-  if (gNotifyClient != nullptr) {
-    gNotifyClient->onShootingNotification(data, length);
+void modeNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
+                          uint8_t* data, size_t length, bool) {
+  CanonBleClient* client = notifyClientFor(characteristic);
+  if (client != nullptr) {
+    client->onModeNotification(data, length);
+  }
+}
+
+void shootingNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
+                              uint8_t* data, size_t length, bool) {
+  CanonBleClient* client = notifyClientFor(characteristic);
+  if (client != nullptr) {
+    client->onShootingNotification(data, length);
   }
 }
 
@@ -90,9 +123,13 @@ bool CanonBleClient::begin() {
   policy.diagnosticTag = "canon_smart";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
-  if (initialized_) {
-    gNotifyClient = this;
+  if (initialized_ && registerNotifyClient(this)) {
     return true;
+  }
+  if (initialized_) {
+    studio::ble::bleCentral().release(linkHandle_);
+    linkHandle_ = studio::ble::kInvalidLinkHandle;
+    initialized_ = false;
   }
   vQueueDelete(static_cast<QueueHandle_t>(notifyQueue_));
   notifyQueue_ = nullptr;
@@ -140,9 +177,7 @@ void CanonBleClient::deactivate() {
   linkHandle_ = studio::ble::kInvalidLinkHandle;
   initialized_ = false;
   client_ = nullptr;
-  if (gNotifyClient == this) {
-    gNotifyClient = nullptr;
-  }
+  unregisterNotifyClient(this);
   startRequested_ = false;
   stopRequested_ = false;
   powerOffRequested_ = false;
