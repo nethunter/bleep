@@ -1028,6 +1028,12 @@ int main() {
     return 1;
   }
   scene_ui::simDeleteCurrentScene();
+  if (studio::scenes().find(sceneId) == nullptr) {
+    std::fprintf(stderr, "Delete confirmation removed sequence on first tap\n");
+    return 1;
+  }
+  if (!capture("27c_scenes_delete_confirm")) return 1;
+  scene_ui::simDeleteCurrentScene();
   if (studio::scenes().find(sceneId) != nullptr ||
       studio::scenes().holdsLinks() ||
       studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||
@@ -1167,8 +1173,17 @@ int main() {
   }
   ui::showHome();
 
-  if (studio::devices().remove(canonTriggerId) != studio::RegistryStatus::Ok) {
-    std::fprintf(stderr, "Failed to remove a device in simulator regression\n");
+  ui::showDevices();
+  ui::simShowManage(canonTriggerId);
+  ui::simRequestManagedRemove();
+  if (studio::devices().find(canonTriggerId) == nullptr) {
+    std::fprintf(stderr, "Remove confirmation deleted device on first tap\n");
+    return 1;
+  }
+  if (!capture("32_device_remove_confirm")) return 1;
+  ui::simRequestManagedRemove();
+  if (studio::devices().find(canonTriggerId) != nullptr) {
+    std::fprintf(stderr, "Confirmed device removal did not delete device\n");
     return 1;
   }
   ui::showDevices();

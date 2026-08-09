@@ -88,7 +88,7 @@ Follow these rules while building:
 ## Build, flash, and verify (do this after finishing a task)
 
 After completing any code change, always compile the full Montserrat firmware
-profile (`crowpanel_128`). Do not build the Roboto or driver-specific firmware
+profile (`bleep`). Do not build the Roboto or driver-specific firmware
 profiles locally; GitHub Actions owns verification of those variants. Treat a
 clean full-profile build as the minimum bar.
 
@@ -103,7 +103,7 @@ driver-catalog, command-routing, or scene logic changes:
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
 ```
 
-Locally build only `crowpanel_128`, the full Montserrat profile. Rely on GitHub
+Locally build only `bleep`, the full Montserrat profile. Rely on GitHub
 Actions for alternate font and isolated driver profiles, including when shared
 configuration, fonts, drivers, or transports change.
 
@@ -111,10 +111,10 @@ Use the workspace-local PlatformIO (preferred, matches `README.md`):
 
 ```sh
 # Compile
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep
 
 # Compile + upload to the board
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128 -t upload
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep -t upload
 
 # Serial monitor (115200)
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio device monitor

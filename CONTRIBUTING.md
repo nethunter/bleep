@@ -27,7 +27,7 @@ decision, propose a new ADR instead of rewriting the old decision silently.
 python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep
 ```
 
 Use two-space indentation and C++17. Match the surrounding file. Keep comments
@@ -88,7 +88,7 @@ command-routing, BLE scheduling, or scene logic changes:
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
 ```
 
-Build every affected firmware profile. Build `crowpanel_128` at minimum. UI
+Build every affected firmware profile. Build `bleep` at minimum. UI
 changes should also build and run `ui_sim`; inspect its screenshots for clipped
 text and unsafe placement near the round edge.
 

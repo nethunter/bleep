@@ -27,8 +27,8 @@ jobs:
       fail-fast: false
       matrix:
         environment:
-          - crowpanel_128
-          - crowpanel_128_roboto
+          - bleep
+          - bleep_roboto
           - canon_ble
           - canon_trigger
           - tascam_x8
@@ -48,3 +48,61 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements.txt
       - run: python -m platformio run -e ${{ matrix.environment }}
+      - name: Stage full firmware for release
+        if: matrix.environment == 'bleep'
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-firmware
+          path: .pio/build/bleep/firmware.bin
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-latest-firmware:
+    name: publish latest full firmware
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - native-tests
+      - firmware-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: latest-firmware-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-firmware
+          path: release
+      - name: Prepare release assets
+        run: |
+          mv release/firmware.bin release/bleep-latest.bin
+          cd release
+          sha256sum bleep-latest.bin > bleep-latest.sha256
+      - name: Publish rolling development release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=latest
+          title="Latest development firmware"
+          notes="Automated development build of the full bleep profile from commit ${GITHUB_SHA}. This prerelease has passed CI, but it is not a substitute for the physical hardware release gates. The application image flashes at offset 0x10000 and preserves the existing NVS configuration partition."
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh api \
+              --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
+              -f sha="$GITHUB_SHA" \
+              -F force=true
+            gh release edit "$tag" \
+              --title "$title" \
+              --notes "$notes" \
+              --prerelease
+          else
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "$title" \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+          gh release upload "$tag" release/* --clobber

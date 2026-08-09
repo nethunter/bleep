@@ -111,6 +111,7 @@ char portalQrData[96] = "";
 
 lv_obj_t* deviceModal = nullptr;
 lv_obj_t* deviceModalTitle = nullptr;
+lv_obj_t* deviceModalBody = nullptr;
 lv_obj_t* enabledSwitch = nullptr;
 lv_obj_t* disconnectButton = nullptr;
 lv_obj_t* removeButton = nullptr;
@@ -225,6 +226,7 @@ void closeDeviceModal() {
   managedInstance = studio::kInvalidInstanceId;
   destroyOverlay(deviceModal);
   deviceModalTitle = nullptr;
+  deviceModalBody = nullptr;
   enabledSwitch = nullptr;
   disconnectButton = nullptr;
   removeButton = nullptr;
@@ -316,6 +318,7 @@ void buildDeviceModal();
 void buildRenameOverlay();
 void onAddDevice(lv_event_t*);
 void refreshDevices();
+void refreshDeviceModal();
 
 void onDevicePagePrevious(lv_event_t*) {
   if (devicePage > 0) {
@@ -342,21 +345,9 @@ void onOpenManage(lv_event_t* event) {
   if (deviceModal == nullptr) {
     buildDeviceModal();
   }
-  lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
   disconnectArmed = false;
-  lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
-  lv_label_set_text(lv_obj_get_child(disconnectButton, 0), "Disconnect");
-  if (studio::devices().isActive(managedInstance)) {
-    lv_obj_clear_state(disconnectButton, LV_STATE_DISABLED);
-  } else {
-    lv_obj_add_state(disconnectButton, LV_STATE_DISABLED);
-  }
-  if (record->enabled) {
-    lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_clear_state(enabledSwitch, LV_STATE_CHECKED);
-  }
+  refreshDeviceModal();
   lv_obj_clear_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -555,8 +546,7 @@ void onDisconnect(lv_event_t*) {
 void onRemove(lv_event_t*) {
   if (!removeArmed) {
     removeArmed = true;
-    lv_label_set_text(deviceModalTitle, "Remove device?");
-    lv_label_set_text(lv_obj_get_child(removeButton, 0), "Confirm");
+    refreshDeviceModal();
     return;
   }
   if (managedInstance != studio::kInvalidInstanceId) {
@@ -564,6 +554,11 @@ void onRemove(lv_event_t*) {
   }
   closeDeviceModal();
   refreshDevices();
+}
+
+void onCancelRemove(lv_event_t*) {
+  removeArmed = false;
+  refreshDeviceModal();
 }
 
 const char** renamePageMap() {
@@ -1143,12 +1138,46 @@ void buildDeviceModal() {
   deviceModalTitle =
       studio_ui::createRoundPageHeader(deviceModal, header).title;
 
-  lv_obj_t* body = studio_ui::createRoundPageMenuBody(deviceModal, 5);
+  deviceModalBody = studio_ui::createRoundPageMenuBody(deviceModal, 5);
+  refreshDeviceModal();
+}
 
-  lv_obj_t* rename = makeButton(body, "Rename", onOpenRename);
+void refreshDeviceModal() {
+  if (deviceModalBody == nullptr || deviceModalTitle == nullptr) return;
+  lv_obj_clean(deviceModalBody);
+  enabledSwitch = nullptr;
+  disconnectButton = nullptr;
+  removeButton = nullptr;
+
+  const studio::DeviceRecord* record = studio::devices().find(managedInstance);
+  if (record == nullptr) return;
+
+  if (removeArmed) {
+    lv_label_set_text(deviceModalTitle, "Remove?");
+    lv_obj_t* warning = lv_label_create(deviceModalBody);
+    lv_obj_set_width(warning, lv_pct(100));
+    lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(warning, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(warning, UI_FONT_14, 0);
+    lv_obj_set_style_text_color(warning, lv_color_hex(kColMuted), 0);
+    char message[studio::kDeviceNameCapacity + 40];
+    std::snprintf(message, sizeof(message), "Remove %s?\nThis cannot be undone.",
+                  record->displayName);
+    lv_label_set_text(warning, message);
+    lv_obj_t* cancel = makeButton(deviceModalBody, "Cancel", onCancelRemove);
+    lv_obj_set_size(cancel, lv_pct(100), 32);
+    removeButton =
+        makeButton(deviceModalBody, "Remove device", onRemove, kColDanger);
+    lv_obj_set_size(removeButton, lv_pct(100), 32);
+    return;
+  }
+
+  lv_label_set_text(deviceModalTitle, record->displayName);
+
+  lv_obj_t* rename = makeButton(deviceModalBody, "Rename", onOpenRename);
   lv_obj_set_size(rename, lv_pct(100), 32);
 
-  lv_obj_t* enabledRow = lv_obj_create(body);
+  lv_obj_t* enabledRow = lv_obj_create(deviceModalBody);
   lv_obj_set_size(enabledRow, lv_pct(100), 34);
   lv_obj_set_style_bg_color(enabledRow, lv_color_hex(kColPanel), 0);
   lv_obj_set_style_radius(enabledRow, 8, 0);
@@ -1164,7 +1193,7 @@ void buildDeviceModal() {
   lv_obj_align(enabledSwitch, LV_ALIGN_RIGHT_MID, -10, 0);
   lv_obj_add_event_cb(enabledSwitch, onEnabledChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t* connectionRow = lv_obj_create(body);
+  lv_obj_t* connectionRow = lv_obj_create(deviceModalBody);
   lv_obj_set_size(connectionRow, lv_pct(100), 32);
   lv_obj_set_style_bg_opa(connectionRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(connectionRow, 0, 0);
@@ -1178,8 +1207,19 @@ void buildDeviceModal() {
   lv_obj_set_size(disconnectButton, 80, 32);
   lv_obj_align(disconnectButton, LV_ALIGN_RIGHT_MID, 0, 0);
 
-  removeButton = makeButton(body, "Remove", onRemove, kColDanger);
+  removeButton = makeButton(deviceModalBody, "Remove", onRemove, kColDanger);
   lv_obj_set_size(removeButton, lv_pct(100), 32);
+
+  if (studio::devices().isActive(managedInstance)) {
+    lv_obj_clear_state(disconnectButton, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(disconnectButton, LV_STATE_DISABLED);
+  }
+  if (record->enabled) {
+    lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(enabledSwitch, LV_STATE_CHECKED);
+  }
 }
 
 void buildRenameOverlay() {
@@ -1968,21 +2008,9 @@ void simShowManage(studio::InstanceId instanceId) {
   if (deviceModal == nullptr) {
     buildDeviceModal();
   }
-  lv_label_set_text(deviceModalTitle, record->displayName);
   removeArmed = false;
   disconnectArmed = false;
-  lv_label_set_text(lv_obj_get_child(removeButton, 0), "Remove");
-  lv_label_set_text(lv_obj_get_child(disconnectButton, 0), "Disconnect");
-  if (studio::devices().isActive(managedInstance)) {
-    lv_obj_clear_state(disconnectButton, LV_STATE_DISABLED);
-  } else {
-    lv_obj_add_state(disconnectButton, LV_STATE_DISABLED);
-  }
-  if (record->enabled) {
-    lv_obj_add_state(enabledSwitch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_clear_state(enabledSwitch, LV_STATE_CHECKED);
-  }
+  refreshDeviceModal();
   lv_obj_clear_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1997,6 +2025,7 @@ void simShowRename(studio::InstanceId instanceId) {
 }
 
 void simRequestManagedDisconnect() { onDisconnect(nullptr); }
+void simRequestManagedRemove() { onRemove(nullptr); }
 
 void simShowWifiSettings() { showSettingsView(SettingsView::Wifi); }
 void simShowAbout() { showSettingsView(SettingsView::About); }

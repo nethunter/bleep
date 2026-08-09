@@ -69,6 +69,8 @@ principles:
   titles stay on one line and scroll horizontally instead of covering content.
   Common pages and edit overlays share the same Home-aligned title, navigation
   controls, and content start rather than maintaining separate screen geometry.
+  Removing a saved device or deleting a sequence always opens a named,
+  cancellable confirmation before changing stored configuration.
 - A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
   haptic enable/disable, a first-position scrollable About/build page (including
   commit date), sanitized runtime diagnostics, and a normal Factory Reset menu
@@ -224,8 +226,8 @@ python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
 
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128 -t upload
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep -t upload
 ```
 
 The main Montserrat profile compiles every current driver and is the standard
@@ -235,6 +237,13 @@ plus the isolated Shark, Canon Smart, Canon Trigger, Tascam X8, Home Assistant,
 Aputure/Amaran, Zhiyun, GoPro, Phone Camera, Insta360, and DJI Osmo profiles.
 Build an isolated profile locally only when diagnosing a profile-specific
 failure.
+
+After native tests and all firmware profiles pass on a push to `main`, GitHub
+Actions also updates the **Latest development firmware** prerelease with the
+full Montserrat `bleep` application image and its SHA-256 checksum. The
+image is a development snapshot, flashes at offset `0x10000`, and preserves the
+panel's existing NVS configuration partition; it has not necessarily passed
+the physical hardware release gates.
 
 To render the UI on a desktop, install ImageMagick and run:
 

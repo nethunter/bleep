@@ -2,7 +2,7 @@
 # Regenerate the embedded Roboto LVGL fonts in src/fonts/.
 #
 # These are an optional alternate UI font family, selected at compile time with
-# -D UI_FONT_ROBOTO (see the crowpanel_128_roboto env in platformio.ini). The
+# -D UI_FONT_ROBOTO (see the bleep_roboto env in platformio.ini). The
 # generated .c files are committed; only re-run this when changing sizes/range.
 #
 # Requires Node (for npx). Downloads the Roboto TTF if it is not already present.

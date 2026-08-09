@@ -142,6 +142,24 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Rolling GitHub development firmware release
+
+- Date: 2026-08-09.
+- The canonical full Montserrat PlatformIO environment is now named `bleep`
+  (`bleep_roboto` for the alternate-font full profile), replacing the
+  board-centric `crowpanel_128` names. The underlying CrowPanel 1.28 hardware
+  target and display variant are unchanged.
+- On successful pushes to `main`, CI now waits for native tests and the full
+  13-profile firmware matrix before updating a rolling **Latest development
+  firmware** prerelease. Pull requests remain build-only.
+- The release contains the canonical full Montserrat `bleep`
+  application image under a stable filename plus its SHA-256 checksum. Release
+  notes identify the source commit, the required `0x10000` application offset,
+  NVS preservation, and the outstanding physical hardware gates.
+- The renamed full `bleep` profile built successfully with 142,316 / 327,680
+  bytes static RAM and 1,903,272 / 3,145,728 bytes flash. No flash was run for
+  this naming-only configuration change.
+
 ### GitHub Actions firmware-variant matrix
 
 - Date: 2026-08-09.
@@ -196,7 +214,11 @@ Record values with the exact build environment and commit/worktree state.
   and Delete the same row geometry.
 - The complete `ui_sim` traversal passed, including the generic and active-
   recorder Device Edit states and Sequence Settings before and after a run.
-  Live touch targets and marquee motion remain operator checks.
+  Native tests passed 71/71. All 13 firmware profiles built sequentially;
+  default `crowpanel_128` used 142,308 / 327,680 bytes static RAM and
+  1,897,326 / 3,145,728 bytes flash. The image uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and hard reset. Live touch
+  targets and marquee motion remain operator checks.
 - After the feature branch was rebased and merged into `main` with `--no-ff`,
   the complete simulator traversal passed again. The full Montserrat
   `crowpanel_128` profile built with 142,308 / 327,680 bytes static RAM and

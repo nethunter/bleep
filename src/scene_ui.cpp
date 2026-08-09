@@ -51,6 +51,9 @@ lv_obj_t* stopButton = nullptr;
 lv_obj_t* prepareCancelButton = nullptr;
 lv_obj_t* settingsButton = nullptr;
 lv_obj_t* settingsOverlay = nullptr;
+lv_obj_t* settingsTitle = nullptr;
+lv_obj_t* settingsBody = nullptr;
+bool deleteSceneArmed = false;
 lv_obj_t* editBody = nullptr;
 lv_obj_t* editTitle = nullptr;
 
@@ -394,6 +397,8 @@ bool canDeleteScene() {
            progress.runningStart);
 }
 
+void refreshSettingsBody();
+
 void onEditStart(lv_event_t*) {
   if (!canMutateScene()) {
     return;
@@ -413,6 +418,11 @@ void onEditStop(lv_event_t*) {
 
 void onDeleteScene(lv_event_t*) {
   if (!canDeleteScene()) {
+    return;
+  }
+  if (!deleteSceneArmed) {
+    deleteSceneArmed = true;
+    refreshSettingsBody();
     return;
   }
   closeSettings();
@@ -452,9 +462,17 @@ void closeSettings() {
     lv_obj_del(settingsOverlay);
     settingsOverlay = nullptr;
   }
+  settingsTitle = nullptr;
+  settingsBody = nullptr;
+  deleteSceneArmed = false;
 }
 
 void onCloseSettings(lv_event_t*) { closeSettings(); }
+
+void onCancelDeleteScene(lv_event_t*) {
+  deleteSceneArmed = false;
+  refreshSettingsBody();
+}
 
 void buildSettingsOverlay() {
   closeSettings();
@@ -474,17 +492,48 @@ void buildSettingsOverlay() {
   header.onBack = onCloseSettings;
   header.panelColor = kColPanel;
   header.textColor = kColText;
-  studio_ui::createRoundPageHeader(settingsOverlay, header);
+  settingsTitle =
+      studio_ui::createRoundPageHeader(settingsOverlay, header).title;
 
-  lv_obj_t* body = studio_ui::createRoundPageMenuBody(settingsOverlay);
+  settingsBody = studio_ui::createRoundPageMenuBody(settingsOverlay);
+  refreshSettingsBody();
+}
 
-  lv_obj_t* rename = makeButton(body, "Rename", onRenameScene);
+void refreshSettingsBody() {
+  if (settingsBody == nullptr || settingsTitle == nullptr) return;
+  lv_obj_clean(settingsBody);
+
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
+  if (deleteSceneArmed) {
+    lv_label_set_text(settingsTitle, "Delete?");
+    lv_obj_t* warning = lv_label_create(settingsBody);
+    lv_obj_set_width(warning, lv_pct(100));
+    lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(warning, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(warning, UI_FONT_14, 0);
+    lv_obj_set_style_text_color(warning, lv_color_hex(kColMuted), 0);
+    char message[studio::kDeviceNameCapacity + 40];
+    std::snprintf(message, sizeof(message), "Delete %s?\nThis cannot be undone.",
+                  record != nullptr ? record->name : "this sequence");
+    lv_label_set_text(warning, message);
+    lv_obj_t* cancel =
+        makeButton(settingsBody, "Cancel", onCancelDeleteScene);
+    lv_obj_set_size(cancel, lv_pct(100), 32);
+    lv_obj_t* confirm =
+        makeButton(settingsBody, "Delete sequence", onDeleteScene, kColDanger);
+    lv_obj_set_size(confirm, lv_pct(100), 32);
+    return;
+  }
+
+  lv_label_set_text(settingsTitle, record != nullptr ? record->name : "Sequence");
+
+  lv_obj_t* rename = makeButton(settingsBody, "Rename", onRenameScene);
   lv_obj_set_size(rename, lv_pct(100), 32);
-  lv_obj_t* editStart = makeButton(body, "Edit Start", onEditStart);
+  lv_obj_t* editStart = makeButton(settingsBody, "Edit Start", onEditStart);
   lv_obj_set_size(editStart, lv_pct(100), 32);
-  lv_obj_t* editStop = makeButton(body, "Edit Stop", onEditStop);
+  lv_obj_t* editStop = makeButton(settingsBody, "Edit Stop", onEditStop);
   lv_obj_set_size(editStop, lv_pct(100), 32);
-  lv_obj_t* del = makeButton(body, "Delete", onDeleteScene, kColDanger);
+  lv_obj_t* del = makeButton(settingsBody, "Delete", onDeleteScene, kColDanger);
   lv_obj_set_size(del, lv_pct(100), 32);
   if (!canDeleteScene()) {
     lv_obj_add_state(del, LV_STATE_DISABLED);

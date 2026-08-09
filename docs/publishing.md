@@ -33,8 +33,10 @@ that must be made by the future GitHub owner.
   hosting plan makes them available.
 - [ ] Confirm private vulnerability reporting is enabled and the instructions
   in `SECURITY.md` match the repository's Security interface.
-- [ ] Add a first release only after a tagged firmware build and physical smoke
-  test pass.
+- [ ] Add a first production release only after a tagged firmware build and
+  physical smoke test pass. The rolling **Latest development firmware**
+  prerelease is an automated CI snapshot and must remain clearly labeled as
+  hardware-unverified.
 
 ## License
 

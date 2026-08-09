@@ -39,6 +39,7 @@ bool simAddDeviceAtListEnd();
 void simShowAddDevice();
 void simShowManage(studio::InstanceId instanceId);
 void simRequestManagedDisconnect();
+void simRequestManagedRemove();
 void simShowRename(studio::InstanceId instanceId);
 void simShowWifiSettings();
 void simShowAbout();
