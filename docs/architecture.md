@@ -285,6 +285,12 @@ state:
 - `input_boolean`: explicit On/Off commands with one context-sensitive entity
   button that sends the opposite of the last confirmed state.
 
+Light drivers additionally publish a normalized `LightControlState` containing
+supported modes and limits, current or optimistic values, power, pending/error
+state, and confirmation quality. A single round-panel shell consumes that
+state for Aputure Light, Zhiyun Light, and Home Assistant light instances and
+hides unsupported rows without changing navigation or command debounce.
+
 Home Assistant is the first dynamic-profile driver: each persistent instance
 derives its device type and capabilities from its stored entity domain rather
 than the driver's catalog row. Device pickers, scene validation, and command

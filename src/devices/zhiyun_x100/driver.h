@@ -17,6 +17,8 @@ class ZhiyunLightDriver : public DeviceDriver {
   CommandStatus dispatch(const DeviceCommand& command) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
+  bool lightControlState(InstanceId instanceId,
+                         LightControlState& state) const override;
   void cancelOnboarding(const DeviceRecord& record) override;
   void preferSkipPeer(InstanceId instanceId,
                       const char* bleAddress) override;
@@ -33,6 +35,9 @@ class ZhiyunLightDriver : public DeviceDriver {
     bool gatewayAttached = false;
     uint32_t gatewayGeneration = 0xffffffffu;
     uint32_t gatewayAttachRetryAt = 0;
+    enum class CompoundStage : uint8_t { None, Look, Power };
+    CompoundStage compoundStage = CompoundStage::None;
+    bool compoundFailed = false;
   };
 
   Session* find(InstanceId instanceId);

@@ -8,6 +8,7 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/round_page.h"
+#include "ui/light_control.h"
 #include "../../ui.h"
 
 namespace home_assistant_ui {
@@ -59,6 +60,7 @@ void onBack(lv_event_t*) {
   hide();
   ui::showDeviceParent();
 }
+void onSharedBack() { onBack(nullptr); }
 void onPrimary(lv_event_t*) {
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
   if (record == nullptr) return;
@@ -198,16 +200,25 @@ void show(studio::InstanceId id) {
   instanceId = id;
   visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) { instanceId = studio::kInvalidInstanceId; return; }
+  const studio::DeviceRecord* record = studio::devices().find(id);
+  if (record != nullptr &&
+      record->homeAssistantDomain == studio::HomeAssistantDomain::Light) {
+    light_control_ui::show(id, onSharedBack);
+    ui::releaseInactiveScreens();
+    return;
+  }
   refresh();
   lv_scr_load(screen);
   ui::releaseInactiveScreens();
 }
 void hide() {
+  light_control_ui::hide();
   if (visible) studio::devices().release(instanceId, studio::ConnectionOwner::Foreground);
   visible = false;
   instanceId = studio::kInvalidInstanceId;
 }
 void release() {
+  if (!visible) light_control_ui::release();
   if (!visible && screen != nullptr) {
     lv_obj_del(screen);
     screen = title = status = entity = primary = secondary = nullptr;
@@ -215,10 +226,11 @@ void release() {
 }
 bool active() { return visible; }
 void tick() {
+  if (light_control_ui::active()) { light_control_ui::tick(); return; }
   const uint32_t now = millis();
   if (now - lastRefresh >= 200) { lastRefresh = now; refresh(); }
 }
-void handleShortPress() { onPrimary(nullptr); }
-void handleLongPress() { onBack(nullptr); }
+void handleShortPress() { if (light_control_ui::active()) light_control_ui::handleShortPress(); else onPrimary(nullptr); }
+void handleLongPress() { if (light_control_ui::active()) light_control_ui::handleLongPress(); else onBack(nullptr); }
 
 }  // namespace home_assistant_ui

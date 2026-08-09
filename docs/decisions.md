@@ -691,8 +691,10 @@ the replacement.
   a temporary exclusive operation and is not a second retained device slot.
 - Routing: Persist routing independently from product identity. Each
   Sidus-family node receives a deterministic vendor-model control group derived
-  from its provisioned address; common group `0xC000` owns mesh-wide physical
-  power. Each Zhiyun node receives a persisted ordinal `0xFEE9` member selector.
+  from its provisioned address. ADR-039 supersedes this ADR's common-group
+  physical-power behavior: ordinary fixture commands use only the member's
+  control group and `0xC000` is reserved for a future explicit group action.
+  Each Zhiyun node receives a persisted ordinal `0xFEE9` member selector.
   Mesh-store schema 2 reads schema 1, assigns existing Zhiyun selectors in
   saved-node order, and preserves keys and sequence high-water state.
 - Evidence: In one panel-owned mesh, MC Pro `0x0002` vendor model
@@ -932,9 +934,38 @@ the replacement.
   existing on-device Factory Reset before flashing over an earlier development
   build; firmware is not erased by that reset and no automatic erase occurs.
 - Shared transport: Zhiyun stays a separate logical driver and retains its
-  model-specific UI, commands, confirmed reply semantics, and routing selector.
-  It continues sharing the one panel-owned mesh repository and retained proxy
-  client with Aputure Light.
+  model-specific commands, confirmed reply semantics, and routing selector.
+  ADR-039 moves its panel controls into the shared capability-driven light
+  shell. It continues sharing the one panel-owned mesh repository and retained
+  proxy client with Aputure Light.
+
+## ADR-039: Light controls and sequence looks are capability-driven and per target
+
+- Status: Experimental; implementation and host gates passed, full fixture
+  isolation/coexistence/soak matrix open.
+- Routing: Every ordinary Aputure Light On, Off, refresh, CCT, tint,
+  brightness, and RGB operation targets the fixture's persisted vendor-model
+  control group. `0xC000` remains provisioned for transport compatibility but
+  is reserved for a future explicit mesh/group action. Source-addressed status
+  updates only the matching logical session. Zhiyun retains its per-member
+  selector and selector/sequence-correlated confirmation while sharing the
+  same retained proxy connection.
+- State and UI: Drivers publish normalized light modes, limits, values, power,
+  pending/error state, and confirmation quality through `LightControlState`.
+  One shared round-panel shell renders only the supported controls: full
+  Aputure CCT/tint/RGB, X100 CCT, X60RGB CCT/RGB, or HA light power only.
+- Scenes: append `SetLightCctAndOn` and `SetLightRgbAndOn` without changing the
+  scene record layout. Validation requires both Turn On and the selected color
+  capability. The panel picker exposes one **Set look + On** action, defaulted
+  to 5600 K, 50% brightness, and neutral tint; generated Stop materializes one
+  Turn Off. A compound driver transaction remains pending across look and
+  power stages and reports any sub-step failure for Stop and Retry recovery.
+- Compatibility: the selected clean-storage `0.2.0-dev` baseline does not
+  migrate or normalize older two-step light scenes. Factory Reset is the
+  documented test baseline.
+- Gate: physical output, response attribution, gateway fallback, mixed-device
+  operation, reboot cycles, and the two-hour soak must pass per exact fixture
+  model before its support claim is promoted.
 
 ## Open decisions
 

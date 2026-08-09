@@ -230,8 +230,8 @@ const char* driverName(studio::DriverId id) {
 void addAction(JsonArray actions, studio::CommandType command,
                const char* id, const char* label,
                const studio::InstanceProfile& profile) {
-  const studio::Capability required = studio::requiredCapability(command);
-  if ((profile.capabilities & studio::capabilityBit(required)) == 0) return;
+  const uint32_t required = studio::requiredCapabilities(command);
+  if (required == 0 || (profile.capabilities & required) != required) return;
   JsonObject action = actions.add<JsonObject>();
   action["id"] = id;
   action["label"] = label;
@@ -259,14 +259,21 @@ void serializeDevice(JsonObject out, const studio::DeviceRecord& record) {
             "Record start", profile);
   addAction(actions, studio::CommandType::RecordStop, "record_stop",
             "Record stop", profile);
-  addAction(actions, studio::CommandType::TurnOn, "turn_on", "Turn on", profile);
+  const uint32_t colorCapabilities =
+      studio::capabilityBit(studio::Capability::SetLightCct) |
+      studio::capabilityBit(studio::Capability::SetLightRgb);
+  const bool hasColor = (profile.capabilities & colorCapabilities) != 0;
+  if (!hasColor) {
+    addAction(actions, studio::CommandType::TurnOn, "turn_on", "Turn on",
+              profile);
+  }
   addAction(actions, studio::CommandType::TurnOff, "turn_off", "Turn off", profile);
   addAction(actions, studio::CommandType::Press, "press", "Press", profile);
   addAction(actions, studio::CommandType::Activate, "activate", "Activate", profile);
-  addAction(actions, studio::CommandType::SetLightCct, "set_light_cct",
-            "Set CCT", profile);
-  addAction(actions, studio::CommandType::SetLightRgb, "set_light_rgb",
-            "Set RGB", profile);
+  addAction(actions, studio::CommandType::SetLightCctAndOn,
+            "set_light_cct_and_on", "Set look + On (CCT)", profile);
+  addAction(actions, studio::CommandType::SetLightRgbAndOn,
+            "set_light_rgb_and_on", "Set look + On (RGB)", profile);
 }
 
 const char* commandId(studio::CommandType command) {
@@ -280,6 +287,8 @@ const char* commandId(studio::CommandType command) {
     case studio::CommandType::Activate: return "activate";
     case studio::CommandType::SetLightCct: return "set_light_cct";
     case studio::CommandType::SetLightRgb: return "set_light_rgb";
+    case studio::CommandType::SetLightCctAndOn: return "set_light_cct_and_on";
+    case studio::CommandType::SetLightRgbAndOn: return "set_light_rgb_and_on";
     default: return "unsupported";
   }
 }
@@ -295,6 +304,8 @@ const char* commandLabel(studio::CommandType command) {
     case studio::CommandType::Activate: return "Activate";
     case studio::CommandType::SetLightCct: return "Set CCT";
     case studio::CommandType::SetLightRgb: return "Set RGB";
+    case studio::CommandType::SetLightCctAndOn: return "Set look + On (CCT)";
+    case studio::CommandType::SetLightRgbAndOn: return "Set look + On (RGB)";
     default: return "Unsupported";
   }
 }

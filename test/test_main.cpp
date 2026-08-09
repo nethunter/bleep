@@ -8,6 +8,7 @@
 #include "core/ble/ble_central.h"
 #include "core/ble/fake_ble_backend.h"
 #include "core/config_store.h"
+#include "core/command_traits.h"
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
@@ -2840,26 +2841,39 @@ void test_generated_stop_mapping_order_and_capacity() {
   record.startSteps[5] =
       studio::makeActionStep(5, studio::CommandType::Activate);
   record.startSteps[6] =
-      studio::makeActionStep(6, studio::CommandType::SetLightCct, 4300, 50);
+      studio::makeActionStep(6, studio::CommandType::SetLightCctAndOn, 4300, 50);
   record.startSteps[7] =
-      studio::makeActionStep(7, studio::CommandType::SetLightRgb, 0xff00ff, 75);
+      studio::makeActionStep(7, studio::CommandType::SetLightRgbAndOn, 0xff00ff, 75);
   studio::generateStopSteps(record);
 
-  TEST_ASSERT_EQUAL_UINT8(6, record.stopCount);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Activate),
-                        static_cast<int>(record.stopSteps[0].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Press),
-                        static_cast<int>(record.stopSteps[1].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
-                        static_cast<int>(record.stopSteps[2].command));
-  TEST_ASSERT_EQUAL_INT32(1, record.stopSteps[2].value0);
+  TEST_ASSERT_EQUAL_UINT8(8, record.stopCount);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(record.stopSteps[0].command));
+  TEST_ASSERT_EQUAL_UINT32(7, record.stopSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(record.stopSteps[1].command));
+  TEST_ASSERT_EQUAL_UINT32(6, record.stopSteps[1].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Activate),
+                        static_cast<int>(record.stopSteps[2].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Press),
                         static_cast<int>(record.stopSteps[3].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
-                        static_cast<int>(record.stopSteps[4].type));
-  TEST_ASSERT_EQUAL_UINT32(750, record.stopSteps[4].waitMs);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+                        static_cast<int>(record.stopSteps[4].command));
+  TEST_ASSERT_EQUAL_INT32(1, record.stopSteps[4].value0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
                         static_cast<int>(record.stopSteps[5].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(record.stopSteps[6].type));
+  TEST_ASSERT_EQUAL_UINT32(750, record.stopSteps[6].waitMs);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(record.stopSteps[7].command));
+
+  const uint32_t cctAndOn = studio::requiredCapabilities(
+      studio::CommandType::SetLightCctAndOn);
+  TEST_ASSERT_EQUAL_HEX32(
+      studio::capabilityBit(studio::Capability::SetLightCct) |
+          studio::capabilityBit(studio::Capability::TurnOn),
+      cctAndOn);
 
   for (uint8_t i = 0; i < CONFIG_MAX_SCENE_STEPS; ++i) {
     record.startSteps[i] =
@@ -2950,7 +2964,7 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_NOT_NULL(record);
   record->startCount = 3;
   record->startSteps[0] =
-      studio::makeActionStep(2, studio::CommandType::SetLightCct, 5600, 72, -125);
+      studio::makeActionStep(2, studio::CommandType::SetLightCctAndOn, 5600, 72, -125);
   record->startSteps[1] = studio::makeWaitStep(500);
   record->startSteps[2] =
       studio::makeActionStep(3, studio::CommandType::RecordStart);
@@ -2976,6 +2990,9 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_EQUAL_INT32(5600, restored.at(0)->startSteps[0].value0);
   TEST_ASSERT_EQUAL_INT32(72, restored.at(0)->startSteps[0].value1);
   TEST_ASSERT_EQUAL_INT32(-125, restored.at(0)->startSteps[0].value2);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightCctAndOn),
+      static_cast<int>(restored.at(0)->startSteps[0].command));
 
   backend.corruptLastByte();
   studio::SceneRegistry rejected;
@@ -3944,12 +3961,19 @@ void test_aputure_light_access_payloads_and_validation() {
       "Aputure MC Pro", "", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x03f6, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, modelId);
+  TEST_ASSERT_EQUAL_STRING(
+      "Aputure MC Pro",
+      aputure_light::knownVendorModelName(companyId, modelId));
   TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "Studio light", "SLCK_BLE", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
+  TEST_ASSERT_EQUAL_STRING(
+      "amaran Ace 25c",
+      aputure_light::knownVendorModelName(companyId, modelId));
   TEST_ASSERT_FALSE(aputure_light::inferKnownVendorModel(
       "Unknown light", "", companyId, modelId));
+  TEST_ASSERT_NULL(aputure_light::knownVendorModelName(0, 0));
 
   aputure_light::AccessPayload payload;
   TEST_ASSERT_TRUE(aputure_light::buildPowerAccess(true, payload));
@@ -4059,6 +4083,34 @@ void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_HEX16(
       0xc003,
       aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
+  const aputure_light::MeshNodeRecord secondGroupNode = {
+      45, studio::DriverId::AputureLight, 5};
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc004,
+      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+  TEST_ASSERT_NOT_EQUAL(
+      aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode),
+      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc001, aputure_light::memberControlGroupAddress(loaded, 42));
+  TEST_ASSERT_EQUAL_HEX16(
+      0, aputure_light::memberControlGroupAddress(loaded, 999));
+  aputure_light::MeshNodeRecord pendingMcPro;
+  pendingMcPro.instanceId = 44;
+  pendingMcPro.model = studio::DriverId::AputureLight;
+  pendingMcPro.unicastAddress = 4;
+  TEST_ASSERT_TRUE(aputure_light::upsertNode(loaded, pendingMcPro));
+  TEST_ASSERT_TRUE(aputure_light::assignVendorModel(
+      loaded, 44, 0x03f6, 0x1000));
+  aputure_light::MeshNodeRecord* identifiedMcPro =
+      aputure_light::findNode(loaded, 44);
+  TEST_ASSERT_NOT_NULL(identifiedMcPro);
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, identifiedMcPro->vendorCompanyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, identifiedMcPro->vendorModelId);
+  TEST_ASSERT_EQUAL_HEX16(0xc003, identifiedMcPro->controlGroupAddress);
+  identifiedMcPro->configured = true;
+  TEST_ASSERT_FALSE(aputure_light::assignVendorModel(
+      loaded, 44, 0x0211, 0x0000));
   const aputure_light::MeshNodeRecord* loadedZhiyun =
       aputure_light::findNode(loaded, 43);
   TEST_ASSERT_NOT_NULL(loadedZhiyun);

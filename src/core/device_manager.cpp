@@ -715,6 +715,15 @@ DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
                            : DeviceRuntimeState{};
 }
 
+bool DeviceManager::lightControlState(InstanceId instanceId,
+                                      LightControlState& state) const {
+  state = LightControlState{};
+  const DeviceRecord* record = find(instanceId);
+  if (record == nullptr || !isActive(instanceId)) return false;
+  DeviceDriver* driver = driverFor(record->driverId);
+  return driver != nullptr && driver->lightControlState(instanceId, state);
+}
+
 InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
   const DeviceRecord* record = find(instanceId);
   if (record == nullptr) {

@@ -387,6 +387,120 @@ short, factual, and reproducible.
   figures. The full Montserrat `bleep` profile also built successfully with
   140,340 / 327,680 bytes static RAM and 1,906,428 / 3,145,728 bytes flash.
   Firmware behavior did not change, so no board upload was attempted.
+### 2026-08-09: Independent mesh lights, common controls, and compound looks
+
+- Superseded ordinary common-group Aputure power under ADR-039. On, Off,
+  refresh, CCT/tint/brightness, and RGB now use the selected instance's
+  persisted control group; source-addressed status mutates only that session.
+  `0xC000` remains reserved for a future explicit mesh/group action. Zhiyun
+  keeps its persisted selector, reply correlation, gateway attachment retry,
+  and the same one-proxy cross-brand transport.
+- Added normalized `LightControlState` publication and one capability-driven
+  control shell. Simulator captures cover Aputure CCT/tint and RGB, X100
+  CCT-only, X60RGB CCT/RGB, and Home Assistant light power-only states,
+  including pending/error presentation.
+- Appended compound CCT/RGB-and-On commands. Scene validation requires color
+  plus Turn On, the picker exposes one **Set look + On** action at 5600 K/50%
+  brightness/neutral tint, editing restores stored values, and generated Stop
+  creates one reverse-order Turn Off. Aputure keeps only the target session
+  pending across its two writes; Zhiyun waits for correlated look confirmation
+  before power confirmation. No old two-step scene migration was added for the
+  clean-storage baseline.
+- Host verification: native tests passed 76/76; `ui_sim` compiled and its full
+  capture traversal completed. Simulator LVGL telemetry reported 42,848 bytes
+  free after maximum-device initialization and 23,512 bytes free after sequence
+  Stop/settings. The full Montserrat `bleep` profile built successfully with
+  140,452 / 327,680 bytes static RAM and 1,913,148 / 3,145,728 bytes flash.
+  This does not replace the existing pre-Wi-Fi hardware guidance of roughly
+  40 KiB free heap and more than 36 KiB largest allocation.
+- With explicit approval, the full `bleep` image uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset through RTS. Fixture validation remains Blocked/pending:
+  no physical light output was observed. The required exact-model matrix is
+  amaran Ace 25c, Pano 60c, Pano 120c, Aputure MC Pro, Zhiyun MOLUS
+  X100, and X60RGB. Run factory-reset/reconnect and capability boundaries per
+  model; 30 alternating per-target power/distinct-look isolation commands;
+  every available same-brand and cross-brand pair through each gateway plus
+  gateway loss/fallback; four logical mesh targets with camera/recorder/HA;
+  compound Start/Stop failure/retry/reboot/scene-switch cases; then at least
+  100 mixed cycles over two hours and 20 reboot/reconnect cycles. Record heap
+  minima/largest block, latency, destination or selector, state quality, and
+  physical output. An unavailable model stays Blocked and is not inferred.
+- Live MC Pro onboarding after that upload reached pending mesh configuration
+  with `Unknown vendor model`: its provisioning advertisement did not use the
+  previously recognized literal `Mesh Device`, so the pending node had no
+  vendor tuple. The failure screen now offers an explicit **MC PRO** recovery
+  action. Confirming it transactionally persists the hardware-verified
+  `0x03F6:0x1000` identity and resumes configuration without reprovisioning or
+  guessing for other fixtures. Native tests passed 76/76; the full simulator
+  traversal and new `20da_aputure_mc_pro_identify.png` capture passed. The full
+  profile built with 140,452 / 327,680 bytes static RAM and 1,913,726 /
+  3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; all written regions passed hash verification and
+  the panel hard-reset. Live MC Pro recovery/configuration remains to be
+  confirmed by the operator.
+- Live follow-up found that switching the shared light shell between CCT and
+  RGB restored the saved sliders on screen but did not dispatch that recalled
+  look until a slider moved. Tab selection now marks the restored look dirty
+  and sends it through the same 350 ms debounce. Simulator assertions cover
+  both CCT-to-RGB and RGB-to-CCT application. Native tests passed 76/76 and the
+  full simulator traversal passed. The full profile built with 140,452 /
+  327,680 bytes static RAM and 1,913,752 / 3,145,728 bytes flash, then uploaded
+  successfully to `/dev/cu.usbserial-211240`; all regions passed hash
+  verification and the panel hard-reset.
+- The MC Pro recovery also exposed that Aputure pairing updates left the
+  registry record at the generic `Aputure Light` catalog name. Confirmed vendor
+  tuples now assign the exact fixture name (`Aputure MC Pro` or
+  `amaran Ace 25c`) and persist the proxy address metadata when adding or
+  recovering a fixture. An operator-created custom display name is preserved.
+  The recovery screen now states `Identify fixture` / `Confirm Aputure MC Pro`
+  instead of presenting `Unknown vendor model` beside an ambiguous `MC PRO`
+  button. Confirmation resumes at the already-reached vendor-bind stage and
+  publishes the model-name update immediately while configuration continues.
+  Native tests passed 76/76 and the full simulator traversal passed. The full
+  profile built with 140,452 / 327,680 bytes static RAM and 1,913,968 /
+  3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset. Live confirmation and configuration completion remain
+  to be observed on the MC Pro.
+- The full `bleep` profile now compiles with Arduino/NimBLE debug logging. The
+  Aputure runtime additionally records the matched provisioning/proxy
+  advertisement address, address type, and device name; the inferred vendor
+  tuple after provisioning; and every explicit MC Pro identification outcome
+  and resumed configuration stage. This is diagnostic evidence only and does
+  not elevate an ACK or connection to physical fixture proof.
+- The first live debug capture proved that explicit MC Pro confirmation saved
+  `0x03F6:0x1000` and resumed at vendor bind, but the fixture returned Config
+  Model App Status `0x02` (`Invalid Model`). A subsequent retry raced the still
+  connected NimBLE client, left a stale Proxy Data In pointer, and crashed in
+  `NimBLERemoteValueAttribute::writeValue`. Retry on an intact proxy now
+  restarts the configuration transaction in place instead of reconnecting the
+  live client, and raw configuration Proxy PDUs are logged for the next
+  composition-driven model-selection implementation. That implementation and
+  another live capture are still required before the MC Pro gate can pass. The
+  corrected debug profile built with 140,460 / 327,680 bytes static RAM and
+  1,954,444 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset.
+- A fresh live debug capture then provisioned another one-element Aputure node
+  at unicast `0x0005`. The PB-GATT advertisement at
+  `a4:c1:38:50:c6:22` had an empty GAP name; its service data exposed
+  `400U5-50C62200fp`. The firmware therefore persisted company/model as zero,
+  AppKey Add completed with status zero, and configuration stopped at the
+  explicit unknown-vendor gate before any confirmation was pressed. The
+  corrected retry build did not crash during this capture. The service-data
+  identity and composition response now need to replace GAP-name inference.
+- The operator confirmed that this empty-name fixture is an amaran Ace 25c and
+  observed the mesh reject the UI's hardcoded MC Pro bind. Unknown-fixture
+  recovery now presents separate **Ace 25c** and **MC Pro** choices; selecting
+  Ace persists its confirmed `0x0211:0x0000` tuple and exact fixture name.
+  Pano models remain blocked rather than inheriting either tuple. The complete
+  simulator traversal passed and the round-screen capture fits both choices.
+  The debug profile built with 140,468 / 327,680 bytes static RAM and
+  1,954,734 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset. Live Ace bind/configuration remains to be confirmed.
+
 ### 2026-08-09: Aputure Light control-state synchronization
 
 - Aputure Light vendor status handling currently confirms power only; it cannot

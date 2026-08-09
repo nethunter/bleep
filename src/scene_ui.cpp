@@ -204,10 +204,12 @@ void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
           ? "Rec"
           : (step.command == studio::CommandType::RecordStop
                  ? "Stop"
-                 : (step.command == studio::CommandType::SetLightCct
-                        ? "Set color"
-                        : (step.command == studio::CommandType::SetLightRgb
-                               ? "Set color"
+                 : (step.command == studio::CommandType::SetLightCct ||
+                    step.command == studio::CommandType::SetLightCctAndOn
+                        ? "Look + On"
+                        : (step.command == studio::CommandType::SetLightRgb ||
+                           step.command == studio::CommandType::SetLightRgbAndOn
+                               ? "Look + On"
                                : (step.command == studio::CommandType::TurnOn
                                       ? "On"
                                       : (step.command == studio::CommandType::TurnOff

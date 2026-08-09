@@ -120,6 +120,12 @@ bool inferKnownVendorModel(const char* displayName, const char* bleName,
   return false;
 }
 
+const char* knownVendorModelName(uint16_t companyId, uint16_t modelId) {
+  if (companyId == 0x03f6 && modelId == 0x1000) return "Aputure MC Pro";
+  if (companyId == 0x0211 && modelId == 0x0000) return "amaran Ace 25c";
+  return nullptr;
+}
+
 uint8_t vendorChecksum(const uint8_t tail[9]) {
   uint8_t sum = 0;
   for (size_t i = 0; i < 9; ++i) sum = static_cast<uint8_t>(sum + tail[i]);

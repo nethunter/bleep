@@ -25,6 +25,8 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   const AputureLightState* state(studio::InstanceId instanceId) const;
   bool consumePairingUpdate(studio::InstanceId instanceId,
                             studio::DeviceRecord& record);
+  bool identifyVendorModel(studio::InstanceId instanceId, uint16_t companyId,
+                           uint16_t modelId);
   void forgetLocal(studio::InstanceId instanceId);
   // Saved mesh members from other protocol families attach to this one
   // physical proxy bearer. PB-GATT onboarding remains an exclusive temporary
@@ -55,6 +57,8 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
     bool pairingDirty = false;
     bool receiveSequenceKnown = false;
     uint32_t receiveSequence = 0;
+    bool compoundPending = false;
+    uint32_t compoundPowerAt = 0;
   };
   struct Notification {
     uint8_t bytes[80] = {};
@@ -77,7 +81,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool sendAccessTo(uint16_t destination, const uint8_t* access,
                     size_t length);
   uint16_t controlGroupFor(studio::InstanceId instanceId) const;
-  bool refreshGroupPower();
+  bool refreshPower(studio::InstanceId instanceId);
   void fail(Session& session, const char* error);
   void updateSharedReady();
   studio::InstanceId preferredGatewayInstance() const;
@@ -98,6 +102,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   uint32_t configStatusDeadlineMs_ = 0;
   uint32_t nextConfigAt_ = 0;
   uint32_t lastPowerPollMs_ = 0;
+  uint8_t powerPollCursor_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
   uint32_t gatewayGeneration_ = 0;
   NimBLERemoteCharacteristic* dataIn_ = nullptr;

@@ -10,6 +10,7 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
+#include "ui/light_control.h"
 #include "ui/round_page.h"
 #include "../../ui.h"
 
@@ -170,6 +171,7 @@ void onBack() {
   hide();
   ui::showDeviceParent();
 }
+void onSharedBack() { onBack(); }
 
 void onBackEvent(lv_event_t*) { onBack(); }
 
@@ -296,9 +298,11 @@ void showForState(const zhiyun_x100::X100State* state) {
     return;
   }
   if (state != nullptr && state->phase == zhiyun_x100::X100State::Phase::Ready) {
-    if (lv_scr_act() != screen) lv_scr_load(screen);
+    if (!light_control_ui::active())
+      light_control_ui::show(instanceId, onSharedBack);
     return;
   }
+  light_control_ui::hide();
   pairingScreen.create(onBackEvent, onRetryEvent);
   pairingScreen.setTitle("Zhiyun Light");
   const bool failed = state != nullptr &&
@@ -423,6 +427,7 @@ void show(studio::InstanceId id) {
 }
 
 void hide() {
+  light_control_ui::hide();
   if (visible)
     studio::devices().release(instanceId, studio::ConnectionOwner::Foreground);
   visible = false;
@@ -435,6 +440,7 @@ void hide() {
 
 void release() {
   if (visible) return;
+  light_control_ui::release();
   if (screen != nullptr) {
     lv_obj_del(screen);
     screen = title = status = cctBody = rgbBody = cctSlider = cctBrightness =
@@ -448,6 +454,10 @@ bool active() { return visible; }
 
 void tick() {
   if (!visible) return;
+  if (light_control_ui::active()) {
+    light_control_ui::tick();
+    return;
+  }
   const uint32_t now = millis();
   processDebouncedEdit(now);
   if (now - lastRefreshMs >= 200) {
@@ -456,15 +466,12 @@ void tick() {
   }
 }
 
-void handleShortPress() { onPower(nullptr); }
-void handleLongPress() { onBack(); }
+void handleShortPress() { if (light_control_ui::active()) light_control_ui::handleShortPress(); else onPower(nullptr); }
+void handleLongPress() { if (light_control_ui::active()) light_control_ui::handleLongPress(); else onBack(); }
 
 #ifdef UI_SIMULATOR
 void simShowRgb() {
-  rgbMode = true;
-  renderMode();
-  restoreDraft();
-  editPending = false;
+  light_control_ui::simShowRgb();
 }
 #endif
 

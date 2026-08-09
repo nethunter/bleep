@@ -2,6 +2,8 @@
 
 #include "devices/aputure_light/runtime.h"
 
+#include <cstring>
+
 namespace studio {
 
 bool AputureLightDriver::activate(const DeviceRecord& record) {
@@ -35,6 +37,35 @@ DeviceRuntimeState AputureLightDriver::runtimeState(InstanceId instanceId) const
 const void* AputureLightDriver::specializedState(InstanceId instanceId) const {
   aputure_light::AputureLightRuntime* runtime = aputure_light::runtimeIfActive();
   return runtime != nullptr ? runtime->state(instanceId) : nullptr;
+}
+bool AputureLightDriver::lightControlState(InstanceId instanceId,
+                                          LightControlState& out) const {
+  aputure_light::AputureLightRuntime* runtime = aputure_light::runtimeIfActive();
+  const aputure_light::AputureLightState* state =
+      runtime != nullptr ? runtime->state(instanceId) : nullptr;
+  if (state == nullptr) return false;
+  const DeviceRuntimeState runtimeState = runtime->runtimeState(instanceId);
+  out.available = state->phase == aputure_light::AputureLightState::Phase::Ready;
+  out.supportsPower = out.supportsCct = out.supportsRgb = out.supportsTint = true;
+  out.on = state->on;
+  out.stateKnown = state->powerConfirmed && state->nodeReachable;
+  out.commandPending = state->commandPending;
+  out.commandFailed = state->lastCommandFailed;
+  out.quality = runtimeState.quality;
+  out.minKelvin = 2300;
+  out.maxKelvin = 10000;
+  out.kelvin = state->kelvin;
+  out.tintPermille = state->tintPermille;
+  out.brightness = state->mode == aputure_light::AputureLightState::Mode::Rgb
+                       ? state->rgbBrightness
+                       : state->cctBrightness;
+  out.rgb = state->rgb;
+  out.rgbMode = state->mode == aputure_light::AputureLightState::Mode::Rgb;
+  std::strncpy(out.status, state->error[0] != '\0' ? state->error
+                                                    : (out.stateKnown ? "Ready / confirmed"
+                                                                      : "Ready / optimistic"),
+               sizeof(out.status) - 1);
+  return true;
 }
 void AputureLightDriver::forgetPairing(const DeviceRecord& record) {
   aputure_light::AputureLightRuntime* runtime = aputure_light::runtime();

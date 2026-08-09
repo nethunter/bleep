@@ -76,6 +76,7 @@ class DeviceManager {
   bool popResult(CommandResult& result) { return results_.pop(result); }
 
   DeviceRuntimeState runtimeState(InstanceId instanceId) const;
+  bool lightControlState(InstanceId instanceId, LightControlState& state) const;
   const void* specializedState(InstanceId instanceId) const;
 
  private:

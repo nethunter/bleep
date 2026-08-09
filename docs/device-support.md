@@ -93,7 +93,8 @@ of successful movement.
   brands.
 - Initial capabilities: power, independently remembered 2300-10000 K
   CCT/tint/brightness and RGB/saturation/brightness looks. Sequence authoring
-  exposes one `Set color` action with CCT and RGB modes.
+  exposes one `Set look + On` action with CCT and RGB modes; generated Stop is
+  one Turn Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
 - Onboarding: choose `Aputure Light`; the first nearby factory-reset fixture
@@ -103,21 +104,28 @@ of successful movement.
   amaran Pano 60c, amaran Pano 120c, and amaran Ace 25c remain the initial
   validation set. Existing
   Sidus/amaran mesh import remains deferred.
+  If a provisioned-but-unconfigured fixture cannot be identified from its BLE
+  name, onboarding stops instead of guessing. The recovery screen offers exact
+  **Ace 25c** (`0x0211:0x0000`) and **MC Pro** (`0x03F6:0x1000`) choices using
+  their physically confirmed composition tuples. Pano models remain blocked
+  until their own composition is captured.
 
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is
 charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
 composition evidence, cross-node routing, proxy fallback, and group-addressed
 physical power Set/Get are confirmed. Standard Generic OnOff
-is only a writable shadow/reachability model on both fixtures. Firmware sends
-mesh power through the common vendor group and CCT/RGB through deterministic
-per-member vendor groups. MC red and Ace green were optically observed at 5%
-after separate group writes, followed by common-group On/Off. CCT, property
+is only a writable shadow/reachability model on both fixtures. Firmware now
+sends power, refresh, CCT/tint/brightness, and RGB through each fixture's
+deterministic per-member vendor group; common group `0xC000` is not used by
+ordinary device control. MC red and Ace green were previously optically
+observed at 5% after separate group writes, followed by the now-superseded
+common-group On/Off test. Per-member power isolation, CCT, property
 readback, decoded configuration-status enforcement, reboot/interruption
 recovery, Pano fixtures, and safe node reset remain open before this becomes
-Current. Firmware does implement authenticated vendor
-power readback: one group poll updates each member by source address, polls
-every five seconds, and marks a member stale after three missed intervals while
+Current. Firmware implements authenticated vendor power readback: targeted
+member polls update only the source-address-matched session and mark a member
+stale after three missed intervals while
 leaving the shared proxy bearer connected.
 
 Reference research:

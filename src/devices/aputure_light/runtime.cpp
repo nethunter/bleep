@@ -50,19 +50,35 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
     return studio::CommandStatus::Succeeded;
   }
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) {
-    for (auto& member : sessions_) {
-      if (member.instanceId == studio::kInvalidInstanceId) continue;
-      member.state.on = command.type == studio::CommandType::TurnOn;
-      member.state.optimistic = true;
-      member.state.powerOptimistic = true;
-    }
+    s->state.on = command.type == studio::CommandType::TurnOn;
+    s->state.optimistic = true;
+    s->state.powerOptimistic = true;
     return studio::CommandStatus::Succeeded;
   }
-  if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) {
-    s->state.mode = AputureLightState::Mode::Cct; s->state.kelvin = command.value0; s->state.cctBrightness = command.value1; s->state.tintPermille = command.value2; s->state.optimistic = true; s->state.powerOptimistic = false; return studio::CommandStatus::Succeeded;
+  if ((command.type == studio::CommandType::SetLightCct ||
+       command.type == studio::CommandType::SetLightCctAndOn) &&
+      validCctCommand(command.value0, command.value1, command.value2)) {
+    s->state.mode = AputureLightState::Mode::Cct;
+    s->state.kelvin = command.value0;
+    s->state.cctBrightness = command.value1;
+    s->state.tintPermille = command.value2;
+    s->state.optimistic = true;
+    s->state.powerOptimistic = false;
+    if (command.type == studio::CommandType::SetLightCctAndOn)
+      s->state.on = true;
+    return studio::CommandStatus::Succeeded;
   }
-  if (command.type == studio::CommandType::SetLightRgb && validRgbCommand(command.value0, command.value1)) {
-    s->state.mode = AputureLightState::Mode::Rgb; s->state.rgb = command.value0; s->state.rgbBrightness = command.value1; s->state.optimistic = true; s->state.powerOptimistic = false; return studio::CommandStatus::Succeeded;
+  if ((command.type == studio::CommandType::SetLightRgb ||
+       command.type == studio::CommandType::SetLightRgbAndOn) &&
+      validRgbCommand(command.value0, command.value1)) {
+    s->state.mode = AputureLightState::Mode::Rgb;
+    s->state.rgb = command.value0;
+    s->state.rgbBrightness = command.value1;
+    s->state.optimistic = true;
+    s->state.powerOptimistic = false;
+    if (command.type == studio::CommandType::SetLightRgbAndOn)
+      s->state.on = true;
+    return studio::CommandStatus::Succeeded;
   }
   return studio::CommandStatus::Unsupported;
 }
@@ -82,6 +98,8 @@ studio::DeviceRuntimeState AputureLightRuntime::runtimeState(studio::InstanceId 
 }
 const AputureLightState* AputureLightRuntime::state(studio::InstanceId id) const { const Session* s = sessionFor(id); return s ? &s->state : nullptr; }
 bool AputureLightRuntime::consumePairingUpdate(studio::InstanceId, studio::DeviceRecord&) { return false; }
+bool AputureLightRuntime::identifyVendorModel(studio::InstanceId, uint16_t,
+                                              uint16_t) { return false; }
 void AputureLightRuntime::forgetLocal(studio::InstanceId id) { if (auto* s = sessionFor(id)) s->state = AputureLightState{}; }
 bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord&) { return true; }
 void AputureLightRuntime::releaseGateway(studio::InstanceId) {}
@@ -108,7 +126,7 @@ bool AputureLightRuntime::configureNext() { return false; }
 bool AputureLightRuntime::sendAccess(studio::InstanceId, const uint8_t*, size_t) { return false; }
 bool AputureLightRuntime::sendAccessTo(uint16_t, const uint8_t*, size_t) { return false; }
 uint16_t AputureLightRuntime::controlGroupFor(studio::InstanceId) const { return 0; }
-bool AputureLightRuntime::refreshGroupPower() { return false; }
+bool AputureLightRuntime::refreshPower(studio::InstanceId) { return false; }
 void AputureLightRuntime::fail(Session& s, const char* error) { s.state.phase = AputureLightState::Phase::Failed; std::strncpy(s.state.error, error, sizeof(s.state.error)-1); }
 void AputureLightRuntime::updateSharedReady() {}
 studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const { return studio::kInvalidInstanceId; }
@@ -424,12 +442,22 @@ void AputureLightRuntime::onBleAdvertisement(
   if (studio::ble::advertisesService(advertisement, wanted) &&
       (provisioningLink_ ||
        isPreferredGatewayAddress(advertisement.address.value))) {
+    char observedName[studio::kBleNameCapacity] = "";
+    studio::ble::advertisementName(advertisement, observedName,
+                                   sizeof(observedName));
+    APUTURE_LIGHT_LOG.printf(
+        "aputure_light event=advertisement role=%s address=%s address_type=%u name=%s\n",
+        provisioningLink_ ? "provisioning" : "proxy",
+        advertisement.address.value,
+        static_cast<unsigned>(advertisement.address.type),
+        observedName[0] != '\0' ? observedName : "<empty>");
     if (provisioningLink_) {
       std::strncpy(provisioningAddress_, advertisement.address.value,
                    sizeof(provisioningAddress_) - 1);
       provisioningAddressType_ = advertisement.address.type;
-      studio::ble::advertisementName(advertisement, provisioningName_,
-                                     sizeof(provisioningName_));
+      std::strncpy(provisioningName_, observedName,
+                   sizeof(provisioningName_) - 1);
+      provisioningName_[sizeof(provisioningName_) - 1] = '\0';
     }
     if (Session* session = sessionFor(linkInstance_)) {
       session->state.phase = provisioningLink_
@@ -552,7 +580,7 @@ bool AputureLightRuntime::setupProxy() {
   } else {
     studio::ble::bleCentral().markProtocolReady(link_);
     updateSharedReady();
-    refreshGroupPower();
+    refreshPower(linkInstance_);
   }
   return true;
 }
@@ -583,16 +611,48 @@ void AputureLightRuntime::loop() {
       static_cast<int32_t>(now - nextConfigAt_) >= 0) {
     configureNext();
   }
+  uint8_t pollableSessions = 0;
+  for (const auto& session : sessions_) {
+    if (session.instanceId != studio::kInvalidInstanceId &&
+        controlGroupFor(session.instanceId) != 0) {
+      ++pollableSessions;
+    }
+  }
+  const uint32_t pollCadence = pollableSessions > 0
+      ? kPowerPollIntervalMs / pollableSessions
+      : kPowerPollIntervalMs;
   if (connected_ && !provisioningLink_ && dataIn_ != nullptr &&
-      static_cast<uint32_t>(now - lastPowerPollMs_) >= kPowerPollIntervalMs) {
+      static_cast<uint32_t>(now - lastPowerPollMs_) >= pollCadence) {
     lastPowerPollMs_ = now;
-    refreshGroupPower();
+    for (uint8_t checked = 0; checked < CONFIG_MAX_ACTIVE_INSTANCES;
+         ++checked) {
+      const uint8_t index = powerPollCursor_++ % CONFIG_MAX_ACTIVE_INSTANCES;
+      if (sessions_[index].instanceId != studio::kInvalidInstanceId &&
+          refreshPower(sessions_[index].instanceId)) {
+        break;
+      }
+    }
   }
   for (auto& session : sessions_) {
     if (session.state.nodeReachable &&
         static_cast<uint32_t>(now - session.state.lastSeenMs) >
             kNodeFreshnessMs) {
       session.state.nodeReachable = false;
+    }
+    if (session.compoundPending &&
+        static_cast<int32_t>(now - session.compoundPowerAt) >= 0) {
+      AccessPayload power;
+      const uint16_t destination = controlGroupFor(session.instanceId);
+      const bool sent = destination != 0 && buildPowerAccess(true, power) &&
+                        sendAccessTo(destination, power.bytes, power.length);
+      session.compoundPending = false;
+      session.state.commandPending = false;
+      session.state.lastCommandFailed = !sent;
+      if (sent) {
+        session.state.on = true;
+        session.state.optimistic = true;
+        session.state.powerOptimistic = true;
+      }
     }
   }
 }
@@ -625,6 +685,13 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
 
   const MeshStoreData& meshData = studio::mesh::repository().data();
   const MeshNodeRecord* configuringNode = findNode(meshData, linkInstance_);
+  if (configuringNode != nullptr && configAwaitingStatus_) {
+    APUTURE_LIGHT_LOG.print("aputure_light event=config_rx bytes=");
+    for (size_t i = 0; i < notification.length; ++i) {
+      APUTURE_LIGHT_LOG.printf("%02x", notification.bytes[i]);
+    }
+    APUTURE_LIGHT_LOG.println();
+  }
   DecodedAccessMessage configuration;
   if (configuringNode != nullptr && configAwaitingStatus_ &&
       decodeProxyDeviceMessage(meshData.network.networkKey,
@@ -726,6 +793,12 @@ bool AputureLightRuntime::completeProvisioning() {
     node.vendorCompanyId = 0x03f6;
     node.vendorModelId = 0x1000;
   }
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=provisioned address=%s address_type=%u name=%s company=0x%04x model=0x%04x unicast=0x%04x elements=%u\n",
+      node.bleAddress, static_cast<unsigned>(node.bleAddressType),
+      provisioningName_[0] != '\0' ? provisioningName_ : "<empty>",
+      node.vendorCompanyId, node.vendorModelId, node.unicastAddress,
+      static_cast<unsigned>(node.elementCount));
   node.controlGroupAddress = defaultControlGroupAddress(meshData, node);
   if (node.unicastAddress > 0x7fff - node.elementCount ||
       !upsertNode(meshData, node))
@@ -878,7 +951,7 @@ bool AputureLightRuntime::configureNext() {
       APUTURE_LIGHT_LOG.printf("aputure_light event=config_complete step=%u\n", configStep_);
       studio::ble::bleCentral().markProtocolReady(link_);
       updateSharedReady();
-      refreshGroupPower();
+      refreshPower(node->instanceId);
       return true;
     }
   }
@@ -925,8 +998,7 @@ bool AputureLightRuntime::sendAccess(studio::InstanceId id, const uint8_t* acces
 
 uint16_t AputureLightRuntime::controlGroupFor(studio::InstanceId id) const {
   const MeshStoreData& meshData = studio::mesh::repository().data();
-  const MeshNodeRecord* node = findNode(meshData, id);
-  return node != nullptr ? defaultControlGroupAddress(meshData, *node) : 0;
+  return memberControlGroupAddress(meshData, id);
 }
 
 bool AputureLightRuntime::sendAccessTo(uint16_t destination, const uint8_t* access,
@@ -942,12 +1014,11 @@ bool AputureLightRuntime::sendAccessTo(uint16_t destination, const uint8_t* acce
          dataIn_->writeValue(proxy, proxyLength, false);
 }
 
-bool AputureLightRuntime::refreshGroupPower() {
+bool AputureLightRuntime::refreshPower(studio::InstanceId instanceId) {
   AccessPayload payload;
-  const bool sent = buildPowerStatusGetAccess(payload) &&
-                    sendAccessTo(
-                        studio::mesh::repository().data().network.groupAddress,
-                        payload.bytes, payload.length);
+  const uint16_t destination = controlGroupFor(instanceId);
+  const bool sent = destination != 0 && buildPowerStatusGetAccess(payload) &&
+                    sendAccessTo(destination, payload.bytes, payload.length);
   lastPowerPollMs_ = millis();
   return sent;
 }
@@ -959,26 +1030,51 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
   bool valid = false;
   if (command.type == studio::CommandType::Refresh) {
     session->state.commandPending = true;
-    const bool sent = refreshGroupPower();
+    const bool sent = refreshPower(command.instanceId);
     session->state.commandPending = false;
     session->state.lastCommandFailed = !sent;
     return sent ? studio::CommandStatus::Succeeded
                 : studio::CommandStatus::Unavailable;
   }
-  if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) valid = buildPowerAccess(command.type == studio::CommandType::TurnOn, payload);
-  else if (command.type == studio::CommandType::SetLightCct && validCctCommand(command.value0, command.value1, command.value2)) valid = buildCctAccess(command.value0, command.value2, command.value1, payload);
-  else if (command.type == studio::CommandType::SetLightRgb && validRgbCommand(command.value0, command.value1)) valid = buildRgbAccess(command.value0, command.value1, payload);
-  else if (command.type == studio::CommandType::Connect) { session->state.phase=AputureLightState::Phase::Scanning;session->state.error[0]='\0';return beginLink(command.instanceId, findNode(studio::mesh::repository().data(), command.instanceId) == nullptr) ? studio::CommandStatus::Succeeded : studio::CommandStatus::Unavailable; }
+  const bool compoundCct = command.type == studio::CommandType::SetLightCctAndOn;
+  const bool compoundRgb = command.type == studio::CommandType::SetLightRgbAndOn;
+  if (command.type == studio::CommandType::TurnOn ||
+      command.type == studio::CommandType::TurnOff) {
+    valid = buildPowerAccess(command.type == studio::CommandType::TurnOn,
+                             payload);
+  } else if ((command.type == studio::CommandType::SetLightCct || compoundCct) &&
+             validCctCommand(command.value0, command.value1, command.value2)) {
+    valid = buildCctAccess(command.value0, command.value2, command.value1,
+                           payload);
+  } else if ((command.type == studio::CommandType::SetLightRgb || compoundRgb) &&
+             validRgbCommand(command.value0, command.value1)) {
+    valid = buildRgbAccess(command.value0, command.value1, payload);
+  }
+  else if (command.type == studio::CommandType::Connect) {
+    MeshNodeRecord* node =
+        findNode(studio::mesh::repository().data(), command.instanceId);
+    session->state.error[0] = '\0';
+    if (connected_ && !provisioningLink_ && dataIn_ != nullptr &&
+        node != nullptr && !node->configured) {
+      linkInstance_ = command.instanceId;
+      session->state.phase = AputureLightState::Phase::PendingConfig;
+      configStep_ = 1;
+      configRetryCount_ = 0;
+      configAwaitingStatus_ = false;
+      configBatch_ = NetworkPduBatch{};
+      configBatchIndex_ = 0;
+      nextConfigAt_ = millis();
+      return studio::CommandStatus::Succeeded;
+    }
+    session->state.phase = AputureLightState::Phase::Scanning;
+    return beginLink(command.instanceId, node == nullptr)
+               ? studio::CommandStatus::Succeeded
+               : studio::CommandStatus::Unavailable;
+  }
   else return studio::CommandStatus::Unsupported;
   if (!valid) return studio::CommandStatus::InvalidArgument;
   session->state.commandPending = true;
-  uint16_t destination = 0;
-  if (command.type == studio::CommandType::TurnOn ||
-      command.type == studio::CommandType::TurnOff) {
-    destination = studio::mesh::repository().data().network.groupAddress;
-  } else {
-    destination = controlGroupFor(command.instanceId);
-  }
+  const uint16_t destination = controlGroupFor(command.instanceId);
   const bool sent = destination != 0 &&
                     sendAccessTo(destination, payload.bytes, payload.length);
   session->state.commandPending = false; session->state.lastCommandFailed = !sent;
@@ -988,15 +1084,25 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
       command.type == studio::CommandType::TurnOn ||
       command.type == studio::CommandType::TurnOff;
   if (command.type == studio::CommandType::TurnOn || command.type == studio::CommandType::TurnOff) {
-    for (auto& member : sessions_) {
-      if (member.instanceId == studio::kInvalidInstanceId) continue;
-      member.state.on = command.type == studio::CommandType::TurnOn;
-      member.state.optimistic = true;
-      member.state.powerOptimistic = true;
-    }
+    session->state.on = command.type == studio::CommandType::TurnOn;
+    session->state.optimistic = true;
+    session->state.powerOptimistic = true;
   }
-  else if (command.type == studio::CommandType::SetLightCct) { session->state.mode=AputureLightState::Mode::Cct; session->state.kelvin=command.value0; session->state.cctBrightness=command.value1; session->state.tintPermille=command.value2; }
-  else { session->state.mode=AputureLightState::Mode::Rgb; session->state.rgb=command.value0; session->state.rgbBrightness=command.value1; }
+  else if (command.type == studio::CommandType::SetLightCct || compoundCct) {
+    session->state.mode = AputureLightState::Mode::Cct;
+    session->state.kelvin = command.value0;
+    session->state.cctBrightness = command.value1;
+    session->state.tintPermille = command.value2;
+  } else {
+    session->state.mode = AputureLightState::Mode::Rgb;
+    session->state.rgb = command.value0;
+    session->state.rgbBrightness = command.value1;
+  }
+  if (compoundCct || compoundRgb) {
+    session->compoundPending = true;
+    session->compoundPowerAt = millis() + 100;
+    session->state.commandPending = true;
+  }
   return studio::CommandStatus::Succeeded;
 }
 
@@ -1019,7 +1125,85 @@ const AputureLightState* AputureLightRuntime::state(studio::InstanceId id) const
 bool AputureLightRuntime::consumePairingUpdate(studio::InstanceId id, studio::DeviceRecord& record) {
   Session* session=sessionFor(id); const MeshNodeRecord* node=findNode(studio::mesh::repository().data(),id);
   if (!session || !node || !session->pairingDirty) return false;
-  session->pairingDirty=false; record.paired=node->configured; return true;
+  session->pairingDirty=false;
+  record.paired=node->configured;
+  record.bleAddressType=node->bleAddressType;
+  std::strncpy(record.bleAddress, node->bleAddress,
+               sizeof(record.bleAddress) - 1);
+  record.bleAddress[sizeof(record.bleAddress) - 1] = '\0';
+  const char* modelName = knownVendorModelName(node->vendorCompanyId,
+                                               node->vendorModelId);
+  if (modelName != nullptr) {
+    std::strncpy(record.bleName, modelName, sizeof(record.bleName) - 1);
+    record.bleName[sizeof(record.bleName) - 1] = '\0';
+    if (std::strcmp(record.displayName, "Aputure Light") == 0) {
+      std::strncpy(record.displayName, modelName,
+                   sizeof(record.displayName) - 1);
+      record.displayName[sizeof(record.displayName) - 1] = '\0';
+    }
+  }
+  return true;
+}
+bool AputureLightRuntime::identifyVendorModel(studio::InstanceId id,
+                                              uint16_t companyId,
+                                              uint16_t modelId) {
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=identify_requested instance=%lu company=0x%04x model=0x%04x\n",
+      static_cast<unsigned long>(id), companyId, modelId);
+  if (companyId == 0 || !ensureLoaded()) {
+    APUTURE_LIGHT_LOG.println(
+        "aputure_light event=identify_failed reason=repository");
+    return false;
+  }
+  MeshStoreData& meshData = studio::mesh::repository().data();
+  MeshNodeRecord* node = findNode(meshData, id);
+  Session* session = sessionFor(id);
+  if (node == nullptr || node->configured || session == nullptr) {
+    APUTURE_LIGHT_LOG.printf(
+        "aputure_light event=identify_failed reason=state node=%u configured=%u session=%u\n",
+        node != nullptr ? 1u : 0u,
+        node != nullptr && node->configured ? 1u : 0u,
+        session != nullptr ? 1u : 0u);
+    return false;
+  }
+  const MeshNodeRecord previous = *node;
+  if (!assignVendorModel(meshData, id, companyId, modelId)) {
+    APUTURE_LIGHT_LOG.println(
+        "aputure_light event=identify_failed reason=assignment");
+    return false;
+  }
+  if (!studio::mesh::repository().save()) {
+    *node = previous;
+    APUTURE_LIGHT_LOG.println(
+        "aputure_light event=identify_failed reason=save");
+    return false;
+  }
+  session->state.phase = AputureLightState::Phase::PendingConfig;
+  session->state.error[0] = '\0';
+  session->state.lastCommandFailed = false;
+  // The unknown-model gate is reached only after AppKey Add has already been
+  // confirmed. Resume at the vendor bind instead of replaying that stage.
+  configStep_ = 2;
+  configRetryCount_ = 0;
+  configAwaitingStatus_ = false;
+  configBatch_ = NetworkPduBatch{};
+  configBatchIndex_ = 0;
+  nextConfigAt_ = millis();
+  // Let DeviceManager apply and persist the confirmed fixture name while mesh
+  // configuration continues; pairing itself remains false until completion.
+  session->pairingDirty = true;
+  const char* identifiedName = knownVendorModelName(companyId, modelId);
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=identify_saved instance=%lu name=%s control_group=0x%04x resume_step=%u\n",
+      static_cast<unsigned long>(id),
+      identifiedName != nullptr ? identifiedName : "<unknown>",
+      node->controlGroupAddress,
+      static_cast<unsigned>(configStep_));
+  if (connected_ && !provisioningLink_ && dataIn_ != nullptr) {
+    linkInstance_ = id;
+    return true;
+  }
+  return beginLink(id, false);
 }
 void AputureLightRuntime::forgetLocal(studio::InstanceId id) {
   if (!studio::mesh::repository().begin()) return;

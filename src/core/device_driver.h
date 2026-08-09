@@ -29,6 +29,9 @@ class DeviceDriver {
   virtual CommandStatus dispatch(const DeviceCommand& command) = 0;
   virtual DeviceRuntimeState runtimeState(InstanceId instanceId) const = 0;
   virtual const void* specializedState(InstanceId instanceId) const = 0;
+  virtual bool lightControlState(InstanceId, LightControlState&) const {
+    return false;
+  }
 
   // Explicit user action; transports may remove controller-side bond data.
   virtual void forgetPairing(const DeviceRecord&) {}

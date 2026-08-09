@@ -127,7 +127,6 @@ class SimSharkDriver : public DeviceDriver {
   const void* specializedState(InstanceId instanceId) const override {
     return instanceId == activeInstance_ ? &state_ : nullptr;
   }
-
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
 
   shark::SharkState& state() { return state_; }
@@ -425,9 +424,11 @@ class SimZhiyunX100Driver : public DeviceDriver {
       state_.lastCommandFailed = false;
       return CommandStatus::Succeeded;
     }
-    if (command.type == CommandType::SetLightCct && command.value2 == 0) {
+    if ((command.type == CommandType::SetLightCct ||
+         command.type == CommandType::SetLightCctAndOn) && command.value2 == 0) {
       state_.kelvin = static_cast<uint16_t>(command.value0);
       state_.brightness = static_cast<float>(command.value1);
+      if (command.type == CommandType::SetLightCctAndOn) state_.on = true;
       state_.confirmed = true;
       state_.lastCommandFailed = false;
       return CommandStatus::Succeeded;
@@ -449,6 +450,27 @@ class SimZhiyunX100Driver : public DeviceDriver {
   }
   const void* specializedState(InstanceId instanceId) const override {
     return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool lightControlState(InstanceId instanceId,
+                         LightControlState& out) const override {
+    if (instanceId != activeInstance_) return false;
+    out.available = state_.phase == zhiyun_x100::X100State::Phase::Ready;
+    out.supportsPower = out.supportsCct = true;
+    out.supportsRgb = zhiyun_x100::supportsRgb(state_.model);
+    out.on = state_.on;
+    out.stateKnown = state_.confirmed;
+    out.quality = state_.confirmed ? StateQuality::Confirmed : StateQuality::Unknown;
+    out.minKelvin = zhiyun_x100::kMinKelvin;
+    out.maxKelvin = zhiyun_x100::kMaxKelvin;
+    out.kelvin = state_.kelvin;
+    out.brightness = static_cast<uint8_t>(state_.brightness + 0.5f);
+    out.rgb = state_.rgb;
+    out.rgbMode = out.supportsRgb &&
+                  state_.mode == zhiyun_x100::X100State::Mode::Rgb;
+    std::strncpy(out.status, state_.confirmed ? "Ready / confirmed"
+                                              : "State unknown",
+                 sizeof(out.status) - 1);
+    return true;
   }
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
   zhiyun_x100::X100State& state() { return state_; }

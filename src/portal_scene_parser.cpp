@@ -21,6 +21,8 @@ bool parseCommand(const char* value, studio::CommandType& out) {
       {"activate", studio::CommandType::Activate},
       {"set_light_cct", studio::CommandType::SetLightCct},
       {"set_light_rgb", studio::CommandType::SetLightRgb},
+      {"set_light_cct_and_on", studio::CommandType::SetLightCctAndOn},
+      {"set_light_rgb_and_on", studio::CommandType::SetLightRgbAndOn},
   };
   for (const Entry& entry : entries) {
     if (std::strcmp(value, entry.id) == 0) {

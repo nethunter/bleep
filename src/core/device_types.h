@@ -117,6 +117,8 @@ enum class CommandType : uint8_t {
   Activate,
   SetLightCct,
   SetLightRgb,
+  SetLightCctAndOn,
+  SetLightRgbAndOn,
 };
 
 struct DeviceCommand {
@@ -155,6 +157,27 @@ struct DeviceRuntimeState {
   bool commandFailed = false;
   bool recordingConfirmed = false;
   bool recording = false;
+};
+
+struct LightControlState {
+  bool available = false;
+  bool supportsPower = false;
+  bool supportsCct = false;
+  bool supportsRgb = false;
+  bool supportsTint = false;
+  bool on = false;
+  bool stateKnown = false;
+  bool commandPending = false;
+  bool commandFailed = false;
+  StateQuality quality = StateQuality::Unknown;
+  uint16_t minKelvin = 0;
+  uint16_t maxKelvin = 0;
+  uint16_t kelvin = 5600;
+  int16_t tintPermille = 0;
+  uint8_t brightness = 50;
+  uint32_t rgb = 0xffffff;
+  bool rgbMode = false;
+  char status[48] = "Unavailable";
 };
 
 enum class ConnectionOwner : uint8_t {

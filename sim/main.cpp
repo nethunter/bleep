@@ -632,9 +632,29 @@ int main() {
 
   tascam_x8_ui::hide();
   ui::showHome();
+  if (!studio::devices().acquire(pano120Id,
+                                 studio::ConnectionOwner::Sequence)) {
+    std::fprintf(stderr, "Failed to activate second Aputure Light\n");
+    return 1;
+  }
+  aputure_light::runtime()->simSetPhase(
+      pano120Id, aputure_light::AputureLightState::Phase::Ready);
+  studio::DeviceCommand secondLook;
+  secondLook.instanceId = pano120Id;
+  secondLook.type = studio::CommandType::SetLightCct;
+  secondLook.value0 = 3200;
+  secondLook.value1 = 17;
+  studio::devices().enqueue(secondLook);
+  pump(20);
   aputure_light_ui::show(pano60Id);
   pump(300);
   if (!capture("20d_aputure_light_pairing")) return 1;
+  auto* unidentifiedAputure = const_cast<aputure_light::AputureLightState*>(
+      aputure_light::runtime()->state(pano60Id));
+  if (unidentifiedAputure == nullptr) return 1;
+  unidentifiedAputure->phase = aputure_light::AputureLightState::Phase::Failed;
+  std::strcpy(unidentifiedAputure->error, "Unknown vendor model");
+  if (!capture("20da_aputure_mc_pro_identify")) return 1;
   studio::DeviceCommand physicalRgb;
   physicalRgb.instanceId = pano60Id;
   physicalRgb.type = studio::CommandType::SetLightRgb;
@@ -642,6 +662,7 @@ int main() {
   physicalRgb.value1 = 25;
   studio::devices().enqueue(physicalRgb);
   pump(20);
+  unidentifiedAputure->error[0] = '\0';
   aputure_light::runtime()->simSetPhase(
       pano60Id, aputure_light::AputureLightState::Phase::Ready);
   pump(300);
@@ -656,11 +677,25 @@ int main() {
     return 1;
   }
   aputure_light_ui::simShowRgb();
+  pump(400);
+  lightState = aputure_light::runtime()->state(pano60Id);
+  if (lightState == nullptr ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Rgb) {
+    std::fprintf(stderr, "Aputure RGB tab did not apply its recalled look\n");
+    return 1;
+  }
   if (aputure_light_ui::simRgbSaturation() != 100) {
     std::fprintf(stderr, "Aputure Light default saturation was not 100\n");
     return 1;
   }
   aputure_light_ui::simShowCct();
+  pump(400);
+  lightState = aputure_light::runtime()->state(pano60Id);
+  if (lightState == nullptr ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Cct) {
+    std::fprintf(stderr, "Aputure CCT tab did not apply its recalled look\n");
+    return 1;
+  }
   studio::DeviceCommand lightOn;
   lightOn.instanceId = pano60Id;
   lightOn.type = studio::CommandType::TurnOn;
@@ -670,7 +705,8 @@ int main() {
   pump(400);
   lightState = aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
-      lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
+      lightState->tintPermille != 120 || lightState->cctBrightness != 72 ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Cct) {
     std::fprintf(stderr, "Aputure Light CCT draft was not applied\n");
     return 1;
   }
@@ -700,8 +736,17 @@ int main() {
     std::fprintf(stderr, "Aputure Light RGB look was not recalled\n");
     return 1;
   }
+  const aputure_light::AputureLightState* secondLightState =
+      aputure_light::runtime()->state(pano120Id);
+  if (secondLightState == nullptr || secondLightState->kelvin != 3200 ||
+      secondLightState->cctBrightness != 17 ||
+      secondLightState->mode != aputure_light::AputureLightState::Mode::Cct) {
+    std::fprintf(stderr, "Aputure command leaked into the non-target session\n");
+    return 1;
+  }
   if (!capture("20f_aputure_light_rgb")) return 1;
   aputure_light_ui::hide();
+  studio::devices().release(pano120Id, studio::ConnectionOwner::Sequence);
 
   zhiyun_x100_ui::show(zhiyunId);
   pump(300);
@@ -811,7 +856,7 @@ int main() {
   }
   studio::SceneRecord colorEditScene = *editedScene;
   colorEditScene.startSteps[1] = studio::makeActionStep(
-      pano60Id, studio::CommandType::SetLightCct, 5600, 50, 0);
+      pano60Id, studio::CommandType::SetLightCctAndOn, 5600, 50, 0);
   if (studio::scenes().replace(colorEditScene) !=
       studio::SceneRegistryStatus::Ok) {
     std::fprintf(stderr, "Failed to prepare color-step edit regression\n");
@@ -822,7 +867,7 @@ int main() {
   const studio::SceneRecord* colorEditedScene = studio::scenes().find(sceneId);
   if (colorEditedScene == nullptr || colorEditedScene->startCount != 3 ||
       colorEditedScene->startSteps[1].command !=
-          studio::CommandType::SetLightCct ||
+          studio::CommandType::SetLightCctAndOn ||
       colorEditedScene->startSteps[1].value0 != 4300 ||
       colorEditedScene->startSteps[1].value1 != 72 ||
       colorEditedScene->startSteps[1].value2 != 120) {

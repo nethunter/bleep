@@ -87,6 +87,10 @@ bool upsertNode(MeshStoreData& data, const MeshNodeRecord& node);
 bool removeNode(MeshStoreData& data, studio::InstanceId instanceId);
 uint16_t defaultControlGroupAddress(const MeshStoreData& data,
                                     const MeshNodeRecord& node);
+uint16_t memberControlGroupAddress(const MeshStoreData& data,
+                                   studio::InstanceId instanceId);
+bool assignVendorModel(MeshStoreData& data, studio::InstanceId instanceId,
+                       uint16_t companyId, uint16_t modelId);
 uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data);
 
 }  // namespace aputure_light

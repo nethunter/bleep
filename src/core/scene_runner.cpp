@@ -65,8 +65,8 @@ SceneValidationStatus SceneRunner::validate(const SceneRecord& record) const {
       if (profile.type == DeviceType::Unknown) {
         return SceneValidationStatus::MissingTarget;
       }
-      const Capability required = requiredCapability(step.command);
-      if ((profile.capabilities & capabilityBit(required)) == 0) {
+      const uint32_t required = requiredCapabilities(step.command);
+      if (required == 0 || (profile.capabilities & required) != required) {
         return SceneValidationStatus::MissingCapability;
       }
       bool known = false;

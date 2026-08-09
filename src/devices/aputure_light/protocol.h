@@ -84,6 +84,10 @@ bool wrapProxyPdu(const NetworkPdu& network, uint8_t* output,
 bool inferKnownVendorModel(const char* displayName, const char* bleName,
                            uint16_t& companyId, uint16_t& modelId);
 
+// Returns the user-facing fixture name for a physically confirmed vendor
+// model tuple. Unknown tuples remain unnamed rather than being guessed.
+const char* knownVendorModelName(uint16_t companyId, uint16_t modelId);
+
 uint8_t vendorChecksum(const uint8_t tail[9]);
 
 }  // namespace aputure_light

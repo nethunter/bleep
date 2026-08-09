@@ -277,6 +277,11 @@ Work:
 - provision factory-reset lights into a panel-owned mesh;
 - persist pending configuration and reserve replay-safe sequence blocks;
 - implement best-available state readback and mark optimistic state explicitly.
+- route every ordinary power, refresh, and look command to the selected
+  member's persisted control group; reserve `0xC000` for a future explicit
+  mesh/group action;
+- use the capability-driven shared light shell and the compound **Set look +
+  On** scene action defined by ADR-039.
 
 Deferred from this tranche: existing Sidus mesh import, user-authored native
 groups, HSIC, interpolation, and confirmed color-property readback. The
@@ -292,6 +297,8 @@ Completion gate:
 - PB-GATT onboarding, interrupted configuration recovery, proxy fallback, and
   verified reset work on all three real target lights;
 - commands and mixed-device sequences target individual lights;
+- two-light alternating power/look tests produce zero non-target changes and
+  zero source-misattributed replies;
 - credentials never leak into normal logs or unprotected exports.
 
 ### Phase 4b: Zhiyun Light direct-control tranche
@@ -340,6 +347,13 @@ Completion gate:
 - failure and timeout paths preserve the last confirmed state and remain
   retryable;
 - the full profile passes mixed-device coexistence and memory recovery checks.
+
+Shared Phase 4/4b acceptance additionally covers every available Aputure pair,
+X100/X60RGB, every cross-brand pairing through each suitable gateway, the
+four-logical-target limit, mixed camera/recorder/HA scenes, 100 sequence cycles
+over two hours, and 20 reboot/reconnect cycles. Record destination or selector,
+confirmed versus optimistic state, latency, heap minimum/largest block, and
+observed physical output. Unavailable models remain Blocked, not inferred.
 
 ## Phase 5: Canon camera drivers
 

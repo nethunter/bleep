@@ -110,19 +110,22 @@ principles:
   physical pairing and runtime control remain on the panel.
 - Experimental native `Aputure Light` support with panel-owned PB-GATT
   provisioning, one cross-brand shared Mesh Proxy connection, per-member
-  vendor color groups, optimistic color-property
-  controls, and a unified parameterized `Set color` sequence action. The
-  firmware periodically polls the captured group-addressed physical-power path,
+  vendor control groups, optimistic color-property controls, and the common
+  capability-driven light screen. The parameterized `Set look + On` sequence
+  action applies a look and powers only that fixture; generated Stop adds one
+  Turn Off. The firmware periodically polls each member's physical-power path,
   authenticates each Ace 25c/MC Pro response, and keeps member reachability
-  separate from the proxy link. The tested Ace 25c/MC Pro mesh now uses the
-  physically verified common-group power path; its per-member RGB groups are
-  enabled from the live red/green test vectors. Initial AppKey/model/group
+  separate from the proxy link. The tested Ace 25c/MC Pro mesh now uses
+  per-member paths for ordinary power and color commands; `0xC000` is reserved
+  for future explicit group actions. Initial AppKey/model/group
   configuration advances only after authenticated success statuses.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
   fixture when needed, persists its mesh-routing selector, and uses confirmed
   proprietary controls through the mesh's retained gateway; X60RGB also
-  exposes RGB hue/saturation.
+  exposes RGB hue/saturation. Aputure, X100, X60RGB, and Home Assistant lights
+  share one control layout; unsupported controls are hidden and HA is
+  power-only.
 - Separate Camera-family entries for GoPro, Insta360, DJI Osmo, Sony Camera,
   and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
   Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360
@@ -167,7 +170,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
-| Aputure Light | Experimental | Adds factory-reset Aputure and amaran fixtures to the panel-owned mesh. amaran Ace 25c/Aputure MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and amaran Pano validation remain open. |
+| Aputure Light | Experimental | Adds factory-reset Aputure and amaran fixtures to the panel-owned mesh. amaran Ace 25c/Aputure MC Pro per-member RGB routing and source-correlated power status have physical evidence; the new per-member power path and two-light isolation gate remain unverified. Reset/recovery and amaran Pano validation remain open. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Adds each fixture as a logical member of the same one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
@@ -350,8 +353,9 @@ to name and finish the sequence.
 A scene reaches `Ready`
 only when every target has both a physical link and completed protocol setup.
 In Start or Custom Stop, tap an existing step to change its action or settings;
-waits open a millisecond duration editor and light-color steps reopen with their
-saved CCT/RGB parameters. Step rows place their reorder/delete controls below
+waits open a millisecond duration editor and **Set look + On** steps reopen with
+their saved CCT/RGB parameters. New looks default to 5600 K, 50% brightness,
+and neutral tint. Step rows place their reorder/delete controls below
 the action name, and the scrollable list ends with **Add step**. Back from an
 existing step's settings returns directly to that Start/Stop list. The Devices
 list similarly places **Add device** after the configured devices.
