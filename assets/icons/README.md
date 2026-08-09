@@ -70,8 +70,8 @@ identical lights, one above two.”
 
 ## Embed into LVGL
 
-The checked-in sources are 1024x1024 RGB PNGs. Regenerate the 48x48 true-color
-LVGL arrays after changing any source:
+The checked-in sources are 1024x1024 RGBA PNGs with transparent backgrounds.
+Regenerate the 48x48 true-color LVGL arrays after changing any source:
 
 ```sh
 python3 tools/gen_icons.py --size 48

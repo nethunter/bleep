@@ -55,6 +55,20 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
 
+### 2026-08-09: Transparent UI icon sources
+
+- Converted all nine Home and device-category source icons to RGBA PNGs with
+  transparent backgrounds, removed the remaining black plates from the four
+  Home icons, and regenerated the 48x48 LVGL true-color-alpha arrays.
+- The complete `ui_sim` capture traversal passed. `01_home.png`,
+  `03_add_device.png`, `22b_scenes_add_category.png`, and
+  `24_scenes_run_ready.png` were visually checked; the cutouts render cleanly
+  on the existing cards and circular sequence chips without clipping.
+- The full Montserrat `bleep` profile built successfully with 140,364 / 327,680
+  bytes static RAM and 1,900,782 / 3,145,728 bytes flash. Upload found
+  `/dev/cu.usbserial-211240` but could not open it because access was denied;
+  no flash completed.
+
 ### 2026-08-09: DJI multi-camera sequence addressing
 
 - Diagnosed a two-DJI scene where individual camera controls worked but the
