@@ -226,6 +226,25 @@ Record values with the exact build environment and commit/worktree state.
   `/dev/cu.usbserial-211240` with image hash verification and hard reset.
   Alternate firmware profiles remain assigned to GitHub Actions.
 
+### Destructive device and sequence confirmation
+
+- Date: 2026-08-09.
+- Removing a saved device and deleting a sequence now open dedicated in-place
+  confirmation views. Each view names the affected record, warns that the
+  action cannot be undone, and provides separate Cancel and explicitly labeled
+  destructive actions. The initial Remove/Delete tap no longer mutates stored
+  configuration.
+- The simulator now asserts that the first destructive tap preserves the
+  record and the second confirmed tap removes it. The complete `ui_sim`
+  traversal passed, and both confirmation captures were visually checked for
+  round-edge clearance. Native tests passed 71/71.
+- Per the current local-build policy, only the full Montserrat `bleep` profile
+  was built locally; GitHub Actions owns alternate-font and driver-profile
+  verification. `bleep` used 142,316 / 327,680 bytes static RAM and
+  1,903,264 / 3,145,728 bytes flash. It uploaded to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset.
+  Physical touch confirmation remains an operator check.
+
 ### Dynamic 40-percent BLE discovery duty
 
 - Date: 2026-08-09.
