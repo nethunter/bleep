@@ -334,6 +334,36 @@ int main() {
   if (!capture("03_add_device")) {
     return 1;
   }
+  picker_shell::simShowDeviceList(picker_shell::Mode::AddDriver,
+                                  studio::DeviceType::Camera);
+  if (!capture("03_camera_families")) {
+    return 1;
+  }
+  picker_shell::hide();
+  const studio::DriverId cameraDrivers[] = {
+      studio::DriverId::GoPro, studio::DriverId::Insta360,
+      studio::DriverId::DjiOsmo, studio::DriverId::SonyCamera,
+      studio::DriverId::PhoneCamera};
+  for (studio::DriverId driverId : cameraDrivers) {
+    ui::simShowAddDevice();
+    picker_shell::simChooseDriver(driverId);
+    const studio::InstanceId cameraAdd = studio::devices().pendingAdd();
+    if (cameraAdd == studio::kInvalidInstanceId ||
+        !studio::devices().ownedBy(cameraAdd,
+                                   studio::ConnectionOwner::Foreground)) {
+      std::fprintf(stderr,
+                   "Camera driver %u did not open provisional pairing\n",
+                   static_cast<unsigned>(driverId));
+      return 1;
+    }
+    ui::handleLongPress();
+    if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {
+      std::fprintf(stderr, "Camera driver %u did not cancel provisional add\n",
+                   static_cast<unsigned>(driverId));
+      return 1;
+    }
+  }
+  ui::simShowAddDevice();
   const size_t countBeforeOnboarding = studio::devices().count();
   picker_shell::simChooseDriver(studio::DriverId::CanonTrigger);
   const studio::InstanceId canceledAdd = studio::devices().pendingAdd();
@@ -834,6 +864,19 @@ int main() {
   if (!capture("24a_scenes_run_connecting")) {
     return 1;
   }
+  scene_ui::simOpenSettings();
+  pump(200);
+  if (studio::scenes().progress().phase != studio::ScenePhase::Idle ||
+      studio::scenes().holdsLinks() || studio::scenes().busy() ||
+      studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||
+      studio::devices().ownedBy(tascamId,
+                                studio::ConnectionOwner::Sequence)) {
+    std::fprintf(stderr,
+                 "Opening sequence settings did not cancel preparation\n");
+    return 1;
+  }
+  scene_ui::simShowRun(sceneId);
+  pump(200);
   studio::scenes().loop(1);
   studio::scenes().loop(CONFIG_SCENE_CONNECT_TIMEOUT_MS + 2);
   pump(200);

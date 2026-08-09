@@ -20,6 +20,7 @@ void simShowRun(studio::SceneId sceneId);
 void simShowEditStart(studio::SceneId sceneId);
 void simShowEditStop(studio::SceneId sceneId);
 void simShowSettings(studio::SceneId sceneId);
+void simOpenSettings();
 void simOpenDeviceControl(studio::InstanceId instanceId);
 void simDeleteCurrentScene();
 bool simShowingList();

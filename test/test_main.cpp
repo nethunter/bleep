@@ -25,6 +25,10 @@
 #include "devices/tascam_x8/ble_match.h"
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
+#include "devices/gopro/protocol.h"
+#include "devices/gopro/state.h"
+#include "devices/insta360/protocol.h"
+#include "devices/dji_osmo/protocol.h"
 #include "devices/home_assistant/protocol.h"
 #include "devices/amaran_light/crypto.h"
 #include "devices/amaran_light/protocol.h"
@@ -833,7 +837,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(9, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(14, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -906,7 +910,192 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_BITS_LOW(
       studio::capabilityBit(studio::Capability::SetLightTint),
       zhiyun->capabilities);
+  const studio::DriverDescriptor* goPro =
+      studio::DriverCatalog::find(studio::DriverId::GoPro);
+  TEST_ASSERT_NOT_NULL(goPro);
+  TEST_ASSERT_EQUAL_STRING("GoPro", goPro->model);
+  TEST_ASSERT_EQUAL_UINT8(4, goPro->maxInstances);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::RecordStart) |
+          studio::capabilityBit(studio::Capability::RecordStop),
+      goPro->capabilities);
+  TEST_ASSERT_BITS_LOW(
+      studio::capabilityBit(studio::Capability::RecordingState),
+      goPro->capabilities);
+  TEST_ASSERT_EQUAL_STRING(
+      "Insta360", studio::DriverCatalog::find(studio::DriverId::Insta360)->model);
+  TEST_ASSERT_EQUAL_STRING(
+      "DJI Osmo", studio::DriverCatalog::find(studio::DriverId::DjiOsmo)->model);
+  TEST_ASSERT_EQUAL_STRING(
+      "Sony Camera", studio::DriverCatalog::find(studio::DriverId::SonyCamera)->model);
+  TEST_ASSERT_EQUAL_STRING(
+      "Phone Camera", studio::DriverCatalog::find(studio::DriverId::PhoneCamera)->model);
+  TEST_ASSERT_EQUAL_STRING(
+      "phone.camera.hid",
+      studio::DriverCatalog::find(studio::DriverId::PhoneCamera)->stableId);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::RecordTrigger),
+      studio::DriverCatalog::find(studio::DriverId::PhoneCamera)->capabilities);
   TEST_ASSERT_NULL(studio::DriverCatalog::find(static_cast<studio::DriverId>(99)));
+}
+
+void test_manager_keeps_every_compiled_camera_driver_reachable() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver shark(studio::DriverId::SharkNanoII);
+  FakeDriver canonSmart(studio::DriverId::CanonBle);
+  FakeDriver tascam(studio::DriverId::TascamX8);
+  FakeDriver canonTrigger(studio::DriverId::CanonTrigger);
+  FakeDriver homeAssistant(studio::DriverId::HomeAssistant);
+  FakeDriver amaran(studio::DriverId::AmaranLight);
+  FakeDriver pano120(studio::DriverId::AmaranPano120c);
+  FakeDriver ace25(studio::DriverId::AmaranAce25c);
+  FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
+  FakeDriver goPro(studio::DriverId::GoPro);
+  FakeDriver insta360(studio::DriverId::Insta360);
+  FakeDriver dji(studio::DriverId::DjiOsmo);
+  FakeDriver sony(studio::DriverId::SonyCamera);
+  FakeDriver phone(studio::DriverId::PhoneCamera);
+  studio::DeviceDriver* drivers[] = {
+      &shark, &canonSmart, &tascam, &canonTrigger, &homeAssistant,
+      &amaran, &pano120, &ace25, &zhiyun, &goPro, &insta360, &dji,
+      &sony, &phone};
+  studio::DeviceManager manager(backend, legacy, drivers,
+                                sizeof(drivers) / sizeof(drivers[0]));
+  TEST_ASSERT_TRUE(manager.begin());
+
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.beginAdd(studio::DriverId::PhoneCamera,
+                                        "Phone Camera", instanceId)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_TRUE(
+      manager.ownedBy(instanceId, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.cancelPendingAdd(instanceId)));
+}
+
+void test_record_trigger_camera_is_available_to_scenes() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver insta360(studio::DriverId::Insta360);
+  studio::DeviceDriver* drivers[] = {&insta360};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::Insta360, "Insta360",
+                                   cameraId)));
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Toggle camera", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordTrigger);
+  record.stopCount = 1;
+  record.stopSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordTrigger);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneValidationStatus::Ok),
+                        static_cast<int>(scenes.validate(sceneId)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  for (uint32_t now = 1; now < 20; ++now) {
+    devices.loop();
+    scenes.loop(now);
+  }
+  TEST_ASSERT_EQUAL_INT(1, insta360.dispatchCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+                        static_cast<int>(insta360.lastCommand));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.stop()));
+  for (uint32_t now = 20; now < 40; ++now) {
+    devices.loop();
+    scenes.loop(now);
+  }
+  TEST_ASSERT_EQUAL_INT(2, insta360.dispatchCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+                        static_cast<int>(insta360.lastCommand));
+}
+
+void test_gopro_open_ble_packets_and_optimistic_state() {
+  const gopro::Packet start = gopro::buildSetShutter(true);
+  const uint8_t expectedStart[] = {0x03, 0x01, 0x01, 0x01};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedStart), start.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStart, start.bytes, start.len);
+  const gopro::Packet stop = gopro::buildSetShutter(false);
+  const uint8_t expectedStop[] = {0x03, 0x01, 0x01, 0x00};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.bytes, stop.len);
+  const gopro::Packet pairing = gopro::buildSetPairingState();
+  const uint8_t expectedPairing[] = {0x03, 0x17, 0x01, 0x01};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPairing, pairing.bytes, pairing.len);
+
+  const uint8_t ok[] = {0x02, 0x01, 0x00};
+  const gopro::Response response = gopro::parseResponse(ok, sizeof(ok));
+  TEST_ASSERT_TRUE(response.valid);
+  TEST_ASSERT_EQUAL_HEX8(gopro::kSetShutterCommand, response.command);
+  TEST_ASSERT_EQUAL_HEX8(gopro::kSuccessStatus, response.status);
+  TEST_ASSERT_FALSE(gopro::parseResponse(ok, 2).valid);
+
+  gopro::GoProState state;
+  gopro::markCommandQueued(state, true);
+  TEST_ASSERT_TRUE(state.commandPending);
+  gopro::reduceCommandResponse(state, true, gopro::kSuccessStatus);
+  TEST_ASSERT_FALSE(state.commandPending);
+  TEST_ASSERT_FALSE(state.lastCommandFailed);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(gopro::GoProState::Recording::Recording),
+                        static_cast<int>(state.recording));
+  gopro::markCommandQueued(state, false);
+  gopro::reduceCommandResponse(state, false, 0x02);
+  TEST_ASSERT_TRUE(state.lastCommandFailed);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(gopro::GoProState::Recording::Unknown),
+                        static_cast<int>(state.recording));
+}
+
+void test_dji_osmo_protocol_matches_official_connection_vector() {
+  const uint8_t address[] = {0x38, 0x34, 0x56, 0x78, 0x9a, 0xbc};
+  const dji_osmo::Packet packet = dji_osmo::buildConnectionRequest(
+      1, 0x12345678, address, 0x1ffe);
+  const uint8_t expected[] = {
+      0xaa,0x33,0x00,0x02,0x00,0x00,0x00,0x00,0x01,0x00,0x98,0x2f,0x00,0x19,
+      0x78,0x56,0x34,0x12,0x06,0x38,0x34,0x56,0x78,0x9a,0xbc,0x00,0x00,0x00,
+      0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+      0xfe,0x1f,0x00,0x00,0x00,0x00,0x79,0x6c,0x66,0x7c};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expected), packet.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, packet.bytes, packet.len);
+  const auto frame = dji_osmo::parseFrame(packet.bytes, packet.len);
+  TEST_ASSERT_TRUE(frame.valid);
+  TEST_ASSERT_EQUAL_UINT8(dji_osmo::kCmdConnection, frame.commandId);
+
+  const auto start = dji_osmo::buildRecordControl(7, true);
+  const auto parsedStart = dji_osmo::parseFrame(start.bytes, start.len);
+  TEST_ASSERT_TRUE(parsedStart.valid);
+  TEST_ASSERT_EQUAL_UINT8(dji_osmo::kCmdRecord, parsedStart.commandId);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedStart.payload[4]);
+}
+
+void test_insta360_gps_remote_models_and_shutter_vector() {
+  TEST_ASSERT_TRUE(insta360::matchesCameraName("X5 123456"));
+  TEST_ASSERT_TRUE(insta360::matchesCameraName("GO 3 654321"));
+  TEST_ASSERT_TRUE(insta360::matchesCameraName("GO Ultra 123456"));
+  TEST_ASSERT_TRUE(insta360::isGoUltra("Insta360 GO Ultra"));
+  TEST_ASSERT_FALSE(insta360::isGoUltra("GO 3 654321"));
+  const uint8_t expected[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x02,0x00};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, insta360::kShutterCommand,
+                                sizeof(expected));
 }
 
 void test_registry_crud_and_single_shark_limit() {
@@ -2555,6 +2744,26 @@ void test_ble_central_timing_and_readiness_reset_on_release() {
   central.release(link);
 }
 
+void test_ble_central_pauses_scan_for_peripheral_gatt_mutation() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  const studio::ble::LinkHandle link = central.acquire(delegate, {});
+
+  TEST_ASSERT_TRUE(central.requestScan(link));
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  const uint32_t startsBeforePause = backend.scanStarts();
+  central.pauseScanForGattMutation();
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.scanStops());
+  TEST_ASSERT_TRUE(central.scanning(link));
+
+  central.loop(1);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(startsBeforePause + 1, backend.scanStarts());
+  central.release(link);
+}
+
 void test_ble_central_ignores_queued_event_from_evicted_link_generation() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -3241,7 +3450,12 @@ int main(int, char**) {
   RUN_TEST(test_canon_state_requires_camera_notifications);
   RUN_TEST(test_tascam_cobs_commands_match_capture);
   RUN_TEST(test_tascam_scanner_and_confirmed_state);
+  RUN_TEST(test_gopro_open_ble_packets_and_optimistic_state);
+  RUN_TEST(test_dji_osmo_protocol_matches_official_connection_vector);
+  RUN_TEST(test_insta360_gps_remote_models_and_shutter_vector);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
+  RUN_TEST(test_manager_keeps_every_compiled_camera_driver_reachable);
+  RUN_TEST(test_record_trigger_camera_is_available_to_scenes);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
   RUN_TEST(test_transactional_add_commits_only_after_pairing_and_readiness);
   RUN_TEST(test_transactional_add_cancel_and_failed_save_do_not_register_device);
@@ -3275,6 +3489,7 @@ int main(int, char**) {
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
+  RUN_TEST(test_ble_central_pauses_scan_for_peripheral_gatt_mutation);
   RUN_TEST(test_ble_central_ignores_queued_event_from_evicted_link_generation);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);

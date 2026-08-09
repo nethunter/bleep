@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -68,7 +69,7 @@ class HomeAssistantClient {
   bool subscriptionDirty_ = false;
   uint32_t subscriptionId_ = 0;
   uint32_t nextMessageId_ = 10;
-  uint32_t connectionStarted_ = 0;
+  uint32_t wifiDisconnectedAt_ = 0;
   uint32_t retryAt_ = 0;
   uint8_t failures_ = 0;
   studio::HomeAssistantConfig config_;
@@ -79,6 +80,7 @@ class HomeAssistantClient {
   size_t frameLengths_[2] = {};
   uint8_t frameHead_ = 0;
   uint8_t frameTail_ = 0;
+  std::atomic<uint8_t> frameCount_{0};
   bool frameFault_ = false;
   bool websocketDisconnected_ = false;
 };

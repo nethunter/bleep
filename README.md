@@ -72,7 +72,8 @@ principles:
   item that opens a separate warning screen with a red three-second-hold button.
   Wi-Fi changes still enter the temporary Portal; normal use of Home and
   Settings leaves the radio off.
-- On-demand Bluetooth LE connections through one shared NimBLE central. Up to
+- On-demand Bluetooth LE connections through one shared NimBLE host. Central
+  camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and
   remain immediately reusable while healthy. Ordinary devices consume one
   group each; every Amaran, Aputure, and Zhiyun member provisioned into the
@@ -90,7 +91,11 @@ principles:
   Start; devices already confirmed stopped do not abort that cleanup.
 - Experimental local Home Assistant control for four selected lights, switches,
   input booleans, buttons, scenes, or scripts through a temporary setup Portal
-  and one shared on-demand Wi-Fi session.
+  and one shared on-demand Wi-Fi session. An authenticated event subscription
+  is command-ready even when a memory-gated initial state read is deferred; the
+  entity remains visibly `UNKNOWN` until Home Assistant confirms its state.
+  A successful service response completes sequence delivery even when an
+  idempotent command produces no state-change event.
 - A responsive LAN Portal for phone or desktop administration of committed
   devices and current Start/Stop sequences. It can rename, enable, disable, or
   remove existing devices and create, duplicate, reorder, and edit sequences;
@@ -110,6 +115,15 @@ principles:
   fixture when needed, persists its mesh-routing selector, and uses confirmed
   proprietary controls through the mesh's retained gateway; X60RGB also
   exposes RGB hue/saturation.
+- Separate Camera-family entries for GoPro, Insta360, DJI Osmo, Sony Camera,
+  and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
+  Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360
+  emulates the GPS remote shutter used by X5/GO 3-class cameras, while DJI
+  implements the published Osmo controller handshake, start/stop, and status
+  subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
+  action for authored Start and Stop lists. Insta360 GPS-remote connection is
+  operator-confirmed; shutter/sequence behavior and the other families remain
+  experimental. Sony still stops at an explicit protocol-research screen.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -130,6 +144,11 @@ are experimental bounded tranches whose hardware gates remain open. See
 | iFootage Shark Nano II | Current | Pair/reconnect, battery, keypoints, manual movement, timing, loop/direction, and run control. |
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
 | Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
+| GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
+| Phone Camera | Experimental | Multi-instance BLE HID volume-up shutter routed to each bonded iOS/Android/HarmonyOS peer. |
+| Insta360 X5 / GO 3 / GO Ultra | Experimental | Emulates an Insta360 GPS remote and sends its toggle shutter command. Camera state is not readable; GO Ultra is a separate target and is offered only as an explicitly experimental probe. |
+| DJI Osmo Action 5 Pro / Osmo 360 | Experimental | Published DJI BLE handshake, explicit recording start/stop, and camera status subscription. |
+| Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
 | Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to the panel-owned mesh. Ace 25c/MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and Pano validation remain open. |
@@ -166,8 +185,9 @@ values shown on the Shark screen come from the slider.
   and canceled touches do not produce feedback.
 - **Button (GPIO 1):** A short press activates the current primary action. On a
   sequence run screen it starts from Ready and stops once armed or while Start
-  is running. Device screens similarly dispatch their primary Shark, Canon, or
-  Tascam action. A 700 ms hold navigates Back, cancels, or closes the current
+  is running. Device screens similarly dispatch their primary Shark, Canon,
+  GoPro, Phone Camera, or Tascam action. A 700 ms hold navigates Back, cancels,
+  or closes the current
   overlay. Continuing the same hold to 2 seconds safely unwinds the remaining
   navigation path and returns directly to Home. Recognized short presses use
   the normal tap, while each handled hold stage uses the Back pattern. The
@@ -298,9 +318,12 @@ existing step's settings returns directly to that Start/Stop list. The Devices
 list similarly places **Add device** after the configured devices.
 The panel owns those links while the run screen is open. Circular target chips
 show connection readiness and open each device's full controls without dropping
-the other sequence links. Back or Done releases sequence ownership while ready
-device sessions remain available for immediate reuse. Device management offers
-an explicit Disconnect action.
+the other sequence links. Opening Settings cancels pending preparation and
+releases sequence ownership so Rename and the Start/Stop editors are immediately
+usable; it does not interrupt an active Start, armed recording, Stop, or a
+partial action failure that still permits Stop cleanup. Back or Done also
+releases sequence ownership while ready device sessions remain available for
+immediate reuse. Device management offers an explicit Disconnect action.
 
 ## How the firmware is organized
 
@@ -387,7 +410,8 @@ changes at low speed and confirm physical behavior; an ACK alone is not proof
 of success.
 
 Ble(e)p is an independent community project and is not affiliated with or
-endorsed by iFootage, Canon, Tascam, Amaran, Deity, Espressif, or Elecrow. Brand
+endorsed by iFootage, Canon, GoPro, Insta360, DJI, Sony, Tascam, Amaran, Deity,
+Espressif, or Elecrow. Brand
 and product names belong to their respective owners.
 
 ## License

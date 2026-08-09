@@ -267,6 +267,80 @@ Reference research:
 - <https://developercommunity.usa.canon.com/s/article/CCAPI-Function-List>
 - <https://github.com/pklaus/canoremote>
 
+## Action cameras and phone shutters
+
+### GoPro
+
+- Status: `Experimental`, hardware verification pending.
+- Driver: `GoPro` (`DriverId::GoPro = 10`), up to four instances.
+- Transport: Ble(e)p is the central and the camera is the peripheral. Discovery
+  requires advertised service `0xFEA6`; pairing is bonded without MITM.
+- Commands: official Open GoPro command/response characteristics and Set
+  Pairing State plus Set Shutter on/off. Successful command responses are shown
+  as optimistic state, never as camera-confirmed recording.
+- Compatibility claim: only models covered by the current Open GoPro supported
+  camera table should be treated as candidates. HERO8, legacy MAX/MINI, or any
+  retailer-only claim remains unverified until tested.
+- Evidence: <https://gopro.github.io/OpenGoPro/docs/ble/protocol/ble_setup/>
+  and <https://gopro.github.io/OpenGoPro/docs/ble/control/>.
+
+### Phone Camera
+
+- Status: `Experimental`, iOS/Android/HarmonyOS hardware verification pending.
+- Driver: `Phone Camera` (`DriverId::PhoneCamera = 14`), up to four bonded
+  phones and four concurrent physical links within the global limit.
+- Transport: Ble(e)p advertises one lazy BLE HID Consumer Control peripheral.
+  Each instance binds to the authenticated peer identity. Shutter sends Volume
+  Increment press/release only to that peer, matching the common phone-camera
+  hardware-button convention.
+- Reconnect: the saved identity receives a short directed-advertising attempt
+  followed by a normal discoverable window. The phone is the BLE central, so
+  its OS ultimately decides whether to reconnect automatically. Multiple saved
+  phones receive separate windows and remain concurrently connected afterward,
+  subject to the global physical-link limit.
+- Boundary: camera-app response to the volume key is not observable over HID,
+  so the panel reports only that the report was sent.
+
+### Insta360
+
+- Status: `Experimental`; GPS-remote connection is operator-confirmed, while
+  shutter and sequence behavior remain pending.
+- Transport: Ble(e)p emulates an Insta360 GPS remote with service `0xCE80`;
+  the camera scans and connects to the panel. A shutter press notifies
+  `FC EF FE 86 00 03 01 02 00` on `0xCE82`.
+- Candidates: X5 and GO 3. GO 3 is a separate camera, not an alias for GO
+  Ultra. GO Ultra remains a visibly experimental probe
+  because current vendor material does not establish legacy GPS-remote support.
+- Boundary: the command is a mode-dependent toggle and has no decoded status
+  response, so the UI reports send success rather than recording state. Scenes
+  expose the same explicit `Shutter Toggle` action in either authored list.
+- Research reference: <https://github.com/theserialhobbyist/insta360_m5StickC_remote>.
+
+### DJI Osmo
+
+- Status: `Experimental`; target hardware verification pending.
+- Transport: central-role service `0xFFF0`, notifications on `0xFFF4`, and
+  write-without-response on `0xFFF5`.
+- Protocol: DJI's connection request/camera approval handshake, explicit
+  record start/stop (`1D/03`), and 2 Hz status subscription (`1D/05`). Valid
+  camera status pushes (`1D/02`) are the only source of confirmed recording.
+- Candidates: Osmo Action 5 Pro and Osmo 360, both listed by DJI's reference.
+- Evidence: <https://github.com/dji-sdk/Osmo-GPS-Controller-Demo>.
+
+### Sony Camera
+
+- Status: `Research`; the catalog entry is visible but cannot be saved.
+- Sony's RMT-P1BT behavior has a usable Apache-licensed independent protocol
+  description, including Sony company ID `0x012D`, service
+  `8000FF00-FF00-FFFF-FFFF-FFFFFFFFFFFF`, and shutter press sequencing. Because
+  the camera connects to the remote, implementation requires the same
+  peripheral-role boundary as Phone Camera plus real-camera validation. It
+  remains blocked until that gate can be exercised.
+- Research references: <https://github.com/coral/freemote>,
+  <https://helpguide.sony.net/ilc/1820/v1/en/contents/TP1000770077.html>,
+  <https://onlinemanual.insta360.com/onex2/en-us/specs/bluetooth>, and
+  <https://repair.dji.com/help/content?customId=01700008289&lang=en&paperDocType=ARTICLE&re=US&spaceId=17>.
+
 ## Audio recorders
 
 ### Tascam Portacapture X8 Bluetooth

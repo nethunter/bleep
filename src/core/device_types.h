@@ -23,6 +23,11 @@ enum class DriverId : uint16_t {
   AmaranAce25c = 8,
   ZhiyunLight = 9,
   ZhiyunX100 = 9,
+  GoPro = 10,
+  Insta360 = 11,
+  DjiOsmo = 12,
+  SonyCamera = 13,
+  PhoneCamera = 14,
   // Internal transport identity. Never persisted as a device driver.
   PanelOwnedMesh = 0xfffe,
 };

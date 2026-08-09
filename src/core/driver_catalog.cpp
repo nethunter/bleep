@@ -131,6 +131,47 @@ constexpr DriverDescriptor kDrivers[] = {
         4,
     },
 #endif
+#if CONFIG_DRIVER_GOPRO
+    {
+        DriverId::GoPro,
+        "gopro.open_gopro",
+        "GoPro",
+        "GoPro",
+        DeviceType::Camera,
+        capabilityBit(Capability::Link) |
+            capabilityBit(Capability::RecordStart) |
+            capabilityBit(Capability::RecordStop),
+        4,
+    },
+#endif
+#if CONFIG_DRIVER_INSTA360
+    {DriverId::Insta360, "insta360.gps_remote", "Insta360", "Insta360",
+     DeviceType::Camera,
+     capabilityBit(Capability::Link) |
+         capabilityBit(Capability::RecordTrigger),
+     4},
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+    {DriverId::DjiOsmo, "dji.osmo_controller", "DJI", "DJI Osmo",
+     DeviceType::Camera,
+     capabilityBit(Capability::Link) |
+         capabilityBit(Capability::Battery) |
+         capabilityBit(Capability::RecordStart) |
+         capabilityBit(Capability::RecordStop) |
+         capabilityBit(Capability::RecordingState),
+     4},
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+    {DriverId::SonyCamera, "sony.camera.research", "Sony", "Sony Camera",
+     DeviceType::Camera, capabilityBit(Capability::Link), 4},
+#endif
+#if CONFIG_DRIVER_PHONE_CAMERA
+    {DriverId::PhoneCamera, "phone.camera.hid", "Phone", "Phone Camera",
+     DeviceType::Camera,
+     capabilityBit(Capability::Link) |
+         capabilityBit(Capability::RecordTrigger),
+     4},
+#endif
     {},
 };
 constexpr size_t kDriverCount = (sizeof(kDrivers) / sizeof(kDrivers[0])) - 1;

@@ -264,8 +264,9 @@ the replacement.
   physical link and driver-confirmed protocol readiness after required
   discovery/subscriptions/initialization. Links stay held while the run
   screen is open, during Start/Stop execution, while armed after Start, and
-  after a successful Stop so editing/restart does not reconnect unchanged
-  targets. Leaving the run screen (Back/Unlink/hide) releases links. Manual
+  after a successful Stop for immediate restart. Opening Settings, leaving the
+  run screen (Back/hide), or selecting Done releases sequence ownership and
+  cancels pending preparation so configuration remains editable. Manual
   device screens retain exclusive single-active activation outside sequence
   holds. A sequence target chip may temporarily open that target's full device
   screen by borrowing its held activation; Back returns to the sequence without
@@ -276,7 +277,9 @@ the replacement.
   on the run screen. Device screens opened outside the sequence remain blocked
   while it holds links. Sequence-owned target controls are disabled during
   Start/Stop execution, and Start/Stop remain unavailable while any target is
-  not protocol-ready. A short hardware-button press invokes the enabled
+  not protocol-ready. Settings never cancels an active Start, armed recording,
+  Stop, or action failure that still permits authored Stop cleanup. A short
+  hardware-button press invokes the enabled
   Start/Stop action; a long press follows the same Back path as touch and never
   dispatches Start or Stop. Shark motion remains outside sequences.
 - Roadmap deviation: This advances a bounded Phase 6/7 panel-scene tranche
@@ -389,8 +392,12 @@ the replacement.
   subscribe only to active entities with `subscribe_trigger`, and rebuild that
   subscription as ownership changes. WebSocket callbacks enqueue bounded raw
   frames; JSON parsing, state mutation, service calls, and LVGL access stay in
-  `loop()`. Stateful commands require matching subscribed state or time out
-  after five seconds; stateless actions complete on a successful service result.
+  `loop()`. A successful authenticated subscription is command-ready even when
+  heap pressure defers initial REST state confirmation; that entity remains
+  explicitly unknown until REST or an event confirms it. A successful service
+  result completes both stateful and stateless actions because an idempotent
+  call may produce no state-change event; API acceptance does not upgrade the
+  entity's independently reported state quality.
 - Safety and scenes: Generic `TurnOn`, `TurnOff`, `Press`, and `Activate`
   commands are capability-checked through each instance's dynamic profile.
   Lights and switches expose explicit On/Off controls. Input booleans retain
@@ -780,6 +787,53 @@ the replacement.
   unchanged. The full profile's link-time static RAM must remain documented,
   and mixed BLE plus HA operation must preserve enough contiguous heap for the
   roughly `0x7800` NimBLE initialization allocation.
+
+## ADR-036: Action-camera families stay separate and protocol claims stay narrow
+
+- Status: Experimental; GoPro, phone, Insta360, and DJI hardware gates open.
+- Catalog: `GoPro`, `Insta360`, `DJI Osmo`, `Sony Camera`, and `Phone Camera`
+  are separate discoverable entries under Cameras. Numeric driver IDs 10-14
+  are stable persistence identities and do not alias Canon or one another.
+- GoPro: use GoPro's published Open GoPro peripheral service, bonded central
+  connection, command/response characteristics, pairing-state command, and
+  Set Shutter on/off. A successful response is command acceptance and produces
+  optimistic UI state; it is not camera-confirmed recording state. Up to four
+  GoPro instances use ordinary per-instance physical slots.
+- Phone: act as one lazy BLE HID peripheral named `Ble(e)p Shutter`. Each saved
+  phone is identified by its bonded peer identity and consumes one physical
+  link; a shutter press sends a bounded Volume Increment press/release to only
+  that connection. Bonded reconnect first uses a short directed-advertising
+  attempt, then a normal discoverable window because the phone OS remains the
+  central and controls whether it reconnects without user interaction. Server
+  callbacks only enqueue connection/auth events.
+- Insta360: emulate the community-documented GPS remote service `0xCE80` and
+  toggle shutter notification for X5 and GO 3 candidates. The camera initiates
+  the connection, so one shared peripheral callback dispatcher separates these
+  peers from Phone Camera. Notifications prove only that the remote sent the
+  command. Scenes expose this capability as an explicit `Shutter Toggle` in
+  either authored list rather than claiming distinct start/stop state. GO
+  Ultra is a distinct model and remains an experimental probe;
+  current vendor compatibility material does not establish GPS-remote support.
+- Parallelism: synchronization is a core requirement. All compiled
+  peripheral-camera services are registered together before the first peer
+  connects. Advertising windows may be serialized by the ESP32-C3's one legacy
+  advertiser, but established Phone Camera, Insta360, and central-role camera,
+  recorder, light, and mesh sessions remain live concurrently within the
+  configured physical-link limit. A disconnected target must never tear down a
+  ready target merely to advertise.
+- DJI: implement DJI's published controller reference for service `0xFFF0`,
+  the bidirectional connection handshake, explicit record start/stop, and
+  camera-status subscription. Action 5 Pro and Osmo 360 are named candidates
+  from that reference; only status pushes produce confirmed recording state.
+- Research boundary: Sony's RMT-P1BT GATT behavior is documented by an
+  Apache-licensed independent implementation, but panel peripheral-role
+  emulation remains unverified. It continues to open `Protocol capture
+  required` and cannot commit a device record.
+- Gate: verify pairing, bonded reconnect, shutter behavior, cancellation,
+  forget/re-pair, four-slot coexistence, and heap return on representative
+  GoPro, Insta360, DJI, and iOS/Android/HarmonyOS hardware. Never extend model compatibility
+  beyond vendor documentation or observed hardware merely because a product
+  listing makes a broader claim.
 
 ## Open decisions
 

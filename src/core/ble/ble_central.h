@@ -22,6 +22,9 @@ class BleCentral {
   void loop(uint32_t nowMs);
 
   bool requestScan(LinkHandle link, bool clearTarget = false);
+  // Temporarily stops discovery without clearing per-link scan requests. The
+  // next loop() resumes discovery after a peripheral GATT table mutation.
+  void pauseScanForGattMutation();
   bool selectAdvertisement(LinkHandle link,
                            const Advertisement& advertisement);
   bool requestConnect(LinkHandle link, const Address& address);

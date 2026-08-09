@@ -164,6 +164,16 @@ bool BleCentral::requestScan(LinkHandle link, bool clearTarget) {
   return true;
 }
 
+void BleCentral::pauseScanForGattMutation() {
+  if (!begun_ || !scanRunning_) {
+    return;
+  }
+  backend_.stopScan();
+  scanRunning_ = false;
+  scanBurstEndsMs_ = 0;
+  scanResumeAtMs_ = 0;
+}
+
 bool BleCentral::selectAdvertisement(
     LinkHandle link, const Advertisement& advertisement) {
   Slot* slot = slotFor(link);
