@@ -142,6 +142,61 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Mixed-scene staged timeout and retained HA reuse
+
+- Date: 2026-08-09.
+- A cold `HML Studio` capture kept Wi-Fi `Off` while Canon Smart reached
+  protocol-ready at 8.2 seconds. X8 then reported NimBLE reasons `520`
+  (connection timeout) and `574` (failed establishment), advertised again near
+  40 seconds, and reached protocol-ready at 44.6 seconds. The old shared
+  30-second sequence deadline had already failed, so deferred HA was never
+  activated; the apparent fast second attempt reused the X8 link that continued
+  preparing under retained sequence ownership.
+- Mixed scenes now allow 60 seconds for cold physical preparation. Once every
+  physical target is ready, deferred HA/Wi-Fi gets a new 30-second deadline
+  rather than inheriting time spent waking BLE peripherals.
+- Sequence switches now transfer ownership for shared targets without releasing
+  them. Shared HA therefore stays authenticated even while new physical targets
+  prepare. A follow-up hardware test showed that the mixed-scene preparation
+  path still proactively disconnected every ownerless non-target before HA,
+  bypassing the four-resource pool and dropping both Canon and Tascam even
+  though HA, Canon, Tascam, and Amaran fit exactly. That cleanup is removed:
+  old-only resources now remain retained until ordinary capacity-driven LRU
+  actually needs room. The same owner protection applies to an entire shared
+  BLE transport group when any logical member remains targeted.
+- Native tests passed 70/70, including separate physical/HA deadlines, atomic
+  shared-HA ownership across scene switches and edits, and the exact four-
+  resource HML-to-Sequence-3 handoff retaining HA, Canon, Tascam, and Amaran.
+  `crowpanel_128` built at 1,903,784 bytes flash and 142,316 bytes static RAM.
+  The full `ui_sim` capture run passed after updating its terminal physical
+  timeout fixture. The corrected firmware uploaded to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset. Live
+  cold-boot `HML Studio` timing and the corrected same-HA four-resource scene
+  switch remain pending operator verification.
+
+### Tascam X8 bounded direct reconnect
+
+- Date: 2026-08-09.
+- Live serial diagnosis on the X8/AK-BT1 showed that successful physical links
+  completed GATT setup, session initialization, and protocol readiness in about
+  1.8-2.1 seconds. The slow cycle instead spent about 19 seconds on three blind
+  saved-address attempts and their backoffs before advertisement rediscovery
+  succeeded.
+- A scan-first build was flashed and found slower by the operator. Saved X8
+  activation therefore keeps one fast persisted-address attempt, then returns
+  to scanning instead of spending two more backoff cycles on a silent address.
+  Rediscovery filters on the saved address and address type, so it cannot select
+  another X8 in the room; new-device scans remain service/name based.
+- Retry and rediscovery phases now remain visible as connection progress rather
+  than falling back to `Disconnected`. X8 connect-failure and disconnect events
+  also log the NimBLE reason code for future diagnosis.
+- Native tests passed 68/68, including single-direct retry and saved-peer
+  matching regressions. `crowpanel_128` built at 1,903,768 bytes flash and
+  142,332 bytes static RAM, then uploaded to `/dev/cu.usbserial-211240` with
+  image hash verification and hard reset. Final live X8 connection timing is
+  pending operator verification; the serial monitor was left detached after
+  upload to avoid influencing the panel's reset lines.
+
 ### Mixed four-link Home Assistant readiness fix
 
 - Date: 2026-08-08.

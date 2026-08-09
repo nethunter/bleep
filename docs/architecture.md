@@ -159,6 +159,13 @@ When a retained instance gains a new owner, `DeviceManager` invokes the
 driver's bounded resume hook before attaching that owner. Canon Smart uses this
 hook to reconnect and wake a session that the panel previously powered off;
 other drivers leave their retained transport unchanged.
+Mixed BLE/Home Assistant sequence preparation gives cold physical transports a
+60-second ceiling, then starts a fresh 30-second deadline when deferred
+Wi-Fi/WebSocket preparation begins. Switching between scenes atomically
+transfers sequence ownership for their shared targets. Those targets never
+become idle eviction candidates; old-only targets release sequence ownership
+but remain retained until ordinary capacity-driven LRU needs room, and a
+physical transport group remains protected when any member is shared.
 Logical active-instance capacity is separate from physical BLE capacity. Each
 driver supplies a `BleSlotKey`: ordinary GATT instances use their instance ID,
 non-BLE runtimes use no key, and logical members sharing one real transport use
@@ -319,16 +326,13 @@ Assistant target, independent of authored action order. On the ESP32-C3,
 NimBLE initialization requires a contiguous allocation of roughly `0x7800`
 bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
 underlying BLE library to assert instead of returning a recoverable error.
-Before that ordering pass, preparation evicts every idle retained HA session so
-navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
-After the required physical targets are acquired, preparation also evicts idle
-physical transports that are not targets of the new scene. Shared targets stay
-active, while foreground ownership, pending work, or confirmed recording makes
-the handoff fail safely instead of forcing teardown. When that cleanup starts
-an asynchronous NimBLE client deletion, HA activation is deferred for a
-non-blocking 250 ms so the main loop can return the released BLE allocations
-before Wi-Fi starts. Action execution still follows the authored order after
-all targets prepare. The LVGL pool is held to 64 KiB
+Scene handoff does not proactively tear down either HA or physical retained
+sessions. Old-only targets become ownerless but stay connected while the
+four-resource pool has capacity. Acquiring a fifth logical resource or BLE key
+uses the normal LRU paths, which skip every shared target because it retains
+sequence ownership. This keeps HA, Canon, Tascam, and Amaran connected together
+when they exactly fill the pool. Action execution still follows the authored
+order after all targets prepare. The LVGL pool is held to 64 KiB
 and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
 static SRAM compared with the earlier 96 KiB/40-row configuration. The full
 simulator flow is the regression gate for the LVGL allocation budget. HA keeps

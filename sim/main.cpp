@@ -878,7 +878,7 @@ int main() {
   scene_ui::simShowRun(sceneId);
   pump(200);
   studio::scenes().loop(1);
-  studio::scenes().loop(CONFIG_SCENE_CONNECT_TIMEOUT_MS + 2);
+  studio::scenes().loop(CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS + 2);
   pump(200);
   if (studio::scenes().progress().phase != studio::ScenePhase::Failed) {
     std::fprintf(stderr, "Sequence did not reach terminal connection failure\n");

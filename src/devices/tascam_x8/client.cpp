@@ -45,6 +45,10 @@ bool TascamX8Client::begin() {
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 6000;
+  // The unbonded AK-BT1 can accept a quick saved-address connection while its
+  // radio is awake. After that single attempt, wait for fresh advertisement
+  // evidence instead of spending more backoff cycles on a silent radio.
+  policy.directAttemptsBeforeScan = kDirectAttemptsBeforeScan;
   policy.diagnosticTag = "tascam_x8";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
@@ -112,6 +116,17 @@ void TascamX8Client::loop() {
   }
 
   const uint32_t now = millis();
+  if (state_.link == Link::Disconnected) {
+    const studio::ble::LinkPhase phase =
+        studio::ble::bleCentral().phase(linkHandle_);
+    if (phase == studio::ble::LinkPhase::Scanning) {
+      state_.link = Link::Scanning;
+    } else if (phase == studio::ble::LinkPhase::WaitingRetry ||
+               phase == studio::ble::LinkPhase::WaitingConnect ||
+               phase == studio::ble::LinkPhase::Connecting) {
+      state_.link = Link::Connecting;
+    }
+  }
   if (setupPending_ && static_cast<int32_t>(now - setupAtMs_) >= 0) {
     setupPending_ = false;
     if (!connectRequested_ || client_ == nullptr || !client_->isConnected() ||
@@ -362,7 +377,9 @@ void TascamX8Client::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
   if (link != linkHandle_ ||
-      !matchesAdvertisement(advertisement)) {
+      !matchesSavedAdvertisement(advertisement,
+                                 haveTarget_ ? targetAddr_ : nullptr,
+                                 targetAddrType_)) {
     return;
   }
   std::strncpy(targetAddr_, advertisement.address.value,
@@ -386,8 +403,12 @@ void TascamX8Client::onBleEvent(studio::ble::LinkHandle link,
     setupPending_ = true;
     setupAtMs_ = millis();
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
+    studio::ble::logEventReason("tascam_x8", linkHandle_, "connect_failed",
+                                event.reason);
     state_.link = Link::Disconnected;
   } else if (event.type == studio::ble::EventType::Disconnected) {
+    studio::ble::logEventReason("tascam_x8", linkHandle_, "disconnected",
+                                event.reason);
     client_ = nullptr;
     handleDisconnect();
   }

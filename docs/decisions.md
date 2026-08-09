@@ -258,7 +258,7 @@ the replacement.
 
 ## ADR-020: Sequence runs hold concurrent device links
 
-- Status: Accepted (amended 2026-08-04)
+- Status: Accepted (amended 2026-08-04 and 2026-08-09)
 - Decision: Opening a sequence run screen prepares every distinct Start/Stop
   target concurrently (`Connecting` → `Ready`). `Ready` requires both a
   physical link and driver-confirmed protocol readiness after required
@@ -271,6 +271,12 @@ the replacement.
   holds. A sequence target chip may temporarily open that target's full device
   screen by borrowing its held activation; Back returns to the sequence without
   releasing any held target.
+- Transition ownership: Switching directly between sequences transfers the
+  intersection of their target sets without an ownerless gap. A target shared
+  by both sequences, and any physical transport group backing that target,
+  remains protected from eviction. Old-only targets are released first and
+  become the preferred safe reclamation candidates before new-only targets are
+  acquired. This applies equally to retained HA/Wi-Fi and BLE transports.
 - Consequence: `DeviceManager` supports a bounded multi-active set across
   different compiled drivers (Canon Smart + Tascam in the first tranche). Start
   from `Ready` does not re-activate targets. Prepare/connect failures surface
@@ -346,6 +352,12 @@ the replacement.
   links require explicit confirmation before manual Disconnect. Disconnect,
   disable, forget, remove, Portal entry, and controller shutdown release the
   session without treating an ACK as proof of device state.
+- Scene handoff: changing scenes transfers ownership for targets in the set
+  intersection and releases ownership for old-only targets. Release does not
+  disconnect protocol-ready sessions. No scene-specific cleanup bypasses the
+  pool: ownerless Canon, Tascam, HA, and light sessions remain retained while
+  logical and BLE capacity permit, and only a subsequent capacity-driven LRU
+  acquisition may evict them.
 - Supersedes: This replaces ADR-013's leave-screen teardown, ADR-018's statement
   that Back releases the Canon link, and ADR-020's leave-sequence teardown and
   manual single-active restriction. Their boot, power safety, sequence
