@@ -727,7 +727,6 @@ void handleSummary() {
   doc["devices"] = studio::devices().count();
   doc["device_capacity"] = CONFIG_MAX_DEVICE_INSTANCES;
   doc["sequences"] = studio::scenes().count();
-  doc["sequence_capacity"] = CONFIG_MAX_SCENES;
   doc["timeout_seconds"] =
       lastActivity > millis() ? 0 : (kTimeoutMs - (millis() - lastActivity)) / 1000;
   sendJson(200, doc);
@@ -840,9 +839,8 @@ void handleCreateSequence() {
       ? studio::scenes().add(name, id)
       : studio::scenes().duplicate(sourceId, name, id);
   if (status != studio::SceneRegistryStatus::Ok) {
-    sendError(status == studio::SceneRegistryStatus::Full ? 409 : 500,
-              status == studio::SceneRegistryStatus::Full ? "sequence_capacity" : "save_failed",
-              status == studio::SceneRegistryStatus::Full ? "Sequence capacity is full" : "Sequence could not be saved");
+    sendError(507, "save_failed",
+              "Sequence could not be stored; free panel storage and try again");
     return;
   }
   JsonDocument response;

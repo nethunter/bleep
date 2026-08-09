@@ -118,10 +118,6 @@
 #error "CONFIG_BLE_TX_POWER_DBM must be between -24 and 20 dBm"
 #endif
 
-#ifndef CONFIG_MAX_SCENES
-#define CONFIG_MAX_SCENES 4
-#endif
-
 #ifndef CONFIG_MAX_SCENE_STEPS
 #define CONFIG_MAX_SCENE_STEPS 8
 #endif

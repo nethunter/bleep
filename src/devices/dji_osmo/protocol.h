@@ -34,12 +34,16 @@ uint16_t crc16(const uint8_t* data, size_t length);
 uint32_t crc32(const uint8_t* data, size_t length);
 Packet buildConnectionRequest(uint16_t sequence, uint32_t deviceId,
                               const uint8_t localAddress[6],
+                              uint8_t verificationMode,
                               uint16_t verificationCode);
 Packet buildConnectionResponse(uint16_t sequence, uint32_t deviceId,
-                               uint8_t cameraIndex = 0);
+                               uint32_t cameraNumber = 0);
 Packet buildStatusSubscription(uint16_t sequence);
 Packet buildRecordControl(uint16_t sequence, bool start);
 Frame parseFrame(const uint8_t* data, size_t length);
 size_t declaredFrameLength(const uint8_t* data, size_t length);
+bool parseConnectionApproval(const Frame& frame, bool& approved);
+bool decodeCameraRecordingStatus(uint8_t cameraMode, uint8_t cameraStatus,
+                                 bool& recording);
 
 }  // namespace dji_osmo

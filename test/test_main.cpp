@@ -1069,7 +1069,7 @@ void test_gopro_open_ble_packets_and_optimistic_state() {
 void test_dji_osmo_protocol_matches_official_connection_vector() {
   const uint8_t address[] = {0x38, 0x34, 0x56, 0x78, 0x9a, 0xbc};
   const dji_osmo::Packet packet = dji_osmo::buildConnectionRequest(
-      1, 0x12345678, address, 0x1ffe);
+      1, 0x12345678, address, 0, 0x1ffe);
   const uint8_t expected[] = {
       0xaa,0x33,0x00,0x02,0x00,0x00,0x00,0x00,0x01,0x00,0x98,0x2f,0x00,0x19,
       0x78,0x56,0x34,0x12,0x06,0x38,0x34,0x56,0x78,0x9a,0xbc,0x00,0x00,0x00,
@@ -1080,6 +1080,45 @@ void test_dji_osmo_protocol_matches_official_connection_vector() {
   const auto frame = dji_osmo::parseFrame(packet.bytes, packet.len);
   TEST_ASSERT_TRUE(frame.valid);
   TEST_ASSERT_EQUAL_UINT8(dji_osmo::kCmdConnection, frame.commandId);
+
+  const auto approval = dji_osmo::buildConnectionRequest(
+      9, 0x0000ff44, address, 2, 0);
+  const auto parsedApproval =
+      dji_osmo::parseFrame(approval.bytes, approval.len);
+  bool approved = false;
+  TEST_ASSERT_TRUE(dji_osmo::parseConnectionApproval(parsedApproval, approved));
+  TEST_ASSERT_TRUE(approved);
+
+  const auto firstPair = dji_osmo::buildConnectionRequest(
+      2, 0x12345678, address, 1, 42);
+  const auto parsedFirstPair =
+      dji_osmo::parseFrame(firstPair.bytes, firstPair.len);
+  TEST_ASSERT_EQUAL_UINT8(1, parsedFirstPair.payload[26]);
+  TEST_ASSERT_EQUAL_UINT8(42, parsedFirstPair.payload[27]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedFirstPair.payload[28]);
+
+  const auto secondCamera = dji_osmo::buildConnectionResponse(
+      3, 0x12345678, 2);
+  const auto parsedSecondCamera =
+      dji_osmo::parseFrame(secondCamera.bytes, secondCamera.len);
+  TEST_ASSERT_TRUE(parsedSecondCamera.valid);
+  TEST_ASSERT_EQUAL_UINT8(2, parsedSecondCamera.payload[5]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[6]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[7]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[8]);
+
+  bool recording = true;
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x01, 0x00,
+                                                         recording));
+  TEST_ASSERT_FALSE(recording);
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x38, 0x03,
+                                                         recording));
+  TEST_ASSERT_TRUE(recording);
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x3f, 0x03,
+                                                         recording));
+  TEST_ASSERT_FALSE(recording);
+  TEST_ASSERT_FALSE(dji_osmo::decodeCameraRecordingStatus(0x01, 0xff,
+                                                          recording));
 
   const auto start = dji_osmo::buildRecordControl(7, true);
   const auto parsedStart = dji_osmo::parseFrame(start.bytes, start.len);
@@ -2474,6 +2513,30 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(store.load(rejected)));
 }
 
+void test_scene_registry_and_store_grow_beyond_legacy_limit() {
+  MemoryBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry source;
+  for (size_t i = 0; i < 12; ++i) {
+    char name[studio::kDeviceNameCapacity];
+    std::snprintf(name, sizeof(name), "Sequence %u",
+                  static_cast<unsigned>(i + 1));
+    studio::SceneId id = studio::kInvalidSceneId;
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::SceneRegistryStatus::Ok),
+        static_cast<int>(source.add(name, id)));
+  }
+  TEST_ASSERT_EQUAL_UINT32(12, source.count());
+  TEST_ASSERT_TRUE(store.save(source));
+
+  studio::SceneRegistry restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(12, restored.count());
+  TEST_ASSERT_EQUAL_STRING("Sequence 12", restored.at(11)->name);
+}
+
 void test_scene_v1_migration_zeroes_action_arguments() {
   V1SceneBackend backend;
   studio::SceneStore store(backend);
@@ -3743,6 +3806,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
+  RUN_TEST(test_scene_registry_and_store_grow_beyond_legacy_limit);
   RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_authored_stop);

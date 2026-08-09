@@ -15,7 +15,7 @@ namespace dji_osmo {
 class Client : public studio::ble::BleCentralDelegate {
  public:
   void activate(const char* address, uint8_t addressType, const char* name,
-                bool paired, uint32_t deviceId);
+                bool paired, uint32_t deviceId, uint32_t cameraNumber);
   void deactivate();
   void loop();
   void startScan();
@@ -59,16 +59,21 @@ class Client : public studio::ble::BleCentralDelegate {
   uint8_t stream_[192] = {};
   size_t streamLength_ = 0;
   uint32_t deviceId_ = 0;
+  uint32_t cameraNumber_ = 0;
   uint16_t sequence_ = 1;
   uint16_t pendingRecordSequence_ = 0;
   uint32_t handshakeDeadlineMs_ = 0;
+  uint32_t statusSubscriptionAtMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
   bool initialized_ = false;
   bool connectRequested_ = false;
   bool haveTarget_ = false;
+  bool paired_ = false;
   bool pairingChanged_ = false;
   bool setupPending_ = false;
   bool handshakePending_ = false;
+  bool statusSubscriptionPending_ = false;
+  uint8_t statusSubscriptionAttempts_ = 0;
   bool commandRequested_ = false;
   bool requestedRecording_ = false;
   char targetAddress_[20] = "";

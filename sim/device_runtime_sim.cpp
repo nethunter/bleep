@@ -525,11 +525,11 @@ class SimInsta360Driver : public DeviceDriver {
 class SimDjiOsmoDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::DjiOsmo; }
-  bool activate(const DeviceRecord& record) override { id_=record.instanceId;state_.link=dji_osmo::State::Link::Connected;state_.recording=dji_osmo::State::Recording::Stopped;state_.statusConfirmed=true;return true; }
+  bool activate(const DeviceRecord& record) override { id_=record.instanceId;state_.link=record.paired?dji_osmo::State::Link::Connected:dji_osmo::State::Link::Connecting;state_.recording=dji_osmo::State::Recording::Stopped;state_.statusConfirmed=record.paired;state_.verificationPending=!record.paired;state_.verificationCode=42;return true; }
   void deactivate(InstanceId id) override { if(id==id_)id_=kInvalidInstanceId; }
   void loop() override {}
   CommandStatus dispatch(const DeviceCommand& c) override { if(c.instanceId!=id_)return CommandStatus::Unavailable;if(c.type==CommandType::RecordStart)state_.recording=dji_osmo::State::Recording::Recording;else if(c.type==CommandType::RecordStop)state_.recording=dji_osmo::State::Recording::Stopped;else return CommandStatus::Unsupported;return CommandStatus::Succeeded; }
-  DeviceRuntimeState runtimeState(InstanceId id) const override { DeviceRuntimeState r;if(id==id_){r.link=LinkState::Connected;r.protocolReady=true;r.quality=StateQuality::Confirmed;r.recordingConfirmed=true;r.recording=state_.recording==dji_osmo::State::Recording::Recording;}return r; }
+  DeviceRuntimeState runtimeState(InstanceId id) const override { DeviceRuntimeState r;if(id==id_){r.link=state_.link==dji_osmo::State::Link::Connected?LinkState::Connected:LinkState::Connecting;r.protocolReady=state_.link==dji_osmo::State::Link::Connected;r.quality=StateQuality::Confirmed;r.recordingConfirmed=state_.statusConfirmed;r.recording=state_.recording==dji_osmo::State::Recording::Recording;}return r; }
   const void* specializedState(InstanceId id) const override { return id==id_?&state_:nullptr; }
   bool consumePairingUpdate(InstanceId,DeviceRecord&) override{return false;}
  private: InstanceId id_=kInvalidInstanceId; dji_osmo::State state_;

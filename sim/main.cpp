@@ -356,6 +356,10 @@ int main() {
                    static_cast<unsigned>(driverId));
       return 1;
     }
+    if (driverId == studio::DriverId::DjiOsmo &&
+        !capture("03_camera_dji_verification")) {
+      return 1;
+    }
     ui::handleLongPress();
     if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {
       std::fprintf(stderr, "Camera driver %u did not cancel provisional add\n",

@@ -286,8 +286,8 @@ Compatibility evidence is deliberately split from protocol availability:
 | Insta360 X5 | Implemented, experimental | GPS-remote connection and mixed-sequence shutter operation are operator-confirmed. |
 | Insta360 GO 3 | Implemented candidate | No model-specific result recorded. |
 | Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; legacy GPS-remote compatibility is not established. |
-| DJI Osmo Action 5 Pro | Implemented candidate | No camera tested yet. |
-| DJI Osmo 360 | Implemented candidate | No camera tested yet. |
+| DJI Osmo Action 5 Pro | Implemented, experimental | Pairing and explicit recording start/stop are operator-confirmed. Reconnect, camera-originated status, forget/re-pair, and coexistence remain open. |
+| DJI Osmo 360 | Implemented, experimental | Pairing and explicit recording start/stop are operator-confirmed. Reconnect, camera-originated status, forget/re-pair, and coexistence remain open. |
 | Sony RMT-P1BT-compatible cameras | Research only | No savable driver or camera test yet. |
 
 ### GoPro
@@ -341,12 +341,20 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### DJI Osmo
 
-- Status: `Experimental`; target hardware verification pending.
+- Status: `Experimental`; Osmo Action 5 Pro and Osmo 360 pairing plus explicit
+  recording start/stop are operator-confirmed. Saved reconnect,
+  camera-originated status, forget/re-pair, and coexistence remain pending.
 - Transport: central-role service `0xFFF0`, notifications on `0xFFF4`, and
   write-without-response on `0xFFF5`.
 - Protocol: DJI's connection request/camera approval handshake, explicit
   record start/stop (`1D/03`), and 2 Hz status subscription (`1D/05`). Valid
   camera status pushes (`1D/02`) are the only source of confirmed recording.
+  Concurrent sessions return distinct positive camera numbers in the
+  connection response; DJI reserves camera number `0` for a single-camera
+  connection.
+  First pairing sends verification mode `1` and displays the same zero-padded
+  four-digit code that the operator must match on the camera; saved reconnects
+  use verification mode `0`.
 - Candidates: Osmo Action 5 Pro and Osmo 360, both listed by DJI's reference.
 - Evidence: <https://github.com/dji-sdk/Osmo-GPS-Controller-Demo>.
 

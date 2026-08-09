@@ -80,6 +80,13 @@ feasibility spikes:
   with confirmed readback;
   generated reverse-Stop and groups remain deferred.
 
+Scene records use a dynamically growing, checked-allocation registry rather
+than a configured scene-count ceiling. Scene persistence schema v3 encodes only
+the authored Start and Stop steps and reads the prior fixed-width v1/v2 blobs.
+RAM and available NVS space remain real resource boundaries; failed growth or
+persistence rolls the attempted mutation back without changing existing
+scenes.
+
 ## Compile-time driver catalog
 
 `Kconfig.projbuild` will provide a Linux-kernel-style menu for:

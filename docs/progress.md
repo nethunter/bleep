@@ -20,11 +20,13 @@ short, factual, and reproducible.
   Camera exposes a bonded, multi-instance BLE HID volume-up shutter. Insta360
   now emulates the GPS-remote service and toggle shutter for X5/GO 3 candidates;
   GO Ultra remains a distinct experimental probe. DJI now implements its
-  published controller handshake, explicit record control, and status push for
-  Action 5 Pro/Osmo 360 candidates. Sony remains capture-required. An Insta360
+  published controller handshake, on-panel four-digit first-pair verification,
+  explicit record control, and status push for Action 5 Pro/Osmo 360
+  candidates. Sony remains capture-required. An Insta360
   X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
   mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
-  mixed-sequence shutter operation.
+  mixed-sequence shutter operation. DJI Osmo Action 5 Pro and Osmo 360 first
+  pairing plus explicit recording start/stop are now operator-confirmed.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -52,6 +54,48 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
+
+### 2026-08-09: DJI multi-camera sequence addressing
+
+- Diagnosed a two-DJI scene where individual camera controls worked but the
+  scene's Start/Stop affected only the first camera. Instance routing and
+  notification ownership were already per-client; every DJI handshake instead
+  returned camera number `0`, which DJI defines as a single-camera connection.
+- Each active DJI session now returns a distinct positive camera number from
+  the bounded session slot, encoded across the protocol's full four-byte
+  reserved field. The request-side `conidx` remains reserved and unchanged.
+- Rebased again onto current `main` and audited the DJI view against the shared
+  round-page layout. DJI already reaches `RoundPageHeader` through
+  `recorder_shell`, so verification, ready, pending, recording, and failure
+  states share the standard header anchors and marquee title. The complete
+  `ui_sim` traversal passed, and `03_camera_dji_verification.png` was visually
+  checked with no clipping or round-edge collision; no UI source change was
+  needed.
+- After rebasing the branch onto `main`, native tests passed 72/72, including a
+  second-camera connection-response vector. The `dji_osmo` profile and renamed
+  full `bleep` profile built successfully; `bleep` used 1,901,492 bytes flash
+  and 140,364 bytes static RAM, then uploaded to `/dev/cu.usbserial-211240`
+  with hash verification and hard reset. A live two-DJI Sequence 3 Start/Stop
+  run remains the required confirmation.
+
+### 2026-08-09: Resource-based scene growth
+
+- Removed the configured four-scene ceiling. `SceneRegistry` now grows with
+  checked dynamic allocation, and every service mutation snapshots the current
+  registry before changing it so allocation or persistence failure preserves
+  all existing scenes.
+- Scene persistence schema v3 uses a 32-bit count and writes only authored
+  Start/Stop steps instead of all reserved step slots. Existing v1/v2 blobs
+  remain readable. Portal overview now reports the sequence count without a
+  misleading capacity denominator; a real storage failure returns an explicit
+  insufficient-storage response.
+- Native tests passed 72/72, including a twelve-scene persistence round trip
+  beyond the former limit. The complete `ui_sim` capture traversal passed.
+  All 13 firmware profiles built sequentially. `crowpanel_128` used 1,901,304
+  bytes flash and 140,364 bytes static RAM, then uploaded to
+  `/dev/cu.usbserial-211240`; every region passed hash verification and the
+  panel hard-reset. Creating and persisting a fifth scene then passed on the
+  live panel, confirming the former four-scene boundary is removed.
 
 ## Completed planning
 
@@ -83,8 +127,10 @@ short, factual, and reproducible.
 First, continue the camera hardware matrix. Pair Insta360 X5 and GO 3
 through their GPS Remote menu, probe GO Ultra separately without assuming it
 shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
-their remote-controller flow. Confirm add, reconnect, shutter/start/stop,
-camera-originated DJI status, forget/re-pair, and two-camera concurrency. Then
+their remote-controller flow. Action 5 Pro and Osmo 360 pairing plus recording
+start/stop have passed; continue their saved reconnect, camera-originated
+status on Action 5 Pro, forget/re-pair, and two-camera concurrency checks. The
+Osmo 360 camera-confirmed status retest now passes. Then
 pair one supported GoPro,
 confirm reconnect and start/stop responses without claiming camera-reported
 recording state, then pair representative iOS and Android phones to
@@ -92,6 +138,37 @@ recording state, then pair representative iOS and Android phones to
 on-screen shutter. Google Pixel 9 reconnect/shutter and Insta360 X5
 mixed-sequence paths have passed. Exercise two simultaneous phone instances and mixed camera slot
 accounting. Sony still requires a capture before enabling Add Device.
+
+### 2026-08-09: DJI verification display and approval parsing repair
+
+- Root cause: the DJI client generated and transmitted a four-digit code but
+  discarded it before the UI could render it. It also accepted the
+  camera-originated `00/19` approval only when the command type was exactly
+  `0x00`; DJI response-required command frames such as `0x02` therefore timed
+  out even after camera approval.
+- Fix: first pairing now sends verification mode `1`, retained reconnects use
+  mode `0`, and `VERIFY 0042`-style zero-padded codes remain visible until the
+  handshake completes. Connection approval accepts any command frame with the
+  response bit clear, rejects a denied result without retrying, and marks the
+  record paired only after protocol readiness. A follow-up status repair delays
+  the first `1D/05` subscription by 100 ms, retries it up to three times until
+  a valid push arrives, and decodes DJI's documented screen-off, live-view,
+  playback, recording, pre-recording, Action, and Osmo 360 mode combinations.
+  Known Action/360 photo modes cannot be mislabeled as recording.
+- Verification: native tests passed 71/71, including first-pair mode and
+  camera-approval parsing. The full `ui_sim` capture run passed; the new
+  `03_camera_dji_verification.png` confirms the code and instruction fit the
+  240x240 layout. Both `dji_osmo` and `crowpanel_128` compiled successfully.
+  Full firmware size after the status repair is 1,904,292 bytes flash and
+  142,332 bytes static RAM.
+- Hardware: `crowpanel_128` uploaded to `/dev/cu.usbserial-211240`; all written
+  regions passed hash verification and the panel hard-reset. A live DJI camera
+  test then confirmed that Osmo Action 5 Pro and Osmo 360 pairing plus explicit
+  recording start/stop work. Both initially showed `STATUS PENDING`. The
+  follow-up status firmware also uploaded with hash verification and hard-reset;
+  Osmo 360 then passed the live `CAMERA CONFIRMED` status retest. Saved
+  reconnect, Action 5 Pro status, forget/re-pair, and coexistence remain
+  unverified.
 
 Then exercise the newly flashed cross-brand mesh runtime from the panel: add or open
 MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts
