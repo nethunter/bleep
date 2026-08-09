@@ -65,9 +65,10 @@ short, factual, and reproducible.
   `24_scenes_run_ready.png` were visually checked; the cutouts render cleanly
   on the existing cards and circular sequence chips without clipping.
 - The full Montserrat `bleep` profile built successfully with 140,364 / 327,680
-  bytes static RAM and 1,900,782 / 3,145,728 bytes flash. Upload found
-  `/dev/cu.usbserial-211240` but could not open it because access was denied;
-  no flash completed.
+  bytes static RAM and 1,900,774 / 3,145,728 bytes flash. After a sandboxed
+  attempt was denied serial access, the direct upload to
+  `/dev/cu.usbserial-211240` completed; every written region passed hash
+  verification and the panel hard-reset.
 
 ### 2026-08-09: DJI multi-camera sequence addressing
 
