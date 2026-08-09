@@ -8,7 +8,8 @@ SceneService::SceneService(IConfigBackend& backend, DeviceManager& devices)
     : store_(backend), devices_(devices), runner_(devices_, registry_) {}
 
 bool SceneService::begin() {
-  const ConfigLoadStatus status = store_.load(registry_);
+  bool migrated = false;
+  const ConfigLoadStatus status = store_.load(registry_, &migrated);
   if (status == ConfigLoadStatus::Corrupt) {
     registry_.clear(true);
     begun_ = true;
@@ -17,6 +18,10 @@ bool SceneService::begin() {
   if (status == ConfigLoadStatus::Missing) {
     registry_.clear(true);
     save();
+  }
+  if (migrated && !save()) {
+    begun_ = true;
+    return false;
   }
   begun_ = true;
   return true;
@@ -57,6 +62,9 @@ SceneRegistryStatus SceneService::duplicate(SceneId sourceId, const char* name,
   copy.sceneId = outId;
   std::strncpy(copy.name, name, sizeof(copy.name) - 1);
   copy.name[sizeof(copy.name) - 1] = '\0';
+  if (copy.stopMode == SceneStopMode::Generated) {
+    generateStopSteps(copy);
+  }
   status = registry_.replace(copy);
   if (status != SceneRegistryStatus::Ok || !save()) {
     registry_.swap(previous);
@@ -103,20 +111,43 @@ SceneRegistryStatus SceneService::setEnabled(SceneId sceneId, bool enabled) {
 }
 
 SceneRegistryStatus SceneService::replace(const SceneRecord& record) {
-  if (runner_.validate(record) != SceneValidationStatus::Ok) {
+  SceneRecord normalized = record;
+  if (normalized.stopMode == SceneStopMode::Generated) {
+    generateStopSteps(normalized);
+  }
+  if (runner_.validate(normalized) != SceneValidationStatus::Ok) {
     return SceneRegistryStatus::Invalid;
   }
   SceneRegistry previous = registry_;
   if (!previous.healthy()) return SceneRegistryStatus::Full;
-  const SceneRegistryStatus status = registry_.replace(record);
+  const SceneRegistryStatus status = registry_.replace(normalized);
   if (status == SceneRegistryStatus::Ok && !save()) {
     registry_.swap(previous);
     return SceneRegistryStatus::Invalid;
   }
   if (status == SceneRegistryStatus::Ok) {
-    runner_.refreshPrepared(record.sceneId);
+    runner_.refreshPrepared(normalized.sceneId);
   }
   return status;
+}
+
+SceneRegistryStatus SceneService::customizeStop(SceneId sceneId) {
+  const SceneRecord* source = registry_.find(sceneId);
+  if (source == nullptr) return SceneRegistryStatus::NotFound;
+  SceneRecord updated = *source;
+  if (updated.stopMode == SceneStopMode::Custom) return SceneRegistryStatus::Ok;
+  generateStopSteps(updated);
+  updated.stopMode = SceneStopMode::Custom;
+  return replace(updated);
+}
+
+SceneRegistryStatus SceneService::useGeneratedStop(SceneId sceneId) {
+  const SceneRecord* source = registry_.find(sceneId);
+  if (source == nullptr) return SceneRegistryStatus::NotFound;
+  SceneRecord updated = *source;
+  updated.stopMode = SceneStopMode::Generated;
+  generateStopSteps(updated);
+  return replace(updated);
 }
 
 SceneRegistryStatus SceneService::removeStep(SceneId sceneId, bool startList,
@@ -136,6 +167,10 @@ SceneRegistryStatus SceneService::removeStep(SceneId sceneId, bool startList,
   }
   steps[count - 1] = SceneStep{};
   --count;
+
+  if (startList && updated.stopMode == SceneStopMode::Generated) {
+    generateStopSteps(updated);
+  }
 
   SceneRegistry previous = registry_;
   if (!previous.healthy()) return SceneRegistryStatus::Full;
@@ -223,9 +258,8 @@ bool SceneService::seedPressRecord(SceneId& outId) {
   record->startSteps[0] = makeActionStep(cameraId, CommandType::RecordStart);
   record->startSteps[1] = makeWaitStep(500);
   record->startSteps[2] = makeActionStep(recorderId, CommandType::RecordStart);
-  record->stopCount = 2;
-  record->stopSteps[0] = makeActionStep(cameraId, CommandType::RecordStop);
-  record->stopSteps[1] = makeActionStep(recorderId, CommandType::RecordStop);
+  record->stopMode = SceneStopMode::Generated;
+  generateStopSteps(*record);
   if (!save()) {
     registry_.remove(sceneId);
     return false;

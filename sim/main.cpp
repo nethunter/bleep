@@ -857,12 +857,120 @@ int main() {
   }
   scene_ui::simShowEditStop(sceneId);
   pump(200);
+  const studio::SceneRecord* generatedScene = studio::scenes().find(sceneId);
+  if (generatedScene == nullptr ||
+      generatedScene->stopMode != studio::SceneStopMode::Generated ||
+      std::strcmp(scene_ui::simEditTitleText(), "Generated Stop") != 0) {
+    std::fprintf(stderr, "Generated Stop preview was not shown read-only\n");
+    return 1;
+  }
   if (!capture("23_scenes_edit_stop")) {
+    return 1;
+  }
+  if (!scene_ui::simClickStopModeAction()) {
+    std::fprintf(stderr, "Customize Stop button could not be clicked\n");
+    return 1;
+  }
+  pump(20);
+  if (
+      studio::scenes().find(sceneId)->stopMode != studio::SceneStopMode::Custom ||
+      std::strcmp(scene_ui::simEditTitleText(), "Custom Stop") != 0) {
+    std::fprintf(stderr, "Customize Stop did not copy the generated preview\n");
+    return 1;
+  }
+  if (!capture("23a_scenes_edit_stop_custom")) {
+    return 1;
+  }
+  if (!scene_ui::simClickStopModeAction()) {
+    std::fprintf(stderr, "Use generated Stop could not request confirmation\n");
+    return 1;
+  }
+  pump(20);
+  if (!scene_ui::simClickStopModeAction()) {
+    std::fprintf(stderr, "Use generated Stop could not confirm\n");
+    return 1;
+  }
+  pump(20);
+  if (
+      studio::scenes().find(sceneId)->stopMode !=
+          studio::SceneStopMode::Generated) {
+    std::fprintf(stderr, "Use generated Stop did not confirm and relink\n");
+    return 1;
+  }
+  const studio::SceneId addedSceneId = scene_ui::simBeginAddFlow();
+  if (addedSceneId == studio::kInvalidSceneId ||
+      !scene_ui::simAddFlowActive() ||
+      ui::renamePromptActive() ||
+      std::strcmp(scene_ui::simEditTitleText(), "Start") != 0 ||
+      scene_ui::simAdvanceAddFlow()) {
+    std::fprintf(stderr, "Add Sequence did not begin at guarded Start\n");
+    return 1;
+  }
+  if (!capture("23b0_scenes_add_start")) {
+    return 1;
+  }
+  studio::SceneRecord addedScene = *studio::scenes().find(addedSceneId);
+  addedScene.startSteps[addedScene.startCount++] = studio::makeActionStep(
+      canonId, studio::CommandType::RecordStart);
+  if (studio::scenes().replace(addedScene) !=
+      studio::SceneRegistryStatus::Ok ||
+      !scene_ui::simAdvanceAddFlow() ||
+      std::strcmp(scene_ui::simEditTitleText(), "Stop") != 0) {
+    std::fprintf(stderr, "Add Sequence did not advance to generated Stop\n");
+    return 1;
+  }
+  pump(20);
+  if (!capture("23b1_scenes_add_generated_stop")) {
+    return 1;
+  }
+  if (!scene_ui::simClickStopModeAction()) {
+    std::fprintf(stderr, "Add Sequence could not customize generated Stop\n");
+    return 1;
+  }
+  pump(20);
+  if (std::strcmp(scene_ui::simEditTitleText(), "Stop") != 0 ||
+      !scene_ui::simFinishAddFlow()) {
+    std::fprintf(stderr, "Add Sequence did not advance from Stop to Name\n");
+    return 1;
+  }
+  if (!capture("23b2_scenes_add_name")) {
+    return 1;
+  }
+  ui::simCancelRename();
+  if (!scene_ui::simAddFlowActive() || ui::renamePromptActive() ||
+      std::strcmp(scene_ui::simEditTitleText(), "Stop") != 0 ||
+      !scene_ui::simFinishAddFlow()) {
+    std::fprintf(stderr, "Canceling Name did not return to Stop\n");
+    return 1;
+  }
+  ui::simSubmitRename("Camera roll");
+  const studio::SceneRecord* namedScene = studio::scenes().find(addedSceneId);
+  if (scene_ui::simAddFlowActive() || ui::renamePromptActive() ||
+      namedScene == nullptr || std::strcmp(namedScene->name, "Camera roll") != 0) {
+    std::fprintf(stderr, "Saving Name did not finish Add Sequence\n");
+    return 1;
+  }
+  studio::scenes().cancel();
+  if (studio::scenes().remove(addedSceneId) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to remove Add Sequence simulator fixture\n");
+    return 1;
+  }
+  const size_t sceneCountBeforeCancel = studio::scenes().count();
+  if (scene_ui::simBeginAddFlow() == studio::kInvalidSceneId ||
+      !scene_ui::simAddFlowActive()) {
+    std::fprintf(stderr, "Failed to begin Add cancel regression\n");
+    return 1;
+  }
+  scene_ui::handleLongPress();
+  if (studio::scenes().count() != sceneCountBeforeCancel ||
+      !scene_ui::simShowingList()) {
+    std::fprintf(stderr, "Canceling Add left a blank sequence behind\n");
     return 1;
   }
   scene_ui::simShowSettings(sceneId);
   pump(200);
-  if (!capture("23b_scenes_settings")) {
+  if (!capture("23c_scenes_settings")) {
     return 1;
   }
   // Exercise the initially-disconnected preparation and timeout path even
@@ -990,6 +1098,15 @@ int main() {
     pump(20);
   }
   if (!capture("27_scenes_stop_progress")) {
+    return 1;
+  }
+  for (int i = 100; i < 145; ++i) {
+    studio::devices().loop();
+    studio::scenes().loop(static_cast<uint32_t>(i * 20));
+    pump(20);
+  }
+  if (studio::scenes().progress().phase != studio::ScenePhase::Completed) {
+    std::fprintf(stderr, "Generated Stop did not complete after its wait\n");
     return 1;
   }
   scene_ui::simShowSettings(sceneId);

@@ -207,6 +207,7 @@ uint32_t sceneRevision(const studio::SceneRecord& record) {
   value = hashBytes(value, record.startSteps,
                     sizeof(studio::SceneStep) * record.startCount);
   value = hashBytes(value, &record.stopCount, sizeof(record.stopCount));
+  value = hashBytes(value, &record.stopMode, sizeof(record.stopMode));
   return hashBytes(value, record.stopSteps,
                    sizeof(studio::SceneStep) * record.stopCount);
 }
@@ -343,6 +344,8 @@ void serializeScene(JsonObject out, const studio::SceneRecord& record) {
   out["revision"] = sceneRevision(record);
   out["name"] = record.name;
   out["enabled"] = record.enabled;
+  out["stop_mode"] = record.stopMode == studio::SceneStopMode::Generated
+      ? "generated" : "custom";
   JsonArray start = out["start"].to<JsonArray>();
   for (uint8_t i = 0; i < record.startCount; ++i) {
     serializeStep(start.add<JsonObject>(), record.startSteps[i]);
@@ -927,9 +930,22 @@ void handleSequenceMutation(studio::SceneId sceneId) {
   std::strncpy(updated.name, name, sizeof(updated.name) - 1);
   updated.name[sizeof(updated.name) - 1] = '\0';
   updated.enabled = request["enabled"] | updated.enabled;
-  if (!parseSteps(request, "start", updated.startSteps, updated.startCount) ||
-      !parseSteps(request, "stop", updated.stopSteps, updated.stopCount)) {
+  if (!parseSteps(request, "start", updated.startSteps, updated.startCount)) {
     sendError(422, "invalid_step", "A sequence step is invalid or out of range");
+    return;
+  }
+  const char* stopMode = request["stop_mode"] | "generated";
+  if (std::strcmp(stopMode, "generated") == 0) {
+    updated.stopMode = studio::SceneStopMode::Generated;
+    studio::generateStopSteps(updated);
+  } else if (std::strcmp(stopMode, "custom") == 0) {
+    updated.stopMode = studio::SceneStopMode::Custom;
+    if (!parseSteps(request, "stop", updated.stopSteps, updated.stopCount)) {
+      sendError(422, "invalid_step", "A sequence step is invalid or out of range");
+      return;
+    }
+  } else {
+    sendError(422, "invalid_stop_mode", "Stop mode must be generated or custom");
     return;
   }
   const studio::SceneValidationStatus validation = studio::scenes().validate(updated);

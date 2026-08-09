@@ -242,7 +242,7 @@ the replacement.
 
 ## ADR-019: Scenes use authored Start and Stop sequences
 
-- Status: Accepted
+- Status: Superseded by ADR-037
 - Decision: The first on-device scene tranche stores and runs separate ordered
   Start and Stop step lists. Generated reverse-Stop from ADR-008 remains a
   later option, not the default for panel-authored sequences.
@@ -829,8 +829,8 @@ the replacement.
   toggle shutter notification for X5 and GO 3 candidates. The camera initiates
   the connection, so one shared peripheral callback dispatcher separates these
   peers from Phone Camera. Notifications prove only that the remote sent the
-  command. Scenes expose this capability as an explicit `Shutter Toggle` in
-  either authored list rather than claiming distinct start/stop state. GO
+  command. Scenes expose this capability as an explicit `Shutter Toggle` that
+  repeats in generated Stop, without claiming distinct start/stop state. GO
   Ultra is a distinct model and remains an experimental probe;
   current vendor compatibility material does not establish GPS-remote support.
 - Parallelism: synchronization is a core requirement. All compiled
@@ -853,6 +853,35 @@ the replacement.
   GoPro, Insta360, DJI, and iOS/Android/HarmonyOS hardware. Never extend model compatibility
   beyond vendor documentation or observed hardware merely because a product
   listing makes a broader claim.
+
+## ADR-037: Panel-authored scenes generate Stop by default
+
+- Status: Accepted
+- Decision: New scenes store `Generated` Stop mode. Editing Start materializes
+  Stop by reversing Start and mapping record start/stop and power on/off to
+  their inverse. Waits retain their duration. Record trigger, Home Assistant
+  Press, and Activate repeat as self-inverting actions; absolute CCT/RGB steps
+  are omitted because their prior state is unavailable. **Customize Stop**
+  copies the current generated list into an independent editable override, and
+  **Use generated Stop** discards that override after confirmation.
+- Persistence: Scene schema 4 stores the Stop mode. Main already used schema 3
+  for compact variable-count scene storage before this ADR landed, so loading
+  schema 1, 2, or 3 converts every scene to Generated, discards its prior
+  authored Stop, derives Stop from Start, and rewrites the checked v4 blob. A
+  legacy Stop-only scene therefore becomes empty and must be repaired by adding
+  Start steps.
+- Authoring: Add Sequence is a three-stage flow: author Start, review generated
+  Stop with an explicit customization option, then Name using the existing
+  Rename UI to finish.
+- Execution: Generation is deterministic authoring-time behavior, not the
+  deferred ADR-008 success journal. The existing runner executes the
+  materialized list and still visits every generated Stop target after a
+  partial Start failure, including a target that may have acted without
+  confirming success.
+- Relationship to ADR-019: Separate authored Start/Stop lists remain available
+  through Custom mode, but are no longer the default. Runtime success
+  journaling, groups, Parallel, and power-loss recovery remain later Phase 6
+  work.
 
 ## Open decisions
 

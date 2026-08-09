@@ -71,21 +71,22 @@ feasibility spikes:
 - Groups and the remaining generic device-type UI remain unimplemented. The first
   GATT facade tranche (ADR-021) now centralizes scanning, async links, retries,
   address claims, security serialization, bonds, and teardown for all four BLE
-  clients. Panel Scenes (ADR-019/020) provide authored Start/Stop
+  clients. Panel Scenes (ADR-020/037) provide generated or custom Stop
   sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
   Portal provisioning and four local HA entities. ADR-024 adds an experimental
   userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
   open. ADR-028 shares that panel-owned provisioning repository and PB-GATT
   engine with Zhiyun lights, then adds model-profiled direct `0xFEE9` control
   with confirmed readback;
-  generated reverse-Stop and groups remain deferred.
+  user-authored native groups remain deferred.
 
 Scene records use a dynamically growing, checked-allocation registry rather
-than a configured scene-count ceiling. Scene persistence schema v3 encodes only
-the authored Start and Stop steps and reads the prior fixed-width v1/v2 blobs.
-RAM and available NVS space remain real resource boundaries; failed growth or
-persistence rolls the attempted mutation back without changing existing
-scenes.
+than a configured scene-count ceiling. Schema v3 introduced compact authored
+step storage and a 32-bit scene count; schema v4 adds generated/custom Stop
+mode. Loading v1/v2 fixed-width or v3 compact records converts every scene to
+Generated Stop and rewrites the canonical v4 blob. RAM and available NVS space
+remain real resource boundaries; failed growth or persistence rolls the
+attempted mutation back without changing existing scenes.
 
 ## Compile-time driver catalog
 
@@ -152,7 +153,8 @@ Home provides:
 - status and power controls.
 
 Opening a device screen acquires a foreground owner for that instance. Opening
-a sequence run screen acquires a sequence owner for every Start/Stop target.
+a sequence run screen acquires a sequence owner for every materialized
+Start/Stop target.
 Preparation reaches `Ready` only after
 every target is physically connected and its driver reports protocol readiness.
 The run screen shows one category-icon chip per target. A chip borrows the

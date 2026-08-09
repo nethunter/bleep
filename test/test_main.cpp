@@ -269,6 +269,117 @@ class V1SceneBackend : public studio::IConfigBackend {
   size_t length_ = 0;
 };
 
+class V2SceneBackend : public studio::IConfigBackend {
+ public:
+  V2SceneBackend() {
+    uint8_t* out = data_;
+    std::memcpy(out, "SCN1", 4); out += 4;
+    put32(out, 0x01010002);  // version 2, initialized, one scene
+    put32(out, 2);
+    put32(out, 1);
+    *out++ = 1;
+    std::memset(out, 0, studio::kDeviceNameCapacity);
+    std::memcpy(out, "Legacy v2", 9); out += studio::kDeviceNameCapacity;
+    *out++ = 1; *out++ = 1;
+    for (size_t list = 0; list < 2; ++list) {
+      for (size_t step = 0; step < CONFIG_MAX_SCENE_STEPS; ++step) {
+        const bool populated = step == 0;
+        *out++ = static_cast<uint8_t>(populated
+            ? studio::SceneStepType::Action : studio::SceneStepType::Wait);
+        put32(out, populated ? (list == 0 ? 7 : 9) : 0);
+        *out++ = static_cast<uint8_t>(populated
+            ? (list == 0 ? studio::CommandType::RecordStart
+                         : studio::CommandType::TurnOff)
+            : studio::CommandType::Refresh);
+        put32(out, 0);
+        put32(out, populated ? 11 : 0);
+        put32(out, populated ? 22 : 0);
+        put32(out, populated ? 33 : 0);
+      }
+    }
+    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
+    length_ = static_cast<size_t>(out - data_);
+  }
+
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (capacity < length_) return 0;
+    std::memcpy(destination, data_, length_); return length_;
+  }
+  bool write(const uint8_t*, size_t) override { return false; }
+
+ private:
+  static void put32(uint8_t*& out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
+  }
+  static uint32_t checksum(const uint8_t* data, size_t length) {
+    uint32_t value = 2166136261u;
+    for (size_t i = 0; i < length; ++i) {
+      value ^= data[i]; value *= 16777619u;
+    }
+    return value;
+  }
+
+  uint8_t data_[1024] = {};
+  size_t length_ = 0;
+};
+
+class V3SceneBackend : public studio::IConfigBackend {
+ public:
+  V3SceneBackend() {
+    uint8_t* out = data_;
+    std::memcpy(out, "SCN1", 4); out += 4;
+    put16(out, 3);
+    *out++ = 1;
+    put32(out, 1);
+    put32(out, 2);
+    put32(out, 1);
+    *out++ = 1;
+    std::memset(out, 0, studio::kDeviceNameCapacity);
+    std::memcpy(out, "Legacy v3", 9); out += studio::kDeviceNameCapacity;
+    *out++ = 1; *out++ = 1;
+    encodeAction(out, 7, studio::CommandType::RecordStart, 11, 22, 33);
+    encodeAction(out, 9, studio::CommandType::TurnOff, 44, 55, 66);
+    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
+    length_ = static_cast<size_t>(out - data_);
+  }
+
+  size_t read(uint8_t* destination, size_t capacity) override {
+    if (capacity < length_) return 0;
+    std::memcpy(destination, data_, length_); return length_;
+  }
+  bool write(const uint8_t*, size_t) override { return false; }
+
+ private:
+  static void put16(uint8_t*& out, uint16_t value) {
+    *out++ = static_cast<uint8_t>(value);
+    *out++ = static_cast<uint8_t>(value >> 8);
+  }
+  static void put32(uint8_t*& out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
+  }
+  static void encodeAction(uint8_t*& out, studio::InstanceId target,
+                           studio::CommandType command, int32_t value0,
+                           int32_t value1, int32_t value2) {
+    *out++ = static_cast<uint8_t>(studio::SceneStepType::Action);
+    put32(out, target);
+    *out++ = static_cast<uint8_t>(command);
+    put32(out, 0);
+    put32(out, static_cast<uint32_t>(value0));
+    put32(out, static_cast<uint32_t>(value1));
+    put32(out, static_cast<uint32_t>(value2));
+  }
+  static uint32_t checksum(const uint8_t* data, size_t length) {
+    uint32_t value = 2166136261u;
+    for (size_t i = 0; i < length; ++i) {
+      value ^= data[i]; value *= 16777619u;
+    }
+    return value;
+  }
+
+  uint8_t data_[256] = {};
+  size_t length_ = 0;
+};
+
 class LegacyBackend : public studio::ILegacySharkBackend {
  public:
   bool readLegacyShark(studio::LegacySharkConfig& config) override {
@@ -2470,6 +2581,119 @@ void test_manager_parks_ownerless_drop_but_keeps_intentional_offline() {
   TEST_ASSERT_EQUAL_INT(1, driver.deactivationCount);
 }
 
+void test_generated_stop_mapping_order_and_capacity() {
+  studio::SceneRecord record;
+  record.startCount = 8;
+  record.startSteps[0] =
+      studio::makeActionStep(1, studio::CommandType::RecordStart);
+  record.startSteps[1] = studio::makeWaitStep(750);
+  record.startSteps[2] =
+      studio::makeActionStep(2, studio::CommandType::TurnOn);
+  record.startSteps[3] =
+      studio::makeActionStep(3, studio::CommandType::RecordTrigger, 1, 2, 3);
+  record.startSteps[4] =
+      studio::makeActionStep(4, studio::CommandType::Press);
+  record.startSteps[5] =
+      studio::makeActionStep(5, studio::CommandType::Activate);
+  record.startSteps[6] =
+      studio::makeActionStep(6, studio::CommandType::SetLightCct, 4300, 50);
+  record.startSteps[7] =
+      studio::makeActionStep(7, studio::CommandType::SetLightRgb, 0xff00ff, 75);
+  studio::generateStopSteps(record);
+
+  TEST_ASSERT_EQUAL_UINT8(6, record.stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Activate),
+                        static_cast<int>(record.stopSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Press),
+                        static_cast<int>(record.stopSteps[1].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+                        static_cast<int>(record.stopSteps[2].command));
+  TEST_ASSERT_EQUAL_INT32(1, record.stopSteps[2].value0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(record.stopSteps[3].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(record.stopSteps[4].type));
+  TEST_ASSERT_EQUAL_UINT32(750, record.stopSteps[4].waitMs);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(record.stopSteps[5].command));
+
+  for (uint8_t i = 0; i < CONFIG_MAX_SCENE_STEPS; ++i) {
+    record.startSteps[i] =
+        studio::makeActionStep(i + 1, studio::CommandType::RecordTrigger);
+  }
+  record.startCount = CONFIG_MAX_SCENE_STEPS;
+  studio::generateStopSteps(record);
+  TEST_ASSERT_EQUAL_UINT8(CONFIG_MAX_SCENE_STEPS, record.stopCount);
+  TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_SCENE_STEPS,
+                           record.stopSteps[0].targetId);
+
+  record.startCount = 2;
+  record.startSteps[0] =
+      studio::makeActionStep(1, studio::CommandType::RecordStop);
+  record.startSteps[1] =
+      studio::makeActionStep(2, studio::CommandType::TurnOff);
+  studio::generateStopSteps(record);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOn),
+                        static_cast<int>(record.stopSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStart),
+                        static_cast<int>(record.stopSteps[1].command));
+}
+
+void test_scene_stop_customization_and_relinking() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRegistryStatus::Ok),
+                        static_cast<int>(scenes.add("Modes", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRegistryStatus::Ok),
+                        static_cast<int>(scenes.replace(record)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(scenes.find(sceneId)->stopSteps[0].command));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRegistryStatus::Ok),
+                        static_cast<int>(scenes.customizeStop(sceneId)));
+  record = *scenes.find(sceneId);
+  record.stopSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.startSteps[record.startCount++] = studio::makeWaitStep(650);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRegistryStatus::Ok),
+                        static_cast<int>(scenes.replace(record)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Custom),
+                        static_cast<int>(scenes.find(sceneId)->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(1, scenes.find(sceneId)->stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStart),
+                        static_cast<int>(scenes.find(sceneId)->stopSteps[0].command));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRegistryStatus::Ok),
+                        static_cast<int>(scenes.useGeneratedStop(sceneId)));
+  const studio::SceneRecord* relinked = scenes.find(sceneId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(relinked->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(2, relinked->stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(relinked->stopSteps[0].type));
+  TEST_ASSERT_EQUAL_UINT32(650, relinked->stopSteps[0].waitMs);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(relinked->stopSteps[1].command));
+}
+
 void test_scene_store_round_trip_and_corruption() {
   MemoryBackend backend;
   studio::SceneStore store(backend);
@@ -2486,6 +2710,7 @@ void test_scene_store_round_trip_and_corruption() {
   record->startSteps[1] = studio::makeWaitStep(500);
   record->startSteps[2] =
       studio::makeActionStep(3, studio::CommandType::RecordStart);
+  record->stopMode = studio::SceneStopMode::Custom;
   record->stopCount = 2;
   record->stopSteps[0] =
       studio::makeActionStep(2, studio::CommandType::RecordStop);
@@ -2501,6 +2726,8 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_EQUAL_STRING("Press Record", restored.at(0)->name);
   TEST_ASSERT_EQUAL_UINT8(3, restored.at(0)->startCount);
   TEST_ASSERT_EQUAL_UINT8(2, restored.at(0)->stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Custom),
+                        static_cast<int>(restored.at(0)->stopMode));
   TEST_ASSERT_EQUAL_UINT32(500, restored.at(0)->startSteps[1].waitMs);
   TEST_ASSERT_EQUAL_INT32(5600, restored.at(0)->startSteps[0].value0);
   TEST_ASSERT_EQUAL_INT32(72, restored.at(0)->startSteps[0].value1);
@@ -2541,8 +2768,10 @@ void test_scene_v1_migration_zeroes_action_arguments() {
   V1SceneBackend backend;
   studio::SceneStore store(backend);
   studio::SceneRegistry restored;
+  bool migrated = false;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
-                        static_cast<int>(store.load(restored)));
+                        static_cast<int>(store.load(restored, &migrated)));
+  TEST_ASSERT_TRUE(migrated);
   TEST_ASSERT_EQUAL_UINT32(1, restored.count());
   const studio::SceneStep& step = restored.at(0)->startSteps[0];
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOn),
@@ -2550,6 +2779,54 @@ void test_scene_v1_migration_zeroes_action_arguments() {
   TEST_ASSERT_EQUAL_INT32(0, step.value0);
   TEST_ASSERT_EQUAL_INT32(0, step.value1);
   TEST_ASSERT_EQUAL_INT32(0, step.value2);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(restored.at(0)->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(1, restored.at(0)->stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(restored.at(0)->stopSteps[0].command));
+}
+
+void test_scene_v2_migration_discards_authored_stop() {
+  V2SceneBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry restored;
+  bool migrated = false;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(restored, &migrated)));
+  TEST_ASSERT_TRUE(migrated);
+  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
+  const studio::SceneRecord* record = restored.at(0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(record->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(1, record->stopCount);
+  TEST_ASSERT_EQUAL_UINT32(7, record->stopSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(record->stopSteps[0].command));
+  TEST_ASSERT_EQUAL_INT32(11, record->stopSteps[0].value0);
+}
+
+void test_scene_v3_migration_discards_authored_stop() {
+  V3SceneBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry restored;
+  bool migrated = false;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(restored, &migrated)));
+  TEST_ASSERT_TRUE(migrated);
+  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
+  const studio::SceneRecord* record = restored.at(0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(record->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(1, record->startCount);
+  TEST_ASSERT_EQUAL_UINT32(7, record->startSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT32(11, record->startSteps[0].value0);
+  TEST_ASSERT_EQUAL_INT32(22, record->startSteps[0].value1);
+  TEST_ASSERT_EQUAL_INT32(33, record->startSteps[0].value2);
+  TEST_ASSERT_EQUAL_UINT8(1, record->stopCount);
+  TEST_ASSERT_EQUAL_UINT32(7, record->stopSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(record->stopSteps[0].command));
+  TEST_ASSERT_EQUAL_INT32(11, record->stopSteps[0].value0);
 }
 
 void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
@@ -2582,6 +2859,7 @@ void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
   record.startCount = 1;
   record.startSteps[0] =
       studio::makeActionStep(oldCamera, studio::CommandType::RecordStart);
+  record.stopMode = studio::SceneStopMode::Custom;
   record.stopCount = 1;
   record.stopSteps[0] =
       studio::makeActionStep(oldCamera, studio::CommandType::RecordStop);
@@ -2619,7 +2897,7 @@ void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
       static_cast<int>(scenes.replace(record)));
 }
 
-void test_press_record_start_and_authored_stop() {
+void test_press_record_start_and_generated_stop() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
   LegacyBackend legacy;
@@ -2645,6 +2923,17 @@ void test_press_record_start_and_authored_stop() {
   TEST_ASSERT_TRUE(scenes.begin());
   studio::SceneId sceneId = studio::kInvalidSceneId;
   TEST_ASSERT_TRUE(scenes.seedPressRecord(sceneId));
+  const studio::SceneRecord* seeded = scenes.find(sceneId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(seeded->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(3, seeded->stopCount);
+  TEST_ASSERT_EQUAL_UINT32(tascamId, seeded->stopSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(seeded->stopSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(seeded->stopSteps[1].type));
+  TEST_ASSERT_EQUAL_UINT32(500, seeded->stopSteps[1].waitMs);
+  TEST_ASSERT_EQUAL_UINT32(canonId, seeded->stopSteps[2].targetId);
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::SceneValidationStatus::Ok),
       static_cast<int>(scenes.validate(sceneId)));
@@ -2681,7 +2970,7 @@ void test_press_record_start_and_authored_stop() {
 
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.stop()));
-  for (uint32_t t = 600; t < 620; ++t) {
+  for (uint32_t t = 600; t < 1150; ++t) {
     devices.loop();
     scenes.loop(t);
   }
@@ -2744,7 +3033,7 @@ void test_partial_start_failure_can_stop_and_restart() {
 
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.stop()));
-  for (uint32_t t = 700; t < 730; ++t) {
+  for (uint32_t t = 700; t < 1250; ++t) {
     devices.loop();
     scenes.loop(t);
   }
@@ -2757,7 +3046,7 @@ void test_partial_start_failure_can_stop_and_restart() {
 
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.start(sceneId)));
-  for (uint32_t t = 730; t < 1400; ++t) {
+  for (uint32_t t = 1250; t < 2000; ++t) {
     devices.loop();
     scenes.loop(t);
   }
@@ -3805,11 +4094,15 @@ int main(int, char**) {
   RUN_TEST(test_manager_counts_shared_mesh_as_one_ble_slot);
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
+  RUN_TEST(test_generated_stop_mapping_order_and_capacity);
+  RUN_TEST(test_scene_stop_customization_and_relinking);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_scene_registry_and_store_grow_beyond_legacy_limit);
   RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
+  RUN_TEST(test_scene_v2_migration_discards_authored_stop);
+  RUN_TEST(test_scene_v3_migration_discards_authored_stop);
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
-  RUN_TEST(test_press_record_start_and_authored_stop);
+  RUN_TEST(test_press_record_start_and_generated_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);

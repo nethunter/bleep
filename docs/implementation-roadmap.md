@@ -404,12 +404,13 @@ Work:
   continue policies;
 - edit, validate, import, and export scenes through Portal-mode HTTP.
 
-Active deviation (ADR-019 / ADR-020 / ADR-027): the first panel tranche ships authored
-Start and Stop lists, prepare-on-open concurrent links (`Ready` before Start),
-NVS persistence, Press Record / Press Stop for Canon Smart + Tascam, and
-responsive Portal create/edit/duplicate/delete for that same persisted model.
-Generated reverse-Stop, groups, Parallel, import/export, journaling, and broader
-Phase 6 policy work remain later work.
+Active deviation (ADR-020 / ADR-027 / ADR-037): the panel and Portal now
+generate a materialized reverse/inverse Stop whenever Start changes, with an
+explicit Custom Stop override. New-sequence authoring guides the user through
+Start, generated Stop review/customization, and Name. Preparation still
+holds concurrent links and requires protocol-ready `Ready` before Start.
+Groups, Parallel, import/export, success-journal rollback, and broader Phase 6
+policy work remain later work.
 
 Completion gate:
 
@@ -425,14 +426,15 @@ Completion gate:
 Bounded gate for the ADR-019/020 tranche:
 
 - Press Record Start: Canon `RecordStart`, wait 500 ms, Tascam `RecordStart`;
-- Press Stop: Canon `RecordStop`, then Tascam `RecordStop`;
+- Generated Press Stop: Tascam `RecordStop`, wait 500 ms, Canon `RecordStop`;
 - opening a sequence prepares all targets concurrently before Start;
 - `Ready` requires every target's physical link and protocol initialization;
 - links stay held while the run screen is open and through armed/Stop, but
   opening Settings cancels preparation and releases sequence ownership;
 - target chips expose full controls without releasing the sequence's held
   links, and show per-target connection/protocol readiness;
-- authored step order and the editable 500 ms wait remain scene data;
+- Start order and the editable 500 ms wait remain scene data and are reversed
+  into generated Stop unless the user selects Custom Stop;
 - partial failures and unavailable devices are visible and recoverable.
 
 ## Phase 7: Universal panel UI
