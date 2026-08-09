@@ -67,8 +67,8 @@ principles:
   to 24 saved devices. The Devices list remains unpaged through six configured
   devices, then pages six devices at a time. Long screen, device, and sequence
   titles stay on one line and scroll horizontally instead of covering content.
-  Common pages share the same Home-aligned title, navigation controls, and
-  content start rather than maintaining separate screen geometry.
+  Common pages and edit overlays share the same Home-aligned title, navigation
+  controls, and content start rather than maintaining separate screen geometry.
 - A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
   haptic enable/disable, a first-position scrollable About/build page (including
   commit date), sanitized runtime diagnostics, and a normal Factory Reset menu

@@ -467,8 +467,9 @@ void buildSettingsOverlay() {
   lv_obj_set_style_pad_all(settingsOverlay, 0, 0);
   lv_obj_clear_flag(settingsOverlay, LV_OBJ_FLAG_SCROLLABLE);
 
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
   studio_ui::RoundPageHeaderOptions header;
-  header.title = "Sequence settings";
+  header.title = record != nullptr ? record->name : "Sequence";
   header.backSymbol = LV_SYMBOL_CLOSE;
   header.onBack = onCloseSettings;
   header.panelColor = kColPanel;

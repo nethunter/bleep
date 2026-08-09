@@ -171,6 +171,21 @@ Record values with the exact build environment and commit/worktree state.
   It uploaded to `/dev/cu.usbserial-211240` with image hash verification and
   hard reset. Live panel title motion and alignment remain operator checks.
 
+### Shared Device Edit and Sequence Settings layout
+
+- Date: 2026-08-09.
+- Device Edit and Sequence Settings now use the same reusable round-page menu
+  body as their shared header: close control at `y=24`, entity marquee at
+  `y=28`, and 168 px action rows beginning at `y=58`.
+- Device Edit replaces its detached bottom Close button with the header close
+  control, groups Enabled into a panel row, keeps Forget and Disconnect paired,
+  and gives Rename and destructive Remove full-width rows. Sequence Settings
+  uses the sequence name as its title and gives Rename, Edit Start, Edit Stop,
+  and Delete the same row geometry.
+- The complete `ui_sim` traversal passed, including the generic and active-
+  recorder Device Edit states and Sequence Settings before and after a run.
+  Live touch targets and marquee motion remain operator checks.
+
 ### Dynamic 40-percent BLE discovery duty
 
 - Date: 2026-08-09.
