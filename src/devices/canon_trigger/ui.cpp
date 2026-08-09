@@ -9,6 +9,7 @@
 #include "devices/canon_trigger/state.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
+#include "ui/title_marquee.h"
 #include "../../ui.h"
 
 namespace canon_trigger_ui {
@@ -154,11 +155,7 @@ void ensureScreen() {
   lv_obj_center(backLabel);
 
   titleLabel = lv_label_create(screen);
-  lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(titleLabel, 132);
-  lv_obj_set_height(titleLabel, 20);
-  lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
+  studio_ui::configureTitleMarquee(titleLabel, 132, UI_FONT_16);
   lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 15, 29);
 
   statusLabel = lv_label_create(screen);

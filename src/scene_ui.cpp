@@ -14,6 +14,7 @@
 #include "haptic_feedback.h"
 #include "ui.h"
 #include "ui/picker_shell.h"
+#include "ui/title_marquee.h"
 
 namespace scene_ui {
 namespace {
@@ -956,16 +957,16 @@ void buildList() {
 
   lv_obj_t* back = makeButton(scrList, LV_SYMBOL_LEFT, onBackToHome);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
 
   lv_obj_t* title = lv_label_create(scrList);
   lv_label_set_text(title, "Scenes");
   lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 
   listBody = lv_obj_create(scrList);
   lv_obj_set_size(listBody, 188, 118);
-  lv_obj_align(listBody, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_align(listBody, LV_ALIGN_TOP_MID, 0, 58);
   lv_obj_set_style_bg_opa(listBody, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(listBody, 0, 0);
   lv_obj_set_style_pad_row(listBody, 4, 0);
@@ -975,7 +976,7 @@ void buildList() {
 
   lv_obj_t* add = makeButton(scrList, "+", onAddBlank, kColAccent);
   lv_obj_set_size(add, 48, 28);
-  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, -16);
+  lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, -26);
 }
 
 void buildRun() {
@@ -991,10 +992,7 @@ void buildRun() {
   lv_obj_align(settingsButton, LV_ALIGN_TOP_RIGHT, -40, 22);
 
   runTitle = lv_label_create(scrRun);
-  lv_obj_set_width(runTitle, 92);
-  lv_label_set_long_mode(runTitle, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_font(runTitle, UI_FONT_16, 0);
-  lv_obj_set_style_text_align(runTitle, LV_TEXT_ALIGN_CENTER, 0);
+  studio_ui::configureTitleMarquee(runTitle, 92, UI_FONT_16);
   lv_obj_align(runTitle, LV_ALIGN_TOP_MID, 0, 29);
 
   runChipRow = lv_obj_create(scrRun);

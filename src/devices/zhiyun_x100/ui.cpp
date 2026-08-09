@@ -12,6 +12,7 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
+#include "ui/title_marquee.h"
 #include "../../ui.h"
 
 namespace zhiyun_x100_ui {
@@ -203,10 +204,7 @@ void ensure() {
   lv_obj_set_size(back, 30, 30);
   lv_obj_align(back, LV_ALIGN_TOP_LEFT, 34, 24);
   title = lv_label_create(screen);
-  lv_obj_set_width(title, 120);
-  lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+  studio_ui::configureTitleMarquee(title, 120, UI_FONT_16);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 10, 29);
   status = lv_label_create(screen);
   lv_obj_set_width(status, 170);

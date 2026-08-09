@@ -19,6 +19,7 @@
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
+#include "ui/title_marquee.h"
 #include "portal_service.h"
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
@@ -702,7 +703,7 @@ lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
   styleScreen(scrSettings);
   lv_obj_clear_flag(scrSettings, LV_OBJ_FLAG_SCROLLABLE);
   settingsHeader = lv_obj_create(scrSettings);
-  lv_obj_set_size(settingsHeader, 240, 68);
+  lv_obj_set_size(settingsHeader, 240, 58);
   lv_obj_align(settingsHeader, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_bg_color(settingsHeader, lv_color_hex(kColBg), 0);
   lv_obj_set_style_bg_opa(settingsHeader, LV_OPA_COVER, 0);
@@ -710,17 +711,15 @@ lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
   lv_obj_set_style_pad_all(settingsHeader, 0, 0);
   lv_obj_clear_flag(settingsHeader, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(settingsHeader, LV_OBJ_FLAG_FLOATING);
-  lv_obj_t* backButton = makeButton(settingsHeader, "", back);
+  lv_obj_t* backButton = makeButton(settingsHeader, LV_SYMBOL_LEFT, back);
   lv_obj_set_size(backButton, 34, 30);
   lv_obj_clear_flag(backButton, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_opa(backButton, LV_OPA_TRANSP, 0);
-  lv_obj_align(backButton, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
+  lv_obj_align(backButton, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
   lv_obj_t* heading = lv_label_create(settingsHeader);
-  char headerText[48];
-  std::snprintf(headerText, sizeof(headerText), "<     %s", title);
-  lv_label_set_text(heading, headerText);
+  lv_label_set_text(heading, title);
   lv_obj_set_style_text_font(heading, UI_FONT_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 53, 43);
+  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, 28);
   return scrSettings;
 }
 
@@ -813,7 +812,7 @@ void buildSettingsMenu() {
   lv_obj_t* list = lv_obj_create(scrSettings);
   settingsMenuList = list;
   lv_obj_set_size(list, 190, 162);
-  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 58);
   lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(list, 0, 0);
   lv_obj_set_style_pad_all(list, 2, 0);
@@ -847,18 +846,18 @@ void buildWifiSettings() {
                                                                     : kColMuted), 0);
   lv_label_set_text(status, saved.configured ? "SAVED NETWORK\nRADIO OFF"
                                               : "NOT CONFIGURED");
-  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 82);
+  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 72);
   lv_obj_t* ssid = lv_label_create(scrSettings);
   lv_obj_set_width(ssid, 174);
   lv_label_set_long_mode(ssid, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(ssid, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(ssid, UI_FONT_14, 0);
   lv_label_set_text(ssid, saved.configured ? saved.ssid : "No studio Wi-Fi saved");
-  lv_obj_align(ssid, LV_ALIGN_TOP_MID, 0, 132);
+  lv_obj_align(ssid, LV_ALIGN_TOP_MID, 0, 122);
   lv_obj_t* configure =
       makeButton(scrSettings, "OPEN PORTAL", onConfigureWifi, kColAccent);
   lv_obj_set_size(configure, 158, 34);
-  lv_obj_align(configure, LV_ALIGN_BOTTOM_MID, 0, -28);
+  lv_obj_align(configure, LV_ALIGN_BOTTOM_MID, 0, -38);
 }
 
 void buildAbout() {
@@ -866,7 +865,7 @@ void buildAbout() {
   lv_obj_t* content = lv_obj_create(scrSettings);
   aboutContent = content;
   lv_obj_set_size(content, 200, 162);
-  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 58);
   lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(content, 0, 0);
   lv_obj_set_style_pad_all(content, 2, 0);
@@ -926,7 +925,7 @@ void buildSystemInfo() {
   lv_obj_set_width(systemInfoLabel, 174);
   lv_obj_set_style_text_font(systemInfoLabel, UI_FONT_14, 0);
   lv_obj_set_style_text_color(systemInfoLabel, lv_color_hex(kColText), 0);
-  lv_obj_align(systemInfoLabel, LV_ALIGN_TOP_LEFT, 38, 76);
+  lv_obj_align(systemInfoLabel, LV_ALIGN_TOP_LEFT, 38, 66);
   refreshSystemInfo();
 }
 
@@ -940,10 +939,10 @@ void buildFactoryReset() {
   lv_obj_set_style_text_font(warning, UI_FONT_14, 0);
   lv_obj_set_style_text_line_space(warning, -2, 0);
   lv_obj_set_style_text_color(warning, lv_color_hex(kColText), 0);
-  lv_obj_align(warning, LV_ALIGN_TOP_MID, 0, 70);
+  lv_obj_align(warning, LV_ALIGN_TOP_MID, 0, 60);
   factoryResetProgress = lv_bar_create(scrSettings);
   lv_obj_set_size(factoryResetProgress, 150, 5);
-  lv_obj_align(factoryResetProgress, LV_ALIGN_BOTTOM_MID, 0, -48);
+  lv_obj_align(factoryResetProgress, LV_ALIGN_BOTTOM_MID, 0, -58);
   lv_bar_set_range(factoryResetProgress, 0, 3000);
   lv_bar_set_value(factoryResetProgress, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(factoryResetProgress, lv_color_hex(kColPanel), 0);
@@ -951,7 +950,7 @@ void buildFactoryReset() {
                             LV_PART_INDICATOR);
   factoryResetButton = makeButton(scrSettings, "HOLD TO RESET", nullptr, kColDanger);
   lv_obj_set_size(factoryResetButton, 126, 32);
-  lv_obj_align(factoryResetButton, LV_ALIGN_BOTTOM_MID, 0, -12);
+  lv_obj_align(factoryResetButton, LV_ALIGN_BOTTOM_MID, 0, -22);
   lv_obj_add_event_cb(factoryResetButton, onFactoryResetPressed, LV_EVENT_PRESSED,
                       nullptr);
   lv_obj_add_event_cb(factoryResetButton, onFactoryResetReleased, LV_EVENT_RELEASED,
@@ -962,7 +961,7 @@ void buildFactoryReset() {
   lv_label_set_text(factoryResetStatus, "Hold for 3 seconds");
   lv_obj_set_style_text_font(factoryResetStatus, UI_FONT_14, 0);
   lv_obj_set_style_text_color(factoryResetStatus, lv_color_hex(kColMuted), 0);
-  lv_obj_align(factoryResetStatus, LV_ALIGN_TOP_MID, 0, 163);
+  lv_obj_align(factoryResetStatus, LV_ALIGN_TOP_MID, 0, 153);
 }
 
 void showSettingsView(SettingsView view) {
@@ -1029,16 +1028,16 @@ void buildDevices() {
 
   lv_obj_t* back = makeButton(scrDevices, LV_SYMBOL_LEFT, onShowHome);
   lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
+  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
 
   lv_obj_t* title = lv_label_create(scrDevices);
   lv_label_set_text(title, "Devices");
   lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 12, 42);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 
   deviceList = lv_obj_create(scrDevices);
   lv_obj_set_size(deviceList, 200, 158);
-  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 58);
   lv_obj_set_style_bg_opa(deviceList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(deviceList, 0, 0);
   lv_obj_set_style_pad_all(deviceList, 2, 0);
@@ -1144,10 +1143,7 @@ void buildDeviceModal() {
   lv_obj_add_flag(deviceModal, LV_OBJ_FLAG_HIDDEN);
 
   deviceModalTitle = lv_label_create(deviceModal);
-  lv_obj_set_width(deviceModalTitle, 160);
-  lv_label_set_long_mode(deviceModalTitle, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(deviceModalTitle, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(deviceModalTitle, UI_FONT_16, 0);
+  studio_ui::configureTitleMarquee(deviceModalTitle, 160, UI_FONT_16);
   lv_obj_align(deviceModalTitle, LV_ALIGN_TOP_MID, 0, 22);
 
   lv_obj_t* rename = makeButton(deviceModal, "Rename", onOpenRename);

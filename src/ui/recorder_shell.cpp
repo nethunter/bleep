@@ -2,6 +2,7 @@
 
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
+#include "ui/title_marquee.h"
 
 namespace recorder_shell {
 
@@ -182,11 +183,8 @@ void build(const Options& options, const Callbacks& nextCallbacks) {
   }
 
   titleLabel = lv_label_create(root);
-  lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(titleLabel, powerFeature ? 92 : 132);
-  lv_obj_set_height(titleLabel, 20);
-  lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
+  studio_ui::configureTitleMarquee(titleLabel, powerFeature ? 92 : 132,
+                                   UI_FONT_16);
   lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, powerFeature ? 0 : 15, 29);
 
   statusLabel = lv_label_create(root);

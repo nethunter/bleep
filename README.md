@@ -65,7 +65,8 @@ principles:
   factory-reset panel starts with an empty Devices list; add Shark or any other
   physical device explicitly through **+ Add device**. The registry holds up
   to 24 saved devices. The Devices list remains unpaged through six configured
-  devices, then pages six devices at a time.
+  devices, then pages six devices at a time. Long screen, device, and sequence
+  titles stay on one line and scroll horizontally instead of covering content.
 - A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
   haptic enable/disable, a first-position scrollable About/build page (including
   commit date), sanitized runtime diagnostics, and a normal Factory Reset menu

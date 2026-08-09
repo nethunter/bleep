@@ -709,6 +709,11 @@ int main() {
     std::fprintf(stderr, "Failed to seed Press Record sequence\n");
     return 1;
   }
+  if (studio::scenes().rename(sceneId, "HML Studio") !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to name simulator sequence\n");
+    return 1;
+  }
   const studio::SceneRecord* seededScene = studio::scenes().find(sceneId);
   if (seededScene == nullptr) {
     std::fprintf(stderr, "Seeded sequence is missing\n");

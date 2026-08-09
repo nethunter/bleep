@@ -10,6 +10,7 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
+#include "ui/title_marquee.h"
 #include "../../ui.h"
 
 namespace amaran_light_ui {
@@ -65,7 +66,7 @@ lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj
 }
 void ensure(){if(screen)return;screen=lv_obj_create(nullptr);lv_obj_set_style_bg_color(screen,lv_color_hex(kBg),0);lv_obj_set_style_text_color(screen,lv_color_hex(kText),0);lv_obj_clear_flag(screen,LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t* back=button(screen,LV_SYMBOL_LEFT,onBack);lv_obj_set_size(back,30,30);lv_obj_align(back,LV_ALIGN_TOP_LEFT,34,24);
-  title=lv_label_create(screen);lv_obj_set_width(title,120);lv_label_set_long_mode(title,LV_LABEL_LONG_DOT);lv_obj_set_style_text_align(title,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(title,UI_FONT_16,0);lv_obj_align(title,LV_ALIGN_TOP_MID,10,29);
+  title=lv_label_create(screen);studio_ui::configureTitleMarquee(title,120,UI_FONT_16);lv_obj_align(title,LV_ALIGN_TOP_MID,10,29);
   status=lv_label_create(screen);lv_obj_set_width(status,170);lv_obj_set_style_text_align(status,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(status,UI_FONT_14,0);lv_obj_set_style_text_color(status,lv_color_hex(kMuted),0);lv_obj_align(status,LV_ALIGN_TOP_MID,0,51);
   modeCct=button(screen,"CCT",onCct,kAccent);lv_obj_set_size(modeCct,58,27);lv_obj_align(modeCct,LV_ALIGN_TOP_MID,-33,72);
   modeRgb=button(screen,"RGB",onRgb);lv_obj_set_size(modeRgb,58,27);lv_obj_align(modeRgb,LV_ALIGN_TOP_MID,33,72);

@@ -9,6 +9,7 @@
 #include "core/driver_catalog.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
+#include "ui/title_marquee.h"
 
 namespace picker_shell {
 namespace {
@@ -832,10 +833,7 @@ void ensureOverlay() {
   lv_obj_add_flag(backButton, LV_OBJ_FLAG_HIDDEN);
 
   titleLabel = lv_label_create(overlay);
-  lv_obj_set_width(titleLabel, 140);
-  lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(titleLabel, UI_FONT_16, 0);
+  studio_ui::configureTitleMarquee(titleLabel, 140, UI_FONT_16);
   lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 10, 30);
 
   body = lv_obj_create(overlay);

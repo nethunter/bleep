@@ -142,6 +142,28 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Single-line marquee screen titles
+
+- Date: 2026-08-09.
+- Dynamic sequence, device-control, pairing, picker, and device-management
+  titles now use one shared single-line circular marquee. Short titles remain
+  centered and stationary; overflowing names scroll horizontally instead of
+  wrapping into the content below.
+- Devices, Scenes, Settings, and Settings subpage headers now share Home's
+  vertical anchors (`y=28` title, `y=24` navigation control). Their page
+  content moves upward with the header rather than leaving the title detached.
+- The simulator fixture uses `HML Studio` for the sequence-name regression.
+  The complete `ui_sim` capture traversal passed, including sequence run,
+  Devices, Scenes, Settings, and About visual review. Native tests passed
+  71/71.
+- All 13 firmware profiles built sequentially: `crowpanel_128`,
+  `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, `tascam_x8`,
+  `home_assistant`, `shark_nano_ii`, `amaran_light`, `zhiyun_x100`, `gopro`,
+  `phone_camera`, `insta360`, and `dji_osmo`. Default `crowpanel_128` used
+  142,316 / 327,680 bytes static RAM and 1,897,862 / 3,145,728 bytes flash.
+  It uploaded to `/dev/cu.usbserial-211240` with image hash verification and
+  hard reset. Live panel title motion and alignment remain operator checks.
+
 ### Dynamic 40-percent BLE discovery duty
 
 - Date: 2026-08-09.

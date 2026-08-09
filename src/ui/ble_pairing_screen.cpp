@@ -1,6 +1,7 @@
 #include "ui/ble_pairing_screen.h"
 
 #include "fonts/ui_fonts.h"
+#include "ui/title_marquee.h"
 
 namespace studio_ui {
 namespace {
@@ -42,10 +43,7 @@ void BlePairingScreen::create(lv_event_cb_t onBack, lv_event_cb_t onRetry) {
   lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 36);
 
   title_ = lv_label_create(screen_);
-  lv_label_set_long_mode(title_, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(title_, 126);
-  lv_obj_set_style_text_align(title_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(title_, UI_FONT_20, 0);
+  configureTitleMarquee(title_, 126, UI_FONT_20);
   lv_obj_align(title_, LV_ALIGN_TOP_MID, 20, 39);
 
   spinner_ = lv_spinner_create(screen_, 900, 75);
