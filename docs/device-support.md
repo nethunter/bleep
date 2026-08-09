@@ -28,8 +28,9 @@ when their last owner leaves.
 
 ## Home Assistant
 
-- Status: `Experimental`; software/build/simulator gates pass, target HA
-  feasibility gate remains open.
+- Status: `Experimental`; mixed four-link BLE plus local-HA readiness and
+  Start/Stop action delivery are hardware-verified. Broader lifecycle and
+  entity-domain gates remain open.
 - Transport: local plaintext Wi-Fi using bearer-authenticated REST and the
   authenticated `/api/websocket` endpoint. No TLS, cloud, OAuth, or inbound HA
   integration.
@@ -50,13 +51,19 @@ when their last owner leaves.
   on its Portal screen. `http://bleep.local` is a best-effort mDNS alias.
   Wi-Fi credentials and token are stored separately from ordinary device
   records and are not returned by the configuration endpoint.
-- Runtime: four HA instances share one lazy retained session. Protocol-ready
-  requires Wi-Fi, WebSocket authentication, selected-entity subscription, and
-  initial REST state. Stateful actions wait for subscribed confirmation; a
-  five-second miss reports failure and schedules REST refresh.
-- Hardware gate: AP-to-LAN handoff and listener teardown, external state updates, all six domain
-  mappings, failure recovery, mixed HA/BLE sequences, and ten lifecycle/heap
-  cycles remain unverified on a real local Home Assistant installation.
+- Runtime: four HA instances share one lazy retained session. Wi-Fi, WebSocket
+  authentication, and the selected-entity subscription establish command
+  readiness. A memory-deferred initial REST read leaves state explicitly
+  unknown. Successful service results complete delivery even when an
+  idempotent action produces no state-change event; only REST or subscribed
+  events confirm entity state.
+- Hardware evidence: a local-HA Sequence 4 reached Ready while Insta360, Phone
+  Camera, Canon Smart, and Tascam occupied the four BLE links. HA Start and Stop
+  returned successful service results and the operator confirmed both complete
+  mixed sequences worked without a false Failed state.
+- Remaining gate: AP-to-LAN handoff/listener teardown, external state updates,
+  every supported entity domain, failure recovery, and ten lifecycle/heap
+  cycles on a real local Home Assistant installation.
 
 ## iFootage
 
@@ -269,6 +276,20 @@ Reference research:
 
 ## Action cameras and phone shutters
 
+Compatibility evidence is deliberately split from protocol availability:
+
+| Target | Implementation | Hardware evidence in this tranche |
+| --- | --- | --- |
+| GoPro models in the current Open GoPro support table | Implemented, experimental | No camera tested yet. Retailer-only HERO8/MAX/MINI claims are not inherited. |
+| Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
+| Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
+| Insta360 X5 | Implemented, experimental | GPS-remote connection and mixed-sequence shutter operation are operator-confirmed. |
+| Insta360 GO 3 | Implemented candidate | No model-specific result recorded. |
+| Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; legacy GPS-remote compatibility is not established. |
+| DJI Osmo Action 5 Pro | Implemented candidate | No camera tested yet. |
+| DJI Osmo 360 | Implemented candidate | No camera tested yet. |
+| Sony RMT-P1BT-compatible cameras | Research only | No savable driver or camera test yet. |
+
 ### GoPro
 
 - Status: `Experimental`, hardware verification pending.
@@ -286,7 +307,9 @@ Reference research:
 
 ### Phone Camera
 
-- Status: `Experimental`, iOS/Android/HarmonyOS hardware verification pending.
+- Status: `Experimental`; Google Pixel 9 bonded reconnect and shutter behavior
+  in a mixed sequence are operator-confirmed. Other phone models and multi-phone
+  verification remain pending.
 - Driver: `Phone Camera` (`DriverId::PhoneCamera = 14`), up to four bonded
   phones and four concurrent physical links within the global limit.
 - Transport: Ble(e)p advertises one lazy BLE HID Consumer Control peripheral.
@@ -303,8 +326,8 @@ Reference research:
 
 ### Insta360
 
-- Status: `Experimental`; GPS-remote connection is operator-confirmed, while
-  shutter and sequence behavior remain pending.
+- Status: `Experimental`; Insta360 X5 GPS-remote connection and mixed-sequence
+  shutter operation are operator-confirmed. GO 3 validation remains pending.
 - Transport: Ble(e)p emulates an Insta360 GPS remote with service `0xCE80`;
   the camera scans and connects to the panel. A shutter press notifies
   `FC EF FE 86 00 03 01 02 00` on `0xCE82`.

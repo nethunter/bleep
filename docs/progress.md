@@ -22,8 +22,9 @@ short, factual, and reproducible.
   GO Ultra remains a distinct experimental probe. DJI now implements its
   published controller handshake, explicit record control, and status push for
   Action 5 Pro/Osmo 360 candidates. Sony remains capture-required. An Insta360
-  camera has connected successfully to Ble(e)p as a GPS remote; shutter and
-  sequence behavior remain operator-verifiable.
+  X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
+  mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
+  mixed-sequence shutter operation.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -79,7 +80,7 @@ short, factual, and reproducible.
 
 ## Next task
 
-First, exercise the newly flashed camera tranche. Pair Insta360 X5 and GO 3
+First, continue the camera hardware matrix. Pair Insta360 X5 and GO 3
 through their GPS Remote menu, probe GO Ultra separately without assuming it
 shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
 their remote-controller flow. Confirm add, reconnect, shutter/start/stop,
@@ -88,8 +89,9 @@ pair one supported GoPro,
 confirm reconnect and start/stop responses without claiming camera-reported
 recording state, then pair representative iOS and Android phones to
 `Ble(e)p Shutter` and confirm the system camera app responds to the physical and
-on-screen shutter. Exercise two simultaneous phone instances and mixed camera
-slot accounting. Sony still requires a capture before enabling Add Device.
+on-screen shutter. Google Pixel 9 reconnect/shutter and Insta360 X5
+mixed-sequence paths have passed. Exercise two simultaneous phone instances and mixed camera slot
+accounting. Sony still requires a capture before enabling Add Device.
 
 Then exercise the newly flashed cross-brand mesh runtime from the panel: add or open
 MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts
@@ -249,9 +251,9 @@ Record values with the exact build environment and commit/worktree state.
 ### Insta360 sequence visibility follow-up
 
 - Date: 2026-08-08.
-- Hardware evidence: the operator reported that an Insta360 camera connected
-  successfully to Ble(e)p as a GPS remote. The exact camera model and physical
-  shutter response were not recorded in that report.
+- Hardware evidence: the operator confirmed the tested camera was an Insta360
+  X5. It connected successfully to Ble(e)p as a GPS remote and its shutter
+  worked in the mixed Start/Stop sequence.
 - Root cause: `RecordTrigger` was a runtime capability but was absent from both
   the scene-command traits and the sequence device/action filters. Insta360 was
   therefore intentionally omitted by the generic picker despite being saved.

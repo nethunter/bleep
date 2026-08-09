@@ -121,9 +121,11 @@ principles:
   emulates the GPS remote shutter used by X5/GO 3-class cameras, while DJI
   implements the published Osmo controller handshake, start/stop, and status
   subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
-  action for authored Start and Stop lists. Insta360 GPS-remote connection is
-  operator-confirmed; shutter/sequence behavior and the other families remain
-  experimental. Sony still stops at an explicit protocol-research screen.
+  action for authored Start and Stop lists. Insta360 X5 GPS-remote connection
+  and mixed-sequence shutter behavior are operator-confirmed, as are Google
+  Pixel 9 reconnect and shutter behavior; broader model/platform coverage and
+  the other families remain experimental. Sony
+  still stops at an explicit protocol-research screen.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
 - A desktop LVGL simulator that renders the real 240x240 UI and captures PNGs
@@ -145,12 +147,14 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
 | Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
 | GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
-| Phone Camera | Experimental | Multi-instance BLE HID volume-up shutter routed to each bonded iOS/Android/HarmonyOS peer. |
-| Insta360 X5 / GO 3 / GO Ultra | Experimental | Emulates an Insta360 GPS remote and sends its toggle shutter command. Camera state is not readable; GO Ultra is a separate target and is offered only as an explicitly experimental probe. |
+| Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
+| Insta360 X5 | Experimental; verified path | GPS-remote connection and mixed-sequence toggle shutter are operator-confirmed; camera state is not readable. |
+| Insta360 GO 3 | Experimental candidate | Uses the same implemented GPS-remote path but has no model-specific hardware result yet. |
+| Insta360 GO Ultra | Experimental probe | Separate target with no established legacy GPS-remote compatibility and no hardware result yet. |
 | DJI Osmo Action 5 Pro / Osmo 360 | Experimental | Published DJI BLE handshake, explicit recording start/stop, and camera status subscription. |
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
-| Home Assistant local entities | Experimental | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. |
+| Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
 | Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to the panel-owned mesh. Ace 25c/MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and Pano validation remain open. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Adds each fixture as a logical member of the same one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
