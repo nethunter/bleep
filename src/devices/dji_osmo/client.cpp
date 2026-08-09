@@ -106,11 +106,6 @@ void Client::loop() {
       statusSubscriptionAtMs_ = now + kStatusSubscriptionRetryMs;
     }
   }
-  if (state_.commandPending && static_cast<int32_t>(now - commandDeadlineMs_) >= 0) {
-    state_.commandPending = false;
-    state_.lastCommandFailed = true;
-    state_.recording = State::Recording::Unknown;
-  }
   if (commandRequested_) {
     commandRequested_ = false;
     pendingRecordSequence_ = sequence_++;
@@ -119,6 +114,15 @@ void Client::loop() {
       state_.lastCommandFailed = true;
       state_.recording = State::Recording::Unknown;
     } else commandDeadlineMs_ = now + 5000;
+  }
+  // A queued command has no valid deadline until its GATT write succeeds.
+  // Process the write first so a stale/zero deadline cannot fail the scene
+  // before the camera has received the command.
+  if (state_.commandPending &&
+      static_cast<int32_t>(now - commandDeadlineMs_) >= 0) {
+    state_.commandPending = false;
+    state_.lastCommandFailed = true;
+    state_.recording = State::Recording::Unknown;
   }
 }
 

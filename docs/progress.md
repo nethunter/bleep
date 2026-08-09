@@ -3579,3 +3579,25 @@ Record values with the exact build environment and commit/worktree state.
 - The full image uploaded successfully to `/dev/cu.usbserial-211240`; all
   written-region hashes verified and the board hard-reset. The next CI run
   remains the authoritative Ubuntu verification of the repaired include.
+
+### 2026-08-09: DJI multi-camera sequence false-timeout repair
+
+- Diagnosed Sequence 3 stopping after its first of two DJI cameras even though
+  each camera's dedicated control screen worked. Instrumented hardware evidence
+  showed the first scene command was marked timed out before its GATT write;
+  the write and successful DJI ACK arrived afterward, when the scene had already
+  entered `Failed`, so the second camera was never dispatched.
+- DJI record commands now perform the pending GATT write and establish its
+  five-second ACK deadline before evaluating expiration. This prevents a stale
+  zero deadline from failing a newly queued command while retaining the same
+  post-write timeout and ACK handling.
+- On the connected hardware, Sequence 3 Start and Stop each dispatched in order
+  to DJI instances 19 and 20. Both cameras returned ACK result 0 for both
+  commands, every scene confirmation completed, and the operator confirmed both
+  cameras started and stopped correctly. Temporary diagnostic logging was then
+  removed.
+- Native passed 72/72. The `dji_osmo` profile built with 139,132 / 327,680 bytes
+  static RAM (42.5%) and 1,748,000 / 3,145,728 bytes flash (55.6%). The cleaned
+  full `bleep` profile built with 140,364 bytes static RAM (42.8%) and 1,901,478
+  bytes flash (60.4%), then uploaded to `/dev/cu.usbserial-211240`; all written
+  regions passed hash verification and the board hard-reset.
