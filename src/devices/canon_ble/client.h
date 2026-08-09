@@ -51,6 +51,13 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   void onPairingInfoNotification(const uint8_t* data, size_t len);
   void onModeNotification(const uint8_t* data, size_t len);
   void onShootingNotification(const uint8_t* data, size_t len);
+  bool ownsNotifyCharacteristic(const void* characteristic) const {
+    return characteristic != nullptr &&
+           (characteristic == pairingCommandChar_ ||
+            characteristic == pairingInfoChar_ ||
+            characteristic == modeResultChar_ ||
+            characteristic == shootingStateChar_);
+  }
 
  private:
   bool begin();
