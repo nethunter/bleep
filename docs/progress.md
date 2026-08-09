@@ -73,9 +73,11 @@ short, factual, and reproducible.
   the renamed Aputure Light pairing, CCT, and RGB screens were visually checked
   with the existing marquee behavior and no content collision. The full
   Montserrat `bleep` profile built successfully with 140,340 / 327,680 bytes
-  static RAM and 1,906,364 / 3,145,728 bytes flash. Driver-specific profiles
-  remain assigned to GitHub Actions by repository policy. No flash was attempted
-  from this worktree.
+  static RAM and 1,906,356 / 3,145,728 bytes flash. Driver-specific profiles
+  remain assigned to GitHub Actions by repository policy. After the operator
+  completed Factory Reset and explicitly approved the worktree upload, the
+  configured `/dev/cu.usbserial-211240` upload succeeded; every written region
+  passed hash verification and the panel hard-reset.
 
 ### 2026-08-09: Transparent UI icon sources
 
