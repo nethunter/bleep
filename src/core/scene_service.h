@@ -23,6 +23,8 @@ class SceneService {
   SceneRegistryStatus rename(SceneId sceneId, const char* name);
   SceneRegistryStatus setEnabled(SceneId sceneId, bool enabled);
   SceneRegistryStatus replace(const SceneRecord& record);
+  SceneRegistryStatus customizeStop(SceneId sceneId);
+  SceneRegistryStatus useGeneratedStop(SceneId sceneId);
   SceneRegistryStatus removeStep(SceneId sceneId, bool startList,
                                  uint8_t index);
   SceneValidationStatus validate(const SceneRecord& record) const;

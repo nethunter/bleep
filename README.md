@@ -90,8 +90,9 @@ principles:
   low-duty scan bursts, calmer ready-link intervals, Home Assistant Wi-Fi modem
   sleep, and ownerless reconnect suppression. The screen and backlight remain
   on continuously.
-- On-device sequences with separately authored Start and Stop steps, waits,
-  persistent storage, concurrent device preparation, and a hardware-button
+- On-device sequences with generated reverse/inverse Stop by default, an
+  explicit Custom Stop override, waits, persistent storage, concurrent device
+  preparation, and a hardware-button
   trigger. A partial Start failure can run Stop for cleanup and then retry
   Start; devices already confirmed stopped do not abort that cleanup. There is
   no configured sequence-count ceiling; the registry grows until the panel
@@ -129,7 +130,7 @@ principles:
   implements the published Osmo controller handshake, shows the camera's
   four-digit verification code during first pairing, and supports start/stop
   plus status subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
-  action for authored Start and Stop lists. Insta360 X5 GPS-remote connection
+  action that repeats in generated Stop. Insta360 X5 GPS-remote connection
   and mixed-sequence shutter behavior are operator-confirmed, as are Google
   Pixel 9 reconnect and shutter behavior; broader model/platform coverage and
   the other families remain experimental. Sony
@@ -141,7 +142,7 @@ principles:
 - Native tests for protocol parsing, state reducers, device/scene registries,
   command routing, persistence, and shared BLE scheduling.
 
-Groups, existing Amaran mesh import, generated reverse-Stop sequences, and full
+Groups, existing Amaran mesh import, success-journal rollback, and full
 Canon Wi-Fi/CCAPI control are roadmap work. Home Assistant and native Amaran
 are experimental bounded tranches whose hardware gates remain open. See
 [project progress](docs/progress.md) for the exact current gates and
@@ -302,8 +303,13 @@ added in the Portal by entering the local `http://` Home Assistant URL and
 long-lived access token, then selecting at most four supported entities.
 
 Sequences can be created, renamed, enabled/disabled, duplicated, and deleted.
-Their Start and Stop lists support action and wait steps, in-place editing, and
-reordering. On the panel, orphaned rows remain deletable if their target device
+**Add Sequence** guides creation through Start actions, generated Stop review,
+and Name. Editing Start regenerates the read-only reverse/inverse Stop
+preview. **Customize Stop** copies that preview into an independent editable
+list; **Use generated Stop** discards the override after confirmation. Custom
+lists support action and wait steps, in-place editing, and reordering. On the
+panel, orphaned custom
+rows remain deletable if their target device
 was removed, so an invalid sequence can be repaired one step at a time. The
 Portal changes configuration only: it does not connect to
 devices or run sequences. Choose **Finish & Exit** in the Portal, or Exit on the
@@ -323,9 +329,13 @@ only on a trusted studio network; TLS,
 Home Assistant Cloud, OAuth, and exposing Ble(e)p-controlled hardware back to
 Home Assistant are not implemented.
 
-Open **Scenes** to create ordered Start and Stop lists. A scene reaches `Ready`
+Open **Scenes** to create ordered Start sequences with generated or Custom Stop.
+New sequences open Start first: add steps, select the header arrow to review
+Stop, optionally customize it, then use the checkmark and standard Rename keypad
+to name and finish the sequence.
+A scene reaches `Ready`
 only when every target has both a physical link and completed protocol setup.
-In either step list, tap an existing step to change its action or settings;
+In Start or Custom Stop, tap an existing step to change its action or settings;
 waits open a millisecond duration editor and light-color steps reopen with their
 saved CCT/RGB parameters. Step rows place their reorder/delete controls below
 the action name, and the scrollable list ends with **Add step**. Back from an

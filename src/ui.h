@@ -6,6 +6,7 @@
 namespace ui {
 
 using RenameDoneFn = void (*)(const char* name);
+using RenameCancelFn = void (*)();
 
 void init();
 void tick();
@@ -30,7 +31,8 @@ void releaseInactiveScreens();
 
 // Shared round rename keypad. onDone receives the edited name; cancel clears
 // without calling onDone.
-void promptRename(const char* initial, RenameDoneFn onDone);
+void promptRename(const char* initial, RenameDoneFn onDone,
+                  RenameCancelFn onCancel = nullptr);
 void closeRenamePrompt();
 bool renamePromptActive();
 
@@ -41,6 +43,8 @@ void simShowManage(studio::InstanceId instanceId);
 void simRequestManagedDisconnect();
 void simRequestManagedRemove();
 void simShowRename(studio::InstanceId instanceId);
+void simSubmitRename(const char* name);
+void simCancelRename();
 void simShowWifiSettings();
 void simShowAbout();
 void simShowSystemInfo();

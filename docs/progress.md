@@ -9,8 +9,9 @@ short, factual, and reproducible.
   experimental Amaran Phase 4 tranche (ADR-024), existing Scenes/shared-BLE
   work, and remaining hardware gates.
 - Firmware state: Home-first, persistent device registry, retained on-demand Shark,
-  Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
-  lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
+  Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start lists
+  plus generated or explicitly customized Stop lists, prepare-on-open concurrent
+  links (protocol-ready `Ready`), settings cog
   (rename/edit/delete) that cancels pending preparation before configuration,
   and NVS scene persistence. Lazy UI allocation keeps Home/Devices resident;
   scene UI loads on demand.
@@ -226,8 +227,8 @@ Amaran/Aputure support:
    Tascam sequence opens; record median/p95 readiness, per-stage blocking GATT,
    scan drops, retries, post-init heap, and post-teardown heap. Trigger the
    asynchronous GATT executor only if blocking GATT reaches the 25% gate.
-11. Keep existing-mesh import, Portal scene editing, and generated reverse-Stop
-   deferred. The panel-owned Generic OnOff group used for mesh state/control is
+11. Keep existing-mesh import and broader Portal management deferred. The
+   panel-owned Generic OnOff group used for mesh state/control is
    part of ADR-024, not the deferred user-authored native-groups feature.
 
 ## Measurements
@@ -434,6 +435,49 @@ Record values with the exact build environment and commit/worktree state.
   image hash verification and hard reset. Final live X8 connection timing is
   pending operator verification; the serial monitor was left detached after
   upload to avoid influencing the panel's reset lines.
+
+### Generated sequence Stop authoring and persistence
+
+- Date: 2026-08-09; feature branch `codex/autogenerate-sequence-stop`, rebased
+  onto current local `main` at `c5cffb9` before integration.
+- Added schema-v4 `Generated` and `Custom` Stop modes. Main already used schema
+  v3 for compact, dynamically counted scene records, so v1/v2/v3 records all
+  migrate to Generated mode and rewrite as v4. Generated Stop is
+  materialized by reversing Start and applying the ADR-037 inverse mapping;
+  color-setting actions are omitted. Start mutations regenerate atomically,
+  while Customize copies the preview and Use generated discards the override.
+- Every migrated record discards its legacy authored Stop and rebuilds it from
+  Start. The panel and Portal use the same scene-core generation path; Portal
+  generated PUTs do not trust a client-supplied Stop array.
+- Add Sequence now guides both panel and Portal authoring through Start, Stop,
+  and Name. The panel reuses the existing Rename overlay for the final stage;
+  canceling Name returns to Stop without losing steps, while backing out of the
+  initial Start removes the blank record. Empty Start cannot advance. On the
+  round panel, the content area presents one centered authoring action while a
+  header arrow/checkmark owns Next/Finish; the guided header control is
+  allocated only while that flow is active.
+- Native tests passed 76/76, including every mapping, reverse order, maximum
+  length, customization/relinking, v1/v2/v3 migration, v4 round-trip, seeded
+  Press Record order, and partial-Start-failure cleanup across every generated
+  target.
+- `ui_sim` built and completed its screenshot run. Generated preview, customize,
+  two-step relink confirmation, empty generated text, Name cancel cleanup,
+  guarded Add Start, and Add generated-Stop Finish were exercised. The new
+  `23b0_scenes_add_start.png`, `23b1_scenes_add_generated_stop.png`, and
+  `23b2_scenes_add_name.png` captures fit the round display. Portal
+  assets passed Bun syntax checks; a live browser Portal session and physical
+  touchscreen flow remain operator-unverified.
+- Before the rebase, all 13 then-named firmware profiles built sequentially.
+  After rebasing, the canonical renamed `bleep` profile built successfully at
+  140,380 bytes static RAM (42.8%) and 1,906,570 bytes flash (60.6%). The
+  rebased alternate profile matrix was not rerun to avoid competing with the
+  operator's other build workflow.
+- An earlier upload was stopped at the operator's request while another build
+  owned the board workflow. After explicit approval, the canonical `bleep`
+  image was later uploaded successfully to `/dev/cu.usbserial-211240`; esptool
+  verified the image hash and hard-reset the panel via RTS. Migration-on-real-
+  NVS, touchscreen, Portal-browser, peripheral, and physical sequence behavior
+  remain operator-unverified.
 
 ### Mixed four-link Home Assistant readiness fix
 

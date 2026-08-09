@@ -129,6 +129,7 @@ uint8_t renamePage = 0;
 bool renameUpperCase = true;
 size_t devicePage = 0;
 RenameDoneFn renameDoneCallback = nullptr;
+RenameCancelFn renameCancelCallback = nullptr;
 uint8_t hapticErrorMask = 0;
 studio::InstanceId hapticForegroundInstance = studio::kInvalidInstanceId;
 bool hapticForegroundReady = false;
@@ -239,6 +240,7 @@ void closeRename() {
   renamePageLabel = nullptr;
   renameCaseLabel = nullptr;
   renameDoneCallback = nullptr;
+  renameCancelCallback = nullptr;
 }
 
 void buildRenameOverlay();
@@ -660,8 +662,11 @@ void onSaveRename(lv_event_t*) {
 }
 
 void onCancelRename(lv_event_t*) {
+  const RenameCancelFn cancel = renameCancelCallback;
   closeRename();
-  if (screen == Screen::Devices) {
+  if (cancel != nullptr) {
+    cancel();
+  } else if (screen == Screen::Devices) {
     refreshDevices();
   }
 }
@@ -1947,11 +1952,13 @@ void parkForScreenRebuild() {
 
 void releaseInactiveScreens() { releaseDeviceUis(); }
 
-void promptRename(const char* initial, RenameDoneFn onDone) {
+void promptRename(const char* initial, RenameDoneFn onDone,
+                  RenameCancelFn onCancel) {
   if (renameOverlay == nullptr) {
     buildRenameOverlay();
   }
   renameDoneCallback = onDone;
+  renameCancelCallback = onCancel;
   lv_textarea_set_text(renameText, initial != nullptr ? initial : "");
   lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
   renamePage = 0;
@@ -2023,6 +2030,14 @@ void simShowRename(studio::InstanceId instanceId) {
   releaseDeviceRows();
   promptRename(record->displayName, onDeviceRenameDone);
 }
+
+void simSubmitRename(const char* name) {
+  if (renameText == nullptr) return;
+  lv_textarea_set_text(renameText, name != nullptr ? name : "");
+  onSaveRename(nullptr);
+}
+
+void simCancelRename() { onCancelRename(nullptr); }
 
 void simRequestManagedDisconnect() { onDisconnect(nullptr); }
 void simRequestManagedRemove() { onRemove(nullptr); }

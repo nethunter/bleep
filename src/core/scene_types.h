@@ -49,6 +49,11 @@ inline SceneStep makeWaitStep(uint32_t milliseconds) {
                    milliseconds);
 }
 
+enum class SceneStopMode : uint8_t {
+  Generated,
+  Custom,
+};
+
 struct SceneRecord {
   SceneId sceneId = kInvalidSceneId;
   bool enabled = true;
@@ -57,7 +62,50 @@ struct SceneRecord {
   uint8_t startCount = 0;
   SceneStep stopSteps[CONFIG_MAX_SCENE_STEPS] = {};
   uint8_t stopCount = 0;
+  SceneStopMode stopMode = SceneStopMode::Generated;
 };
+
+inline bool makeGeneratedStopStep(const SceneStep& start, SceneStep& stop) {
+  if (start.type == SceneStepType::Wait) {
+    stop = start;
+    return true;
+  }
+  if (start.type != SceneStepType::Action) {
+    return false;
+  }
+  CommandType inverse = start.command;
+  switch (start.command) {
+    case CommandType::RecordStart: inverse = CommandType::RecordStop; break;
+    case CommandType::RecordStop: inverse = CommandType::RecordStart; break;
+    case CommandType::TurnOn: inverse = CommandType::TurnOff; break;
+    case CommandType::TurnOff: inverse = CommandType::TurnOn; break;
+    case CommandType::RecordTrigger:
+    case CommandType::Press:
+    case CommandType::Activate:
+      break;
+    case CommandType::SetLightCct:
+    case CommandType::SetLightRgb:
+      return false;
+    default:
+      return false;
+  }
+  stop = makeActionStep(start.targetId, inverse, start.value0, start.value1,
+                        start.value2);
+  return true;
+}
+
+inline void generateStopSteps(SceneRecord& record) {
+  record.stopCount = 0;
+  for (uint8_t i = record.startCount; i > 0; --i) {
+    SceneStep generated;
+    if (makeGeneratedStopStep(record.startSteps[i - 1], generated)) {
+      record.stopSteps[record.stopCount++] = generated;
+    }
+  }
+  for (uint8_t i = record.stopCount; i < CONFIG_MAX_SCENE_STEPS; ++i) {
+    record.stopSteps[i] = SceneStep{};
+  }
+}
 
 enum class ScenePhase : uint8_t {
   Idle,

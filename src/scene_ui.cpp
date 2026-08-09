@@ -35,8 +35,10 @@ bool visible = false;
 bool borrowedDeviceOpen = false;
 studio::SceneId currentScene = studio::kInvalidSceneId;
 bool editingStart = true;
+bool creatingScene = false;
 constexpr uint8_t kNoStepIndex = 0xff;
 uint8_t editingStepIndex = kNoStepIndex;
+bool confirmUseGenerated = false;
 uint32_t lastRefreshMs = 0;
 
 lv_obj_t* scrList = nullptr;
@@ -56,6 +58,7 @@ lv_obj_t* settingsBody = nullptr;
 bool deleteSceneArmed = false;
 lv_obj_t* editBody = nullptr;
 lv_obj_t* editTitle = nullptr;
+lv_obj_t* editAdvanceButton = nullptr;
 
 enum class ChipState : uint8_t {
   Unknown,
@@ -223,6 +226,8 @@ void refreshEditDeferred(void*) {
 void showListView();
 void showRunView(studio::SceneId sceneId);
 void showEditView(studio::SceneId sceneId, bool startList);
+void onCreationNameDone(const char* name);
+void onCreationNameCancel();
 void closeSettings();
 void releaseHeldScene();
 
@@ -280,8 +285,22 @@ void onBackToList(lv_event_t*) {
   showListView();
 }
 
-void onBackToRun(lv_event_t*) {
+void onBackFromEdit(lv_event_t*) {
   haptic_feedback::request(haptic_feedback::Pattern::Back);
+  if (creatingScene && !editingStart) {
+    showEditView(currentScene, true);
+    return;
+  }
+  if (creatingScene) {
+    const studio::SceneId abandoned = currentScene;
+    creatingScene = false;
+    currentScene = studio::kInvalidSceneId;
+    if (abandoned != studio::kInvalidSceneId) {
+      studio::scenes().remove(abandoned);
+    }
+    showListView();
+    return;
+  }
   showRunView(currentScene);
 }
 
@@ -301,6 +320,26 @@ void onOpenDeviceControl(lv_event_t* event) {
   ui::showDevice(instanceId);
 }
 
+void onCreationNameDone(const char* name) {
+  if (currentScene == studio::kInvalidSceneId || name == nullptr ||
+      name[0] == '\0' ||
+      studio::scenes().rename(currentScene, name) !=
+          studio::SceneRegistryStatus::Ok) {
+    const studio::SceneRecord* record = studio::scenes().find(currentScene);
+    if (record != nullptr) {
+      ui::promptRename(record->name, onCreationNameDone,
+                       onCreationNameCancel);
+    }
+    return;
+  }
+  creatingScene = false;
+  showRunView(currentScene);
+}
+
+void onCreationNameCancel() {
+  showEditView(currentScene, false);
+}
+
 void onAddBlank(lv_event_t*) {
   if (studio::scenes().busy() || studio::scenes().holdsLinks()) {
     return;
@@ -310,7 +349,28 @@ void onAddBlank(lv_event_t*) {
                 static_cast<unsigned>(studio::scenes().count() + 1));
   studio::SceneId id = studio::kInvalidSceneId;
   if (studio::scenes().add(name, id) == studio::SceneRegistryStatus::Ok) {
+    creatingScene = true;
     showEditView(id, true);
+  }
+}
+
+void onCreationNext(lv_event_t*) {
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
+  if (!creatingScene || record == nullptr || record->startCount == 0) return;
+  showEditView(currentScene, false);
+}
+
+void onCreationFinish(lv_event_t*) {
+  const studio::SceneRecord* record = studio::scenes().find(currentScene);
+  if (!creatingScene || record == nullptr || record->startCount == 0) return;
+  ui::promptRename(record->name, onCreationNameDone, onCreationNameCancel);
+}
+
+void onCreationAdvance(lv_event_t* event) {
+  if (editingStart) {
+    onCreationNext(event);
+  } else {
+    onCreationFinish(event);
   }
 }
 
@@ -404,6 +464,7 @@ void onEditStart(lv_event_t*) {
     return;
   }
   closeSettings();
+  creatingScene = false;
   // Keep prepared links held while editing steps.
   showEditView(currentScene, true);
 }
@@ -413,7 +474,29 @@ void onEditStop(lv_event_t*) {
     return;
   }
   closeSettings();
+  creatingScene = false;
   showEditView(currentScene, false);
+}
+
+void onCustomizeStop(lv_event_t*) {
+  if (studio::scenes().customizeStop(currentScene) ==
+      studio::SceneRegistryStatus::Ok) {
+    confirmUseGenerated = false;
+    lv_async_call(refreshEditDeferred, nullptr);
+  }
+}
+
+void onUseGeneratedStop(lv_event_t*) {
+  if (!confirmUseGenerated) {
+    confirmUseGenerated = true;
+    lv_async_call(refreshEditDeferred, nullptr);
+    return;
+  }
+  if (studio::scenes().useGeneratedStop(currentScene) ==
+      studio::SceneRegistryStatus::Ok) {
+    confirmUseGenerated = false;
+    lv_async_call(refreshEditDeferred, nullptr);
+  }
 }
 
 void onDeleteScene(lv_event_t*) {
@@ -922,14 +1005,42 @@ void refreshEdit() {
   if (record == nullptr) {
     return;
   }
-  lv_label_set_text(editTitle, editingStart ? "Start steps" : "Stop steps");
+  const bool generatedStop = !editingStart &&
+      record->stopMode == studio::SceneStopMode::Generated;
+  lv_label_set_text(
+      editTitle,
+      creatingScene
+          ? (editingStart ? "Start" : "Stop")
+          : (editingStart ? "Start steps"
+                          : (generatedStop ? "Generated Stop" : "Custom Stop")));
+  if (creatingScene && editAdvanceButton == nullptr) {
+    editAdvanceButton = studio_ui::createRoundPageHeaderButton(
+        scrEdit, LV_SYMBOL_RIGHT, onCreationAdvance, kColAccent, kColText,
+        true);
+  } else if (!creatingScene && editAdvanceButton != nullptr) {
+    lv_obj_del(editAdvanceButton);
+    editAdvanceButton = nullptr;
+  }
+  if (editAdvanceButton != nullptr) {
+    lv_label_set_text(lv_obj_get_child(editAdvanceButton, 0),
+                      editingStart ? LV_SYMBOL_RIGHT : LV_SYMBOL_OK);
+    lv_obj_set_style_bg_color(
+        editAdvanceButton, lv_color_hex(editingStart ? kColAccent : kColOk),
+        0);
+    if (editingStart && record->startCount == 0) {
+      lv_obj_add_state(editAdvanceButton, LV_STATE_DISABLED);
+    } else {
+      lv_obj_clear_state(editAdvanceButton, LV_STATE_DISABLED);
+    }
+  }
   lv_obj_clean(editBody);
   const studio::SceneStep* steps =
       editingStart ? record->startSteps : record->stopSteps;
   const uint8_t count = editingStart ? record->startCount : record->stopCount;
   if (count == 0) {
     lv_obj_t* empty = lv_label_create(editBody);
-    lv_label_set_text(empty, "No steps");
+    lv_label_set_text(empty, generatedStop ? "No generated Stop actions"
+                                           : "No steps");
     lv_obj_set_style_text_color(empty, lv_color_hex(kColMuted), 0);
     lv_obj_set_style_text_font(empty, UI_FONT_14, 0);
   }
@@ -937,7 +1048,7 @@ void refreshEdit() {
     char text[48];
     formatStep(text, sizeof(text), steps[i]);
     lv_obj_t* row = lv_obj_create(editBody);
-    lv_obj_set_size(row, lv_pct(100), 58);
+    lv_obj_set_size(row, lv_pct(100), generatedStop ? 34 : 58);
     lv_obj_set_style_bg_color(row, lv_color_hex(kColPanel), 0);
     lv_obj_set_style_border_width(row, 1, 0);
     lv_obj_set_style_border_color(row, lv_color_hex(kColMuted), 0);
@@ -947,9 +1058,20 @@ void refreshEdit() {
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     void* userData = reinterpret_cast<void*>(static_cast<uintptr_t>(i));
-    lv_obj_t* edit = makeButton(row, text, onEditStep);
-    lv_obj_set_size(edit, lv_pct(100), 24);
+    lv_obj_t* edit = generatedStop ? lv_label_create(row)
+                                   : makeButton(row, text, onEditStep);
+    if (generatedStop) {
+      lv_label_set_text(edit, text);
+      lv_obj_set_style_text_font(edit, UI_FONT_14, 0);
+      lv_obj_set_style_text_color(edit, lv_color_hex(kColText), 0);
+    }
+    lv_obj_set_size(edit, generatedStop ? 170 : lv_pct(100), 24);
     lv_obj_align(edit, LV_ALIGN_TOP_MID, 0, 0);
+    if (generatedStop) {
+      lv_label_set_long_mode(edit, LV_LABEL_LONG_DOT);
+      lv_obj_set_style_text_align(edit, LV_TEXT_ALIGN_LEFT, 0);
+      continue;
+    }
     lv_obj_set_style_border_width(edit, 0, 0);
     lv_obj_t* editLabel = lv_obj_get_child(edit, 0);
     lv_label_set_long_mode(editLabel, LV_LABEL_LONG_DOT);
@@ -983,8 +1105,15 @@ void refreshEdit() {
   lv_obj_set_style_border_width(addRow, 0, 0);
   lv_obj_set_style_pad_all(addRow, 0, 0);
   lv_obj_clear_flag(addRow, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* add = makeButton(addRow, "+ Add step", onOpenAddStep, kColAccent);
-  lv_obj_set_size(add, 120, 28);
+  const char* actionText = generatedStop ? "Customize Stop" :
+      (!editingStart && confirmUseGenerated ? "Discard custom?" :
+       (!editingStart ? "Use generated" : "+ Add step"));
+  lv_event_cb_t actionCallback = generatedStop ? onCustomizeStop :
+      (!editingStart ? onUseGeneratedStop : onOpenAddStep);
+  lv_obj_t* add = makeButton(addRow, actionText, actionCallback,
+                             generatedStop ? kColAccent :
+                             (!editingStart ? kColDanger : kColAccent));
+  lv_obj_set_size(add, generatedStop ? 142 : 130, 28);
   lv_obj_align(add, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
@@ -1065,11 +1194,12 @@ void buildEdit() {
   styleScreen(scrEdit);
 
   studio_ui::RoundPageHeaderOptions headerOptions;
-  headerOptions.onBack = onBackToRun;
+  headerOptions.onBack = onBackFromEdit;
   headerOptions.panelColor = kColPanel;
   headerOptions.textColor = kColText;
-  editTitle =
-      studio_ui::createRoundPageHeader(scrEdit, headerOptions).title;
+  const studio_ui::RoundPageHeader header =
+      studio_ui::createRoundPageHeader(scrEdit, headerOptions);
+  editTitle = header.title;
 
   editBody = lv_obj_create(scrEdit);
   lv_obj_set_size(editBody, 188, 158);
@@ -1102,6 +1232,7 @@ void showListView() {
   closeAddOverlay();
   closeSettings();
   ui::closeRenamePrompt();
+  creatingScene = false;
   view = View::List;
   borrowedDeviceOpen = false;
   refreshList();
@@ -1113,6 +1244,7 @@ void showRunView(studio::SceneId sceneId) {
   closeAddOverlay();
   closeSettings();
   ui::closeRenamePrompt();
+  creatingScene = false;
   currentScene = sceneId;
   view = View::Run;
   borrowedDeviceOpen = false;
@@ -1140,6 +1272,7 @@ void showEditView(studio::SceneId sceneId, bool startList) {
   ui::closeRenamePrompt();
   currentScene = sceneId;
   editingStart = startList;
+  confirmUseGenerated = false;
   view = View::Edit;
   borrowedDeviceOpen = false;
   refreshEdit();
@@ -1192,6 +1325,7 @@ void hide() {
   releaseHeldScene();
   visible = false;
   borrowedDeviceOpen = false;
+  creatingScene = false;
   view = View::List;
   currentScene = studio::kInvalidSceneId;
 }
@@ -1225,7 +1359,7 @@ void handleLongPress() {
     return;
   }
   if (view == View::Edit) {
-    showRunView(currentScene);
+    onBackFromEdit(nullptr);
     return;
   }
   if (view == View::Run) {
@@ -1242,18 +1376,42 @@ void simShowList() {
   showListView();
 }
 
+studio::SceneId simBeginAddFlow() {
+  visible = true;
+  showListView();
+  onAddBlank(nullptr);
+  return currentScene;
+}
+
+bool simAdvanceAddFlow() {
+  const bool wasStart = creatingScene && editingStart;
+  onCreationNext(nullptr);
+  return wasStart && creatingScene && !editingStart;
+}
+
+bool simFinishAddFlow() {
+  const bool wasStop = creatingScene && !editingStart;
+  onCreationFinish(nullptr);
+  return wasStop && creatingScene && ui::renamePromptActive();
+}
+
+bool simAddFlowActive() { return creatingScene; }
+
 void simShowRun(studio::SceneId sceneId) {
   visible = true;
+  creatingScene = false;
   showRunView(sceneId);
 }
 
 void simShowEditStart(studio::SceneId sceneId) {
   visible = true;
+  creatingScene = false;
   showEditView(sceneId, true);
 }
 
 void simShowEditStop(studio::SceneId sceneId) {
   visible = true;
+  creatingScene = false;
   showEditView(sceneId, false);
 }
 
@@ -1320,6 +1478,20 @@ uint8_t simRenderedStepCount() {
   const uint32_t children =
       editBody != nullptr ? lv_obj_get_child_cnt(editBody) : 0;
   return children > 0 ? static_cast<uint8_t>(children - 1) : 0;
+}
+
+bool simClickStopModeAction() {
+  const uint32_t count = editBody != nullptr ? lv_obj_get_child_cnt(editBody) : 0;
+  if (count == 0) return false;
+  lv_obj_t* actionRow = lv_obj_get_child(editBody, count - 1);
+  if (actionRow == nullptr || lv_obj_get_child_cnt(actionRow) == 0) return false;
+  lv_obj_t* button = lv_obj_get_child(actionRow, 0);
+  return button != nullptr &&
+         lv_event_send(button, LV_EVENT_CLICKED, nullptr) == LV_RES_OK;
+}
+
+const char* simEditTitleText() {
+  return editTitle != nullptr ? lv_label_get_text(editTitle) : "";
 }
 
 void simShowAddStepCategory(studio::SceneId sceneId) {
