@@ -142,6 +142,24 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Rolling GitHub release repository context repair
+
+- Date: 2026-08-09.
+- The artifact-only publishing job now sets `GH_REPO` from
+  `github.repository`, so GitHub CLI release commands can resolve the target
+  repository without a redundant source checkout. This addresses the observed
+  `fatal: not a git repository` failure after every test and firmware profile
+  had already passed.
+- Ruby/Psych parsed `.github/workflows/ci.yml`, Bash accepted the embedded
+  publishing script, and `git diff --check` passed.
+- The canonical full Montserrat `bleep` profile built successfully with
+  142,316 / 327,680 bytes static RAM and 1,903,272 / 3,145,728 bytes flash.
+  Upload found `/dev/cu.usbserial-211240` but could not open it because the port
+  was busy, unavailable, or not permitted; no flash completed.
+- The repaired publishing path remains pending one successful push-to-`main`
+  GitHub Actions run because the release commands cannot be exercised locally
+  without mutating the hosted rolling release.
+
 ### Rolling GitHub development firmware release
 
 - Date: 2026-08-09.
