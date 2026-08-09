@@ -2,7 +2,7 @@
 
 #include "core/device_types.h"
 
-namespace amaran_light_ui {
+namespace aputure_light_ui {
 void show(studio::InstanceId instanceId);
 void hide();
 void release();
@@ -15,5 +15,6 @@ void simSetCctLook(int kelvin, int tintPermille, int brightness);
 void simSetRgbLook(uint32_t rgb, int brightness);
 void simShowCct();
 void simShowRgb();
+int simRgbSaturation();
 #endif
-}  // namespace amaran_light_ui
+}  // namespace aputure_light_ui

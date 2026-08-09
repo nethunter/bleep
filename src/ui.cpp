@@ -39,8 +39,8 @@
 #if CONFIG_DRIVER_HOME_ASSISTANT
 #include "devices/home_assistant/ui.h"
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-#include "devices/amaran_light/ui.h"
+#if CONFIG_DRIVER_APUTURE_LIGHT
+#include "devices/aputure_light/ui.h"
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
 #include "devices/zhiyun_x100/ui.h"
@@ -1319,8 +1319,8 @@ void releaseDeviceUis() {
 #if CONFIG_DRIVER_ZHIYUN_X100
   zhiyun_x100_ui::release();
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  amaran_light_ui::release();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  aputure_light_ui::release();
 #endif
 #if CONFIG_DRIVER_SHARK_NANO_II
   shark_ui::release();
@@ -1449,9 +1449,9 @@ void tick() {
     return;
   }
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  if (amaran_light_ui::active()) {
-    amaran_light_ui::tick();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  if (aputure_light_ui::active()) {
+    aputure_light_ui::tick();
     return;
   }
 #endif
@@ -1558,9 +1558,9 @@ void handleShortPress() {
     return;
   }
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  if (amaran_light_ui::active()) {
-    amaran_light_ui::handleShortPress();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  if (aputure_light_ui::active()) {
+    aputure_light_ui::handleShortPress();
     return;
   }
 #endif
@@ -1631,9 +1631,9 @@ bool handleLongPress() {
     return true;
   }
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  if (amaran_light_ui::active()) {
-    amaran_light_ui::handleLongPress();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  if (aputure_light_ui::active()) {
+    aputure_light_ui::handleLongPress();
     return true;
   }
 #endif
@@ -1724,9 +1724,9 @@ void showHome() {
     zhiyun_x100_ui::hide();
   }
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  if (amaran_light_ui::active()) {
-    amaran_light_ui::hide();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  if (aputure_light_ui::active()) {
+    aputure_light_ui::hide();
   }
 #endif
   if (portal::active()) {
@@ -1800,9 +1800,9 @@ void showDevices() {
     zhiyun_x100_ui::hide();
   }
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  if (amaran_light_ui::active()) {
-    amaran_light_ui::hide();
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  if (aputure_light_ui::active()) {
+    aputure_light_ui::hide();
   }
 #endif
   if (scene_ui::active()) {
@@ -1894,11 +1894,9 @@ void showDevice(studio::InstanceId instanceId) {
       zhiyun_x100_ui::show(instanceId);
       break;
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-    case studio::DriverId::AmaranLight:
-    case studio::DriverId::AmaranPano120c:
-    case studio::DriverId::AmaranAce25c:
-      amaran_light_ui::show(instanceId);
+#if CONFIG_DRIVER_APUTURE_LIGHT
+    case studio::DriverId::AputureLight:
+      aputure_light_ui::show(instanceId);
       break;
 #endif
 #if CONFIG_DRIVER_SHARK_NANO_II

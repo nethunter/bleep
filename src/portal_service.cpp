@@ -221,9 +221,7 @@ const char* driverName(studio::DriverId id) {
     case studio::DriverId::CanonTrigger: return "Canon (Trigger)";
     case studio::DriverId::TascamX8: return "Portacapture X8";
     case studio::DriverId::HomeAssistant: return "Home Assistant Entity";
-    case studio::DriverId::AmaranLight: return "Amaran Light";
-    case studio::DriverId::AmaranPano120c: return "Amaran Pano 120c";
-    case studio::DriverId::AmaranAce25c: return "Amaran Ace 25c";
+    case studio::DriverId::AputureLight: return "Aputure Light";
     case studio::DriverId::ZhiyunLight: return "ZHIYUN Light";
     default: return "Unavailable driver";
   }

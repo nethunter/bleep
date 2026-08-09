@@ -1,12 +1,12 @@
-#include "devices/amaran_light/protocol.h"
+#include "devices/aputure_light/protocol.h"
 
 #include <cmath>
 #include <cctype>
 #include <cstring>
 
-#include "devices/amaran_light/crypto.h"
+#include "devices/aputure_light/crypto.h"
 
-namespace amaran_light {
+namespace aputure_light {
 namespace {
 
 constexpr uint8_t kPowerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
@@ -550,4 +550,4 @@ bool decodeProxyDeviceMessage(const uint8_t networkKey[16],
                        output.access);
 }
 
-}  // namespace amaran_light
+}  // namespace aputure_light

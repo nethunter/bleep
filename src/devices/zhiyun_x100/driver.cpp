@@ -6,7 +6,7 @@
 #include <new>
 
 #include "core/mesh/mesh_repository.h"
-#include "devices/amaran_light/runtime.h"
+#include "devices/aputure_light/runtime.h"
 
 namespace studio {
 
@@ -53,9 +53,9 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
                              record.instanceId) != nullptr;
   session->sharedGateway = record.paired && hasMeshNode;
   if (session->sharedGateway) {
-    amaran_light::AmaranRuntime* gateway = amaran_light::runtime();
+    aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
     if (gateway == nullptr || !gateway->acquireGateway(record)) {
-      amaran_light::releaseRuntimeIfIdle();
+      aputure_light::releaseRuntimeIfIdle();
       for (Session*& candidate : sessions_) {
         if (candidate != session) continue;
         delete candidate;
@@ -81,7 +81,7 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
         break;
       }
       if (sessionCount_ > 0) --sessionCount_;
-      amaran_light::releaseRuntimeIfIdle();
+      aputure_light::releaseRuntimeIfIdle();
       if (sessionCount_ == 0 && repositoryHeld_) {
         studio::mesh::releaseRepository();
         repositoryHeld_ = false;
@@ -115,8 +115,8 @@ void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
   if (session == nullptr) return;
   session->client.deactivate();
   if (session->sharedGateway) {
-    if (amaran_light::AmaranRuntime* gateway =
-            amaran_light::runtimeIfActive()) {
+    if (aputure_light::AputureLightRuntime* gateway =
+            aputure_light::runtimeIfActive()) {
       gateway->releaseGateway(instanceId);
     }
   }
@@ -126,7 +126,7 @@ void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
     candidate = nullptr;
     break;
   }
-  amaran_light::releaseRuntimeIfIdle();
+  aputure_light::releaseRuntimeIfIdle();
   if (sessionCount_ > 0) --sessionCount_;
   if (sessionCount_ == 0 && repositoryHeld_) {
     studio::mesh::releaseRepository();
@@ -135,14 +135,14 @@ void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
 }
 
 void ZhiyunLightDriver::loop() {
-  if (amaran_light::AmaranRuntime* runtime =
-          amaran_light::runtimeIfActive()) {
+  if (aputure_light::AputureLightRuntime* runtime =
+          aputure_light::runtimeIfActive()) {
     runtime->loop();
   }
   for (Session* session : sessions_) {
     if (session == nullptr) continue;
     if (session->sharedGateway) {
-      amaran_light::AmaranRuntime* gateway = amaran_light::runtimeIfActive();
+      aputure_light::AputureLightRuntime* gateway = aputure_light::runtimeIfActive();
       if (gateway == nullptr) continue;
       const uint32_t generation = gateway->gatewayGeneration();
       if (!gateway->gatewayConnected()) {
@@ -177,7 +177,7 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   switch (command.type) {
     case CommandType::Connect:
       if (session->sharedGateway) {
-        amaran_light::AmaranRuntime* gateway = amaran_light::runtime();
+        aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
         return gateway != nullptr && gateway->acquireGateway(session->record)
                    ? CommandStatus::Succeeded
                    : CommandStatus::Unavailable;

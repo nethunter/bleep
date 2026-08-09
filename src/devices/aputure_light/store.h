@@ -6,7 +6,7 @@
 #include "core/config_store.h"
 #include "core/device_types.h"
 
-namespace amaran_light {
+namespace aputure_light {
 
 constexpr size_t kMaxMeshNodes = CONFIG_MAX_DEVICE_INSTANCES;
 constexpr uint32_t kSequenceBlockSize = 256;
@@ -89,4 +89,4 @@ uint16_t defaultControlGroupAddress(const MeshStoreData& data,
                                     const MeshNodeRecord& node);
 uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data);
 
-}  // namespace amaran_light
+}  // namespace aputure_light

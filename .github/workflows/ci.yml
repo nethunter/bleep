@@ -34,7 +34,7 @@ jobs:
           - tascam_x8
           - home_assistant
           - shark_nano_ii
-          - amaran_light
+          - aputure_light
           - zhiyun_x100
           - gopro
           - phone_camera

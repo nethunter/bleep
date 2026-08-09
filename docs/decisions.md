@@ -445,7 +445,9 @@ the replacement.
 ## ADR-024: Userspace PB-GATT and Mesh Proxy for the first Amaran tranche
 
 - Status: Experimental; target-light hardware gate open
-- Decision: the picker exposes one generic `Amaran Light`. The first nearby
+- Naming: Superseded by ADR-038. The picker, driver, build profile, and shared
+  runtime now use the canonical `Aputure Light` identity.
+- Decision: the picker exposes one generic `Aputure Light`. The first nearby
   factory-reset fixture advertising Mesh Provisioning is added; Pano 60c,
   Pano 120c, and Ace 25c are validation targets rather than separate user
   choices. Compatible fixtures use Bluetooth Mesh PB-GATT for no-OOB
@@ -596,6 +598,8 @@ the replacement.
 ## ADR-028: X100 uses shared panel-owned provisioning and confirmed direct control
 
 - Status: Experimental; panel hardware gate open
+- Persistence update: ADR-038 replaces the legacy `amaran_mesh` NVS key and
+  hidden compatibility driver IDs with a clean-storage development baseline.
 - Decision: expose one `ZHIYUN MOLUS X100` light driver that can select a
   factory-reset fixture advertising Mesh Provisioning `0x1827` or an existing
   fixture advertising Mesh Proxy `0x1828`. Discovery requires both the `pl105`
@@ -669,6 +673,8 @@ the replacement.
 
 - Status: Experimental; mixed-mesh hardware control verified, embedded soak
   gate open.
+- Naming: ADR-038 calls the Sidus-family logical driver `Aputure Light`; Zhiyun
+  remains a separate logical driver on the same transport group.
 - Decision: Every Amaran, Aputure, and Zhiyun fixture provisioned into the one
   Ble(e)p-owned Bluetooth Mesh shares `BleSlotKey {PanelOwnedMesh, 1}`. Saved
   Zhiyun sessions attach their proprietary `0xFEE9` service to the mesh
@@ -883,11 +889,30 @@ the replacement.
   journaling, groups, Parallel, and power-loss recovery remain later Phase 6
   work.
 
+## ADR-038: Aputure Light is the canonical Sidus-family driver identity
+
+- Status: Accepted
+- Decision: Present Amaran- and Aputure-branded compatible fixtures through one
+  discoverable `Aputure Light` driver. Use `DriverId::AputureLight = 6`,
+  `CONFIG_DRIVER_APUTURE_LIGHT`, and the `aputure_light` module, namespace, and
+  isolated build profile throughout code, tests, simulator captures, logs, and
+  current documentation. Preserve exact product brands in protocol and hardware
+  evidence, such as `amaran Ace 25c`, `amaran Pano 60c`, and `Aputure MC Pro`.
+- Compatibility: This is an explicitly selected clean-storage `0.2.0-dev`
+  baseline. Remove the hidden Pano/Ace compatibility driver IDs and write the
+  shared mesh record under the neutral `mesh` NVS key. Operators must run the
+  existing on-device Factory Reset before flashing over an earlier development
+  build; firmware is not erased by that reset and no automatic erase occurs.
+- Shared transport: Zhiyun stays a separate logical driver and retains its
+  model-specific UI, commands, confirmed reply semantics, and routing selector.
+  It continues sharing the one panel-owned mesh repository and retained proxy
+  client with Aputure Light.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:
 
-- whether hardware evidence justifies reliable Amaran state readback or native groups;
+- whether hardware evidence justifies reliable Aputure Light state readback or native groups;
 - execution-journal persistence and power-loss recovery policy;
 - remaining Tascam Portacapture X8 battery/media fields and the exact Deity PR4
   protocol;

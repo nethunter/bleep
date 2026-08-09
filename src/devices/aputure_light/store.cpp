@@ -1,8 +1,8 @@
-#include "devices/amaran_light/store.h"
+#include "devices/aputure_light/store.h"
 
 #include <cstring>
 
-namespace amaran_light {
+namespace aputure_light {
 namespace {
 
 constexpr uint8_t kMagic[] = {'A','M','S','H'};
@@ -237,4 +237,4 @@ uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data) {
   return 0xff;
 }
 
-}  // namespace amaran_light
+}  // namespace aputure_light

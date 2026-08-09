@@ -6,7 +6,7 @@ short, factual, and reproducible.
 ## Current status
 
 - Current phase: bounded action-camera tranche (ADR-036), beside the
-  experimental Amaran Phase 4 tranche (ADR-024), existing Scenes/shared-BLE
+  experimental Aputure Light Phase 4 tranche (ADR-024/ADR-038), existing Scenes/shared-BLE
   work, and remaining hardware gates.
 - Firmware state: Home-first, persistent device registry, retained on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start lists
@@ -33,13 +33,13 @@ short, factual, and reproducible.
   onto four explicitly configured
   retained physical BLE transport groups for manual and sequence sessions,
   including multiple instances of one Canon driver. All members of the single
-  panel-owned Amaran/Aputure/Zhiyun mesh now share one cross-brand transport
+  panel-owned Aputure Light/Zhiyun mesh now share one cross-brand transport
   key and one retained proxy client. All four GATT
   clients now share one lazy NimBLE scanner/runtime and async link slots,
   targeted discovery, explicit protocol readiness, and BLE timing telemetry.
-- One discoverable generic `Amaran Light` entry now uses the shared userspace
-  PB-GATT/Mesh Proxy runtime; prior model IDs remain hidden compatibility
-  aliases for persisted records. Crypto, persistence, parameterized
+- One discoverable generic `Aputure Light` entry now uses the shared userspace
+  PB-GATT/Mesh Proxy runtime. The clean-storage `0.2.0-dev` baseline removes
+  prior hidden model IDs and uses the neutral `mesh` NVS key. Crypto, persistence, parameterized
   scenes, and UI are implemented. Panel-owned Ace 25c/MC Pro provisioning,
   composition, configuration status, standard OnOff model transactions, Ace
   Light Lightness model transactions, cross-proxy routing, and group messaging
@@ -55,6 +55,61 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
+
+### 2026-08-09: Aputure Light control-state synchronization
+
+- Aputure Light vendor status handling currently confirms power only; it cannot
+  read back CCT/RGB mode, color, brightness, or tint. When the control reaches
+  Ready, it now applies the displayed look once after the normal 350 ms
+  debounce. Reopening the control does the same, keeping the fixture aligned
+  with the values shown on screen without changing tab timing.
+- Added a simulator case that starts the fixture in a mismatched RGB look and
+  verifies the displayed CCT look is applied after Ready. The complete `ui_sim`
+  capture traversal passed, and the full Montserrat `bleep` profile built
+  successfully with 140,340 / 327,680 bytes static RAM and 1,906,428 /
+  3,145,728 bytes flash. Hardware upload and optical behavior remain unverified
+  for this change.
+
+### 2026-08-09: Aputure Light RGB saturation default
+
+- A fresh Aputure Light RGB draft now starts at 100% saturation instead of the
+  zero-saturation value implied by the untouched white placeholder. Once an RGB
+  look has been applied, reopening the control keeps the saturation encoded by
+  that in-memory RGB value.
+- Added a simulator assertion for the 100% initial saturation. The complete
+  `ui_sim` capture traversal passed, and the full Montserrat `bleep` profile
+  built successfully with 140,340 / 327,680 bytes static RAM and 1,906,362 /
+  3,145,728 bytes flash. With explicit worktree approval, upload to
+  `/dev/cu.usbserial-211240` succeeded; every written region passed hash
+  verification and the panel hard-reset.
+- Connection status remains evidence-scoped: proxy setup immediately sends the
+  verified group physical-power Get and repeats it every five seconds. An
+  authenticated per-source response confirms On/Off and reachability for the
+  tested amaran Ace 25c/Aputure MC Pro path. CCT, tint, RGB, and brightness
+  remain optimistic because no verified property-status decoder exists.
+
+### 2026-08-09: Aputure Light canonical identity
+
+- Unified the Amaran/Aputure logical driver under `Aputure Light` across the
+  catalog, UI, Portal, source module and namespaces, compile flag, isolated
+  profile, logs, simulator captures, tests, CI matrix, and current docs. Exact
+  fixture evidence remains branded as amaran Ace/Pano or Aputure MC Pro.
+- Removed the hidden Pano 120c and Ace 25c compatibility descriptors and their
+  dormant adapter shells. The generic driver remains numeric ID 6; Zhiyun stays
+  a separate logical driver while sharing the panel-owned mesh transport.
+- Renamed the shared mesh NVS key from `amaran_mesh` to `mesh` for the selected
+  clean-storage `0.2.0-dev` baseline. README and ADR-038 require an on-device
+  Factory Reset before flashing over earlier development firmware; no automatic
+  erase or migration is performed.
+- Native tests passed 76/76. The complete `ui_sim` capture traversal passed;
+  the renamed Aputure Light pairing, CCT, and RGB screens were visually checked
+  with the existing marquee behavior and no content collision. The full
+  Montserrat `bleep` profile built successfully with 140,340 / 327,680 bytes
+  static RAM and 1,906,356 / 3,145,728 bytes flash. Driver-specific profiles
+  remain assigned to GitHub Actions by repository policy. After the operator
+  completed Factory Reset and explicitly approved the worktree upload, the
+  configured `/dev/cu.usbserial-211240` upload succeeded; every written region
+  passed hash verification and the panel hard-reset.
 
 ### 2026-08-09: Transparent UI icon sources
 
@@ -120,7 +175,7 @@ short, factual, and reproducible.
 - Defined shared light, camera, motion, and recorder capabilities.
 - Defined runtime enable/disable, configuration, and capability-safe groups.
 - Selected direct control on the ESP32-C3 rather than an external gateway.
-- Selected panel-owned Amaran/Aputure mesh onboarding; existing Sidus-network
+- Selected panel-owned Aputure Light mesh onboarding; existing Sidus-network
   import is outside the planned product scope.
 - Selected Canon BR-E1-compatible Bluetooth plus CCAPI HTTP.
 - Split Canon UX into `Canon (Trigger)` and `Canon (Smart)`; Smart requires a
@@ -196,8 +251,8 @@ confirmation.
 
 After that, continue the existing production gates:
 
-Integrate the Ace 25c/MC Pro findings into the firmware before promoting native
-Amaran/Aputure support:
+Integrate the amaran Ace 25c/Aputure MC Pro findings into the firmware before
+promoting Aputure Light support:
 
 1. Parse Composition Data in firmware, select each reported SIG/vendor model,
    require decoded configuration success, and complete fallback proxy
@@ -306,7 +361,7 @@ Record values with the exact build environment and commit/worktree state.
   device refresh. Native tests passed 71/71.
 - All 13 firmware profiles built sequentially: `crowpanel_128`,
   `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, `tascam_x8`,
-  `home_assistant`, `shark_nano_ii`, `amaran_light`, `zhiyun_x100`, `gopro`,
+  `home_assistant`, `shark_nano_ii`, `aputure_light`, `zhiyun_x100`, `gopro`,
   `phone_camera`, `insta360`, and `dji_osmo`. Default `crowpanel_128` used
   142,308 / 327,680 bytes static RAM and 1,897,212 / 3,145,728 bytes flash.
   It uploaded to `/dev/cu.usbserial-211240` with image hash verification and
@@ -641,7 +696,7 @@ Record values with the exact build environment and commit/worktree state.
   the shared runtime to become idle.
 - Native tests: 60/60 passed.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
-  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`,
   and `zhiyun_x100` succeeded. The affected profiles were built sequentially;
   final full-profile size is 1,858,926 bytes flash and 141,676 bytes static
   RAM.
@@ -741,7 +796,7 @@ Record values with the exact build environment and commit/worktree state.
   `03_camera_families.png` shows the separate scrollable camera entries on the
   240x240 layout; no live touch or peripheral behavior is implied.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
-  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`,
   `zhiyun_x100`, `gopro`, and `phone_camera` succeeded sequentially. The
   nine-profile driver-isolation audit passed.
 - Full-profile size: 1,882,000 bytes flash and 141,876 bytes static RAM. Roboto
@@ -782,7 +837,7 @@ Record values with the exact build environment and commit/worktree state.
   seven-profile regression gate.
 - Native tests: 59/59 passed.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
-  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`,
   and `zhiyun_x100` succeeded sequentially. The existing full/Roboto caches
   resolved NimBLE-Arduino 2.5.0 and LovyanGFX 1.2.21; isolated profiles resolved
   NimBLE-Arduino 2.5.1 and LovyanGFX 1.2.26.
@@ -827,7 +882,7 @@ Record values with the exact build environment and commit/worktree state.
   plus a lights-to-mixed-scene handoff that verifies the old light is released,
   the new physical target is preserved, and HA waits for the settle boundary.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
-  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`, and
   `zhiyun_x100` succeeded sequentially.
 - Full profile size: 1,858,900 / 3,145,728 bytes flash (59.1%) and 142,156 /
   327,680 bytes static RAM (43.4%).
@@ -859,7 +914,7 @@ Record values with the exact build environment and commit/worktree state.
   suite with the same reported sequence-stop memory values; the 240x240
   Devices screenshot was visually checked for round-edge clearance.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
-  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`, and
   `zhiyun_x100` succeeded sequentially with NimBLE-Arduino 2.5.1.
 - Full profile size: 1,861,386 / 3,145,728 bytes flash (59.2%) and 175,844 /
   327,680 bytes static RAM (53.7%). This is 46,350 bytes flash and 6,112 bytes
@@ -893,7 +948,7 @@ Record values with the exact build environment and commit/worktree state.
   5% RGB vectors.
 - Simulator: `ui_sim` build succeeded; no layout changed in this tranche.
 - Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`,
-  `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`, and
+  `canon_trigger`, `tascam_x8`, `home_assistant`, `aputure_light`, and
   `zhiyun_x100` succeeded sequentially.
 - Full profile size: 1,815,036 / 3,145,728 bytes flash (57.7%) and 169,732 /
   327,680 bytes static RAM (51.8%).
@@ -2421,7 +2476,7 @@ Record values with the exact build environment and commit/worktree state.
 
 ### 2026-08-05: Experimental native Amaran light tranche and pairing follow-up
 
-- Added one discoverable generic `Amaran Light` driver backed by one shared
+- Added one discoverable generic `Aputure Light` driver backed by one shared
   runtime and one shared Mesh Proxy link. Hidden Pano 120c/Ace 25c IDs remain
   only so records created by the initial implementation can still load.
 - Fixed first-use discovery: Mesh Provisioning and Mesh Proxy are advertised as
@@ -2460,7 +2515,7 @@ Record values with the exact build environment and commit/worktree state.
   build: 188,556 / 327,680 bytes RAM (57.5%), 1,717,170 / 3,145,728 bytes flash
   (54.6%). Roboto: same RAM and 1,686,714 bytes flash. Amaran-only: 180,220
   bytes RAM (55.0%) and 1,673,138 bytes flash (53.2%). Native 41/41, `ui_sim`,
-  `crowpanel_128`, `crowpanel_128_roboto`, and `amaran_light` all passed.
+  `crowpanel_128`, `crowpanel_128_roboto`, and `aputure_light` all passed.
 - Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image hash
   verification passed and the panel hard-reset.
 - Hardware gate remains open: no target light was provisioned in this session.
@@ -2486,7 +2541,7 @@ Record values with the exact build environment and commit/worktree state.
   188,484 to 163,276 bytes RAM. Its flash use is 1,717,284 bytes.
 - Native tests passed 41/41. `ui_sim`, `crowpanel_128`,
   `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`, `tascam_x8`,
-  `home_assistant`, and `amaran_light` all built. Their RAM results were
+  `home_assistant`, and `aputure_light` all built. Their RAM results were
   163,276, 163,276, 161,628, 160,636, 160,548, 160,156, and 154,940 bytes,
   respectively.
 - Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image
@@ -2520,7 +2575,7 @@ Record values with the exact build environment and commit/worktree state.
   profiles built: `crowpanel_128` used 1,718,036 bytes flash / 163,276 bytes
   RAM; `crowpanel_128_roboto` 1,687,572 / 163,276; `canon_ble` 1,716,214 /
   161,628; `canon_trigger` 1,712,738 / 160,636; `tascam_x8` 1,714,152 /
-  160,548; `home_assistant` 1,709,620 / 160,156; and `amaran_light` 1,673,734 /
+  160,548; `home_assistant` 1,709,620 / 160,156; and `aputure_light` 1,673,734 /
   154,940.
 - Flashed `crowpanel_128` successfully to `/dev/cu.usbserial-211240`; image
   hash verification passed and the panel hard-reset. Physical scan latency,
@@ -2578,7 +2633,7 @@ Record values with the exact build environment and commit/worktree state.
   `22a_scenes_edit_wait.png` was visually checked on the 240x240 round layout.
 - Native tests passed 41/41. `ui_sim` and all seven firmware profiles
   (`crowpanel_128`, `crowpanel_128_roboto`, `canon_ble`, `canon_trigger`,
-  `tascam_x8`, `home_assistant`, and `amaran_light`) built successfully.
+  `tascam_x8`, `home_assistant`, and `aputure_light`) built successfully.
   `crowpanel_128` uses 1,724,534 bytes flash / 188,596 bytes RAM (54.8% /
   57.6%); Roboto uses 1,694,070 / 188,596 (53.9% / 57.6%).
 - The final `crowpanel_128` image flashed successfully to
@@ -2626,7 +2681,7 @@ Record values with the exact build environment and commit/worktree state.
   1,739,896 bytes flash / 163,876 bytes RAM (55.3% / 50.0%); Roboto uses
   1,709,432 / 163,876; `canon_ble` 1,738,062 / 162,228; `canon_trigger`
   1,734,568 / 161,236; `tascam_x8` 1,736,000 / 161,140; `home_assistant`
-  1,731,442 / 160,756; and `amaran_light` 1,695,532 / 155,548.
+  1,731,442 / 160,756; and `aputure_light` 1,695,532 / 155,548.
   `crowpanel_128` flashed successfully to `/dev/cu.usbserial-211240` with image
   hash verification and a hard reset. Scanning the displayed QR and confirming
   the phone's automatic sign-on sheet remain operator-pending hardware checks.
@@ -2652,7 +2707,7 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128` 1,742,260 / 164,052; `crowpanel_128_roboto` 1,711,796 /
   164,052; `canon_ble` 1,740,030 / 162,420; `canon_trigger` 1,736,462 /
   161,412; `tascam_x8` 1,737,848 / 161,332; `home_assistant` 1,733,092 /
-  160,932; and `amaran_light` 1,697,174 / 155,740.
+  160,932; and `aputure_light` 1,697,174 / 155,740.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
   Physical add/pair/success, pairing-error Retry, Back cleanup, and reboot
@@ -2705,7 +2760,7 @@ Record values with the exact build environment and commit/worktree state.
   built successfully. Flash/RAM bytes were: `crowpanel_128` 1,781,886 / 164,084;
   `crowpanel_128_roboto` 1,751,414 / 164,084; `canon_ble` 1,779,660 / 162,436;
   `canon_trigger` 1,776,108 / 161,444; `tascam_x8` 1,777,506 / 161,348;
-  `home_assistant` 1,772,738 / 160,964; and `amaran_light` 1,738,368 / 155,756.
+  `home_assistant` 1,772,738 / 160,964; and `aputure_light` 1,738,368 / 155,756.
   The final main image flashed to `/dev/cu.usbserial-211240`; hashes verified and
   the panel hard-reset. Live phone/desktop CRUD, reboot persistence, and ten
   Portal lifecycle heap/socket/task cycles remain operator-pending hardware
@@ -2720,7 +2775,7 @@ Record values with the exact build environment and commit/worktree state.
   Flash/RAM bytes were: `crowpanel_128` 1,792,140 / 164,124;
   `crowpanel_128_roboto` 1,761,668 / 164,124; `canon_ble` 1,789,916 / 162,484;
   `canon_trigger` 1,786,350 / 161,492; `tascam_x8` 1,787,762 / 161,388;
-  `home_assistant` 1,782,996 / 161,012; and `amaran_light` 1,748,618 / 155,796.
+  `home_assistant` 1,782,996 / 161,012; and `aputure_light` 1,748,618 / 155,796.
   The final main image flashed to `/dev/cu.usbserial-211240`; hashes verified and
   the panel hard-reset.
 
@@ -2739,7 +2794,7 @@ Record values with the exact build environment and commit/worktree state.
   profiles built successfully. Flash/RAM bytes were: `crowpanel_128` 1,782,094
   / 164,092; `crowpanel_128_roboto` 1,751,622 / 164,092; `canon_ble` 1,779,868
   / 162,444; `canon_trigger` 1,776,316 / 161,452; `tascam_x8` 1,777,714 /
-  161,356; `home_assistant` 1,772,946 / 160,972; and `amaran_light` 1,738,576 /
+  161,356; `home_assistant` 1,772,946 / 160,972; and `aputure_light` 1,738,576 /
   155,764.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
@@ -2763,7 +2818,7 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128` 1,782,786 / 164,108; `crowpanel_128_roboto` 1,752,322 /
   164,108; `canon_ble` 1,780,566 / 162,468; `canon_trigger` 1,776,996 /
   161,476; `tascam_x8` 1,778,404 / 161,372; `home_assistant` 1,773,646 /
-  160,996; and `amaran_light` 1,739,268 / 155,780.
+  160,996; and `aputure_light` 1,739,268 / 155,780.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
   Physical differentiation and strength checks for all three patterns remain
@@ -2785,7 +2840,7 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128` 1,783,140 / 164,124; `crowpanel_128_roboto` 1,752,668 /
   164,124; `canon_ble` 1,780,916 / 162,484; `canon_trigger` 1,777,350 /
   161,492; `tascam_x8` 1,778,762 / 161,388; `home_assistant` 1,773,996 /
-  161,012; and `amaran_light` 1,739,618 / 155,796.
+  161,012; and `aputure_light` 1,739,618 / 155,796.
 - The final `crowpanel_128` image flashed successfully to
   `/dev/cu.usbserial-211240`; image hashes verified and the panel hard-reset.
   Physical differentiation of the Connected pattern remains operator-pending.
@@ -2885,7 +2940,7 @@ Record values with the exact build environment and commit/worktree state.
   `crowpanel_128` 1,802,420 / 164,580; `crowpanel_128_roboto` 1,771,964 /
   164,580; `canon_ble` 1,796,016 / 162,548; `canon_trigger` 1,792,462 /
   161,540; `tascam_x8` 1,793,862 / 161,460; `home_assistant` 1,789,108 /
-  161,060; `amaran_light` 1,754,718 / 155,868; and `zhiyun_x100` 1,730,502 /
+  161,060; `aputure_light` 1,754,718 / 155,868; and `zhiyun_x100` 1,730,502 /
   153,364.
 - The laptop had already provisioned the fixture and verified the direct
   protocol by changing it to on / 10.0% / 3200 K, reading those values back,
@@ -2935,7 +2990,7 @@ Record values with the exact build environment and commit/worktree state.
   were: `crowpanel_128` 1,804,040 / 165,268; `crowpanel_128_roboto` 1,773,576 /
   165,268; `canon_ble` 1,797,548 / 162,564; `canon_trigger` 1,793,994 / 161,572;
   `tascam_x8` 1,795,394 / 161,484; `home_assistant` 1,790,640 / 161,092;
-  `amaran_light` 1,755,770 / 155,876; and `zhiyun_x100` 1,742,864 / 156,748.
+  `aputure_light` 1,755,770 / 155,876; and `zhiyun_x100` 1,742,864 / 156,748.
   The combined image flashed successfully to `/dev/cu.usbserial-211240`, every
   written region's hash verified, and the board hard-reset.
 - Hardware gate remains open: reset the fixture back to `0x1827`, add MOLUS
@@ -2989,7 +3044,7 @@ Record values with the exact build environment and commit/worktree state.
   1,805,322 bytes flash / 165,300 bytes RAM; `crowpanel_128_roboto` 1,774,850 /
   165,300; `canon_ble` 1,797,984 / 162,564; `canon_trigger` 1,794,430 / 161,572;
   `tascam_x8` 1,795,830 / 161,484; `home_assistant` 1,791,076 / 161,092;
-  `amaran_light` 1,756,206 / 155,876; and `zhiyun_x100` 1,744,138 / 156,780.
+  `aputure_light` 1,756,206 / 155,876; and `zhiyun_x100` 1,744,138 / 156,780.
   The final combined image flashed successfully to
   `/dev/cu.usbserial-211240`, verified all written-region hashes, and reset.
 
@@ -3037,7 +3092,7 @@ Record values with the exact build environment and commit/worktree state.
   were: `crowpanel_128` 1,809,690 / 168,708;
   `crowpanel_128_roboto` 1,779,234 / 168,708; `canon_ble` 1,800,742 / 162,580;
   `canon_trigger` 1,797,188 / 161,588; `tascam_x8` 1,798,596 / 161,492;
-  `home_assistant` 1,793,834 / 161,108; `amaran_light` 1,758,992 / 155,884;
+  `home_assistant` 1,793,834 / 161,108; `aputure_light` 1,758,992 / 155,884;
   and `zhiyun_x100` 1,748,538 / 160,212. One first-pass Home Assistant link
   process crashed with host signal 11; the immediate individual retry and the
   final-source rerun both succeeded.
@@ -3063,7 +3118,7 @@ Record values with the exact build environment and commit/worktree state.
   1,809,716 / 168,708 bytes flash/RAM; `crowpanel_128_roboto` 1,779,260 /
   168,708; `canon_ble` 1,800,768 / 162,580; `canon_trigger` 1,797,214 /
   161,588; `tascam_x8` 1,798,622 / 161,492; `home_assistant` 1,793,860 /
-  161,108; `amaran_light` 1,759,018 / 155,884; and `zhiyun_x100` 1,748,564 /
+  161,108; `aputure_light` 1,759,018 / 155,884; and `zhiyun_x100` 1,748,564 /
   160,212.
 - The updated combined image flashed successfully to
   `/dev/cu.usbserial-211240`, every written-region hash verified, and the board
@@ -3104,7 +3159,7 @@ Record values with the exact build environment and commit/worktree state.
   data prevents per-node status decoding without the mesh keys.
 - Updated `docs/protocols/zhiyun-x100.md`,
   `docs/protocols/zhiyun-x60rgb.md`, and
-  `docs/protocols/amaran-lights.md` with the transport evidence, mesh-level
+  `docs/protocols/aputure-lights.md` with the transport evidence, mesh-level
   slot implication, state-quality boundary, and remaining fallback/offline
   tests. No firmware source or user-visible behavior changed, so no build,
   flash, or hardware run was applicable to this documentation-only session.

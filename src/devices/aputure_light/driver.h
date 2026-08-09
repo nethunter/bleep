@@ -4,10 +4,9 @@
 
 namespace studio {
 
-class AmaranLightDriver : public DeviceDriver {
+class AputureLightDriver : public DeviceDriver {
  public:
-  explicit AmaranLightDriver(DriverId id) : id_(id) {}
-  DriverId driverId() const override { return id_; }
+  DriverId driverId() const override { return DriverId::AputureLight; }
   BleSlotKey bleSlotKey(const DeviceRecord&) const override {
     return {DriverId::PanelOwnedMesh, 1};
   }
@@ -23,8 +22,6 @@ class AmaranLightDriver : public DeviceDriver {
   }
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
- private:
-  DriverId id_;
 };
 
 }  // namespace studio

@@ -17,7 +17,7 @@
 #include "devices/dji_osmo/state.h"
 #include "devices/action_camera_research/driver.h"
 #include "devices/home_assistant/driver.h"
-#include "devices/amaran_light/driver.h"
+#include "devices/aputure_light/driver.h"
 #include "devices/zhiyun_x100/state.h"
 
 namespace studio {
@@ -544,9 +544,7 @@ SimCanonTriggerDriver gCanonTriggerDriver;
 SimCanonDriver gCanonDriver;
 SimTascamDriver gTascamDriver;
 HomeAssistantDriver gHomeAssistantDriver;
-AmaranLightDriver gAmaranPano60(DriverId::AmaranLight);
-AmaranLightDriver gAmaranPano120(DriverId::AmaranPano120c);
-AmaranLightDriver gAmaranAce25(DriverId::AmaranAce25c);
+AputureLightDriver gAputureLight;
 SimZhiyunX100Driver gZhiyunX100Driver;
 SimGoProDriver gGoProDriver;
 SimInsta360Driver gInsta360Driver;
@@ -555,14 +553,15 @@ ActionCameraResearchDriver gSonyCameraDriver(DriverId::SonyCamera);
 ActionCameraResearchDriver gPhoneCameraDriver(DriverId::PhoneCamera);
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver, &gHomeAssistantDriver,
-                            &gAmaranPano60, &gAmaranPano120, &gAmaranAce25,
+                            &gAputureLight,
                             &gZhiyunX100Driver, &gGoProDriver,
                             &gInsta360Driver, &gDjiOsmoDriver,
                             &gSonyCameraDriver, &gPhoneCameraDriver};
 static_assert(sizeof(gDrivers) / sizeof(gDrivers[0]) <=
                   DeviceManager::kMaxCompiledDrivers,
               "simulated driver table exceeds DeviceManager capacity");
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 14);
+DeviceManager gManager(gBackend, gLegacy, gDrivers,
+                       sizeof(gDrivers) / sizeof(gDrivers[0]));
 SceneService gScenes(gScenesBackend, gManager);
 PanelSettingsService gPanelSettings(gPanelSettingsBackend);
 

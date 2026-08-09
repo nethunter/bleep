@@ -104,21 +104,21 @@ bool PreferencesPanelSettingsBackend::write(const uint8_t* data,
   return ok;
 }
 
-size_t PreferencesAmaranBackend::read(uint8_t* destination, size_t capacity) {
+size_t PreferencesMeshBackend::read(uint8_t* destination, size_t capacity) {
   Preferences preferences;
   if (!preferences.begin("studio", true)) return 0;
-  const size_t length = preferences.getBytesLength("amaran_mesh");
+  const size_t length = preferences.getBytesLength("mesh");
   const size_t read = length > 0 && length <= capacity
-                          ? preferences.getBytes("amaran_mesh", destination, length)
+                          ? preferences.getBytes("mesh", destination, length)
                           : 0;
   preferences.end();
   return read;
 }
 
-bool PreferencesAmaranBackend::write(const uint8_t* data, size_t length) {
+bool PreferencesMeshBackend::write(const uint8_t* data, size_t length) {
   Preferences preferences;
   if (!preferences.begin("studio", false)) return false;
-  const bool ok = preferences.putBytes("amaran_mesh", data, length) == length;
+  const bool ok = preferences.putBytes("mesh", data, length) == length;
   preferences.end();
   return ok;
 }

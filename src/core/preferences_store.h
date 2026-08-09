@@ -28,14 +28,11 @@ class PreferencesPanelSettingsBackend : public IConfigBackend {
   bool write(const uint8_t* data, size_t length) override;
 };
 
-class PreferencesAmaranBackend : public IConfigBackend {
+class PreferencesMeshBackend : public IConfigBackend {
  public:
   size_t read(uint8_t* destination, size_t capacity) override;
   bool write(const uint8_t* data, size_t length) override;
 };
-
-// Shared mesh consumers retain the existing NVS key for schema compatibility.
-using PreferencesMeshBackend = PreferencesAmaranBackend;
 
 class PreferencesLegacySharkBackend : public ILegacySharkBackend {
  public:
