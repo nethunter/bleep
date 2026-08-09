@@ -1069,7 +1069,7 @@ void test_gopro_open_ble_packets_and_optimistic_state() {
 void test_dji_osmo_protocol_matches_official_connection_vector() {
   const uint8_t address[] = {0x38, 0x34, 0x56, 0x78, 0x9a, 0xbc};
   const dji_osmo::Packet packet = dji_osmo::buildConnectionRequest(
-      1, 0x12345678, address, 0x1ffe);
+      1, 0x12345678, address, 0, 0x1ffe);
   const uint8_t expected[] = {
       0xaa,0x33,0x00,0x02,0x00,0x00,0x00,0x00,0x01,0x00,0x98,0x2f,0x00,0x19,
       0x78,0x56,0x34,0x12,0x06,0x38,0x34,0x56,0x78,0x9a,0xbc,0x00,0x00,0x00,
@@ -1080,6 +1080,35 @@ void test_dji_osmo_protocol_matches_official_connection_vector() {
   const auto frame = dji_osmo::parseFrame(packet.bytes, packet.len);
   TEST_ASSERT_TRUE(frame.valid);
   TEST_ASSERT_EQUAL_UINT8(dji_osmo::kCmdConnection, frame.commandId);
+
+  const auto approval = dji_osmo::buildConnectionRequest(
+      9, 0x0000ff44, address, 2, 0);
+  const auto parsedApproval =
+      dji_osmo::parseFrame(approval.bytes, approval.len);
+  bool approved = false;
+  TEST_ASSERT_TRUE(dji_osmo::parseConnectionApproval(parsedApproval, approved));
+  TEST_ASSERT_TRUE(approved);
+
+  const auto firstPair = dji_osmo::buildConnectionRequest(
+      2, 0x12345678, address, 1, 42);
+  const auto parsedFirstPair =
+      dji_osmo::parseFrame(firstPair.bytes, firstPair.len);
+  TEST_ASSERT_EQUAL_UINT8(1, parsedFirstPair.payload[26]);
+  TEST_ASSERT_EQUAL_UINT8(42, parsedFirstPair.payload[27]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedFirstPair.payload[28]);
+
+  bool recording = true;
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x01, 0x00,
+                                                         recording));
+  TEST_ASSERT_FALSE(recording);
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x38, 0x03,
+                                                         recording));
+  TEST_ASSERT_TRUE(recording);
+  TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x3f, 0x03,
+                                                         recording));
+  TEST_ASSERT_FALSE(recording);
+  TEST_ASSERT_FALSE(dji_osmo::decodeCameraRecordingStatus(0x01, 0xff,
+                                                          recording));
 
   const auto start = dji_osmo::buildRecordControl(7, true);
   const auto parsedStart = dji_osmo::parseFrame(start.bytes, start.len);

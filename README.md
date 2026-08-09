@@ -124,8 +124,9 @@ principles:
   and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
   Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360
   emulates the GPS remote shutter used by X5/GO 3-class cameras, while DJI
-  implements the published Osmo controller handshake, start/stop, and status
-  subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
+  implements the published Osmo controller handshake, shows the camera's
+  four-digit verification code during first pairing, and supports start/stop
+  plus status subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
   action for authored Start and Stop lists. Insta360 X5 GPS-remote connection
   and mixed-sequence shutter behavior are operator-confirmed, as are Google
   Pixel 9 reconnect and shutter behavior; broader model/platform coverage and
@@ -156,7 +157,8 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Insta360 X5 | Experimental; verified path | GPS-remote connection and mixed-sequence toggle shutter are operator-confirmed; camera state is not readable. |
 | Insta360 GO 3 | Experimental candidate | Uses the same implemented GPS-remote path but has no model-specific hardware result yet. |
 | Insta360 GO Ultra | Experimental probe | Separate target with no established legacy GPS-remote compatibility and no hardware result yet. |
-| DJI Osmo Action 5 Pro / Osmo 360 | Experimental | Published DJI BLE handshake, explicit recording start/stop, and camera status subscription. |
+| DJI Osmo Action 5 Pro | Experimental; verified path | On-panel first-pair verification and explicit recording start/stop are operator-confirmed. Reconnect and camera-originated status checks remain open. |
+| DJI Osmo 360 | Experimental; verified path | On-panel first-pair verification and explicit recording start/stop are operator-confirmed. Reconnect and camera-originated status checks remain open. |
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |

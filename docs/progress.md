@@ -20,11 +20,13 @@ short, factual, and reproducible.
   Camera exposes a bonded, multi-instance BLE HID volume-up shutter. Insta360
   now emulates the GPS-remote service and toggle shutter for X5/GO 3 candidates;
   GO Ultra remains a distinct experimental probe. DJI now implements its
-  published controller handshake, explicit record control, and status push for
-  Action 5 Pro/Osmo 360 candidates. Sony remains capture-required. An Insta360
+  published controller handshake, on-panel four-digit first-pair verification,
+  explicit record control, and status push for Action 5 Pro/Osmo 360
+  candidates. Sony remains capture-required. An Insta360
   X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
   mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
-  mixed-sequence shutter operation.
+  mixed-sequence shutter operation. DJI Osmo Action 5 Pro and Osmo 360 first
+  pairing plus explicit recording start/stop are now operator-confirmed.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -83,8 +85,9 @@ short, factual, and reproducible.
 First, continue the camera hardware matrix. Pair Insta360 X5 and GO 3
 through their GPS Remote menu, probe GO Ultra separately without assuming it
 shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
-their remote-controller flow. Confirm add, reconnect, shutter/start/stop,
-camera-originated DJI status, forget/re-pair, and two-camera concurrency. Then
+their remote-controller flow. Action 5 Pro and Osmo 360 pairing plus recording
+start/stop have passed; continue their saved reconnect, camera-originated
+status, forget/re-pair, and two-camera concurrency checks. Then
 pair one supported GoPro,
 confirm reconnect and start/stop responses without claiming camera-reported
 recording state, then pair representative iOS and Android phones to
@@ -92,6 +95,37 @@ recording state, then pair representative iOS and Android phones to
 on-screen shutter. Google Pixel 9 reconnect/shutter and Insta360 X5
 mixed-sequence paths have passed. Exercise two simultaneous phone instances and mixed camera slot
 accounting. Sony still requires a capture before enabling Add Device.
+
+### 2026-08-09: DJI verification display and approval parsing repair
+
+- Root cause: the DJI client generated and transmitted a four-digit code but
+  discarded it before the UI could render it. It also accepted the
+  camera-originated `00/19` approval only when the command type was exactly
+  `0x00`; DJI response-required command frames such as `0x02` therefore timed
+  out even after camera approval.
+- Fix: first pairing now sends verification mode `1`, retained reconnects use
+  mode `0`, and `VERIFY 0042`-style zero-padded codes remain visible until the
+  handshake completes. Connection approval accepts any command frame with the
+  response bit clear, rejects a denied result without retrying, and marks the
+  record paired only after protocol readiness. A follow-up status repair delays
+  the first `1D/05` subscription by 100 ms, retries it up to three times until
+  a valid push arrives, and decodes DJI's documented screen-off, live-view,
+  playback, recording, pre-recording, Action, and Osmo 360 mode combinations.
+  Known Action/360 photo modes cannot be mislabeled as recording.
+- Verification: native tests passed 71/71, including first-pair mode and
+  camera-approval parsing. The full `ui_sim` capture run passed; the new
+  `03_camera_dji_verification.png` confirms the code and instruction fit the
+  240x240 layout. Both `dji_osmo` and `crowpanel_128` compiled successfully.
+  Full firmware size after the status repair is 1,904,292 bytes flash and
+  142,332 bytes static RAM.
+- Hardware: `crowpanel_128` uploaded to `/dev/cu.usbserial-211240`; all written
+  regions passed hash verification and the panel hard-reset. A live DJI camera
+  test then confirmed that Osmo Action 5 Pro and Osmo 360 pairing plus explicit
+  recording start/stop work. Both still showed `STATUS PENDING`, so saved
+  reconnect, camera-originated status, forget/re-pair, and coexistence remain
+  unverified. The follow-up status firmware also uploaded with hash
+  verification and hard-reset; its live `CAMERA CONFIRMED` result remains
+  pending operator retest.
 
 Then exercise the newly flashed cross-brand mesh runtime from the panel: add or open
 MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts

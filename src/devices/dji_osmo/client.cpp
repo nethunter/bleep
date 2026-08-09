@@ -13,6 +13,9 @@
 namespace dji_osmo {
 namespace {
 Client* gClients[4] = {};
+constexpr uint8_t kMaxStatusSubscriptionAttempts = 3;
+constexpr uint32_t kInitialStatusSubscriptionDelayMs = 100;
+constexpr uint32_t kStatusSubscriptionRetryMs = 1000;
 
 void notifyTrampoline(NimBLERemoteCharacteristic* characteristic, uint8_t* data,
                       size_t length, bool) {
@@ -53,6 +56,7 @@ void Client::activate(const char* address, uint8_t addressType, const char* name
   deviceId_ = deviceId == 0 ? 0x12345678 : deviceId;
   connectRequested_ = initialized_;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
+  paired_ = paired;
   targetAddressType_ = addressType;
   if (haveTarget_) std::strncpy(targetAddress_, address, sizeof(targetAddress_) - 1);
   if (name != nullptr) std::strncpy(targetName_, name, sizeof(targetName_) - 1);
@@ -83,6 +87,24 @@ void Client::loop() {
     handshakePending_ = false;
     studio::ble::bleCentral().markProtocolFailed(link_);
   }
+  if (statusSubscriptionPending_ &&
+      static_cast<int32_t>(now - statusSubscriptionAtMs_) >= 0) {
+    ++statusSubscriptionAttempts_;
+    if (send(buildStatusSubscription(sequence_++))) {
+      if (!protocolReady()) markReady();
+      statusSubscriptionPending_ =
+          !state_.statusConfirmed &&
+          statusSubscriptionAttempts_ < kMaxStatusSubscriptionAttempts;
+      statusSubscriptionAtMs_ = now + kStatusSubscriptionRetryMs;
+    } else if (statusSubscriptionAttempts_ >=
+               kMaxStatusSubscriptionAttempts) {
+      statusSubscriptionPending_ = false;
+      if (!protocolReady())
+        studio::ble::bleCentral().markProtocolFailed(link_);
+    } else {
+      statusSubscriptionAtMs_ = now + kStatusSubscriptionRetryMs;
+    }
+  }
   if (state_.commandPending && static_cast<int32_t>(now - commandDeadlineMs_) >= 0) {
     state_.commandPending = false;
     state_.lastCommandFailed = true;
@@ -110,7 +132,8 @@ void Client::beginConnect() {
 
 void Client::forgetDevice() {
   forgetBond(targetAddress_, targetAddressType_);
-  haveTarget_ = false; targetAddress_[0] = '\0'; targetName_[0] = '\0';
+  haveTarget_ = false; paired_ = false;
+  targetAddress_[0] = '\0'; targetName_[0] = '\0';
   pairingChanged_ = true; startScan();
 }
 
@@ -141,8 +164,12 @@ bool Client::completeGattSetup() {
   const uint8_t* native = NimBLEDevice::getAddress().getVal();
   if (native != nullptr) std::memcpy(localAddress, native, sizeof(localAddress));
   const uint16_t verification = static_cast<uint16_t>(esp_random() % 10000);
-  if (!send(buildConnectionRequest(sequence_++, deviceId_, localAddress, verification)))
+  const uint8_t verificationMode = paired_ ? 0 : 1;
+  if (!send(buildConnectionRequest(sequence_++, deviceId_, localAddress,
+                                   verificationMode, verification)))
     return false;
+  state_.verificationCode = verification;
+  state_.verificationPending = true;
   handshakePending_ = true;
   handshakeDeadlineMs_ = millis() + 30000;
   return true;
@@ -204,11 +231,20 @@ void Client::consumeBytes(const uint8_t* data, size_t length) {
 void Client::handleFrame(const uint8_t* data, size_t length) {
   const Frame frame = parseFrame(data, length);
   if (!frame.valid) return;
-  if (frame.commandSet == kCmdSetGeneral && frame.commandId == kCmdConnection &&
-      frame.commandType == 0x00 && frame.payloadLength >= 33 &&
-      frame.payload[26] == 2 && frame.payload[27] == 0 && frame.payload[28] == 0) {
-    if (send(buildConnectionResponse(frame.sequence, deviceId_)) &&
-        send(buildStatusSubscription(sequence_++))) markReady();
+  bool approved = false;
+  if (parseConnectionApproval(frame, approved)) {
+    if (!approved) {
+      state_.verificationPending = false;
+      studio::ble::bleCentral().markProtocolFailed(link_, false);
+      return;
+    }
+    if (send(buildConnectionResponse(frame.sequence, deviceId_))) {
+      statusSubscriptionAttempts_ = 0;
+      statusSubscriptionPending_ = true;
+      statusSubscriptionAtMs_ = millis() + kInitialStatusSubscriptionDelayMs;
+    } else {
+      studio::ble::bleCentral().markProtocolFailed(link_);
+    }
     return;
   }
   if (frame.commandSet == kCmdSetCamera && frame.commandId == kCmdRecord &&
@@ -225,12 +261,12 @@ void Client::handleFrame(const uint8_t* data, size_t length) {
       frame.payloadLength >= 2) {
     const uint8_t mode = frame.payload[0];
     const uint8_t status = frame.payload[1];
-    const bool videoMode = mode == 0x00 || mode == 0x01 || mode == 0x02 ||
-                           mode == 0x0a || mode == 0x28;
-    if (videoMode && (status == 0x01 || status == 0x03 || status == 0x05)) {
+    bool recording = false;
+    if (decodeCameraRecordingStatus(mode, status, recording)) {
       state_.statusConfirmed = true;
-      state_.recording = (status == 0x03 || status == 0x05)
-                             ? State::Recording::Recording : State::Recording::Stopped;
+      state_.recording = recording ? State::Recording::Recording
+                                   : State::Recording::Stopped;
+      statusSubscriptionPending_ = false;
     }
     if (frame.payloadLength >= 37) state_.battery = frame.payload[frame.payloadLength - 1];
   }
@@ -243,15 +279,18 @@ bool Client::send(const Packet& packet) {
 
 void Client::markReady() {
   handshakePending_ = false; state_.link = State::Link::Connected;
-  haveTarget_ = true; pairingChanged_ = true;
+  state_.verificationPending = false;
+  haveTarget_ = true; paired_ = true; pairingChanged_ = true;
   studio::ble::bleCentral().markProtocolReady(link_);
 }
 
 void Client::handleDisconnect() {
   client_ = nullptr; write_ = nullptr; notify_ = nullptr; setupPending_ = false;
-  handshakePending_ = false; commandRequested_ = false; streamLength_ = 0;
+  handshakePending_ = false; statusSubscriptionPending_ = false;
+  statusSubscriptionAttempts_ = 0; commandRequested_ = false; streamLength_ = 0;
   state_.link = State::Link::Disconnected; state_.recording = State::Recording::Unknown;
   state_.commandPending = false; state_.statusConfirmed = false;
+  state_.verificationPending = false;
 }
 
 bool Client::protocolReady() const { return studio::ble::bleCentral().protocolReady(link_); }

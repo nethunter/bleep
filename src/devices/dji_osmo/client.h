@@ -62,13 +62,17 @@ class Client : public studio::ble::BleCentralDelegate {
   uint16_t sequence_ = 1;
   uint16_t pendingRecordSequence_ = 0;
   uint32_t handshakeDeadlineMs_ = 0;
+  uint32_t statusSubscriptionAtMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
   bool initialized_ = false;
   bool connectRequested_ = false;
   bool haveTarget_ = false;
+  bool paired_ = false;
   bool pairingChanged_ = false;
   bool setupPending_ = false;
   bool handshakePending_ = false;
+  bool statusSubscriptionPending_ = false;
+  uint8_t statusSubscriptionAttempts_ = 0;
   bool commandRequested_ = false;
   bool requestedRecording_ = false;
   char targetAddress_[20] = "";

@@ -12,6 +12,8 @@ struct State {
   bool commandPending = false;
   bool lastCommandFailed = false;
   bool statusConfirmed = false;
+  bool verificationPending = false;
+  uint16_t verificationCode = 0;
   uint8_t battery = 0xff;
   char deviceName[40] = "";
 };

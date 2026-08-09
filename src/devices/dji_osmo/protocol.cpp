@@ -74,13 +74,14 @@ uint32_t crc32(const uint8_t* data, size_t length) {
 
 Packet buildConnectionRequest(uint16_t sequence, uint32_t deviceId,
                               const uint8_t localAddress[6],
+                              uint8_t verificationMode,
                               uint16_t verificationCode) {
   uint8_t payload[33] = {};
   put32(payload, deviceId);
   payload[4] = 6;
   if (localAddress != nullptr) std::memcpy(payload + 5, localAddress, 6);
   payload[25] = 0;  // connection index
-  payload[26] = 0;  // first-pair verification mode
+  payload[26] = verificationMode;
   put16(payload + 27, verificationCode);
   return build(kCmdSetGeneral, kCmdConnection, 0x02, sequence, payload,
                sizeof(payload));
@@ -128,6 +129,34 @@ Frame parseFrame(const uint8_t* data, size_t length) {
   frame.payload = data + 14;
   frame.payloadLength = declared - 18;
   return frame;
+}
+
+bool parseConnectionApproval(const Frame& frame, bool& approved) {
+  if (!frame.valid || frame.commandSet != kCmdSetGeneral ||
+      frame.commandId != kCmdConnection ||
+      (frame.commandType & 0x20) != 0 || frame.payloadLength < 29 ||
+      frame.payload[26] != 2) {
+    return false;
+  }
+  approved = frame.payload[27] == 0 && frame.payload[28] == 0;
+  return true;
+}
+
+bool decodeCameraRecordingStatus(uint8_t cameraMode, uint8_t cameraStatus,
+                                 bool& recording) {
+  switch (cameraStatus) {
+    case 0x00:  // Screen off
+    case 0x01:  // Live view
+    case 0x02:  // Playback
+      recording = false;
+      return true;
+    case 0x03:  // Photo or recording in progress
+    case 0x05:  // Pre-recording
+      recording = cameraMode != 0x05 && cameraMode != 0x3f;
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace dji_osmo
