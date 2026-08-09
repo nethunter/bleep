@@ -51,7 +51,7 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-08.
+- Last updated: 2026-08-09.
 
 ## Completed planning
 
@@ -141,6 +141,18 @@ Amaran/Aputure support:
 ## Measurements
 
 Record values with the exact build environment and commit/worktree state.
+
+### GitHub Actions firmware-variant matrix
+
+- Date: 2026-08-09.
+- CI now builds all 13 firmware environments independently on every pull
+  request and push to `main`: full Montserrat, full Roboto, and all 11 isolated
+  driver profiles. Matrix `fail-fast` is disabled so one failing variant does
+  not hide results from the remaining profiles.
+- The README and pull-request checklist now define `crowpanel_128` as the
+  standard local firmware build and GitHub Actions as the cross-profile testing
+  ground. No firmware source changed, so no local firmware build or flash was
+  applicable to this CI-only update.
 
 ### Single-line marquee screen titles
 

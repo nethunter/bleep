@@ -228,18 +228,13 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e crowpanel_128 -t upload
 ```
 
-The main profile compiles every current driver. Fully isolated driver-specific
-profiles are also available for linked-symbol and memory-budget checks:
-
-```sh
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e shark_nano_ii
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e canon_ble
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e canon_trigger
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e tascam_x8
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e home_assistant
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e amaran_light
-PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e zhiyun_x100
-```
+The main Montserrat profile compiles every current driver and is the standard
+local firmware check. GitHub Actions is the cross-profile testing ground: every
+pull request and push to `main` builds the full Montserrat and Roboto profiles,
+plus the isolated Shark, Canon Smart, Canon Trigger, Tascam X8, Home Assistant,
+Aputure/Amaran, Zhiyun, GoPro, Phone Camera, Insta360, and DJI Osmo profiles.
+Build an isolated profile locally only when diagnosing a profile-specific
+failure.
 
 To render the UI on a desktop, install ImageMagick and run:
 

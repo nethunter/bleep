@@ -21,7 +21,25 @@ jobs:
       - run: python -m platformio test -e native
 
   firmware-build:
+    name: firmware-build (${{ matrix.environment }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - crowpanel_128
+          - crowpanel_128_roboto
+          - canon_ble
+          - canon_trigger
+          - tascam_x8
+          - home_assistant
+          - shark_nano_ii
+          - amaran_light
+          - zhiyun_x100
+          - gopro
+          - phone_camera
+          - insta360
+          - dji_osmo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,4 +47,4 @@ jobs:
           python-version: "3.x"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - run: python -m platformio run -e crowpanel_128
+      - run: python -m platformio run -e ${{ matrix.environment }}

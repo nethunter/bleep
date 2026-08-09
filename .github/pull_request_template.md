@@ -9,7 +9,8 @@
 ## Verification
 
 - [ ] Native tests pass, or are not applicable
-- [ ] Every affected firmware profile builds
+- [ ] Full Montserrat profile builds locally
+- [ ] GitHub Actions firmware-variant matrix passes
 - [ ] UI simulator reviewed, or no UI changed
 - [ ] Flash attempted on available hardware
 - [ ] Physical behavior checked, or clearly marked unverified
