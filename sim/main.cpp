@@ -767,6 +767,28 @@ int main() {
     std::fprintf(stderr, "Failed to restore wait after edit regression\n");
     return 1;
   }
+  studio::SceneRecord deleteScene = *studio::scenes().find(sceneId);
+  deleteScene.startSteps[deleteScene.startCount++] =
+      studio::makeWaitStep(125);
+  if (studio::scenes().replace(deleteScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to prepare in-session delete regression\n");
+    return 1;
+  }
+  scene_ui::simShowEditStart(sceneId);
+  if (!scene_ui::simDeleteStep(deleteScene.startCount - 1)) {
+    std::fprintf(stderr, "Failed to click the scene-step trash button\n");
+    return 1;
+  }
+  pump(20);
+  const studio::SceneRecord* afterDelete = studio::scenes().find(sceneId);
+  if (afterDelete == nullptr || afterDelete->startCount != 3 ||
+      scene_ui::simRenderedStepCount() != 3 ||
+      !scene_ui::simAddStepAtListEnd()) {
+    std::fprintf(stderr,
+                 "In-session scene-step deletion did not redraw safely\n");
+    return 1;
+  }
   scene_ui::simShowAddStepCategory(sceneId);
   pump(200);
   if (!capture("22b_scenes_add_category")) {

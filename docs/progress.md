@@ -185,8 +185,18 @@ Record values with the exact build environment and commit/worktree state.
   deletions transactionally without requiring the intermediate scene to be
   runnable, cancels obsolete prepared ownership when needed, and lets the panel
   repair missing targets one row at a time. Native tests pass 61/61 and the
-  desktop UI simulator builds/runs through all captures. Final firmware flash
-  and on-panel Sequence 3 repair remain pending.
+  desktop UI simulator builds/runs through all captures. Live testing then
+  showed that the record was removed and persisted but the current editor kept
+  rendering the deleted row until it was reopened: `refreshEdit()` was deleting
+  the trash button from inside its own LVGL click dispatch. Deferring through
+  `scene_ui::tick()` was still too early in LVGL's next input lifecycle and the
+  operator observed a crash while continuing the same editing session. The
+  editor now uses `lv_async_call()` so LVGL owns the safe redraw boundary. A UI
+  simulator regression sends a real trash-button click, confirms the persisted
+  count and rendered count both shrink, and confirms `+ Add step` remains
+  usable immediately. Native tests remain 61/61 and the desktop simulator
+  completes all captures; final flash and same-session panel confirmation
+  remain pending.
 
 ### All-driver dormant-resource audit
 

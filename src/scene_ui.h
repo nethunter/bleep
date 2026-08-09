@@ -25,6 +25,8 @@ void simDeleteCurrentScene();
 bool simShowingList();
 bool simShowingEdit();
 bool simAddStepAtListEnd();
+bool simDeleteStep(uint8_t index);
+uint8_t simRenderedStepCount();
 void simShowAddStepCategory(studio::SceneId sceneId);
 void simShowAddStepDevice(studio::SceneId sceneId, studio::DeviceType category);
 void simShowAddStepAction(studio::SceneId sceneId, studio::InstanceId instanceId);

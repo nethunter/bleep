@@ -214,6 +214,9 @@ void ensureScreens();
 void refreshList();
 void refreshRun();
 void refreshEdit();
+void refreshEditDeferred(void*) {
+  if (visible && view == View::Edit && editBody != nullptr) refreshEdit();
+}
 void showListView();
 void showRunView(studio::SceneId sceneId);
 void showEditView(studio::SceneId sceneId, bool startList);
@@ -634,7 +637,9 @@ void onDeleteStep(lv_event_t* event) {
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
   if (studio::scenes().removeStep(currentScene, editingStart, index) ==
       studio::SceneRegistryStatus::Ok) {
-    refreshEdit();
+    // The trash button belongs to editBody. Let LVGL finish dispatching this
+    // click before rebuilding the tree that owns the event target.
+    lv_async_call(refreshEditDeferred, nullptr);
   }
 }
 
@@ -1095,9 +1100,7 @@ void showEditView(studio::SceneId sceneId, bool startList) {
 void init() {}
 
 void tick() {
-  if (!visible || view != View::Run) {
-    return;
-  }
+  if (!visible || view != View::Run) return;
   const uint32_t now = millis();
   if (now - lastRefreshMs < 200) {
     return;
@@ -1247,6 +1250,23 @@ bool simAddStepAtListEnd() {
   return centered &&
          std::strcmp(lv_label_get_text(lv_obj_get_child(button, 0)),
                      "+ Add step") == 0;
+}
+
+bool simDeleteStep(uint8_t index) {
+  if (editBody == nullptr || index + 1 >= lv_obj_get_child_cnt(editBody)) {
+    return false;
+  }
+  lv_obj_t* row = lv_obj_get_child(editBody, index);
+  if (row == nullptr || lv_obj_get_child_cnt(row) < 4) return false;
+  lv_obj_t* trash = lv_obj_get_child(row, 3);
+  return trash != nullptr && lv_event_send(trash, LV_EVENT_CLICKED, nullptr) ==
+                                 LV_RES_OK;
+}
+
+uint8_t simRenderedStepCount() {
+  const uint32_t children =
+      editBody != nullptr ? lv_obj_get_child_cnt(editBody) : 0;
+  return children > 0 ? static_cast<uint8_t>(children - 1) : 0;
 }
 
 void simShowAddStepCategory(studio::SceneId sceneId) {
