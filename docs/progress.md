@@ -185,6 +185,12 @@ Record values with the exact build environment and commit/worktree state.
 - The complete `ui_sim` traversal passed, including the generic and active-
   recorder Device Edit states and Sequence Settings before and after a run.
   Live touch targets and marquee motion remain operator checks.
+- After the feature branch was rebased and merged into `main` with `--no-ff`,
+  the complete simulator traversal passed again. The full Montserrat
+  `crowpanel_128` profile built with 142,308 / 327,680 bytes static RAM and
+  1,897,318 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset.
+  Alternate firmware profiles remain assigned to GitHub Actions.
 
 ### Dynamic 40-percent BLE discovery duty
 
