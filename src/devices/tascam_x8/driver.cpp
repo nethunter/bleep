@@ -15,10 +15,14 @@ bool TascamX8Driver::activate(const DeviceRecord& record) {
   session_ = new (std::nothrow) Session;
   if (session_ == nullptr) return false;
   session_->instanceId = record.instanceId;
-  session_->client.activate(record.bleAddress, record.bleAddressType,
-                           record.bleName[0] != '\0' ? record.bleName
-                                                     : record.displayName,
-                           record.paired);
+  if (!session_->client.activate(
+          record.bleAddress, record.bleAddressType,
+          record.bleName[0] != '\0' ? record.bleName : record.displayName,
+          record.paired)) {
+    delete session_;
+    session_ = nullptr;
+    return false;
+  }
   return true;
 }
 

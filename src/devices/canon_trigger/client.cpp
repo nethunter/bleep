@@ -17,9 +17,9 @@ namespace {
 
 }  // namespace
 
-void CanonTriggerClient::begin() {
+bool CanonTriggerClient::begin() {
   if (initialized_) {
-    return;
+    return true;
   }
   studio::ble::ConnectPolicy policy;
   policy.security = studio::ble::SecurityPolicy::BondSecure;
@@ -27,11 +27,12 @@ void CanonTriggerClient::begin() {
   policy.diagnosticTag = "canon_trigger";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  return initialized_;
 }
 
-void CanonTriggerClient::activate(const char* address, uint8_t addressType,
-                              const char* name, bool paired) {
-  begin();
+bool CanonTriggerClient::activate(const char* address, uint8_t addressType,
+                                  const char* name, bool paired) {
+  if (!begin()) return false;
   connectRequested_ = true;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   targetAddr_[0] = '\0';
@@ -50,6 +51,7 @@ void CanonTriggerClient::activate(const char* address, uint8_t addressType,
   } else {
     beginScan();
   }
+  return true;
 }
 
 void CanonTriggerClient::deactivate() {

@@ -632,22 +632,10 @@ void onMoveDown(lv_event_t* event) {
 void onDeleteStep(lv_event_t* event) {
   const uint8_t index = static_cast<uint8_t>(
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
-  studio::SceneRecord record;
-  if (!loadEditable(record)) {
-    return;
+  if (studio::scenes().removeStep(currentScene, editingStart, index) ==
+      studio::SceneRegistryStatus::Ok) {
+    refreshEdit();
   }
-  studio::SceneStep* steps = editingStart ? record.startSteps : record.stopSteps;
-  uint8_t& count = editingStart ? record.startCount : record.stopCount;
-  if (index >= count) {
-    return;
-  }
-  for (uint8_t i = index + 1; i < count; ++i) {
-    steps[i - 1] = steps[i];
-  }
-  steps[count - 1] = studio::SceneStep{};
-  --count;
-  studio::scenes().replace(record);
-  refreshEdit();
 }
 
 void refreshList() {

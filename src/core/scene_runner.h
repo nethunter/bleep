@@ -14,7 +14,8 @@ class SceneRunner {
 
   // Connect and hold all Start/Stop targets; phase becomes Ready when linked.
   SceneRunStatus prepare(SceneId sceneId);
-  // Reconcile an edited prepared scene without dropping unchanged links.
+  // Reconcile an edited prepared scene using the normal transport ordering;
+  // protocol-ready physical sessions remain eligible for retention.
   SceneRunStatus refreshPrepared(SceneId sceneId);
   SceneRunStatus start(SceneId sceneId);
   SceneRunStatus stop();
@@ -38,6 +39,8 @@ class SceneRunner {
   bool activateDeferredHomeAssistantTargets();
   void releaseTargets(const TargetSet& targets);
   bool ownsTargets(const TargetSet& targets) const;
+  bool allPhysicalTargetsConnected(const TargetSet& targets,
+                                   InstanceId& waiting) const;
   bool allTargetsConnected(const TargetSet& targets, InstanceId& waiting) const;
   void setDetail(const char* text);
   void fail(SceneRunStatus status, const char* detail);

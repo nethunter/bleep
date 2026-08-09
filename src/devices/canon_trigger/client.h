@@ -17,7 +17,7 @@ class CanonTriggerClient : public studio::ble::BleCentralDelegate {
   using Link = CanonTriggerState::Link;
   using State = CanonTriggerState;
 
-  void activate(const char* address, uint8_t addressType, const char* name,
+  bool activate(const char* address, uint8_t addressType, const char* name,
                 bool paired);
   void deactivate();
   void loop();
@@ -41,7 +41,7 @@ class CanonTriggerClient : public studio::ble::BleCentralDelegate {
                   const studio::ble::Event& event) override;
 
  private:
-  void begin();
+  bool begin();
   void beginScan();
   void beginConnect();
   bool completeConnect();

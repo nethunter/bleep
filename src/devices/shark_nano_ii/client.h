@@ -25,8 +25,9 @@ class SharkClient : public studio::ble::BleCentralDelegate {
   using Link = SharkState::Link;
   using State = SharkState;
 
-  void begin();
-  void activate(const char* address, uint8_t addressType, const char* name, bool paired);
+  bool begin();
+  bool activate(const char* address, uint8_t addressType, const char* name,
+                bool paired);
   void deactivate();
   void loop();
 

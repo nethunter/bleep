@@ -167,15 +167,12 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
 
   InstanceId acquiredIds[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   uint8_t acquiredCount = 0;
-  bool reclaimedIdleSession = false;
-  // BLE initialization needs one large contiguous allocation. Bring physical
-  // transports up before HA starts Wi-Fi, regardless of authored step order.
+  // BLE setup needs both a large contiguous initialization allocation and
+  // enough headroom for blocking GATT discovery. Bring physical transports to
+  // protocol readiness before HA starts Wi-Fi, regardless of authored order.
   for (uint8_t pass = 0; pass < 2; ++pass) {
     const bool homeAssistantPass = pass == 1;
-    if (homeAssistantPass && reclaimedIdleSession) {
-      // NimBLE client deletion completes asynchronously. Let the main loop
-      // pump teardown before Home Assistant asks the Wi-Fi stack for its
-      // contiguous allocations.
+    if (homeAssistantPass && hasPhysicalTarget && hasHomeAssistantTarget) {
       homeAssistantDeferred_ = true;
       break;
     }
@@ -216,8 +213,6 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
           }
           return false;
         }
-        reclaimedIdleSession =
-            reclaimedIdleSession || status == CommandStatus::Succeeded;
       }
     }
   }
@@ -265,6 +260,23 @@ bool SceneRunner::allTargetsConnected(const TargetSet& targets,
                                       InstanceId& waiting) const {
   waiting = kInvalidInstanceId;
   for (uint8_t i = 0; i < targets.count; ++i) {
+    const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
+    if (runtime.link != LinkState::Connected || !runtime.protocolReady) {
+      waiting = targets.ids[i];
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SceneRunner::allPhysicalTargetsConnected(const TargetSet& targets,
+                                              InstanceId& waiting) const {
+  waiting = kInvalidInstanceId;
+  for (uint8_t i = 0; i < targets.count; ++i) {
+    const DeviceRecord* record = devices_.find(targets.ids[i]);
+    if (record != nullptr && record->driverId == DriverId::HomeAssistant) {
+      continue;
+    }
     const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
     if (runtime.link != LinkState::Connected || !runtime.protocolReady) {
       waiting = targets.ids[i];
@@ -392,30 +404,17 @@ SceneRunStatus SceneRunner::refreshPrepared(SceneId sceneId) {
       !collectTargets(*record, nextTargets)) {
     return SceneRunStatus::ValidationFailed;
   }
-  const auto contains = [](const TargetSet& targets, InstanceId id) {
-    for (uint8_t i = 0; i < targets.count; ++i) {
-      if (targets.ids[i] == id) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  for (uint8_t i = 0; i < targets_.count; ++i) {
-    if (!contains(nextTargets, targets_.ids[i])) {
-      devices_.release(targets_.ids[i], ConnectionOwner::Sequence);
-    }
-  }
-  for (uint8_t i = 0; i < nextTargets.count; ++i) {
-    if (!devices_.ownedBy(nextTargets.ids[i], ConnectionOwner::Sequence) &&
-        !devices_.acquire(nextTargets.ids[i], ConnectionOwner::Sequence)) {
-      fail(SceneRunStatus::ActionFailed, "Activate failed");
-      return SceneRunStatus::ActionFailed;
-    }
-  }
-
+  // Drop only sequence ownership, then reacquire through the same physical-
+  // before-HA path used by prepare(). Ready physical sessions remain retained,
+  // while an HA session can be stopped before a newly added BLE target needs
+  // NimBLE's contiguous initialization allocation.
+  releaseTargets(targets_);
   targets_ = nextTargets;
   activeScene_ = *record;
+  if (!activateTargets(targets_)) {
+    fail(SceneRunStatus::ActionFailed, "Activate failed");
+    return SceneRunStatus::ActionFailed;
+  }
   progress_.stepCount = activeScene_.startCount;
   progress_.stepIndex = 0;
   progress_.lastStatus = SceneRunStatus::Ok;
@@ -661,8 +660,28 @@ void SceneRunner::tick(uint32_t nowMs) {
     return;
   }
 
+  if (phaseStartedMs_ == 0) {
+    phaseStartedMs_ = nowMs;
+  }
+
   if (progress_.phase == ScenePhase::Connecting && homeAssistantDeferred_) {
+    InstanceId waiting = kInvalidInstanceId;
+    if (!allPhysicalTargetsConnected(targets_, waiting)) {
+      progress_.connectTarget = waiting;
+      const DeviceRecord* record = devices_.find(waiting);
+      char detail[48];
+      std::snprintf(detail, sizeof(detail), "Connect %s",
+                    record != nullptr ? record->displayName : "?");
+      setDetail(detail);
+      if (nowMs - phaseStartedMs_ >= CONFIG_SCENE_CONNECT_TIMEOUT_MS) {
+        fail(SceneRunStatus::ConnectTimeout, "Connect timeout");
+      }
+      return;
+    }
     if (homeAssistantActivationAtMs_ == 0) {
+      // The physical target can become ready in the same loop that an old idle
+      // client starts asynchronous deletion. Give that teardown one bounded
+      // pump window before Wi-Fi claims the remaining contiguous heap.
       homeAssistantActivationAtMs_ = nowMs + kHomeAssistantReclaimSettleMs;
       return;
     }
@@ -676,10 +695,6 @@ void SceneRunner::tick(uint32_t nowMs) {
       fail(SceneRunStatus::ActionFailed, "Activate failed");
       return;
     }
-  }
-
-  if (phaseStartedMs_ == 0) {
-    phaseStartedMs_ = nowMs;
   }
 
   if (progress_.phase == ScenePhase::Connecting) {

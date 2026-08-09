@@ -1,6 +1,7 @@
 #include "devices/amaran_light/protocol.h"
 
 #include <cmath>
+#include <cctype>
 #include <cstring>
 
 #include "devices/amaran_light/crypto.h"
@@ -12,6 +13,22 @@ constexpr uint8_t kPowerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
 constexpr uint8_t kPowerOff[] = {0x26,0x8c,0,0,0,0,0,0,0,0,0x8c};
 constexpr uint8_t kPowerStatusGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
 constexpr uint8_t kNodeReset[] = {0x26,0x9d,0,0,0,0,0,0,0,0,0x9d};
+
+bool containsIgnoreCase(const char* text, const char* token) {
+  if (text == nullptr || token == nullptr || token[0] == '\0') return false;
+  for (const char* start = text; *start != '\0'; ++start) {
+    const char* candidate = start;
+    const char* expected = token;
+    while (*candidate != '\0' && *expected != '\0' &&
+           std::tolower(static_cast<unsigned char>(*candidate)) ==
+               std::tolower(static_cast<unsigned char>(*expected))) {
+      ++candidate;
+      ++expected;
+    }
+    if (*expected == '\0') return true;
+  }
+  return false;
+}
 
 uint8_t scaleGamma(uint8_t channel, uint8_t maximum) {
   const double normalized = static_cast<double>(channel) / 255.0;
@@ -83,6 +100,25 @@ bool encodeNetworkTransport(const uint8_t networkKey[16], const uint8_t* lower,
 }
 
 }  // namespace
+
+bool inferKnownVendorModel(const char* displayName, const char* bleName,
+                           uint16_t& companyId, uint16_t& modelId) {
+  if (containsIgnoreCase(displayName, "MC Pro") ||
+      containsIgnoreCase(bleName, "MC Pro") ||
+      containsIgnoreCase(bleName, "Mesh Device")) {
+    companyId = 0x03f6;
+    modelId = 0x1000;
+    return true;
+  }
+  if (containsIgnoreCase(displayName, "Ace 25c") ||
+      containsIgnoreCase(bleName, "Ace 25c") ||
+      containsIgnoreCase(bleName, "SLCK")) {
+    companyId = 0x0211;
+    modelId = 0x0000;
+    return true;
+  }
+  return false;
+}
 
 uint8_t vendorChecksum(const uint8_t tail[9]) {
   uint8_t sum = 0;
@@ -430,6 +466,86 @@ bool decodeProxyAccessMessage(const uint8_t networkKey[16],
   return aesCcmDecrypt(applicationKey, applicationNonce,
                        sizeof(applicationNonce), encryptedUpper,
                        output.accessLength,
+                       encryptedUpper + output.accessLength, 4,
+                       output.access);
+}
+
+bool decodeProxyDeviceMessage(const uint8_t networkKey[16],
+                              const uint8_t deviceKey[16],
+                              const uint8_t* proxyPdu, size_t proxyLength,
+                              uint32_t ivIndex, DecodedAccessMessage& output) {
+  output = DecodedAccessMessage{};
+  if (networkKey == nullptr || deviceKey == nullptr || proxyPdu == nullptr ||
+      proxyLength < 16 || proxyPdu[0] != 0x00) {
+    return false;
+  }
+  const uint8_t* network = proxyPdu + 1;
+  const size_t networkLength = proxyLength - 1;
+  NetworkKeys keys;
+  meshK2(networkKey, keys);
+  if ((network[0] & 0x7f) != keys.nid || networkLength < 14) return false;
+
+  const uint8_t* encryptedNetwork = network + 7;
+  const size_t encryptedNetworkLength = networkLength - 7;
+  if (encryptedNetworkLength < 11) return false;
+  uint8_t privacyInput[16] = {};
+  privacyInput[5] = static_cast<uint8_t>(ivIndex >> 24);
+  privacyInput[6] = static_cast<uint8_t>(ivIndex >> 16);
+  privacyInput[7] = static_cast<uint8_t>(ivIndex >> 8);
+  privacyInput[8] = static_cast<uint8_t>(ivIndex);
+  std::memcpy(privacyInput + 9, encryptedNetwork, 7);
+  uint8_t pecb[16];
+  aes128EncryptBlock(keys.privacy, privacyInput, pecb);
+  uint8_t clearHeader[6];
+  for (size_t i = 0; i < sizeof(clearHeader); ++i) {
+    clearHeader[i] = static_cast<uint8_t>(network[i + 1] ^ pecb[i]);
+  }
+  if ((clearHeader[0] & 0x80) != 0) return false;
+  output.sequence = static_cast<uint32_t>(clearHeader[1]) << 16 |
+                    static_cast<uint32_t>(clearHeader[2]) << 8 |
+                    clearHeader[3];
+  output.source = getBe16(clearHeader + 4);
+
+  uint8_t networkNonce[13] = {0x00};
+  std::memcpy(networkNonce + 1, clearHeader, sizeof(clearHeader));
+  networkNonce[7] = networkNonce[8] = 0;
+  networkNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  networkNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  networkNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  networkNonce[12] = static_cast<uint8_t>(ivIndex);
+  const size_t networkPlainLength = encryptedNetworkLength - 4;
+  uint8_t networkPlain[64] = {};
+  if (networkPlainLength > sizeof(networkPlain) ||
+      !aesCcmDecrypt(keys.encryption, networkNonce, sizeof(networkNonce),
+                     encryptedNetwork, networkPlainLength,
+                     encryptedNetwork + networkPlainLength, 4,
+                     networkPlain) ||
+      networkPlainLength < 8) {
+    return false;
+  }
+  output.destination = getBe16(networkPlain);
+
+  const uint8_t* lower = networkPlain + 2;
+  const size_t lowerLength = networkPlainLength - 2;
+  if (lowerLength < 6 || (lower[0] & 0xc0) != 0) return false;
+  const uint8_t* encryptedUpper = lower + 1;
+  const size_t encryptedUpperLength = lowerLength - 1;
+  if (encryptedUpperLength < 5) return false;
+  output.accessLength = encryptedUpperLength - 4;
+  if (output.accessLength > sizeof(output.access)) return false;
+
+  uint8_t deviceNonce[13] = {0x02, 0x00};
+  deviceNonce[2] = static_cast<uint8_t>(output.sequence >> 16);
+  deviceNonce[3] = static_cast<uint8_t>(output.sequence >> 8);
+  deviceNonce[4] = static_cast<uint8_t>(output.sequence);
+  putBe16(deviceNonce + 5, output.source);
+  putBe16(deviceNonce + 7, output.destination);
+  deviceNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  deviceNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  deviceNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  deviceNonce[12] = static_cast<uint8_t>(ivIndex);
+  return aesCcmDecrypt(deviceKey, deviceNonce, sizeof(deviceNonce),
+                       encryptedUpper, output.accessLength,
                        encryptedUpper + output.accessLength, 4,
                        output.access);
 }

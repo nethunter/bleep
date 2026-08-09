@@ -113,6 +113,40 @@ SceneRegistryStatus SceneService::replace(const SceneRecord& record) {
   return status;
 }
 
+SceneRegistryStatus SceneService::removeStep(SceneId sceneId, bool startList,
+                                             uint8_t index) {
+  const SceneRecord* source = registry_.find(sceneId);
+  if (source == nullptr) return SceneRegistryStatus::NotFound;
+  if (runner_.busy() && runner_.progress().sceneId == sceneId) {
+    return SceneRegistryStatus::Invalid;
+  }
+
+  SceneRecord updated = *source;
+  SceneStep* steps = startList ? updated.startSteps : updated.stopSteps;
+  uint8_t& count = startList ? updated.startCount : updated.stopCount;
+  if (index >= count) return SceneRegistryStatus::NotFound;
+  for (uint8_t i = index + 1; i < count; ++i) {
+    steps[i - 1] = steps[i];
+  }
+  steps[count - 1] = SceneStep{};
+  --count;
+
+  const SceneRegistry previous = registry_;
+  const SceneRegistryStatus status = registry_.replace(updated);
+  if (status != SceneRegistryStatus::Ok || !save()) {
+    registry_ = previous;
+    return SceneRegistryStatus::Invalid;
+  }
+  if (runner_.validate(updated) == SceneValidationStatus::Ok) {
+    runner_.refreshPrepared(sceneId);
+  } else if (runner_.progress().sceneId == sceneId) {
+    // A deletion is also the recovery path for empty or orphaned scenes.
+    // Release any formerly prepared targets until the authored steps validate.
+    runner_.cancel();
+  }
+  return SceneRegistryStatus::Ok;
+}
+
 SceneValidationStatus SceneService::validate(const SceneRecord& record) const {
   return runner_.validate(record);
 }

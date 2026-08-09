@@ -18,9 +18,9 @@ namespace zhiyun_x100 {
 class X100Client : public studio::ble::BleCentralDelegate,
                    public studio::mesh::ProvisioningSender {
  public:
-  void activate(studio::InstanceId instanceId, const char* address,
+  bool activate(studio::InstanceId instanceId, const char* address,
                 uint8_t addressType, const char* name, bool paired);
-  void activateShared(studio::InstanceId instanceId, const char* address,
+  bool activateShared(studio::InstanceId instanceId, const char* address,
                       uint8_t addressType, const char* name, bool paired);
   bool attachShared(void* nativeClient, studio::ble::LinkHandle link);
   void detachShared();
@@ -60,8 +60,8 @@ class X100Client : public studio::ble::BleCentralDelegate,
     Refresh
   };
 
-  void begin();
-  void beginShared();
+  bool begin();
+  bool beginShared();
   void prepareActivation(studio::InstanceId instanceId, const char* address,
                          uint8_t addressType, const char* name, bool paired);
   void beginScan();

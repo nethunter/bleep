@@ -34,25 +34,32 @@ void sessionNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
 
 }  // namespace
 
-void TascamX8Client::begin() {
+bool TascamX8Client::begin() {
   if (initialized_) {
-    return;
+    return true;
   }
   if (notifyStream_ == nullptr) {
     notifyStream_ = xStreamBufferCreate(2048, 1);
   }
+  if (notifyStream_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 6000;
   policy.diagnosticTag = "tascam_x8";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  if (!initialized_) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+    return false;
+  }
   gNotifyClient = this;
+  return true;
 }
 
-void TascamX8Client::activate(const char* address, uint8_t addressType,
+bool TascamX8Client::activate(const char* address, uint8_t addressType,
                               const char* name, bool paired) {
-  begin();
+  if (!begin()) return false;
   connectRequested_ = true;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   targetAddr_[0] = '\0';
@@ -74,6 +81,7 @@ void TascamX8Client::activate(const char* address, uint8_t addressType,
   } else {
     beginScan();
   }
+  return true;
 }
 
 void TascamX8Client::deactivate() {
@@ -83,6 +91,10 @@ void TascamX8Client::deactivate() {
   initialized_ = false;
   client_ = nullptr;
   gNotifyClient = nullptr;
+  if (notifyStream_ != nullptr) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+  }
   startRequested_ = false;
   stopRequested_ = false;
   setupPending_ = false;

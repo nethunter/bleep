@@ -103,7 +103,8 @@ principles:
   authenticates each Ace 25c/MC Pro response, and keeps member reachability
   separate from the proxy link. The tested Ace 25c/MC Pro mesh now uses the
   physically verified common-group power path; its per-member RGB groups are
-  enabled from the live red/green test vectors.
+  enabled from the live red/green test vectors. Initial AppKey/model/group
+  configuration advances only after authenticated success statuses.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
   fixture when needed, persists its mesh-routing selector, and uses confirmed
@@ -267,7 +268,9 @@ long-lived access token, then selecting at most four supported entities.
 
 Sequences can be created, renamed, enabled/disabled, duplicated, and deleted.
 Their Start and Stop lists support action and wait steps, in-place editing, and
-reordering. The Portal changes configuration only: it does not connect to
+reordering. On the panel, orphaned rows remain deletable if their target device
+was removed, so an invalid sequence can be repaired one step at a time. The
+Portal changes configuration only: it does not connect to
 devices or run sequences. Choose **Finish & Exit** in the Portal, or Exit on the
 panel, after saving; this stops the LAN server and turns Wi-Fi off. Later Portal
 sessions join saved Wi-Fi directly and show their current numeric LAN address;

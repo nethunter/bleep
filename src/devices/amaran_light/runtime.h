@@ -8,6 +8,7 @@
 #include "core/mesh/pb_gatt_provisioner.h"
 #include "devices/amaran_light/state.h"
 #include "devices/amaran_light/store.h"
+#include "devices/amaran_light/protocol.h"
 
 class NimBLERemoteCharacteristic;
 
@@ -70,6 +71,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   bool sendProvisioning(const uint8_t* pdu, size_t length);
   bool completeProvisioning();
   bool configureNext();
+  bool handleConfigurationStatus(const DecodedAccessMessage& decoded);
   bool sendAccess(studio::InstanceId instanceId, const uint8_t* access,
                   size_t length);
   bool sendAccessTo(uint16_t destination, const uint8_t* access,
@@ -89,6 +91,11 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   bool provisioningLink_ = false;
   bool connected_ = false;
   uint8_t configStep_ = 0;
+  uint8_t configRetryCount_ = 0;
+  bool configAwaitingStatus_ = false;
+  NetworkPduBatch configBatch_ = {};
+  uint8_t configBatchIndex_ = 0;
+  uint32_t configStatusDeadlineMs_ = 0;
   uint32_t nextConfigAt_ = 0;
   uint32_t lastPowerPollMs_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;

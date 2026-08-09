@@ -69,15 +69,43 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
       }
       return false;
     }
-    session->client.activateShared(
-        record.instanceId, record.bleAddress, record.bleAddressType,
-        record.bleName[0] != '\0' ? record.bleName : record.displayName,
-        record.paired);
+    if (!session->client.activateShared(
+            record.instanceId, record.bleAddress, record.bleAddressType,
+            record.bleName[0] != '\0' ? record.bleName : record.displayName,
+            record.paired)) {
+      gateway->releaseGateway(record.instanceId);
+      for (Session*& candidate : sessions_) {
+        if (candidate != session) continue;
+        delete candidate;
+        candidate = nullptr;
+        break;
+      }
+      if (sessionCount_ > 0) --sessionCount_;
+      amaran_light::releaseRuntimeIfIdle();
+      if (sessionCount_ == 0 && repositoryHeld_) {
+        studio::mesh::releaseRepository();
+        repositoryHeld_ = false;
+      }
+      return false;
+    }
   } else {
-    session->client.activate(
-        record.instanceId, record.bleAddress, record.bleAddressType,
-        record.bleName[0] != '\0' ? record.bleName : record.displayName,
-        record.paired);
+    if (!session->client.activate(
+            record.instanceId, record.bleAddress, record.bleAddressType,
+            record.bleName[0] != '\0' ? record.bleName : record.displayName,
+            record.paired)) {
+      for (Session*& candidate : sessions_) {
+        if (candidate != session) continue;
+        delete candidate;
+        candidate = nullptr;
+        break;
+      }
+      if (sessionCount_ > 0) --sessionCount_;
+      if (sessionCount_ == 0 && repositoryHeld_) {
+        studio::mesh::releaseRepository();
+        repositoryHeld_ = false;
+      }
+      return false;
+    }
   }
   return true;
 }

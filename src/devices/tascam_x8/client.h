@@ -18,7 +18,7 @@ class TascamX8Client : public studio::ble::BleCentralDelegate {
   using Link = TascamX8State::Link;
   using State = TascamX8State;
 
-  void activate(const char* address, uint8_t addressType, const char* name,
+  bool activate(const char* address, uint8_t addressType, const char* name,
                 bool paired);
   void deactivate();
   void loop();
@@ -44,7 +44,7 @@ class TascamX8Client : public studio::ble::BleCentralDelegate {
   void onSessionByte(uint8_t value);
 
  private:
-  void begin();
+  bool begin();
   void beginScan();
   void beginConnect();
   bool completeConnect();

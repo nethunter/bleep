@@ -11,6 +11,7 @@ namespace amaran_light {
 constexpr size_t kMaxMeshNodes = CONFIG_MAX_DEVICE_INSTANCES;
 constexpr uint32_t kSequenceBlockSize = 256;
 constexpr uint32_t kSequenceMaximum = 0x1000000;
+constexpr uint8_t kCurrentConfigurationVersion = 1;
 
 struct MeshNetworkRecord {
   bool initialized = false;
@@ -38,6 +39,9 @@ struct MeshNodeRecord {
   uint16_t controlGroupAddress = 0;
   uint16_t vendorCompanyId = 0;
   uint16_t vendorModelId = 0;
+  // Zero identifies records whose configuration writes were never confirmed
+  // by decoded mesh status responses.
+  uint8_t configurationVersion = 0;
   // Zhiyun's cleartext FEE9 protocol routes members with an ordinal selector.
   // This is independent of product model and mesh unicast address.
   uint8_t routingSelector = 0xff;
@@ -51,7 +55,7 @@ struct MeshStoreData {
 
 class MeshStore {
  public:
-  static constexpr uint16_t kSchemaVersion = 2;
+  static constexpr uint16_t kSchemaVersion = 3;
   static constexpr size_t kMaxBlobSize = 2048;
 
   explicit MeshStore(studio::IConfigBackend& backend) : backend_(backend) {}

@@ -73,13 +73,14 @@ void shootingNotifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data,
 
 }  // namespace
 
-void CanonBleClient::begin() {
+bool CanonBleClient::begin() {
   if (initialized_) {
-    return;
+    return true;
   }
   if (notifyQueue_ == nullptr) {
     notifyQueue_ = xQueueCreate(8, sizeof(Notification));
   }
+  if (notifyQueue_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.security = studio::ble::SecurityPolicy::BondNoMitm;
   policy.connectTimeoutMs = 4000;
@@ -91,10 +92,14 @@ void CanonBleClient::begin() {
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
   if (initialized_) {
     gNotifyClient = this;
+    return true;
   }
+  vQueueDelete(static_cast<QueueHandle_t>(notifyQueue_));
+  notifyQueue_ = nullptr;
+  return false;
 }
 
-void CanonBleClient::activate(const char* address, uint8_t addressType,
+bool CanonBleClient::activate(const char* address, uint8_t addressType,
                               const char* name, bool paired) {
   connectRequested_ = true;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
@@ -113,7 +118,7 @@ void CanonBleClient::activate(const char* address, uint8_t addressType,
     std::strncpy(targetName_, name, sizeof(targetName_) - 1);
     targetName_[sizeof(targetName_) - 1] = '\0';
   }
-  begin();
+  if (!begin()) return false;
   resetTransientState(state_);
   state_.hasSavedDevice = haveTarget_;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
@@ -126,6 +131,7 @@ void CanonBleClient::activate(const char* address, uint8_t addressType,
   } else {
     beginScan();
   }
+  return true;
 }
 
 void CanonBleClient::deactivate() {
@@ -144,7 +150,8 @@ void CanonBleClient::deactivate() {
   bondRecoveryPending_ = false;
   postPairStep_ = 0;
   if (notifyQueue_ != nullptr) {
-    xQueueReset(static_cast<QueueHandle_t>(notifyQueue_));
+    vQueueDelete(static_cast<QueueHandle_t>(notifyQueue_));
+    notifyQueue_ = nullptr;
   }
   resetTransientState(state_);
   state_.link = Link::Disconnected;

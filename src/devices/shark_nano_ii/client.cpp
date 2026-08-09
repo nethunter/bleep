@@ -26,25 +26,32 @@ void notifyTrampoline(NimBLERemoteCharacteristic*, uint8_t* data, size_t length,
 
 }  // namespace
 
-void SharkClient::begin() {
+bool SharkClient::begin() {
   if (initialized_) {
-    return;
+    return true;
   }
   if (notifyStream_ == nullptr) {
     notifyStream_ = xStreamBufferCreate(1024, 1);
   }
+  if (notifyStream_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 3000;
   policy.connectWatchdogMs = 3000;
   policy.diagnosticTag = "shark_nano_ii";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  if (!initialized_) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+    return false;
+  }
   gNotifyClient = this;
+  return true;
 }
 
-void SharkClient::activate(const char* address, uint8_t addressType, const char* name,
-                           bool paired) {
-  begin();
+bool SharkClient::activate(const char* address, uint8_t addressType,
+                           const char* name, bool paired) {
+  if (!begin()) return false;
   connectRequested_ = true;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   targetAddr_[0] = '\0';
@@ -66,6 +73,7 @@ void SharkClient::activate(const char* address, uint8_t addressType, const char*
   } else {
     beginScan();
   }
+  return true;
 }
 
 void SharkClient::deactivate() {
@@ -76,6 +84,10 @@ void SharkClient::deactivate() {
   initialized_ = false;
   client_ = nullptr;
   gNotifyClient = nullptr;
+  if (notifyStream_ != nullptr) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+  }
   setupPending_ = false;
   resetDeviceState();
   state_.link = Link::Disconnected;

@@ -11,9 +11,10 @@ constexpr size_t kNetworkSize = 1 + 16 + 16 + 4 + 2 + 2 + 2 + 4;
 constexpr size_t kNodeV1Size = 4 + 2 + 2 + 1 + 1 + 16 + 16 +
                                studio::kBleAddressCapacity + 1;
 constexpr size_t kNodeV2Size = kNodeV1Size + 2 + 2 + 2 + 1;
+constexpr size_t kNodeV3Size = kNodeV2Size + 1;
 constexpr size_t kChecksumSize = 4;
 
-static_assert(kHeaderSize + kNetworkSize + kMaxMeshNodes * kNodeV2Size +
+static_assert(kHeaderSize + kNetworkSize + kMaxMeshNodes * kNodeV3Size +
                       kChecksumSize <=
                   MeshStore::kMaxBlobSize,
               "MeshStore blob is too small for configured node capacity");
@@ -61,10 +62,12 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
   const uint16_t version = get16(cursor);
   const uint8_t count = *cursor++;
   ++cursor;
-  const size_t nodeSize = version == 1 ? kNodeV1Size : kNodeV2Size;
+  const size_t nodeSize = version == 1 ? kNodeV1Size
+                          : version == 2 ? kNodeV2Size
+                                         : kNodeV3Size;
   const size_t expected = kHeaderSize + kNetworkSize +
                           static_cast<size_t>(count) * nodeSize + kChecksumSize;
-  if ((version != 1 && version != kSchemaVersion) ||
+  if ((version != 1 && version != 2 && version != kSchemaVersion) ||
       count > kMaxMeshNodes || length != expected) {
     return studio::ConfigLoadStatus::Corrupt;
   }
@@ -100,6 +103,7 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
       node.vendorModelId = get16(cursor);
       node.routingSelector = *cursor++;
     }
+    if (version >= 3) node.configurationVersion = *cursor++;
   }
   if (version == 1) {
     uint8_t zhiyunSelector = 0;
@@ -116,7 +120,7 @@ studio::ConfigLoadStatus MeshStore::load(MeshStoreData& data) {
 bool MeshStore::save(const MeshStoreData& data) {
   if (data.nodeCount > kMaxMeshNodes) return false;
   const size_t length = kHeaderSize + kNetworkSize +
-                        static_cast<size_t>(data.nodeCount) * kNodeV2Size + 4;
+                        static_cast<size_t>(data.nodeCount) * kNodeV3Size + 4;
   if (length > kMaxBlobSize) return false;
   uint8_t blob[kMaxBlobSize] = {};
   uint8_t* cursor = blob;
@@ -148,6 +152,7 @@ bool MeshStore::save(const MeshStoreData& data) {
     put16(cursor, node.vendorCompanyId);
     put16(cursor, node.vendorModelId);
     *cursor++ = node.routingSelector;
+    *cursor++ = node.configurationVersion;
   }
   put32(cursor, checksum(blob, length - 4));
   return static_cast<size_t>(cursor - blob) == length && backend_.write(blob, length);

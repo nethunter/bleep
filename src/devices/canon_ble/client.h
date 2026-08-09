@@ -16,7 +16,7 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   using Link = CanonBleState::Link;
   using State = CanonBleState;
 
-  void activate(const char* address, uint8_t addressType, const char* name,
+  bool activate(const char* address, uint8_t addressType, const char* name,
                 bool paired);
   void deactivate();
   void loop();
@@ -53,7 +53,7 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   void onShootingNotification(const uint8_t* data, size_t len);
 
  private:
-  void begin();
+  bool begin();
   void beginScan();
   void beginConnect();
   bool completeConnect();

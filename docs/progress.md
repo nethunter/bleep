@@ -30,7 +30,8 @@ short, factual, and reproducible.
   are host-proven. Group-addressed vendor power Set/Get is physically correlated
   on the Ace 25c/MC Pro pair;
   firmware common-power/per-member-color integration is complete; decoded
-  configuration-status enforcement and safe reset gates remain open.
+  configuration-status enforcement is implemented and live-confirmed on MC
+  Pro; composition-driven configuration and safe reset gates remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
   and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
   routed CCT/power control; X60RGB adds captured hue/saturation control. Saved
@@ -114,6 +115,78 @@ Amaran/Aputure support:
 ## Measurements
 
 Record values with the exact build environment and commit/worktree state.
+
+### Dynamic driver activation review fixes
+
+- Date: 2026-08-08.
+- Scene refresh now drops only `Sequence` ownership and reacquires the edited
+  target set through the normal physical-before-Home-Assistant activation path.
+  A native regression covers editing a prepared HA-only scene to add Canon
+  Smart while HA remains first in authored order.
+- Shark, Canon Smart, Canon Trigger, Tascam X8, and Zhiyun activation now
+  propagate lazy client resource/link allocation failures to their driver
+  adapters. Failed sessions are deleted, FreeRTOS notification buffers are
+  released on deactivation, and shared Zhiyun gateway/repository ownership is
+  rolled back.
+- Amaran activation now deactivates the partially assigned session when its
+  first `beginLink()` fails, releasing any acquired logical link and allowing
+  the shared runtime to become idle.
+- Native tests: 60/60 passed.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  and `zhiyun_x100` succeeded. The affected profiles were built sequentially;
+  final full-profile size is 1,858,926 bytes flash and 141,676 bytes static
+  RAM.
+- Flash: the final `crowpanel_128` image uploaded successfully to
+  `/dev/cu.usbserial-211240`. No live peripheral, forced allocator-failure, or
+  mixed prepared-scene interaction was exercised, so those hardware/runtime
+  checks remain open.
+- Live follow-up on Sequence 3 with an Aputure mesh target plus HA reproduced a
+  connect timeout. The proxy physically connected, but HA had already reduced
+  `max_alloc` from 131,060 bytes at boot to 18,420-21,492 bytes before mesh
+  GATT setup reached protocol readiness. Mixed preparation now defers HA until
+  every physical target is protocol-ready, then gives asynchronous teardown a
+  250 ms pump window before starting Wi-Fi. Native tests remain 60/60; the
+  updated full profile builds at 1,859,188 bytes flash and 141,676 bytes static
+  RAM. The follow-up uploaded successfully to `/dev/cu.usbserial-211240`;
+  Sequence 3 requires a repeat live check.
+- The repeat kept Wi-Fi off and preserved a 73,716-byte maximum allocation, so
+  HA ordering is no longer the blocker. Aputure PB-GATT connected, Mesh Proxy
+  service discovery completed in 233 ms, and notification subscription
+  completed in 90 ms. The saved node is still marked unconfigured; readiness
+  stalls in the subsequent configuration-send path. A diagnostic build now
+  reports every configuration step and encode/write/save failure, but the
+  instrumented Sequence 3 run is still pending.
+- Coordinated Sequence 3 capture identified the exact configuration failure:
+  steps 0 and 1 sent successfully, then step 2 repeated `unknown_vendor` because
+  the schema-migrated `Aputure MC Pro` node had zero company/model IDs. The
+  runtime now repairs only recognized persisted MC Pro/Ace identities to their
+  confirmed vendor tuples, saves the repair transactionally, and stops
+  configuration retries after a terminal model error. Native tests pass 60/60;
+  the repaired full profile builds at 1,861,190 bytes flash and 141,676 bytes
+  static RAM. Live Sequence 3 then repaired the MC Pro record to
+  `0x03F6:0x1000`, sent configuration steps 0-6, persisted completion at step
+  7, and reached mesh protocol readiness in 26,039 ms. HA started only after
+  that gate and the complete mixed sequence reported all targets ready in
+  26,673 ms. On-screen readiness and physical Start behavior remain for the
+  operator to confirm.
+- That earlier `Ready` result was disproved when the MC Pro did not physically
+  react. Firmware schema 3 now invalidates legacy write-only configuration,
+  paces segmented AppKey Add at 350 ms, decodes device-key Config AppKey,
+  Model App, and Subscription statuses, retries bounded timeouts, and persists
+  readiness only after all six success replies. After **Reset Sidus BT** and a
+  clean panel re-add, the MC Pro returned success for steps 1-6, reached
+  protocol readiness, and the operator confirmed physical power/color control.
+  The temporary node-key recovery build was removed; raw encrypted packet
+  tracing was also removed from the final source.
+- Deleting the old device left orphaned Sequence 3 Start/Stop actions. Scene
+  deletion previously routed through full-record validation, so removing one
+  orphan failed while another remained. `SceneService::removeStep()` now saves
+  deletions transactionally without requiring the intermediate scene to be
+  runnable, cancels obsolete prepared ownership when needed, and lets the panel
+  repair missing targets one row at a time. Native tests pass 61/61 and the
+  desktop UI simulator builds/runs through all captures. Final firmware flash
+  and on-panel Sequence 3 repair remain pending.
 
 ### All-driver dormant-resource audit
 

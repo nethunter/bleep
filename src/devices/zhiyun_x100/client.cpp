@@ -49,9 +49,10 @@ void unregisterNotifyClient(X100Client* client) {
 
 }  // namespace
 
-void X100Client::begin() {
-  if (initialized_) return;
+bool X100Client::begin() {
+  if (initialized_) return true;
   if (notifyStream_ == nullptr) notifyStream_ = xStreamBufferCreate(512, 1);
+  if (notifyStream_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 7000;
@@ -59,15 +60,23 @@ void X100Client::begin() {
   policy.diagnosticTag = "zhiyun_light";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
+  if (!initialized_) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+    return false;
+  }
   registerNotifyClient(this);
+  return true;
 }
 
-void X100Client::beginShared() {
-  if (initialized_ && sharedTransport_) return;
+bool X100Client::beginShared() {
+  if (initialized_ && sharedTransport_) return true;
   if (notifyStream_ == nullptr) notifyStream_ = xStreamBufferCreate(512, 1);
   initialized_ = notifyStream_ != nullptr;
+  if (!initialized_) return false;
   sharedTransport_ = true;
   registerNotifyClient(this);
+  return true;
 }
 
 void X100Client::prepareActivation(studio::InstanceId instanceId,
@@ -98,10 +107,10 @@ void X100Client::prepareActivation(studio::InstanceId instanceId,
   state_.maxBrightness = 100;
 }
 
-void X100Client::activate(studio::InstanceId instanceId, const char* address,
+bool X100Client::activate(studio::InstanceId instanceId, const char* address,
                           uint8_t addressType, const char* name, bool paired) {
   sharedTransport_ = false;
-  begin();
+  if (!begin()) return false;
   prepareActivation(instanceId, address, addressType, name, paired);
   routingSelector_ = 0;
   if (loadMesh()) {
@@ -111,15 +120,16 @@ void X100Client::activate(studio::InstanceId instanceId, const char* address,
       routingSelector_ = node->routingSelector;
     }
   }
-  if (!connectRequested_) return;
+  if (!connectRequested_) return false;
   if (haveTarget_) beginConnect();
   else beginScan();
+  return true;
 }
 
-void X100Client::activateShared(studio::InstanceId instanceId,
+bool X100Client::activateShared(studio::InstanceId instanceId,
                                 const char* address, uint8_t addressType,
                                 const char* name, bool paired) {
-  beginShared();
+  if (!beginShared()) return false;
   prepareActivation(instanceId, address, addressType, name, paired);
   routingSelector_ = 0;
   if (loadMesh()) {
@@ -131,6 +141,7 @@ void X100Client::activateShared(studio::InstanceId instanceId,
   }
   state_.link = X100State::Link::Connecting;
   state_.phase = X100State::Phase::Idle;
+  return true;
 }
 
 bool X100Client::attachShared(void* nativeClient,
@@ -173,6 +184,10 @@ void X100Client::deactivate() {
   provisioningIn_ = nullptr;
   provisioningOut_ = nullptr;
   unregisterNotifyClient(this);
+  if (notifyStream_ != nullptr) {
+    vStreamBufferDelete(static_cast<StreamBufferHandle_t>(notifyStream_));
+    notifyStream_ = nullptr;
+  }
   setupPending_ = false;
   awaitingResponse_ = false;
   operation_ = Operation::None;

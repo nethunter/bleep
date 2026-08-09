@@ -33,10 +33,14 @@ bool CanonBleDriver::activate(const DeviceRecord& record) {
     session = new (std::nothrow) Session;
     if (session == nullptr) return false;
     session->instanceId = record.instanceId;
-    session->client.activate(record.bleAddress, record.bleAddressType,
-                            record.bleName[0] != '\0' ? record.bleName
-                                                      : record.displayName,
-                            record.paired);
+    if (!session->client.activate(
+            record.bleAddress, record.bleAddressType,
+            record.bleName[0] != '\0' ? record.bleName : record.displayName,
+            record.paired)) {
+      delete session;
+      session = nullptr;
+      return false;
+    }
     return true;
   }
   return false;

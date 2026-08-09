@@ -52,6 +52,10 @@ bool decodeProxyAccessMessage(const uint8_t networkKey[16],
                               const uint8_t applicationKey[16],
                               const uint8_t* proxyPdu, size_t proxyLength,
                               uint32_t ivIndex, DecodedAccessMessage& output);
+bool decodeProxyDeviceMessage(const uint8_t networkKey[16],
+                              const uint8_t deviceKey[16],
+                              const uint8_t* proxyPdu, size_t proxyLength,
+                              uint32_t ivIndex, DecodedAccessMessage& output);
 
 bool encodeAccessMessage(const uint8_t networkKey[16],
                          const uint8_t applicationKey[16],
@@ -74,6 +78,11 @@ bool encodeSegmentedDeviceMessage(const uint8_t networkKey[16],
                                   NetworkPduBatch& output, uint8_t ttl = 6);
 bool wrapProxyPdu(const NetworkPdu& network, uint8_t* output,
                   size_t capacity, size_t& outputLength);
+
+// Repairs pre-composition records only when their persisted identity names a
+// model whose vendor tuple has been physically confirmed.
+bool inferKnownVendorModel(const char* displayName, const char* bleName,
+                           uint16_t& companyId, uint16_t& modelId);
 
 uint8_t vendorChecksum(const uint8_t tail[9]);
 

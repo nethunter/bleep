@@ -1354,6 +1354,7 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   activationSequence = 0;
   physicalDriver.firstActivationOrder = 0;
   homeAssistantDriver.firstActivationOrder = 0;
+  physicalDriver.ready = false;
 
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.prepare(sceneId)));
@@ -1365,10 +1366,91 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
   scenes.loop(1);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
-  scenes.loop(250);
+  scenes.loop(1000);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
-  scenes.loop(251);
+  physicalDriver.ready = true;
+  scenes.loop(1001);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(1250);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(1251);
   TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
+  scenes.cancel();
+}
+
+void test_prepared_scene_edit_reorders_home_assistant_before_new_ble_target() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver physicalDriver(studio::DriverId::CanonBle);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  int activationSequence = 0;
+  physicalDriver.activationSequence = &activationSequence;
+  homeAssistantDriver.activationSequence = &activationSequence;
+  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Editable", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  record.stopCount = 1;
+  record.stopSteps[0] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOff);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  scenes.loop(1);
+  TEST_ASSERT_TRUE(
+      devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
+
+  activationSequence = 0;
+  physicalDriver.firstActivationOrder = 0;
+  homeAssistantDriver.firstActivationOrder = 0;
+  record.startCount = 2;
+  record.startSteps[1] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.stopCount = 2;
+  record.stopSteps[1] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStop);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, physicalDriver.firstActivationOrder);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  TEST_ASSERT_TRUE(
+      devices.ownedBy(cameraId, studio::ConnectionOwner::Sequence));
+  TEST_ASSERT_FALSE(
+      devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
+  scenes.loop(2);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
+  scenes.loop(252);
+  TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
+  TEST_ASSERT_TRUE(
+      devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
   scenes.cancel();
 }
 
@@ -2039,6 +2121,73 @@ void test_scene_v1_migration_zeroes_action_arguments() {
   TEST_ASSERT_EQUAL_INT32(0, step.value2);
 }
 
+void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId oldCamera = studio::kInvalidInstanceId;
+  studio::InstanceId newCamera = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Old camera",
+                                   oldCamera)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "New camera",
+                                   newCamera)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Repair", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] =
+      studio::makeActionStep(oldCamera, studio::CommandType::RecordStart);
+  record.stopCount = 1;
+  record.stopSteps[0] =
+      studio::makeActionStep(oldCamera, studio::CommandType::RecordStop);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::RegistryStatus::Ok),
+                        static_cast<int>(devices.remove(oldCamera)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneValidationStatus::MissingTarget),
+      static_cast<int>(scenes.validate(sceneId)));
+
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.removeStep(sceneId, true, 0)));
+  TEST_ASSERT_EQUAL_UINT8(0, scenes.find(sceneId)->startCount);
+  TEST_ASSERT_EQUAL_UINT8(1, scenes.find(sceneId)->stopCount);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneValidationStatus::MissingTarget),
+      static_cast<int>(scenes.validate(sceneId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.removeStep(sceneId, false, 0)));
+  TEST_ASSERT_EQUAL_UINT8(0, scenes.find(sceneId)->stopCount);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneValidationStatus::Empty),
+      static_cast<int>(scenes.validate(sceneId)));
+
+  record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] =
+      studio::makeActionStep(newCamera, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+}
+
 void test_press_record_start_and_authored_stop() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
@@ -2705,9 +2854,39 @@ void test_amaran_crypto_and_network_vectors() {
   proxy[proxyLength - 1] ^= 1;
   TEST_ASSERT_FALSE(amaran_light::decodeProxyAccessMessage(
       networkKey, appKey, proxy, proxyLength, 0, decoded));
+
+  const uint8_t deviceKey[16] = {0x10,0x21,0x32,0x43,0x54,0x65,0x76,0x87,
+      0x98,0xa9,0xba,0xcb,0xdc,0xed,0xfe,0x0f};
+  const uint8_t appKeyStatus[] = {0x80,0x03,0x00,0x00,0x00};
+  TEST_ASSERT_TRUE(amaran_light::encodeDeviceMessage(
+      networkKey, deviceKey, appKeyStatus, sizeof(appKeyStatus), 0x2345,
+      2, 1, 0, network));
+  TEST_ASSERT_TRUE(amaran_light::wrapProxyPdu(
+      network, proxy, sizeof(proxy), proxyLength));
+  TEST_ASSERT_TRUE(amaran_light::decodeProxyDeviceMessage(
+      networkKey, deviceKey, proxy, proxyLength, 0, decoded));
+  TEST_ASSERT_EQUAL_UINT32(0x2345, decoded.sequence);
+  TEST_ASSERT_EQUAL_UINT16(2, decoded.source);
+  TEST_ASSERT_EQUAL_UINT16(1, decoded.destination);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(appKeyStatus), decoded.accessLength);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(
+      appKeyStatus, decoded.access, decoded.accessLength);
 }
 
 void test_amaran_access_payloads_and_validation() {
+  uint16_t companyId = 0;
+  uint16_t modelId = 0;
+  TEST_ASSERT_TRUE(amaran_light::inferKnownVendorModel(
+      "Aputure MC Pro", "", companyId, modelId));
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, modelId);
+  TEST_ASSERT_TRUE(amaran_light::inferKnownVendorModel(
+      "Studio light", "SLCK_BLE", companyId, modelId));
+  TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
+  TEST_ASSERT_FALSE(amaran_light::inferKnownVendorModel(
+      "Unknown light", "", companyId, modelId));
+
   amaran_light::AccessPayload payload;
   TEST_ASSERT_TRUE(amaran_light::buildPowerAccess(true, payload));
   const uint8_t powerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
@@ -2784,6 +2963,7 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   node.controlGroupAddress = 0xc001;
   node.vendorCompanyId = 0x03f6;
   node.vendorModelId = 0x1000;
+  node.configurationVersion = amaran_light::kCurrentConfigurationVersion;
   TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
   amaran_light::MeshNodeRecord zhiyun;
   zhiyun.instanceId = 43;
@@ -2806,6 +2986,8 @@ void test_amaran_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_HEX16(0xc001, loadedNode->controlGroupAddress);
   TEST_ASSERT_EQUAL_HEX16(0x03f6, loadedNode->vendorCompanyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, loadedNode->vendorModelId);
+  TEST_ASSERT_EQUAL_UINT8(amaran_light::kCurrentConfigurationVersion,
+                          loadedNode->configurationVersion);
   TEST_ASSERT_EQUAL_HEX16(
       0xc001, amaran_light::defaultControlGroupAddress(loaded, *loadedNode));
   const amaran_light::MeshNodeRecord fallbackGroupNode = {
@@ -3070,6 +3252,7 @@ int main(int, char**) {
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
+  RUN_TEST(test_prepared_scene_edit_reorders_home_assistant_before_new_ble_target);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_starts_empty_without_legacy_shark);
   RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
@@ -3086,6 +3269,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
+  RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_authored_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);

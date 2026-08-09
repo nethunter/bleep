@@ -129,6 +129,12 @@ bool AmaranRuntime::isPreferredGatewayAddress(const char*) const { return true; 
 #include "core/preferences_store.h"
 #include "devices/amaran_light/protocol.h"
 
+#if ARDUINO_USB_CDC_ON_BOOT
+#define AMARAN_LOG Serial0
+#else
+#define AMARAN_LOG Serial
+#endif
+
 namespace amaran_light {
 namespace {
 
@@ -200,11 +206,48 @@ bool AmaranRuntime::activate(const studio::DeviceRecord& record) {
   if (session == nullptr) return false;
   session->instanceId = record.instanceId;
   session->model = record.driverId;
-  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), record.instanceId);
+  MeshStoreData& meshData = studio::mesh::repository().data();
+  MeshNodeRecord* node = findNode(meshData, record.instanceId);
+  bool nodeChanged = false;
+  MeshNodeRecord previousNode;
+  if (node != nullptr) previousNode = *node;
+  if (node != nullptr && node->vendorCompanyId == 0) {
+    uint16_t companyId = 0;
+    uint16_t modelId = 0;
+    if (inferKnownVendorModel(record.displayName, record.bleName, companyId,
+                              modelId)) {
+      node->vendorCompanyId = companyId;
+      node->vendorModelId = modelId;
+      node->controlGroupAddress = defaultControlGroupAddress(meshData, *node);
+      nodeChanged = true;
+      AMARAN_LOG.printf(
+          "amaran event=legacy_vendor_repaired company=0x%04x model=0x%04x\n",
+          node->vendorCompanyId, node->vendorModelId);
+    }
+  }
+  if (node != nullptr && node->vendorCompanyId != 0 &&
+      node->configurationVersion < kCurrentConfigurationVersion) {
+    node->configured = false;
+    nodeChanged = true;
+  }
+  if (nodeChanged && !studio::mesh::repository().save()) {
+    *node = previousNode;
+    deactivate(record.instanceId);
+    return false;
+  }
   session->state.phase = node == nullptr ? AmaranLightState::Phase::Scanning
                                          : (node->configured ? AmaranLightState::Phase::ConnectingProxy
                                                              : AmaranLightState::Phase::PendingConfig);
-  if (link_ == studio::ble::kInvalidLinkHandle) return beginLink(record.instanceId, node == nullptr);
+  if (link_ == studio::ble::kInvalidLinkHandle) {
+    if (!beginLink(record.instanceId, node == nullptr)) {
+      // beginLink may have acquired a logical BLE slot before its scan/connect
+      // request failed. Roll the session and shared transport back together so
+      // the driver's failed activation does not keep this runtime alive.
+      deactivate(record.instanceId);
+      return false;
+    }
+    return true;
+  }
   if (node == nullptr) {
     linkInstance_ = record.instanceId;
     provisioningLink_ = true;
@@ -213,7 +256,11 @@ bool AmaranRuntime::activate(const studio::DeviceRecord& record) {
   } else if (!provisioningLink_) {
     if (connected_ && !node->configured) {
       linkInstance_ = record.instanceId;
-      configStep_ = 0;
+      configStep_ = 1;
+      configRetryCount_ = 0;
+      configAwaitingStatus_ = false;
+      configBatch_ = NetworkPduBatch{};
+      configBatchIndex_ = 0;
       nextConfigAt_ = millis();
     } else if (connected_) {
       updateSharedReady();
@@ -306,6 +353,9 @@ void AmaranRuntime::releaseGateway(studio::InstanceId instanceId) {
     link_ = studio::ble::kInvalidLinkHandle;
     connected_ = false;
     dataIn_ = nullptr;
+    configAwaitingStatus_ = false;
+    configBatch_ = NetworkPduBatch{};
+    configBatchIndex_ = 0;
     activeRuntime = nullptr;
     ++gatewayGeneration_;
     return;
@@ -392,7 +442,17 @@ void AmaranRuntime::onBleAdvertisement(
 
 void AmaranRuntime::onBleEvent(studio::ble::LinkHandle link,
                                const studio::ble::Event& event) {
-  if (link != link_) return;
+  if (link != link_) {
+    AMARAN_LOG.printf(
+        "amaran event=ble_ignored type=%u event_link=%u runtime_link=%u\n",
+        static_cast<unsigned>(event.type), static_cast<unsigned>(link),
+        static_cast<unsigned>(link_));
+    return;
+  }
+  AMARAN_LOG.printf("amaran event=ble type=%u link=%u instance=%lu\n",
+                    static_cast<unsigned>(event.type),
+                    static_cast<unsigned>(link),
+                    static_cast<unsigned long>(linkInstance_));
   if (event.type == studio::ble::EventType::Connected) {
     connected_ = true;
     const bool ok = provisioningLink_ ? setupProvisioning() : setupProxy();
@@ -403,6 +463,9 @@ void AmaranRuntime::onBleEvent(studio::ble::LinkHandle link,
   } else if (event.type == studio::ble::EventType::Disconnected) {
     connected_ = false;
     dataIn_ = nullptr;
+    configAwaitingStatus_ = false;
+    configBatch_ = NetworkPduBatch{};
+    configBatchIndex_ = 0;
     ++gatewayGeneration_;
     for (auto& session : sessions_) {
       if (session.instanceId == studio::kInvalidInstanceId) continue;
@@ -451,15 +514,40 @@ bool AmaranRuntime::setupProvisioning() {
 bool AmaranRuntime::setupProxy() {
   NimBLEClient* client = static_cast<NimBLEClient*>(studio::ble::bleCentral().nativeClient(link_));
   if (client == nullptr) return false;
+  const uint32_t startedAt = millis();
+  AMARAN_LOG.printf(
+      "amaran event=proxy_service_begin free_heap=%lu max_alloc=%lu\n",
+      static_cast<unsigned long>(ESP.getFreeHeap()),
+      static_cast<unsigned long>(ESP.getMaxAllocHeap()));
   NimBLERemoteService* service = client->getService(NimBLEUUID(kProxyService));
+  AMARAN_LOG.printf(
+      "amaran event=proxy_service_end elapsed_ms=%lu result=%s\n",
+      static_cast<unsigned long>(millis() - startedAt),
+      service != nullptr ? "ok" : "missing");
   if (service == nullptr) return false;
   dataIn_ = service->getCharacteristic(NimBLEUUID(kProxyIn));
   NimBLERemoteCharacteristic* out = service->getCharacteristic(NimBLEUUID(kProxyOut));
-  if (dataIn_ == nullptr || out == nullptr || !out->subscribe(true, notificationCallback, true)) return false;
+  if (dataIn_ == nullptr || out == nullptr) {
+    AMARAN_LOG.printf(
+        "amaran event=proxy_characteristics result=missing in=%u out=%u\n",
+        dataIn_ != nullptr ? 1u : 0u, out != nullptr ? 1u : 0u);
+    return false;
+  }
+  const uint32_t subscribeStartedAt = millis();
+  const bool subscribed = out->subscribe(true, notificationCallback, true);
+  AMARAN_LOG.printf(
+      "amaran event=proxy_subscribe elapsed_ms=%lu result=%s\n",
+      static_cast<unsigned long>(millis() - subscribeStartedAt),
+      subscribed ? "ok" : "failed");
+  if (!subscribed) return false;
   ++gatewayGeneration_;
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node != nullptr && !node->configured) {
-    configStep_ = 0;
+    configStep_ = 1;
+    configRetryCount_ = 0;
+    configAwaitingStatus_ = false;
+    configBatch_ = NetworkPduBatch{};
+    configBatchIndex_ = 0;
     nextConfigAt_ = millis();
   } else {
     studio::ble::bleCentral().markProtocolReady(link_);
@@ -487,7 +575,9 @@ void AmaranRuntime::loop() {
     notifyTail_ = static_cast<uint8_t>((notifyTail_ + 1) % 8);
     processNotification(notification);
   }
-  if (connected_ && !provisioningLink_ &&
+  Session* configuringSession = sessionFor(linkInstance_);
+  if (connected_ && !provisioningLink_ && configuringSession != nullptr &&
+      configuringSession->state.phase != AmaranLightState::Phase::Failed &&
       findNode(studio::mesh::repository().data(), linkInstance_) != nullptr &&
       !findNode(studio::mesh::repository().data(), linkInstance_)->configured &&
       static_cast<int32_t>(now - nextConfigAt_) >= 0) {
@@ -534,6 +624,16 @@ void AmaranRuntime::processNotification(const Notification& notification) {
   }
 
   const MeshStoreData& meshData = studio::mesh::repository().data();
+  const MeshNodeRecord* configuringNode = findNode(meshData, linkInstance_);
+  DecodedAccessMessage configuration;
+  if (configuringNode != nullptr && configAwaitingStatus_ &&
+      decodeProxyDeviceMessage(meshData.network.networkKey,
+                               configuringNode->deviceKey,
+                               notification.bytes, notification.length,
+                               meshData.network.ivIndex, configuration) &&
+      handleConfigurationStatus(configuration)) {
+    return;
+  }
   DecodedAccessMessage decoded;
   if (!decodeProxyAccessMessage(meshData.network.networkKey,
                                 meshData.network.applicationKey,
@@ -569,6 +669,45 @@ void AmaranRuntime::processNotification(const Notification& notification) {
   }
 }
 
+bool AmaranRuntime::handleConfigurationStatus(
+    const DecodedAccessMessage& decoded) {
+  const MeshNodeRecord* node =
+      findNode(studio::mesh::repository().data(), linkInstance_);
+  if (node == nullptr || decoded.source != node->unicastAddress ||
+      decoded.destination !=
+          studio::mesh::repository().data().network.provisionerAddress ||
+      decoded.accessLength < 3) {
+    return false;
+  }
+  const uint16_t opcode = static_cast<uint16_t>(decoded.access[0]) << 8 |
+                          decoded.access[1];
+  const uint16_t expected = configStep_ == 1 ? 0x8003
+                            : (configStep_ == 2 || configStep_ == 5)
+                                ? 0x803e
+                                : (configStep_ >= 3 && configStep_ <= 6)
+                                    ? 0x801f
+                                    : 0;
+  if (opcode != expected) return false;
+  const uint8_t status = decoded.access[2];
+  configAwaitingStatus_ = false;
+  if (status != 0) {
+    if (Session* session = sessionFor(linkInstance_)) {
+      fail(*session, "Mesh config rejected");
+    }
+    AMARAN_LOG.printf(
+        "amaran event=config_status step=%u opcode=0x%04x status=%u result=failed\n",
+        configStep_, opcode, status);
+    return true;
+  }
+  AMARAN_LOG.printf(
+      "amaran event=config_status step=%u opcode=0x%04x status=0 result=ok\n",
+      configStep_, opcode);
+  ++configStep_;
+  configRetryCount_ = 0;
+  nextConfigAt_ = millis() + 100;
+  return true;
+}
+
 bool AmaranRuntime::completeProvisioning() {
   Session* session = sessionFor(linkInstance_);
   if (session == nullptr || !provisioner_.complete()) return false;
@@ -600,6 +739,10 @@ bool AmaranRuntime::completeProvisioning() {
   session->state.phase = AmaranLightState::Phase::PendingConfig;
   session->pairingDirty = true;
   provisioningLink_ = false;
+  connected_ = false;
+  dataIn_ = nullptr;
+  configBatch_ = NetworkPduBatch{};
+  configBatchIndex_ = 0;
   provisioner_.cancel();
   studio::ble::bleCentral().disconnect(link_, false);
   return true;
@@ -607,7 +750,64 @@ bool AmaranRuntime::completeProvisioning() {
 
 bool AmaranRuntime::configureNext() {
   MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
-  if (node == nullptr || dataIn_ == nullptr) return false;
+  if (node == nullptr || dataIn_ == nullptr) {
+    AMARAN_LOG.printf(
+        "amaran event=config_failed step=%u reason=missing_state node=%u in=%u\n",
+        configStep_, node != nullptr ? 1u : 0u, dataIn_ != nullptr ? 1u : 0u);
+    return false;
+  }
+  if (configBatch_.count != 0) {
+    const uint8_t index = configBatchIndex_;
+    uint8_t proxy[70];
+    size_t proxyLength = 0;
+    if (index >= configBatch_.count ||
+        !wrapProxyPdu(configBatch_.pdus[index], proxy, sizeof(proxy),
+                      proxyLength) ||
+        !dataIn_->writeValue(proxy, proxyLength, false)) {
+      AMARAN_LOG.printf(
+          "amaran event=config_failed step=%u reason=segment_write index=%u\n",
+          configStep_, index);
+      configBatch_ = NetworkPduBatch{};
+      configBatchIndex_ = 0;
+      return false;
+    }
+    ++configBatchIndex_;
+    AMARAN_LOG.printf(
+        "amaran event=config_segment_sent step=%u index=%u count=%u\n",
+        configStep_, index, configBatch_.count);
+    if (configBatchIndex_ < configBatch_.count) {
+      nextConfigAt_ = millis() + 350;
+    } else {
+      const uint8_t sentCount = configBatch_.count;
+      configBatch_ = NetworkPduBatch{};
+      configBatchIndex_ = 0;
+      configAwaitingStatus_ = true;
+      configStatusDeadlineMs_ = millis() + 2500;
+      nextConfigAt_ = configStatusDeadlineMs_;
+      AMARAN_LOG.printf("amaran event=config_sent step=%u pdus=%u\n",
+                        configStep_, sentCount);
+    }
+    return true;
+  }
+  AMARAN_LOG.printf("amaran event=config_begin step=%u\n", configStep_);
+  if (configAwaitingStatus_) {
+    if (static_cast<int32_t>(millis() - configStatusDeadlineMs_) < 0) {
+      return true;
+    }
+    configAwaitingStatus_ = false;
+    if (configRetryCount_ >= 2) {
+      if (Session* session = sessionFor(linkInstance_)) {
+        fail(*session, "Mesh config timeout");
+      }
+      AMARAN_LOG.printf(
+          "amaran event=config_failed step=%u reason=status_timeout\n",
+          configStep_);
+      return false;
+    }
+    ++configRetryCount_;
+    AMARAN_LOG.printf("amaran event=config_retry step=%u attempt=%u\n",
+                      configStep_, configRetryCount_);
+  }
   uint8_t access[24] = {}; size_t length = 0;
   const uint16_t element = node->unicastAddress;
   const uint16_t commonGroup =
@@ -633,6 +833,9 @@ bool AmaranRuntime::configureNext() {
         if (Session* session = sessionFor(node->instanceId)) {
           fail(*session, "Unknown vendor model");
         }
+        AMARAN_LOG.printf(
+            "amaran event=config_failed step=%u reason=unknown_vendor\n",
+            configStep_);
         return false;
       }
       access[0] = 0x80; access[1] = 0x3d;
@@ -664,7 +867,15 @@ bool AmaranRuntime::configureNext() {
       break;
     default: {
       node->configured = true;
-      if (!studio::mesh::repository().save()) return false;
+      node->configurationVersion = kCurrentConfigurationVersion;
+      if (!studio::mesh::repository().save()) {
+        node->configured = false;
+        node->configurationVersion = 0;
+        AMARAN_LOG.printf(
+            "amaran event=config_failed step=%u reason=save\n", configStep_);
+        return false;
+      }
+      AMARAN_LOG.printf("amaran event=config_complete step=%u\n", configStep_);
       studio::ble::bleCentral().markProtocolReady(link_);
       updateSharedReady();
       refreshGroupPower();
@@ -673,23 +884,37 @@ bool AmaranRuntime::configureNext() {
   }
   const size_t pduCount = length <= 11 ? 1 : (length + 4 + 11) / 12;
   uint32_t sequences[4] = {};
-  for (size_t i = 0; i < pduCount; ++i) if (!studio::mesh::repository().sequences().next(sequences[i])) return false;
+  for (size_t i = 0; i < pduCount; ++i) {
+    if (!studio::mesh::repository().sequences().next(sequences[i])) {
+      AMARAN_LOG.printf(
+          "amaran event=config_failed step=%u reason=sequence index=%u\n",
+          configStep_, static_cast<unsigned>(i));
+      return false;
+    }
+  }
   NetworkPduBatch batch;
   if (pduCount == 1) {
     batch.count = 1;
     if (!encodeDeviceMessage(studio::mesh::repository().data().network.networkKey, node->deviceKey,
         access, length, sequences[0], studio::mesh::repository().data().network.provisionerAddress,
-        node->unicastAddress, studio::mesh::repository().data().network.ivIndex, batch.pdus[0])) return false;
+        node->unicastAddress, studio::mesh::repository().data().network.ivIndex, batch.pdus[0])) {
+      AMARAN_LOG.printf(
+          "amaran event=config_failed step=%u reason=encode\n", configStep_);
+      return false;
+    }
   } else if (!encodeSegmentedDeviceMessage(studio::mesh::repository().data().network.networkKey,
       node->deviceKey, access, length, sequences, pduCount,
       studio::mesh::repository().data().network.provisionerAddress, node->unicastAddress,
-      studio::mesh::repository().data().network.ivIndex, batch)) return false;
-  for (uint8_t i = 0; i < batch.count; ++i) {
-    uint8_t proxy[70]; size_t proxyLength=0;
-    if (!wrapProxyPdu(batch.pdus[i], proxy, sizeof(proxy), proxyLength) ||
-        !dataIn_->writeValue(proxy, proxyLength, false)) return false;
+      studio::mesh::repository().data().network.ivIndex, batch)) {
+    AMARAN_LOG.printf(
+        "amaran event=config_failed step=%u reason=encode_segmented\n",
+        configStep_);
+    return false;
   }
-  ++configStep_; nextConfigAt_ = millis() + 400; return true;
+  configBatch_ = batch;
+  configBatchIndex_ = 0;
+  nextConfigAt_ = millis();
+  return true;
 }
 
 bool AmaranRuntime::sendAccess(studio::InstanceId id, const uint8_t* access, size_t length) {
