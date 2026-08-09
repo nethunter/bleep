@@ -2,7 +2,7 @@
 
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 
 namespace recorder_shell {
 
@@ -156,36 +156,18 @@ void build(const Options& options, const Callbacks& nextCallbacks) {
   lv_obj_set_style_text_color(root, lv_color_hex(kText), 0);
   lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* back = lv_btn_create(root);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
-  lv_obj_set_style_bg_color(back, lv_color_hex(kPanel), 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* backLabel = lv_label_create(back);
-  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
-  lv_obj_center(backLabel);
-
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBack;
+  headerOptions.panelColor = kPanel;
+  headerOptions.textColor = kText;
   if (powerFeature) {
-    powerButton = lv_btn_create(root);
-    lv_obj_set_size(powerButton, 34, 30);
-    lv_obj_align(powerButton, LV_ALIGN_TOP_RIGHT, -40, 22);
-    lv_obj_set_style_bg_color(powerButton, lv_color_hex(kPanel), 0);
-    lv_obj_set_style_opa(powerButton, LV_OPA_40,
-                         LV_PART_MAIN | LV_STATE_DISABLED);
-    lv_obj_set_style_shadow_width(powerButton, 0, 0);
-    lv_obj_add_event_cb(powerButton, onPower, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* powerLabel = lv_label_create(powerButton);
-    lv_label_set_text(powerLabel, LV_SYMBOL_POWER);
-    lv_obj_set_style_text_font(powerLabel, UI_FONT_16, 0);
-    lv_obj_center(powerLabel);
+    headerOptions.actionSymbol = LV_SYMBOL_POWER;
+    headerOptions.onAction = onPower;
   }
-
-  titleLabel = lv_label_create(root);
-  studio_ui::configureTitleMarquee(titleLabel, powerFeature ? 92 : 132,
-                                   UI_FONT_16);
-  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, powerFeature ? 0 : 15, 29);
+  const studio_ui::RoundPageHeader header =
+      studio_ui::createRoundPageHeader(root, headerOptions);
+  titleLabel = header.title;
+  powerButton = header.action;
 
   statusLabel = lv_label_create(root);
   lv_obj_set_style_text_font(statusLabel, UI_FONT_16, 0);
@@ -271,7 +253,8 @@ void apply(const View& view) {
   if (root == nullptr) {
     return;
   }
-  lv_label_set_text(titleLabel, view.title != nullptr ? view.title : "");
+  studio_ui::setRoundPageTitle(titleLabel,
+                               view.title != nullptr ? view.title : "");
   lv_label_set_text(statusLabel, view.status != nullptr ? view.status : "");
   lv_label_set_text(detailLabel, view.detail != nullptr ? view.detail : "");
   setPowerEnabled(view.powerEnabled);

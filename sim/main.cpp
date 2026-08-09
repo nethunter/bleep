@@ -839,6 +839,7 @@ int main() {
   if (!capture("22d_scenes_add_action")) {
     return 1;
   }
+  lv_anim_del_all();
   picker_shell::simShowLightColor(picker_shell::Mode::SceneStep, pano60Id,
                                   false);
   pump(200);

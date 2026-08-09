@@ -9,7 +9,7 @@
 #include "devices/canon_trigger/state.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 #include "../../ui.h"
 
 namespace canon_trigger_ui {
@@ -143,20 +143,12 @@ void ensureScreen() {
   lv_obj_set_style_text_color(screen, lv_color_hex(kText), 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* back = lv_btn_create(screen);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
-  lv_obj_set_style_bg_color(back, lv_color_hex(kPanel), 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* backLabel = lv_label_create(back);
-  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
-  lv_obj_center(backLabel);
-
-  titleLabel = lv_label_create(screen);
-  studio_ui::configureTitleMarquee(titleLabel, 132, UI_FONT_16);
-  lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 15, 29);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBack;
+  headerOptions.panelColor = kPanel;
+  headerOptions.textColor = kText;
+  titleLabel =
+      studio_ui::createRoundPageHeader(screen, headerOptions).title;
 
   statusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(statusLabel, UI_FONT_14, 0);
@@ -203,7 +195,8 @@ void show(studio::InstanceId id) {
   ensureScreen();
   instanceId = id;
   const studio::DeviceRecord* record = studio::devices().find(id);
-  lv_label_set_text(titleLabel, record != nullptr ? record->displayName : "");
+  studio_ui::setRoundPageTitle(
+      titleLabel, record != nullptr ? record->displayName : "");
   visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) {
     instanceId = studio::kInvalidInstanceId;

@@ -4,15 +4,13 @@
 #include <lvgl.h>
 
 #include <cstdio>
-#include <cstring>
-
 #include "core/device_manager.h"
 #include "devices/zhiyun_x100/protocol.h"
 #include "devices/zhiyun_x100/state.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 #include "../../ui.h"
 
 namespace zhiyun_x100_ui {
@@ -200,12 +198,11 @@ void ensure() {
   lv_obj_set_style_text_color(screen, lv_color_hex(kText), 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* back = makeButton(screen, LV_SYMBOL_LEFT, onBackEvent);
-  lv_obj_set_size(back, 30, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 34, 24);
-  title = lv_label_create(screen);
-  studio_ui::configureTitleMarquee(title, 120, UI_FONT_16);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 10, 29);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBackEvent;
+  headerOptions.panelColor = kPanel;
+  headerOptions.textColor = kText;
+  title = studio_ui::createRoundPageHeader(screen, headerOptions).title;
   status = lv_label_create(screen);
   lv_obj_set_width(status, 170);
   lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
@@ -345,13 +342,8 @@ void refresh() {
   if (state == nullptr || state->phase != zhiyun_x100::X100State::Phase::Ready)
     return;
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  lv_label_set_text(title,
-                    record != nullptr ? record->displayName : "Zhiyun Light");
-  lv_obj_set_style_text_font(
-      title,
-      record != nullptr && std::strlen(record->displayName) > 11 ? UI_FONT_14
-                                                                 : UI_FONT_16,
-      0);
+  studio_ui::setRoundPageTitle(
+      title, record != nullptr ? record->displayName : "Zhiyun Light");
   const bool rgbSupported = zhiyun_x100::supportsRgb(state->model);
   if (rgbSupported) {
     lv_obj_clear_flag(modeRgb, LV_OBJ_FLAG_HIDDEN);

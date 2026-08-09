@@ -87,9 +87,14 @@ Follow these rules while building:
 
 ## Build, flash, and verify (do this after finishing a task)
 
-After completing any code change, **always try to compile and flash to the
-connected board**, then report the result. Treat a clean build as the minimum
-bar; a successful flash is the goal whenever a board is attached.
+After completing any code change, always compile the full Montserrat firmware
+profile (`crowpanel_128`). Do not build the Roboto or driver-specific firmware
+profiles locally; GitHub Actions owns verification of those variants. Treat a
+clean full-profile build as the minimum bar.
+
+When working in the main checkout, also try to flash the connected board and
+report the result. When working in a Git worktree, do not flash automatically;
+ask the user for approval before running an upload.
 
 Run host tests whenever host-testable protocol, state, registry, persistence,
 driver-catalog, command-routing, or scene logic changes:
@@ -98,9 +103,9 @@ driver-catalog, command-routing, or scene logic changes:
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
 ```
 
-Build every affected firmware profile. At minimum, verify `crowpanel_128`; also
-verify alternate profiles when shared configuration, fonts, drivers, or
-transports change.
+Locally build only `crowpanel_128`, the full Montserrat profile. Rely on GitHub
+Actions for alternate font and isolated driver profiles, including when shared
+configuration, fonts, drivers, or transports change.
 
 Use the workspace-local PlatformIO (preferred, matches `README.md`):
 
@@ -130,6 +135,7 @@ once the firmware swap path is unchanged.
 
 Flashing notes:
 
+- In a Git worktree, obtain explicit user approval before any flash attempt.
 - The upload/monitor port is set in `platformio.ini`
   (`/dev/cu.usbserial-211240`). If upload fails because the port is missing,
   the board is likely unplugged or unavailable — report this instead of guessing

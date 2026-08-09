@@ -14,7 +14,7 @@
 #include "haptic_feedback.h"
 #include "ui.h"
 #include "ui/picker_shell.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 
 namespace scene_ui {
 namespace {
@@ -27,9 +27,6 @@ constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
 constexpr uint32_t kColOk = 0x3DDC97;
 constexpr uint32_t kColConnecting = 0x35C7F2;
-
-constexpr lv_coord_t kRoundBackX = 40;
-constexpr lv_coord_t kRoundBackY = 36;
 
 enum class View : uint8_t { List, Run, Edit };
 
@@ -470,18 +467,17 @@ void buildSettingsOverlay() {
   lv_obj_set_style_pad_all(settingsOverlay, 0, 0);
   lv_obj_clear_flag(settingsOverlay, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* close = makeButton(settingsOverlay, LV_SYMBOL_CLOSE, onCloseSettings);
-  lv_obj_set_size(close, 30, 30);
-  lv_obj_align(close, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  lv_obj_t* title = lv_label_create(settingsOverlay);
-  lv_label_set_text(title, "Settings");
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 10, 30);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = "Settings";
+  header.backSymbol = LV_SYMBOL_CLOSE;
+  header.onBack = onCloseSettings;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  studio_ui::createRoundPageHeader(settingsOverlay, header);
 
   lv_obj_t* body = lv_obj_create(settingsOverlay);
   lv_obj_set_size(body, 168, 140);
-  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, studio_ui::kRoundPageContentY);
   lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(body, 0, 0);
   lv_obj_set_style_pad_row(body, 4, 0);
@@ -687,10 +683,10 @@ void refreshList() {
 void refreshRun() {
   const studio::SceneRecord* record = studio::scenes().find(currentScene);
   if (record == nullptr) {
-    lv_label_set_text(runTitle, "Missing");
+    studio_ui::setRoundPageTitle(runTitle, "Missing");
     return;
   }
-  lv_label_set_text(runTitle, record->name);
+  studio_ui::setRoundPageTitle(runTitle, record->name);
   const studio::SceneProgress& progress = studio::scenes().progress();
   const bool forScene = progress.sceneId == currentScene;
   const bool targetsReady = allTargetsReady(*record);
@@ -885,7 +881,8 @@ void refreshEdit() {
   if (record == nullptr) {
     return;
   }
-  lv_label_set_text(editTitle, editingStart ? "Start steps" : "Stop steps");
+  studio_ui::setRoundPageTitle(editTitle,
+                               editingStart ? "Start steps" : "Stop steps");
   lv_obj_clean(editBody);
   const studio::SceneStep* steps =
       editingStart ? record->startSteps : record->stopSteps;
@@ -955,18 +952,17 @@ void buildList() {
   scrList = lv_obj_create(nullptr);
   styleScreen(scrList);
 
-  lv_obj_t* back = makeButton(scrList, LV_SYMBOL_LEFT, onBackToHome);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
-
-  lv_obj_t* title = lv_label_create(scrList);
-  lv_label_set_text(title, "Scenes");
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = "Scenes";
+  header.onBack = onBackToHome;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  studio_ui::createRoundPageHeader(scrList, header);
 
   listBody = lv_obj_create(scrList);
   lv_obj_set_size(listBody, 188, 118);
-  lv_obj_align(listBody, LV_ALIGN_TOP_MID, 0, 58);
+  lv_obj_align(listBody, LV_ALIGN_TOP_MID, 0,
+               studio_ui::kRoundPageContentY);
   lv_obj_set_style_bg_opa(listBody, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(listBody, 0, 0);
   lv_obj_set_style_pad_row(listBody, 4, 0);
@@ -983,17 +979,16 @@ void buildRun() {
   scrRun = lv_obj_create(nullptr);
   styleScreen(scrRun);
 
-  lv_obj_t* back = makeButton(scrRun, LV_SYMBOL_LEFT, onBackToList);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
-
-  settingsButton = makeButton(scrRun, LV_SYMBOL_SETTINGS, onOpenSettings);
-  lv_obj_set_size(settingsButton, 34, 30);
-  lv_obj_align(settingsButton, LV_ALIGN_TOP_RIGHT, -40, 22);
-
-  runTitle = lv_label_create(scrRun);
-  studio_ui::configureTitleMarquee(runTitle, 92, UI_FONT_16);
-  lv_obj_align(runTitle, LV_ALIGN_TOP_MID, 0, 29);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBackToList;
+  headerOptions.actionSymbol = LV_SYMBOL_SETTINGS;
+  headerOptions.onAction = onOpenSettings;
+  headerOptions.panelColor = kColPanel;
+  headerOptions.textColor = kColText;
+  const studio_ui::RoundPageHeader header =
+      studio_ui::createRoundPageHeader(scrRun, headerOptions);
+  runTitle = header.title;
+  settingsButton = header.action;
 
   runChipRow = lv_obj_create(scrRun);
   lv_obj_set_size(runChipRow, 184, 59);
@@ -1029,17 +1024,17 @@ void buildEdit() {
   scrEdit = lv_obj_create(nullptr);
   styleScreen(scrEdit);
 
-  lv_obj_t* back = makeButton(scrEdit, LV_SYMBOL_LEFT, onBackToRun);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, kRoundBackY);
-
-  editTitle = lv_label_create(scrEdit);
-  lv_obj_set_style_text_font(editTitle, UI_FONT_16, 0);
-  lv_obj_align(editTitle, LV_ALIGN_TOP_MID, 12, 42);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBackToRun;
+  headerOptions.panelColor = kColPanel;
+  headerOptions.textColor = kColText;
+  editTitle =
+      studio_ui::createRoundPageHeader(scrEdit, headerOptions).title;
 
   editBody = lv_obj_create(scrEdit);
   lv_obj_set_size(editBody, 188, 158);
-  lv_obj_align(editBody, LV_ALIGN_TOP_MID, 0, 68);
+  lv_obj_align(editBody, LV_ALIGN_TOP_MID, 0,
+               studio_ui::kRoundPageContentY);
   lv_obj_set_style_bg_opa(editBody, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(editBody, 0, 0);
   lv_obj_set_style_pad_all(editBody, 2, 0);

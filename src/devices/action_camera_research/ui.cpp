@@ -5,6 +5,7 @@
 #include "core/device_manager.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
+#include "ui/round_page.h"
 #include "../../ui.h"
 
 namespace action_camera_research_ui {
@@ -25,20 +26,11 @@ void ensureScreen() {
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x05070A), 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF3F4F6), 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* back = lv_btn_create(screen);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 22);
-  lv_obj_set_style_bg_color(back, lv_color_hex(0x171B22), 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* backLabel = lv_label_create(back);
-  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(backLabel, UI_FONT_16, 0);
-  lv_obj_center(backLabel);
-  lv_obj_t* title = lv_label_create(screen);
-  lv_label_set_text(title, "PROTOCOL RESEARCH");
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 16, 29);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = "PROTOCOL RESEARCH";
+  header.onBack = onBack;
+  header.panelColor = 0x171B22;
+  studio_ui::createRoundPageHeader(screen, header);
   lv_obj_t* body = lv_label_create(screen);
   lv_label_set_text(body, "CAPTURE REQUIRED\n\nThis camera family is listed,\nbut pairing is blocked until its\nBLE protocol is verified.");
   lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);

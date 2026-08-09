@@ -1,7 +1,7 @@
 #include "ui/ble_pairing_screen.h"
 
 #include "fonts/ui_fonts.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 
 namespace studio_ui {
 namespace {
@@ -38,13 +38,12 @@ void BlePairingScreen::create(lv_event_cb_t onBack, lv_event_cb_t onRetry) {
   lv_obj_set_style_text_color(screen_, lv_color_hex(kText), 0);
   lv_obj_clear_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* back = button(screen_, "<", onBack);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 36);
-
-  title_ = lv_label_create(screen_);
-  configureTitleMarquee(title_, 126, UI_FONT_20);
-  lv_obj_align(title_, LV_ALIGN_TOP_MID, 20, 39);
+  RoundPageHeaderOptions headerOptions;
+  headerOptions.title = "Bluetooth";
+  headerOptions.onBack = onBack;
+  headerOptions.panelColor = kPanel;
+  headerOptions.textColor = kText;
+  title_ = createRoundPageHeader(screen_, headerOptions).title;
 
   spinner_ = lv_spinner_create(screen_, 900, 75);
   lv_obj_set_size(spinner_, 68, 68);
@@ -87,7 +86,7 @@ void BlePairingScreen::destroy() {
 }
 
 void BlePairingScreen::setTitle(const char* title) {
-  if (title_ != nullptr) lv_label_set_text(title_, title != nullptr ? title : "Bluetooth");
+  studio_ui::setRoundPageTitle(title_, title != nullptr ? title : "Bluetooth");
 }
 
 void BlePairingScreen::setStatus(const char* status, const char* detail,

@@ -1,6 +1,7 @@
 .pio/
 .platformio-core/
 .venv/
+tmp/
 sim/screenshots/
 .DS_Store
 *.swp

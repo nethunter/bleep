@@ -10,7 +10,7 @@
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 #include "../../ui.h"
 
 namespace amaran_light_ui {
@@ -65,8 +65,7 @@ lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj
   slider=lv_slider_create(row);lv_obj_set_size(slider,104,10);lv_obj_align(slider,LV_ALIGN_RIGHT_MID,0,0);lv_slider_set_range(slider,min,max);lv_obj_add_event_cb(slider,markDirty,LV_EVENT_VALUE_CHANGED,nullptr);return row;
 }
 void ensure(){if(screen)return;screen=lv_obj_create(nullptr);lv_obj_set_style_bg_color(screen,lv_color_hex(kBg),0);lv_obj_set_style_text_color(screen,lv_color_hex(kText),0);lv_obj_clear_flag(screen,LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* back=button(screen,LV_SYMBOL_LEFT,onBack);lv_obj_set_size(back,30,30);lv_obj_align(back,LV_ALIGN_TOP_LEFT,34,24);
-  title=lv_label_create(screen);studio_ui::configureTitleMarquee(title,120,UI_FONT_16);lv_obj_align(title,LV_ALIGN_TOP_MID,10,29);
+  studio_ui::RoundPageHeaderOptions headerOptions;headerOptions.onBack=onBack;headerOptions.panelColor=kPanel;headerOptions.textColor=kText;title=studio_ui::createRoundPageHeader(screen,headerOptions).title;
   status=lv_label_create(screen);lv_obj_set_width(status,170);lv_obj_set_style_text_align(status,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(status,UI_FONT_14,0);lv_obj_set_style_text_color(status,lv_color_hex(kMuted),0);lv_obj_align(status,LV_ALIGN_TOP_MID,0,51);
   modeCct=button(screen,"CCT",onCct,kAccent);lv_obj_set_size(modeCct,58,27);lv_obj_align(modeCct,LV_ALIGN_TOP_MID,-33,72);
   modeRgb=button(screen,"RGB",onRgb);lv_obj_set_size(modeRgb,58,27);lv_obj_align(modeRgb,LV_ALIGN_TOP_MID,33,72);
@@ -91,7 +90,7 @@ void showForState(const amaran_light::AmaranLightState* s){
   const char* detail=scanning?"Factory-reset light nearby":failed?"Check light and try again":"Keep the light powered on";
   pairingScreen.setStatus(phase(s),detail,!failed,scanning||failed,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());
 }
-void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Amaran");lv_label_set_text(status,phase(s));if(!s)return;
+void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));studio_ui::setRoundPageTitle(title,r?r->displayName:"Amaran");lv_label_set_text(status,phase(s));if(!s)return;
   if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=hsv.s;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==amaran_light::AmaranLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
   lv_obj_set_style_bg_color(power,lv_color_hex(s->on?kDanger:kAccent),0);
 }

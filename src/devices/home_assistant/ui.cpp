@@ -7,7 +7,7 @@
 #include "devices/home_assistant/client.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
-#include "ui/title_marquee.h"
+#include "ui/round_page.h"
 #include "../../ui.h"
 
 namespace home_assistant_ui {
@@ -95,24 +95,23 @@ void build() {
   lv_obj_set_style_bg_color(screen, lv_color_hex(kBg), 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(kText), 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* back = button(screen, LV_SYMBOL_LEFT, onBack, kPanel);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, 40, 36);
-  title = lv_label_create(screen);
-  studio_ui::configureTitleMarquee(title, 126, UI_FONT_16);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 10, 42);
+  studio_ui::RoundPageHeaderOptions headerOptions;
+  headerOptions.onBack = onBack;
+  headerOptions.panelColor = kPanel;
+  headerOptions.textColor = kText;
+  title = studio_ui::createRoundPageHeader(screen, headerOptions).title;
   status = lv_label_create(screen);
   lv_obj_set_width(status, 180);
   lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(status, UI_FONT_20, 0);
-  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 83);
+  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 69);
   entity = lv_label_create(screen);
   lv_obj_set_width(entity, 178);
   lv_label_set_long_mode(entity, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(entity, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(entity, UI_FONT_14, 0);
   lv_obj_set_style_text_color(entity, lv_color_hex(kMuted), 0);
-  lv_obj_align(entity, LV_ALIGN_TOP_MID, 0, 113);
+  lv_obj_align(entity, LV_ALIGN_TOP_MID, 0, 99);
   primary = button(screen, "ON", onPrimary, kOk);
   lv_obj_set_size(primary, 76, 38);
   lv_obj_align(primary, LV_ALIGN_BOTTOM_MID, -42, -29);
@@ -137,7 +136,8 @@ void refresh() {
        record->homeAssistantDomain == studio::HomeAssistantDomain::InputBoolean);
   const bool toggleOnly = record != nullptr &&
       record->homeAssistantDomain == studio::HomeAssistantDomain::InputBoolean;
-  lv_label_set_text(title, record != nullptr ? record->displayName : "HA Entity");
+  studio_ui::setRoundPageTitle(
+      title, record != nullptr ? record->displayName : "HA Entity");
   lv_label_set_text(entity, record != nullptr ? record->homeAssistantEntityId : "");
   if (runtime.link == studio::LinkState::Connecting) {
     lv_label_set_text(status, "CONNECTING");

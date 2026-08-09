@@ -19,6 +19,7 @@
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
+#include "ui/round_page.h"
 #include "ui/title_marquee.h"
 #include "portal_service.h"
 #if CONFIG_DRIVER_CANON_BLE
@@ -72,10 +73,6 @@ constexpr uint32_t kColAccent = 0x35C7F2;
 constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
-
-// Keep corner chrome inside the 240 round panel's inscribed circle.
-constexpr lv_coord_t kRoundBackX = 40;
-constexpr lv_coord_t kRoundBackY = 36;
 
 enum class Screen : uint8_t { Home, Devices, Portal, Settings };
 enum class SettingsView : uint8_t { Menu, Wifi, About, SystemInfo, FactoryReset };
@@ -711,15 +708,12 @@ lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
   lv_obj_set_style_pad_all(settingsHeader, 0, 0);
   lv_obj_clear_flag(settingsHeader, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(settingsHeader, LV_OBJ_FLAG_FLOATING);
-  lv_obj_t* backButton = makeButton(settingsHeader, LV_SYMBOL_LEFT, back);
-  lv_obj_set_size(backButton, 34, 30);
-  lv_obj_clear_flag(backButton, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_bg_opa(backButton, LV_OPA_TRANSP, 0);
-  lv_obj_align(backButton, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
-  lv_obj_t* heading = lv_label_create(settingsHeader);
-  lv_label_set_text(heading, title);
-  lv_obj_set_style_text_font(heading, UI_FONT_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, 28);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = title;
+  header.onBack = back;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  studio_ui::createRoundPageHeader(settingsHeader, header);
   return scrSettings;
 }
 
@@ -994,14 +988,14 @@ void buildHome() {
   scrHome = lv_obj_create(nullptr);
   styleScreen(scrHome);
 
-  lv_obj_t* title = lv_label_create(scrHome);
-  lv_label_set_text(title, "Ble(e)p");
-  lv_obj_set_style_text_font(title, UI_FONT_20, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
-
-  lv_obj_t* settings = makeButton(scrHome, LV_SYMBOL_SETTINGS, onShowSettings);
-  lv_obj_set_size(settings, 30, 30);
-  lv_obj_align(settings, LV_ALIGN_TOP_RIGHT, -34, 24);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = "Ble(e)p";
+  header.actionSymbol = LV_SYMBOL_SETTINGS;
+  header.onAction = onShowSettings;
+  header.titleFont = UI_FONT_20;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  studio_ui::createRoundPageHeader(scrHome, header);
 
   lv_obj_t* grid = lv_obj_create(scrHome);
   lv_obj_set_size(grid, 164, 158);
@@ -1026,18 +1020,17 @@ void buildDevices() {
   scrDevices = lv_obj_create(nullptr);
   styleScreen(scrDevices);
 
-  lv_obj_t* back = makeButton(scrDevices, LV_SYMBOL_LEFT, onShowHome);
-  lv_obj_set_size(back, 34, 30);
-  lv_obj_align(back, LV_ALIGN_TOP_LEFT, kRoundBackX, 24);
-
-  lv_obj_t* title = lv_label_create(scrDevices);
-  lv_label_set_text(title, "Devices");
-  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+  studio_ui::RoundPageHeaderOptions header;
+  header.title = "Devices";
+  header.onBack = onShowHome;
+  header.panelColor = kColPanel;
+  header.textColor = kColText;
+  studio_ui::createRoundPageHeader(scrDevices, header);
 
   deviceList = lv_obj_create(scrDevices);
   lv_obj_set_size(deviceList, 200, 158);
-  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0, 58);
+  lv_obj_align(deviceList, LV_ALIGN_TOP_MID, 0,
+               studio_ui::kRoundPageContentY);
   lv_obj_set_style_bg_opa(deviceList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(deviceList, 0, 0);
   lv_obj_set_style_pad_all(deviceList, 2, 0);

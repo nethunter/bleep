@@ -9,6 +9,7 @@
 #include "core/driver_catalog.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
+#include "ui/round_page.h"
 #include "ui/title_marquee.h"
 
 namespace picker_shell {
@@ -706,7 +707,8 @@ void refreshActions() {
   const studio::InstanceProfile profile =
       device != nullptr ? studio::devices().profile(device->instanceId)
                         : studio::InstanceProfile{};
-  lv_label_set_text(titleLabel, device != nullptr ? device->displayName : "Action");
+  lv_label_set_text(titleLabel,
+                    device != nullptr ? device->displayName : "Action");
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(body, 6, 0);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
