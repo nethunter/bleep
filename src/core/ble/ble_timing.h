@@ -36,4 +36,24 @@ inline void logTiming(const char* driver, LinkHandle link, const char* stage,
 #endif
 }
 
+inline void logEventReason(const char* driver, LinkHandle link,
+                           const char* event, int reason) {
+#if defined(ARDUINO)
+#if ARDUINO_USB_CDC_ON_BOOT
+  Print& output = Serial0;
+#else
+  Print& output = Serial;
+#endif
+  output.printf("ble_event driver=%s link=%u event=%s reason=%d\n",
+                driver != nullptr ? driver : "ble",
+                static_cast<unsigned>(link),
+                event != nullptr ? event : "unknown", reason);
+#else
+  (void)driver;
+  (void)link;
+  (void)event;
+  (void)reason;
+#endif
+}
+
 }  // namespace studio::ble

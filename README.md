@@ -327,7 +327,15 @@ releases sequence ownership so Rename and the Start/Stop editors are immediately
 usable; it does not interrupt an active Start, armed recording, Stop, or a
 partial action failure that still permits Stop cleanup. Back or Done also
 releases sequence ownership while ready device sessions remain available for
-immediate reuse. Device management offers an explicit Disconnect action.
+immediate reuse. Mixed BLE/Home Assistant scenes give cold physical targets and
+deferred HA connection separate bounded preparation windows. Switching to a
+scene that uses the same HA entity transfers its ownership without an idle gap,
+keeping the retained Wi-Fi/WebSocket session protected even while new physical
+targets prepare. Old-only targets lose sequence ownership but remain retained
+while the four-resource pool has capacity; normal LRU eviction reclaims one
+only when a new acquisition actually needs room. A shared physical transport
+group is likewise protected when any member remains in the next scene. Device
+management offers an explicit Disconnect action.
 
 ## How the firmware is organized
 

@@ -1529,12 +1529,13 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
       static_cast<int>(scenes.replace(record)));
 
   // Reproduce navigation from a retained HA entity screen into the sequence.
+  // Because HA is a target, it stays pooled while the physical target starts.
   TEST_ASSERT_TRUE(
       devices.acquire(helperId, studio::ConnectionOwner::Foreground));
   devices.release(helperId, studio::ConnectionOwner::Foreground);
   TEST_ASSERT_TRUE(devices.isActive(helperId));
-  // Reproduce switching from a protocol-ready lights scene. Its retained mesh
-  // is not a target of the mixed studio scene and must be gone before Wi-Fi.
+  // Reproduce switching from a protocol-ready lights scene. It is not a target
+  // of the mixed studio scene, but capacity remains and the pool retains it.
   TEST_ASSERT_TRUE(
       devices.acquire(lightId, studio::ConnectionOwner::Sequence));
   devices.loop();
@@ -1547,9 +1548,9 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
 
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.prepare(sceneId)));
-  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.deactivationCount);
-  TEST_ASSERT_EQUAL_INT(1, retainedLightDriver.deactivationCount);
-  TEST_ASSERT_FALSE(devices.isActive(lightId));
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(0, retainedLightDriver.deactivationCount);
+  TEST_ASSERT_TRUE(devices.isActive(lightId));
   TEST_ASSERT_EQUAL_INT(0, physicalDriver.deactivationCount);
   TEST_ASSERT_EQUAL_INT(1, physicalDriver.firstActivationOrder);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
@@ -1560,14 +1561,191 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   physicalDriver.ready = true;
   scenes.loop(1001);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
-  scenes.loop(1250);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
-  scenes.loop(1251);
-  TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
+  TEST_ASSERT_TRUE(
+      devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
   scenes.cancel();
 }
 
-void test_prepared_scene_edit_reorders_home_assistant_before_new_ble_target() {
+void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver cameraDriver(studio::DriverId::CanonBle);
+  FakeDriver recorderDriver(studio::DriverId::TascamX8);
+  FakeDriver lightDriver(studio::DriverId::AmaranLight);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  studio::DeviceDriver* drivers[] = {&cameraDriver, &recorderDriver,
+                                     &lightDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 4);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId recorderId = studio::kInvalidInstanceId;
+  studio::InstanceId lightId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::TascamX8, "Recorder",
+                                   recorderId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::AmaranLight, "Light",
+                                   lightId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId firstId = studio::kInvalidSceneId;
+  studio::SceneId secondId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("First", firstId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Second", secondId)));
+  studio::SceneRecord first = *scenes.find(firstId);
+  first.startCount = 3;
+  first.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  first.startSteps[1] =
+      studio::makeActionStep(recorderId, studio::CommandType::RecordStart);
+  first.startSteps[2] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  first.stopCount = 3;
+  first.stopSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStop);
+  first.stopSteps[1] =
+      studio::makeActionStep(recorderId, studio::CommandType::RecordStop);
+  first.stopSteps[2] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOff);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(first)));
+
+  studio::SceneRecord second = *scenes.find(secondId);
+  second.startCount = 2;
+  second.startSteps[0] =
+      studio::makeActionStep(lightId, studio::CommandType::TurnOn);
+  second.startSteps[1] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  second.stopCount = 2;
+  second.stopSteps[0] =
+      studio::makeActionStep(lightId, studio::CommandType::TurnOff);
+  second.stopSteps[1] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOff);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(second)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(firstId)));
+  scenes.loop(1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(1, cameraDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, recorderDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(0, lightDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.activationCount);
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(secondId)));
+  TEST_ASSERT_EQUAL_INT(0, cameraDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(0, recorderDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(0, lightDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(1, cameraDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, recorderDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, lightDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.activationCount);
+  scenes.loop(252);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(
+      devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
+  TEST_ASSERT_EQUAL_UINT32(4, devices.activeCount());
+  TEST_ASSERT_TRUE(devices.isActive(cameraId));
+  TEST_ASSERT_TRUE(devices.isActive(recorderId));
+  TEST_ASSERT_TRUE(devices.isActive(lightId));
+  scenes.cancel();
+}
+
+void test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver physicalDriver(studio::DriverId::CanonBle);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  physicalDriver.ready = false;
+  homeAssistantDriver.ready = false;
+  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Cold mixed", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 2;
+  record.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.startSteps[1] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  scenes.loop(1);
+  scenes.loop(CONFIG_SCENE_CONNECT_TIMEOUT_MS + 2);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+
+  constexpr uint32_t physicalReadyAt =
+      CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS - 1000;
+  physicalDriver.ready = true;
+  scenes.loop(physicalReadyAt);
+  scenes.loop(physicalReadyAt + 250);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_TRUE(devices.isActive(helperId));
+
+  scenes.loop(physicalReadyAt + CONFIG_SCENE_CONNECT_TIMEOUT_MS - 1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  scenes.loop(physicalReadyAt + CONFIG_SCENE_CONNECT_TIMEOUT_MS);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Failed),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::ConnectTimeout),
+                        static_cast<int>(scenes.progress().lastStatus));
+  scenes.cancel();
+}
+
+void test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
   LegacyBackend legacy;
@@ -1627,17 +1805,17 @@ void test_prepared_scene_edit_reorders_home_assistant_before_new_ble_target() {
       static_cast<int>(studio::SceneRegistryStatus::Ok),
       static_cast<int>(scenes.replace(record)));
 
-  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.deactivationCount);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.deactivationCount);
   TEST_ASSERT_EQUAL_INT(1, physicalDriver.firstActivationOrder);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
   TEST_ASSERT_TRUE(
       devices.ownedBy(cameraId, studio::ConnectionOwner::Sequence));
-  TEST_ASSERT_FALSE(
+  TEST_ASSERT_TRUE(
       devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
   scenes.loop(2);
   TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
   scenes.loop(252);
-  TEST_ASSERT_EQUAL_INT(2, homeAssistantDriver.firstActivationOrder);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.firstActivationOrder);
   TEST_ASSERT_TRUE(
       devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
   scenes.cancel();
@@ -2764,6 +2942,47 @@ void test_ble_central_pauses_scan_for_peripheral_gatt_mutation() {
   central.release(link);
 }
 
+void test_ble_central_suspends_shared_scan_during_connect_and_security() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate connecting;
+  BleTestDelegate scanning;
+  studio::ble::ConnectPolicy policy;
+  policy.security = studio::ble::SecurityPolicy::BondSecure;
+  const studio::ble::LinkHandle connectingLink =
+      central.acquire(connecting, policy);
+  const studio::ble::LinkHandle scanningLink = central.acquire(scanning, {});
+  connecting.central = &central;
+  connecting.requestSecurityOnConnect = true;
+
+  TEST_ASSERT_TRUE(central.requestScan(scanningLink));
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.requestConnect(
+      connectingLink, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(scanningLink));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = connectingLink;
+  TEST_ASSERT_TRUE(backend.emit(connected));
+  central.loop(100);
+  TEST_ASSERT_TRUE(connecting.securityRequested);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+
+  studio::ble::Event secured;
+  secured.type = studio::ble::EventType::SecurityComplete;
+  secured.link = connectingLink;
+  secured.succeeded = true;
+  TEST_ASSERT_TRUE(backend.emit(secured));
+  central.loop(101);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(scanningLink));
+
+  central.release(connectingLink);
+  central.release(scanningLink);
+}
+
 void test_ble_central_ignores_queued_event_from_evicted_link_generation() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -2813,9 +3032,17 @@ void test_ble_central_shared_scan_claims_and_independent_release() {
   TEST_ASSERT_EQUAL_UINT32(1, first.advertisements);
   TEST_ASSERT_EQUAL_UINT32(1, second.advertisements);
   TEST_ASSERT_TRUE(first.selected);
-  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(secondLink));
   TEST_ASSERT_FALSE(
       central.selectAdvertisement(secondLink, advertisement));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = firstLink;
+  TEST_ASSERT_TRUE(backend.emit(connected));
+  central.loop(11);
+  TEST_ASSERT_TRUE(backend.scanRunning());
 
   central.release(secondLink);
   TEST_ASSERT_FALSE(backend.scanRunning());
@@ -2901,6 +3128,31 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   central.release(secondLink);
 }
 
+void test_tascam_reconnect_scans_after_one_direct_failure() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  studio::ble::ConnectPolicy policy;
+  policy.directAttemptsBeforeScan = tascam_x8::kDirectAttemptsBeforeScan;
+  const studio::ble::LinkHandle link = central.acquire(delegate, policy);
+
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = link;
+  backend.emit(failed);
+  central.loop(1);
+  central.loop(1500);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(1501);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.release(link);
+}
+
 void test_ble_central_protocol_failure_can_stop_retry() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -2981,6 +3233,12 @@ void test_ble_device_advertisement_matchers() {
   const studio::ble::Advertisement tascamAdvertisement =
       bleAdvertisement("22:33:44:55:66:77", tascam_x8::kDeviceName, 0x1800);
   TEST_ASSERT_TRUE(tascam_x8::matchesAdvertisement(tascamAdvertisement));
+  TEST_ASSERT_TRUE(tascam_x8::matchesSavedAdvertisement(
+      tascamAdvertisement, "22:33:44:55:66:77", 0));
+  TEST_ASSERT_FALSE(tascam_x8::matchesSavedAdvertisement(
+      tascamAdvertisement, "33:44:55:66:77:88", 0));
+  TEST_ASSERT_FALSE(tascam_x8::matchesSavedAdvertisement(
+      tascamAdvertisement, "22:33:44:55:66:77", 1));
   const uint8_t tascamUuid[16] = {
       0x24, 0x56, 0xe1, 0xb9, 0x26, 0xe2, 0x8f, 0x83,
       0xe7, 0x44, 0xf3, 0x4f, 0x01, 0xe9, 0xd7, 0x01};
@@ -3466,7 +3724,9 @@ int main(int, char**) {
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
-  RUN_TEST(test_prepared_scene_edit_reorders_home_assistant_before_new_ble_target);
+  RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);
+  RUN_TEST(test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts);
+  RUN_TEST(test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target);
   RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
   RUN_TEST(test_manager_starts_empty_without_legacy_shark);
   RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
@@ -3490,9 +3750,11 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
   RUN_TEST(test_ble_central_pauses_scan_for_peripheral_gatt_mutation);
+  RUN_TEST(test_ble_central_suspends_shared_scan_during_connect_and_security);
   RUN_TEST(test_ble_central_ignores_queued_event_from_evicted_link_generation);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
+  RUN_TEST(test_tascam_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);

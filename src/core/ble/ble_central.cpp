@@ -383,6 +383,19 @@ void BleCentral::updateScan() {
     return;
   }
 
+  // The ESP32-C3 can time-slice scanning around established links, but active
+  // discovery competes with initiating and securing a new connection. Keep
+  // scan demand intact and resume it as soon as the controller procedure ends.
+  if (controllerProcedureBusy()) {
+    if (scanRunning_) {
+      backend_.stopScan();
+    }
+    scanRunning_ = false;
+    scanBurstEndsMs_ = 0;
+    scanResumeAtMs_ = 0;
+    return;
+  }
+
   if (scanRunning_ && !backend_.scanRunning()) {
     scanRunning_ = false;
     scanResumeAtMs_ = nowMs_ + kScanPauseMs;
@@ -535,6 +548,14 @@ bool BleCentral::beginConnect(LinkHandle link, Slot& slot) {
 }
 
 bool BleCentral::startConnectNow(LinkHandle link, Slot& slot) {
+  // Stop discovery before asking NimBLE to initiate. updateScan() keeps it
+  // suspended through security, then resumes for every remaining requester.
+  if (scanRunning_) {
+    backend_.stopScan();
+    scanRunning_ = false;
+    scanBurstEndsMs_ = 0;
+    scanResumeAtMs_ = 0;
+  }
   slot.connectQueued = false;
   slot.phase = LinkPhase::Connecting;
   slot.connectStartedMs = nowMs_;

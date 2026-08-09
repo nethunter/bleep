@@ -159,6 +159,13 @@ When a retained instance gains a new owner, `DeviceManager` invokes the
 driver's bounded resume hook before attaching that owner. Canon Smart uses this
 hook to reconnect and wake a session that the panel previously powered off;
 other drivers leave their retained transport unchanged.
+Mixed BLE/Home Assistant sequence preparation gives cold physical transports a
+60-second ceiling, then starts a fresh 30-second deadline when deferred
+Wi-Fi/WebSocket preparation begins. Switching between scenes atomically
+transfers sequence ownership for their shared targets. Those targets never
+become idle eviction candidates; old-only targets release sequence ownership
+but remain retained until ordinary capacity-driven LRU needs room, and a
+physical transport group remains protected when any member is shared.
 Logical active-instance capacity is separate from physical BLE capacity. Each
 driver supplies a `BleSlotKey`: ordinary GATT instances use their instance ID,
 non-BLE runtimes use no key, and logical members sharing one real transport use
@@ -178,11 +185,14 @@ subscriptions, handshakes, commands, and notification parsing.
 
 One physical scanner fans fixed-size advertisement observations to every
 interested link. It runs in four-second bursts separated by 1.5-second pauses,
-with a 20/100 scan window/interval while active. Selecting a peer removes only
+with a 40/100 scan window/interval while active. Selecting a peer removes only
 that subscriber's scan demand;
-other preparing devices continue to receive observations. Address claims keep
-two clients from selecting the same peer. Connects are asynchronous and use
-independent slots with a bounded watchdog and `1500 * min(failures, 4)` retry
+other preparing devices continue to receive observations except while the
+controller is initiating or securing a connection. Discovery pauses for that
+bounded procedure and resumes automatically for every remaining requester.
+Address claims keep two clients from selecting the same peer. Connects are
+asynchronous and use independent slots with a bounded watchdog and
+`1500 * min(failures, 4)` retry
 backoff. A saved target receives three direct attempts before rediscovery, which
 avoids paying scan latency for the common case where a nearby peripheral needs
 one or two radio-wakeup retries. The ESP32-C3 initiates at most one physical connection or security
@@ -319,16 +329,13 @@ Assistant target, independent of authored action order. On the ESP32-C3,
 NimBLE initialization requires a contiguous allocation of roughly `0x7800`
 bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
 underlying BLE library to assert instead of returning a recoverable error.
-Before that ordering pass, preparation evicts every idle retained HA session so
-navigation from an HA entity cannot leave Wi-Fi consuming the BLE allocation.
-After the required physical targets are acquired, preparation also evicts idle
-physical transports that are not targets of the new scene. Shared targets stay
-active, while foreground ownership, pending work, or confirmed recording makes
-the handoff fail safely instead of forcing teardown. When that cleanup starts
-an asynchronous NimBLE client deletion, HA activation is deferred for a
-non-blocking 250 ms so the main loop can return the released BLE allocations
-before Wi-Fi starts. Action execution still follows the authored order after
-all targets prepare. The LVGL pool is held to 64 KiB
+Scene handoff does not proactively tear down either HA or physical retained
+sessions. Old-only targets become ownerless but stay connected while the
+four-resource pool has capacity. Acquiring a fifth logical resource or BLE key
+uses the normal LRU paths, which skip every shared target because it retains
+sequence ownership. This keeps HA, Canon, Tascam, and Amaran connected together
+when they exactly fill the pool. Action execution still follows the authored
+order after all targets prepare. The LVGL pool is held to 64 KiB
 and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
 static SRAM compared with the earlier 96 KiB/40-row configuration. The full
 simulator flow is the regression gate for the LVGL allocation budget. HA keeps
