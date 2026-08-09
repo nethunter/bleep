@@ -6,15 +6,15 @@
 #include "core/ble/ble_central.h"
 #include "core/device_types.h"
 #include "core/mesh/pb_gatt_provisioner.h"
-#include "devices/amaran_light/state.h"
-#include "devices/amaran_light/store.h"
-#include "devices/amaran_light/protocol.h"
+#include "devices/aputure_light/state.h"
+#include "devices/aputure_light/store.h"
+#include "devices/aputure_light/protocol.h"
 
 class NimBLERemoteCharacteristic;
 
-namespace amaran_light {
+namespace aputure_light {
 
-class AmaranRuntime : public studio::ble::BleCentralDelegate,
+class AputureLightRuntime : public studio::ble::BleCentralDelegate,
                       public studio::mesh::ProvisioningSender {
  public:
   bool activate(const studio::DeviceRecord& record);
@@ -22,7 +22,7 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   void loop();
   studio::CommandStatus dispatch(const studio::DeviceCommand& command);
   studio::DeviceRuntimeState runtimeState(studio::InstanceId instanceId) const;
-  const AmaranLightState* state(studio::InstanceId instanceId) const;
+  const AputureLightState* state(studio::InstanceId instanceId) const;
   bool consumePairingUpdate(studio::InstanceId instanceId,
                             studio::DeviceRecord& record);
   void forgetLocal(studio::InstanceId instanceId);
@@ -44,14 +44,14 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   void enqueueNotification(const uint8_t* data, size_t length);
   bool sendProvisioningPdu(const uint8_t* pdu, size_t length) override;
 #ifdef UI_SIMULATOR
-  void simSetPhase(studio::InstanceId instanceId, AmaranLightState::Phase phase);
+  void simSetPhase(studio::InstanceId instanceId, AputureLightState::Phase phase);
 #endif
 
  private:
   struct Session {
     studio::InstanceId instanceId = studio::kInvalidInstanceId;
     studio::DriverId model = studio::DriverId::Unknown;
-    AmaranLightState state;
+    AputureLightState state;
     bool pairingDirty = false;
     bool receiveSequenceKnown = false;
     uint32_t receiveSequence = 0;
@@ -110,8 +110,8 @@ class AmaranRuntime : public studio::ble::BleCentralDelegate,
   studio::mesh::PbGattProvisioner provisioner_;
 };
 
-AmaranRuntime* runtime();
-AmaranRuntime* runtimeIfActive();
+AputureLightRuntime* runtime();
+AputureLightRuntime* runtimeIfActive();
 void releaseRuntimeIfIdle();
 
-}  // namespace amaran_light
+}  // namespace aputure_light

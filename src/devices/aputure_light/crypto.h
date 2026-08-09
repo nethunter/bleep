@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace amaran_light {
+namespace aputure_light {
 
 void aes128EncryptBlock(const uint8_t key[16], const uint8_t input[16],
                         uint8_t output[16]);
@@ -32,4 +32,4 @@ bool aesCcmDecrypt(const uint8_t key[16], const uint8_t* nonce,
                    size_t ciphertextLength, const uint8_t* tag,
                    size_t tagLength, uint8_t* plaintext);
 
-}  // namespace amaran_light
+}  // namespace aputure_light

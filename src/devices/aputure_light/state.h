@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-namespace amaran_light {
+namespace aputure_light {
 
-struct AmaranLightState {
+struct AputureLightState {
   enum class Phase : uint8_t {
     Unprovisioned,
     Scanning,
@@ -38,4 +38,4 @@ struct AmaranLightState {
 bool validCctCommand(int kelvin, int brightness, int tintPermille);
 bool validRgbCommand(int rgb, int brightness);
 
-}  // namespace amaran_light
+}  // namespace aputure_light

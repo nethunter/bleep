@@ -5,7 +5,7 @@
 
 #include <cstring>
 
-#include "devices/amaran_light/crypto.h"
+#include "devices/aputure_light/crypto.h"
 #include "core/mesh/provisioning_policy.h"
 
 namespace studio::mesh {
@@ -135,16 +135,16 @@ bool PbGattProvisioner::handleDevicePublicKey(const uint8_t* pdu,
   std::memcpy(inputs + offset, localPublic_, 64);
   offset += 64;
   std::memcpy(inputs + offset, remotePublic_, 64);
-  amaran_light::meshS1(inputs, sizeof(inputs), confirmationSalt_);
+  aputure_light::meshS1(inputs, sizeof(inputs), confirmationSalt_);
   const uint8_t prck[] = {'p', 'r', 'c', 'k'};
-  amaran_light::meshK1(ecdhSecret_, sizeof(ecdhSecret_), confirmationSalt_,
+  aputure_light::meshK1(ecdhSecret_, sizeof(ecdhSecret_), confirmationSalt_,
                        prck, sizeof(prck), confirmationKey_);
   esp_fill_random(localRandom_, sizeof(localRandom_));
   uint8_t material[32];
   std::memcpy(material, localRandom_, 16);
   std::memset(material + 16, 0, 16);
   uint8_t confirmation[16];
-  amaran_light::aesCmac(confirmationKey_, material, sizeof(material),
+  aputure_light::aesCmac(confirmationKey_, material, sizeof(material),
                         confirmation);
   uint8_t confirmationPdu[17] = {0x05};
   std::memcpy(confirmationPdu + 1, confirmation, 16);
@@ -170,7 +170,7 @@ bool PbGattProvisioner::handleDeviceRandom(const uint8_t* pdu,
   std::memcpy(material, pdu + 1, 16);
   std::memset(material + 16, 0, 16);
   uint8_t expected[16];
-  amaran_light::aesCmac(confirmationKey_, material, sizeof(material), expected);
+  aputure_light::aesCmac(confirmationKey_, material, sizeof(material), expected);
   if (std::memcmp(expected, remoteConfirmation_, sizeof(expected)) != 0)
     return false;
 
@@ -179,13 +179,13 @@ bool PbGattProvisioner::handleDeviceRandom(const uint8_t* pdu,
   std::memcpy(saltMaterial + 16, localRandom_, 16);
   std::memcpy(saltMaterial + 32, pdu + 1, 16);
   uint8_t provisioningSalt[16], sessionKey[16], nonceFull[16];
-  amaran_light::meshS1(saltMaterial, sizeof(saltMaterial), provisioningSalt);
+  aputure_light::meshS1(saltMaterial, sizeof(saltMaterial), provisioningSalt);
   const uint8_t prsk[] = {'p', 'r', 's', 'k'};
   const uint8_t prsn[] = {'p', 'r', 's', 'n'};
   const uint8_t prdk[] = {'p', 'r', 'd', 'k'};
-  amaran_light::meshK1(ecdhSecret_, 32, provisioningSalt, prsk, 4, sessionKey);
-  amaran_light::meshK1(ecdhSecret_, 32, provisioningSalt, prsn, 4, nonceFull);
-  amaran_light::meshK1(ecdhSecret_, 32, provisioningSalt, prdk, 4, deviceKey_);
+  aputure_light::meshK1(ecdhSecret_, 32, provisioningSalt, prsk, 4, sessionKey);
+  aputure_light::meshK1(ecdhSecret_, 32, provisioningSalt, prsn, 4, nonceFull);
+  aputure_light::meshK1(ecdhSecret_, 32, provisioningSalt, prdk, 4, deviceKey_);
 
   uint8_t provisioningData[25];
   std::memcpy(provisioningData, networkKey_, 16);
@@ -197,7 +197,7 @@ bool PbGattProvisioner::handleDeviceRandom(const uint8_t* pdu,
   provisioningData[23] = static_cast<uint8_t>(unicastAddress_ >> 8);
   provisioningData[24] = static_cast<uint8_t>(unicastAddress_);
   uint8_t encrypted[25], tag[8];
-  if (!amaran_light::aesCcmEncrypt(sessionKey, nonceFull + 3, 13,
+  if (!aputure_light::aesCcmEncrypt(sessionKey, nonceFull + 3, 13,
                                    provisioningData, sizeof(provisioningData),
                                    sizeof(tag), encrypted, tag))
     return false;

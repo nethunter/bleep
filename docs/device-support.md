@@ -20,7 +20,7 @@ remain hardware gates.
 
 ADR-022 retains protocol-ready sessions across navigation and sequences. Up to
 eight logical instances map onto four physical BLE transport groups. Ordinary
-GATT devices consume one group per instance; every Amaran, Aputure, and Zhiyun
+GATT devices consume one group per instance; every Aputure Light and Zhiyun
 member in the panel-owned mesh consumes one group together, and Home Assistant
 consumes none. Multiple Canon instances retain independent client state.
 Unexpected drops retry while retained; unfinished first-time attempts stop
@@ -83,9 +83,9 @@ when their last owner leaves.
 Safety: movement and run commands affect physical hardware. ACKs are not proof
 of successful movement.
 
-## Amaran lights
+## Aputure Light
 
-### Generic Amaran Light
+### Generic Aputure Light
 
 - Status: `Experimental`; compiled implementation, real-fixture gate open.
 - Transport: PB-GATT provisioning and Mesh Proxy GATT over the shared NimBLE
@@ -96,11 +96,12 @@ of successful movement.
   exposes one `Set color` action with CCT and RGB modes.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Onboarding: choose `Amaran Light`; the first nearby factory-reset fixture
+- Onboarding: choose `Aputure Light`; the first nearby factory-reset fixture
   advertising Mesh Provisioning is provisioned into the panel-owned mesh. The
   fixture model is not selected because onboarding and the supported Telink
   command family are mesh/protocol concerns rather than catalog concerns.
-  Pano 60c, Pano 120c, and Ace 25c remain the initial validation set. Existing
+  amaran Pano 60c, amaran Pano 120c, and amaran Ace 25c remain the initial
+  validation set. Existing
   Sidus/amaran mesh import remains deferred.
 
 The first release maintains one active studio mesh. Keys live in a separate

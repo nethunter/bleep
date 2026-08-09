@@ -74,12 +74,12 @@ constexpr DriverDescriptor kDrivers[] = {
         4,
     },
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
+#if CONFIG_DRIVER_APUTURE_LIGHT
     {
-        DriverId::AmaranLight,
-        "amaran.light",
-        "amaran",
-        "Amaran Light",
+        DriverId::AputureLight,
+        "aputure.light",
+        "Aputure",
+        "Aputure Light",
         DeviceType::Light,
         capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
@@ -87,34 +87,6 @@ constexpr DriverDescriptor kDrivers[] = {
             capabilityBit(Capability::SetLightRgb) |
             capabilityBit(Capability::SetLightTint),
         4,
-    },
-    {
-        DriverId::AmaranPano120c,
-        "amaran.pano_120c",
-        "amaran",
-        "Pano 120c",
-        DeviceType::Light,
-        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
-            capabilityBit(Capability::TurnOff) |
-            capabilityBit(Capability::SetLightCct) |
-            capabilityBit(Capability::SetLightRgb) |
-            capabilityBit(Capability::SetLightTint),
-        4,
-        false,
-    },
-    {
-        DriverId::AmaranAce25c,
-        "amaran.ace_25c",
-        "amaran",
-        "Ace 25c",
-        DeviceType::Light,
-        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
-            capabilityBit(Capability::TurnOff) |
-            capabilityBit(Capability::SetLightCct) |
-            capabilityBit(Capability::SetLightRgb) |
-            capabilityBit(Capability::SetLightTint),
-        4,
-        false,
     },
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100

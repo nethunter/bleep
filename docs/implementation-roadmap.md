@@ -43,7 +43,7 @@ non-destructive Back behavior.
 ADR-022 replaces screen-scoped teardown with retained logical sessions mapped
 onto four physical BLE transport groups. Protocol-ready manual and sequence
 sessions survive navigation, multiple instances may coexist, shared transports
-such as the panel-owned Amaran/Aputure/Zhiyun mesh consume one slot, and safe group-aware LRU
+such as the panel-owned Aputure Light/Zhiyun mesh consume one slot, and safe group-aware LRU
 eviction protects foreground, sequence, pending-command, and confirmed-recording
 sessions.
 
@@ -130,7 +130,7 @@ Prove concurrent:
 
 - Shark GATT;
 - Canon BR-E1-compatible GATT;
-- Amaran BLE Mesh traffic and PB-ADV provisioning;
+- Aputure Light BLE Mesh traffic and PB-ADV provisioning;
 - Canon HTTP over Wi-Fi;
 - responsive LVGL rendering.
 
@@ -256,12 +256,12 @@ status, persistent haptic enablement, build/support information, sanitized live
 diagnostics, and warned full-NVS Factory Reset. Backup/restore, groups, and the
 remaining repeated-lifecycle and hardware gates remain open.
 
-## Phase 4: Amaran light driver
+## Phase 4: Aputure Light driver
 
 Status: Experimental bounded panel-owned-mesh tranche implemented under
 ADR-024; target-light completion gate remains open.
 
-Initial catalog entry: one generic `Amaran Light`. Pano 60c, Pano 120c, and
+Initial catalog entry: one generic `Aputure Light`. Pano 60c, Pano 120c, and
 Ace 25c are validation fixtures, not choices the operator must make before
 provisioning. Any compatible factory-reset fixture advertising Mesh
 Provisioning may be added; support claims remain limited to hardware that has

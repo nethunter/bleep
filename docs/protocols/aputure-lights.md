@@ -1,7 +1,7 @@
-# Amaran and Aputure Bluetooth Mesh evidence
+# Aputure Light Bluetooth Mesh evidence
 
 Status: `Research` with host-tested encoders, Sidus Link multi-fixture HCI
-evidence, and one Ble(e)p-owned mesh verified on an Amaran Ace 25c and Aputure
+evidence, and one Ble(e)p-owned mesh verified on an amaran Ace 25c and Aputure
 MC Pro. Vendor control and broader target-fixture gates remain open.
 
 ## Reference boundary

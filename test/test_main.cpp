@@ -31,10 +31,10 @@
 #include "devices/insta360/protocol.h"
 #include "devices/dji_osmo/protocol.h"
 #include "devices/home_assistant/protocol.h"
-#include "devices/amaran_light/crypto.h"
-#include "devices/amaran_light/protocol.h"
-#include "devices/amaran_light/state.h"
-#include "devices/amaran_light/store.h"
+#include "devices/aputure_light/crypto.h"
+#include "devices/aputure_light/protocol.h"
+#include "devices/aputure_light/state.h"
+#include "devices/aputure_light/store.h"
 #include "devices/zhiyun_x100/ble_match.h"
 #include "devices/zhiyun_x100/protocol.h"
 #include "devices/zhiyun_x100/state.h"
@@ -949,7 +949,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(14, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(12, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -992,21 +992,19 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::DriverCatalog::find(studio::DriverId::HomeAssistant);
   TEST_ASSERT_NOT_NULL(homeAssistant);
   TEST_ASSERT_EQUAL_UINT8(4, homeAssistant->maxInstances);
-  const studio::DriverDescriptor* amaran =
-      studio::DriverCatalog::find(studio::DriverId::AmaranLight);
-  TEST_ASSERT_NOT_NULL(amaran);
-  TEST_ASSERT_EQUAL_STRING("Amaran Light", amaran->model);
-  TEST_ASSERT_TRUE(amaran->discoverable);
+  const studio::DriverDescriptor* aputure =
+      studio::DriverCatalog::find(studio::DriverId::AputureLight);
+  TEST_ASSERT_NOT_NULL(aputure);
+  TEST_ASSERT_EQUAL_STRING("aputure.light", aputure->stableId);
+  TEST_ASSERT_EQUAL_STRING("Aputure", aputure->brand);
+  TEST_ASSERT_EQUAL_STRING("Aputure Light", aputure->model);
+  TEST_ASSERT_TRUE(aputure->discoverable);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DeviceType::Light),
-                        static_cast<int>(amaran->type));
+                        static_cast<int>(aputure->type));
   TEST_ASSERT_BITS_HIGH(
       studio::capabilityBit(studio::Capability::SetLightCct) |
           studio::capabilityBit(studio::Capability::SetLightRgb),
-      amaran->capabilities);
-  TEST_ASSERT_FALSE(studio::DriverCatalog::find(
-      studio::DriverId::AmaranPano120c)->discoverable);
-  TEST_ASSERT_FALSE(studio::DriverCatalog::find(
-      studio::DriverId::AmaranAce25c)->discoverable);
+      aputure->capabilities);
   const studio::DriverDescriptor* zhiyun =
       studio::DriverCatalog::find(studio::DriverId::ZhiyunLight);
   TEST_ASSERT_NOT_NULL(zhiyun);
@@ -1059,9 +1057,7 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
   FakeDriver tascam(studio::DriverId::TascamX8);
   FakeDriver canonTrigger(studio::DriverId::CanonTrigger);
   FakeDriver homeAssistant(studio::DriverId::HomeAssistant);
-  FakeDriver amaran(studio::DriverId::AmaranLight);
-  FakeDriver pano120(studio::DriverId::AmaranPano120c);
-  FakeDriver ace25(studio::DriverId::AmaranAce25c);
+  FakeDriver aputure(studio::DriverId::AputureLight);
   FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
   FakeDriver goPro(studio::DriverId::GoPro);
   FakeDriver insta360(studio::DriverId::Insta360);
@@ -1070,7 +1066,7 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
   FakeDriver phone(studio::DriverId::PhoneCamera);
   studio::DeviceDriver* drivers[] = {
       &shark, &canonSmart, &tascam, &canonTrigger, &homeAssistant,
-      &amaran, &pano120, &ace25, &zhiyun, &goPro, &insta360, &dji,
+      &aputure, &zhiyun, &goPro, &insta360, &dji,
       &sony, &phone};
   studio::DeviceManager manager(backend, legacy, drivers,
                                 sizeof(drivers) / sizeof(drivers[0]));
@@ -1631,7 +1627,7 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   LegacyBackend legacy;
   FakeDriver physicalDriver(studio::DriverId::CanonBle);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
-  FakeDriver retainedLightDriver(studio::DriverId::AmaranLight);
+  FakeDriver retainedLightDriver(studio::DriverId::AputureLight);
   int activationSequence = 0;
   physicalDriver.activationSequence = &activationSequence;
   homeAssistantDriver.activationSequence = &activationSequence;
@@ -1654,7 +1650,7 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
           "Live", helperId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(devices.add(studio::DriverId::AmaranLight, "Old light",
+      static_cast<int>(devices.add(studio::DriverId::AputureLight, "Old light",
                                    lightId)));
 
   studio::SceneService scenes(sceneBackend, devices);
@@ -1724,7 +1720,7 @@ void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
   LegacyBackend legacy;
   FakeDriver cameraDriver(studio::DriverId::CanonBle);
   FakeDriver recorderDriver(studio::DriverId::TascamX8);
-  FakeDriver lightDriver(studio::DriverId::AmaranLight);
+  FakeDriver lightDriver(studio::DriverId::AputureLight);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   studio::DeviceDriver* drivers[] = {&cameraDriver, &recorderDriver,
                                      &lightDriver, &homeAssistantDriver};
@@ -1745,7 +1741,7 @@ void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
                                    recorderId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(devices.add(studio::DriverId::AmaranLight, "Light",
+      static_cast<int>(devices.add(studio::DriverId::AputureLight, "Light",
                                    lightId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
@@ -2435,7 +2431,7 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
   FakeDriver sharkDriver;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
-  FakeDriver meshDriver(studio::DriverId::AmaranLight);
+  FakeDriver meshDriver(studio::DriverId::AputureLight);
   FakeDriver zhiyunDriver(studio::DriverId::ZhiyunLight);
   meshDriver.sharedBleGroup = 1;
   meshDriver.sharedBleFamily = studio::DriverId::PanelOwnedMesh;
@@ -2463,7 +2459,7 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
           manager.add(studio::DriverId::TascamX8, "Recorder", tascamId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(manager.add(studio::DriverId::AmaranLight,
+      static_cast<int>(manager.add(studio::DriverId::AputureLight,
                                    "Sidus mesh light", meshIds[0])));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
@@ -3620,7 +3616,7 @@ void test_ble_device_advertisement_matchers() {
       canon_ble::matchesAdvertisement(canonAdvertisement));
 }
 
-void test_amaran_crypto_and_network_vectors() {
+void test_aputure_light_crypto_and_network_vectors() {
   const uint8_t aesKey[16] = {0x2b,0x7e,0x15,0x16,0x28,0xae,0xd2,0xa6,
       0xab,0xf7,0x15,0x88,0x09,0xcf,0x4f,0x3c};
   const uint8_t aesInput[16] = {0x6b,0xc1,0xbe,0xe2,0x2e,0x40,0x9f,0x96,
@@ -3628,25 +3624,25 @@ void test_amaran_crypto_and_network_vectors() {
   const uint8_t aesExpected[16] = {0x3a,0xd7,0x7b,0xb4,0x0d,0x7a,0x36,0x60,
       0xa8,0x9e,0xca,0xf3,0x24,0x66,0xef,0x97};
   uint8_t block[16];
-  amaran_light::aes128EncryptBlock(aesKey, aesInput, block);
+  aputure_light::aes128EncryptBlock(aesKey, aesInput, block);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(aesExpected, block, 16);
 
   const uint8_t cmacExpected[16] = {0xbb,0x1d,0x69,0x29,0xe9,0x59,0x37,0x28,
       0x7f,0xa3,0x7d,0x12,0x9b,0x75,0x67,0x46};
   uint8_t cmac[16];
-  amaran_light::aesCmac(aesKey, nullptr, 0, cmac);
+  aputure_light::aesCmac(aesKey, nullptr, 0, cmac);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(cmacExpected, cmac, 16);
 
   const uint8_t networkKey[16] = {0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
       0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff};
   const uint8_t appKey[16] = {0xff,0xee,0xdd,0xcc,0xbb,0xaa,0x99,0x88,
       0x77,0x66,0x55,0x44,0x33,0x22,0x11,0x00};
-  amaran_light::AccessPayload blue;
-  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0x0000ff, 0, blue));
+  aputure_light::AccessPayload blue;
+  TEST_ASSERT_TRUE(aputure_light::buildRgbAccess(0x0000ff, 0, blue));
   // Lock the exact captured blue payload independently of the brightness-aware path.
   const uint8_t blueAccess[11] = {0x26,0xd3,0xa0,0,0,0,0xa0,0x0f,0,0,0x84};
-  amaran_light::NetworkPdu network;
-  TEST_ASSERT_TRUE(amaran_light::encodeAccessMessage(
+  aputure_light::NetworkPdu network;
+  TEST_ASSERT_TRUE(aputure_light::encodeAccessMessage(
       networkKey, appKey, blueAccess, sizeof(blueAccess), 1, 1, 0xc000, 0,
       network));
   const uint8_t expectedNetwork[] = {0x1e,0x72,0xa3,0xec,0xac,0x74,0x86,0xe5,
@@ -3656,14 +3652,14 @@ void test_amaran_crypto_and_network_vectors() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedNetwork, network.bytes, network.length);
 
   const uint8_t mcOff[] = {0x26,0xe8,0,0,0,0,0x20,0xa4,0x28,0xfa,0x02};
-  TEST_ASSERT_TRUE(amaran_light::encodeAccessMessage(
+  TEST_ASSERT_TRUE(aputure_light::encodeAccessMessage(
       networkKey, appKey, mcOff, sizeof(mcOff), 0x1234, 2, 1, 0, network));
   uint8_t proxy[70] = {};
   size_t proxyLength = 0;
-  TEST_ASSERT_TRUE(amaran_light::wrapProxyPdu(
+  TEST_ASSERT_TRUE(aputure_light::wrapProxyPdu(
       network, proxy, sizeof(proxy), proxyLength));
-  amaran_light::DecodedAccessMessage decoded;
-  TEST_ASSERT_TRUE(amaran_light::decodeProxyAccessMessage(
+  aputure_light::DecodedAccessMessage decoded;
+  TEST_ASSERT_TRUE(aputure_light::decodeProxyAccessMessage(
       networkKey, appKey, proxy, proxyLength, 0, decoded));
   TEST_ASSERT_EQUAL_UINT32(0x1234, decoded.sequence);
   TEST_ASSERT_EQUAL_UINT16(2, decoded.source);
@@ -3672,18 +3668,18 @@ void test_amaran_crypto_and_network_vectors() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(mcOff, decoded.access, decoded.accessLength);
 
   proxy[proxyLength - 1] ^= 1;
-  TEST_ASSERT_FALSE(amaran_light::decodeProxyAccessMessage(
+  TEST_ASSERT_FALSE(aputure_light::decodeProxyAccessMessage(
       networkKey, appKey, proxy, proxyLength, 0, decoded));
 
   const uint8_t deviceKey[16] = {0x10,0x21,0x32,0x43,0x54,0x65,0x76,0x87,
       0x98,0xa9,0xba,0xcb,0xdc,0xed,0xfe,0x0f};
   const uint8_t appKeyStatus[] = {0x80,0x03,0x00,0x00,0x00};
-  TEST_ASSERT_TRUE(amaran_light::encodeDeviceMessage(
+  TEST_ASSERT_TRUE(aputure_light::encodeDeviceMessage(
       networkKey, deviceKey, appKeyStatus, sizeof(appKeyStatus), 0x2345,
       2, 1, 0, network));
-  TEST_ASSERT_TRUE(amaran_light::wrapProxyPdu(
+  TEST_ASSERT_TRUE(aputure_light::wrapProxyPdu(
       network, proxy, sizeof(proxy), proxyLength));
-  TEST_ASSERT_TRUE(amaran_light::decodeProxyDeviceMessage(
+  TEST_ASSERT_TRUE(aputure_light::decodeProxyDeviceMessage(
       networkKey, deviceKey, proxy, proxyLength, 0, decoded));
   TEST_ASSERT_EQUAL_UINT32(0x2345, decoded.sequence);
   TEST_ASSERT_EQUAL_UINT16(2, decoded.source);
@@ -3693,183 +3689,183 @@ void test_amaran_crypto_and_network_vectors() {
       appKeyStatus, decoded.access, decoded.accessLength);
 }
 
-void test_amaran_access_payloads_and_validation() {
+void test_aputure_light_access_payloads_and_validation() {
   uint16_t companyId = 0;
   uint16_t modelId = 0;
-  TEST_ASSERT_TRUE(amaran_light::inferKnownVendorModel(
+  TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "Aputure MC Pro", "", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x03f6, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, modelId);
-  TEST_ASSERT_TRUE(amaran_light::inferKnownVendorModel(
+  TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "Studio light", "SLCK_BLE", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
-  TEST_ASSERT_FALSE(amaran_light::inferKnownVendorModel(
+  TEST_ASSERT_FALSE(aputure_light::inferKnownVendorModel(
       "Unknown light", "", companyId, modelId));
 
-  amaran_light::AccessPayload payload;
-  TEST_ASSERT_TRUE(amaran_light::buildPowerAccess(true, payload));
+  aputure_light::AccessPayload payload;
+  TEST_ASSERT_TRUE(aputure_light::buildPowerAccess(true, payload));
   const uint8_t powerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOn, payload.bytes, sizeof(powerOn));
-  TEST_ASSERT_TRUE(amaran_light::buildPowerStatusGetAccess(payload));
+  TEST_ASSERT_TRUE(aputure_light::buildPowerStatusGetAccess(payload));
   const uint8_t powerGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(powerGet, payload.bytes, sizeof(powerGet));
   const uint8_t mcOff[] = {0x26,0xe8,0,0,0,0,0x20,0xa4,0x28,0xfa,0x02};
   const uint8_t aceOn[] = {0x26,0xec,1,0,0,0,0x80,0x56,0x1a,0xfa,0x01};
-  amaran_light::VendorPowerStatus status;
+  aputure_light::VendorPowerStatus status;
   TEST_ASSERT_TRUE(
-      amaran_light::parseVendorPowerStatus(mcOff, sizeof(mcOff), status));
+      aputure_light::parseVendorPowerStatus(mcOff, sizeof(mcOff), status));
   TEST_ASSERT_FALSE(status.on);
   TEST_ASSERT_EQUAL_UINT8(250, status.storedIntensity);
   TEST_ASSERT_EQUAL_UINT8(2, status.profile);
   TEST_ASSERT_TRUE(
-      amaran_light::parseVendorPowerStatus(aceOn, sizeof(aceOn), status));
+      aputure_light::parseVendorPowerStatus(aceOn, sizeof(aceOn), status));
   TEST_ASSERT_TRUE(status.on);
   TEST_ASSERT_EQUAL_UINT8(1, status.profile);
   uint8_t corruptStatus[sizeof(aceOn)];
   std::memcpy(corruptStatus, aceOn, sizeof(aceOn));
   corruptStatus[6] ^= 1;
-  TEST_ASSERT_FALSE(amaran_light::parseVendorPowerStatus(
+  TEST_ASSERT_FALSE(aputure_light::parseVendorPowerStatus(
       corruptStatus, sizeof(corruptStatus), status));
-  TEST_ASSERT_TRUE(amaran_light::buildCctAccess(5000, 0, 89, payload));
+  TEST_ASSERT_TRUE(aputure_light::buildCctAccess(5000, 0, 89, payload));
   const uint8_t cct[] = {0x26,0x80,0,0,0,0,0x40,0x41,0x9f,0xde,0x82};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(cct, payload.bytes, sizeof(cct));
-  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0xff0000, 50, payload));
+  TEST_ASSERT_TRUE(aputure_light::buildRgbAccess(0xff0000, 50, payload));
   const uint8_t rgb[] = {0x26,0xdd,0x40,0x1f,0,0,0,0,0,0xfa,0x84};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(rgb, payload.bytes, sizeof(rgb));
-  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0xff0000, 5, payload));
+  TEST_ASSERT_TRUE(aputure_light::buildRgbAccess(0xff0000, 5, payload));
   const uint8_t mcRed5[] = {
       0x26,0x87,0x06,0x03,0,0,0,0,0,0xfa,0x84};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(mcRed5, payload.bytes, sizeof(mcRed5));
-  TEST_ASSERT_TRUE(amaran_light::buildRgbAccess(0x00ff00, 5, payload));
+  TEST_ASSERT_TRUE(aputure_light::buildRgbAccess(0x00ff00, 5, payload));
   const uint8_t aceGreen5[] = {
       0x26,0x4b,0x06,0x03,0,0,0,0x80,0x3e,0,0x84};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(aceGreen5, payload.bytes, sizeof(aceGreen5));
-  TEST_ASSERT_TRUE(amaran_light::validCctCommand(2300, 0, -1000));
-  TEST_ASSERT_FALSE(amaran_light::validCctCommand(2299, 50, 0));
-  TEST_ASSERT_TRUE(amaran_light::validRgbCommand(0xffffff, 100));
-  TEST_ASSERT_FALSE(amaran_light::validRgbCommand(0x1000000, 50));
+  TEST_ASSERT_TRUE(aputure_light::validCctCommand(2300, 0, -1000));
+  TEST_ASSERT_FALSE(aputure_light::validCctCommand(2299, 50, 0));
+  TEST_ASSERT_TRUE(aputure_light::validRgbCommand(0xffffff, 100));
+  TEST_ASSERT_FALSE(aputure_light::validRgbCommand(0x1000000, 50));
 
   const uint8_t networkKey[16] = {};
   const uint8_t deviceKey[16] = {1};
   uint8_t appKeyAdd[20] = {};
   const uint32_t sequences[] = {0x123, 0x124};
-  amaran_light::NetworkPduBatch segmented;
-  TEST_ASSERT_TRUE(amaran_light::encodeSegmentedDeviceMessage(
+  aputure_light::NetworkPduBatch segmented;
+  TEST_ASSERT_TRUE(aputure_light::encodeSegmentedDeviceMessage(
       networkKey, deviceKey, appKeyAdd, sizeof(appKeyAdd), sequences, 2,
       1, 2, 0, segmented));
   TEST_ASSERT_EQUAL_UINT8(2, segmented.count);
   TEST_ASSERT_TRUE(segmented.pdus[0].length > 0);
   TEST_ASSERT_TRUE(segmented.pdus[1].length > 0);
-  TEST_ASSERT_FALSE(amaran_light::encodeDeviceMessage(
+  TEST_ASSERT_FALSE(aputure_light::encodeDeviceMessage(
       networkKey, deviceKey, appKeyAdd, sizeof(appKeyAdd), sequences[0],
       1, 2, 0, segmented.pdus[0]));
 }
 
-void test_amaran_store_and_sequence_reservation_survive_restart() {
+void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   MemoryBackend backend;
-  amaran_light::MeshStore store(backend);
-  amaran_light::MeshStoreData data;
+  aputure_light::MeshStore store(backend);
+  aputure_light::MeshStoreData data;
   data.network.initialized = true;
   for (uint8_t i = 0; i < 16; ++i) {
     data.network.networkKey[i] = i;
     data.network.applicationKey[i] = static_cast<uint8_t>(0xff - i);
   }
-  amaran_light::MeshNodeRecord node;
+  aputure_light::MeshNodeRecord node;
   node.instanceId = 42;
-  node.model = studio::DriverId::AmaranLight;
+  node.model = studio::DriverId::AputureLight;
   node.unicastAddress = 2;
   node.configured = true;
   node.controlGroupAddress = 0xc001;
   node.vendorCompanyId = 0x03f6;
   node.vendorModelId = 0x1000;
-  node.configurationVersion = amaran_light::kCurrentConfigurationVersion;
-  TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
-  amaran_light::MeshNodeRecord zhiyun;
+  node.configurationVersion = aputure_light::kCurrentConfigurationVersion;
+  TEST_ASSERT_TRUE(aputure_light::upsertNode(data, node));
+  aputure_light::MeshNodeRecord zhiyun;
   zhiyun.instanceId = 43;
   zhiyun.model = studio::DriverId::ZhiyunLight;
   zhiyun.unicastAddress = 3;
   zhiyun.configured = true;
   zhiyun.routingSelector =
-      amaran_light::nextZhiyunRoutingSelector(data);
+      aputure_light::nextZhiyunRoutingSelector(data);
   TEST_ASSERT_EQUAL_UINT8(0, zhiyun.routingSelector);
-  TEST_ASSERT_TRUE(amaran_light::upsertNode(data, zhiyun));
+  TEST_ASSERT_TRUE(aputure_light::upsertNode(data, zhiyun));
   TEST_ASSERT_EQUAL_UINT8(1,
-      amaran_light::nextZhiyunRoutingSelector(data));
+      aputure_light::nextZhiyunRoutingSelector(data));
   TEST_ASSERT_TRUE(store.save(data));
-  amaran_light::MeshStoreData loaded;
+  aputure_light::MeshStoreData loaded;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
                         static_cast<int>(store.load(loaded)));
-  const amaran_light::MeshNodeRecord* loadedNode =
-      amaran_light::findNode(loaded, 42);
+  const aputure_light::MeshNodeRecord* loadedNode =
+      aputure_light::findNode(loaded, 42);
   TEST_ASSERT_NOT_NULL(loadedNode);
   TEST_ASSERT_EQUAL_HEX16(0xc001, loadedNode->controlGroupAddress);
   TEST_ASSERT_EQUAL_HEX16(0x03f6, loadedNode->vendorCompanyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, loadedNode->vendorModelId);
-  TEST_ASSERT_EQUAL_UINT8(amaran_light::kCurrentConfigurationVersion,
+  TEST_ASSERT_EQUAL_UINT8(aputure_light::kCurrentConfigurationVersion,
                           loadedNode->configurationVersion);
   TEST_ASSERT_EQUAL_HEX16(
-      0xc001, amaran_light::defaultControlGroupAddress(loaded, *loadedNode));
-  const amaran_light::MeshNodeRecord fallbackGroupNode = {
-      44, studio::DriverId::AmaranLight, 4};
+      0xc001, aputure_light::defaultControlGroupAddress(loaded, *loadedNode));
+  const aputure_light::MeshNodeRecord fallbackGroupNode = {
+      44, studio::DriverId::AputureLight, 4};
   TEST_ASSERT_EQUAL_HEX16(
       0xc003,
-      amaran_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
-  const amaran_light::MeshNodeRecord* loadedZhiyun =
-      amaran_light::findNode(loaded, 43);
+      aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
+  const aputure_light::MeshNodeRecord* loadedZhiyun =
+      aputure_light::findNode(loaded, 43);
   TEST_ASSERT_NOT_NULL(loadedZhiyun);
   TEST_ASSERT_EQUAL_UINT8(0, loadedZhiyun->routingSelector);
-  amaran_light::SequenceAllocator first;
+  aputure_light::SequenceAllocator first;
   TEST_ASSERT_TRUE(first.begin(store, loaded));
   uint32_t sequence = 99;
   TEST_ASSERT_TRUE(first.next(sequence));
   TEST_ASSERT_EQUAL_UINT32(0, sequence);
-  amaran_light::MeshStoreData restarted;
+  aputure_light::MeshStoreData restarted;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
                         static_cast<int>(store.load(restarted)));
-  amaran_light::SequenceAllocator second;
+  aputure_light::SequenceAllocator second;
   TEST_ASSERT_TRUE(second.begin(store, restarted));
   TEST_ASSERT_TRUE(second.next(sequence));
-  TEST_ASSERT_EQUAL_UINT32(amaran_light::kSequenceBlockSize, sequence);
+  TEST_ASSERT_EQUAL_UINT32(aputure_light::kSequenceBlockSize, sequence);
 }
 
 void test_mesh_store_round_trip_at_device_capacity() {
   MemoryBackend backend;
-  amaran_light::MeshStore store(backend);
-  amaran_light::MeshStoreData data;
+  aputure_light::MeshStore store(backend);
+  aputure_light::MeshStoreData data;
   data.network.initialized = true;
   for (size_t i = 0; i < CONFIG_MAX_DEVICE_INSTANCES; ++i) {
-    amaran_light::MeshNodeRecord node;
+    aputure_light::MeshNodeRecord node;
     node.instanceId = static_cast<studio::InstanceId>(i + 1);
-    node.model = studio::DriverId::AmaranLight;
+    node.model = studio::DriverId::AputureLight;
     node.unicastAddress = static_cast<uint16_t>(i + 2);
     node.configured = true;
-    TEST_ASSERT_TRUE(amaran_light::upsertNode(data, node));
+    TEST_ASSERT_TRUE(aputure_light::upsertNode(data, node));
   }
   TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, data.nodeCount);
   TEST_ASSERT_TRUE(store.save(data));
 
-  amaran_light::MeshStoreData restored;
+  aputure_light::MeshStoreData restored;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Loaded),
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, restored.nodeCount);
   TEST_ASSERT_NOT_NULL(
-      amaran_light::findNode(restored, CONFIG_MAX_DEVICE_INSTANCES));
+      aputure_light::findNode(restored, CONFIG_MAX_DEVICE_INSTANCES));
 }
 
 void test_mesh_v1_store_migrates_zhiyun_routing_selectors() {
   V1MeshBackend backend;
-  amaran_light::MeshStore store(backend);
-  amaran_light::MeshStoreData data;
+  aputure_light::MeshStore store(backend);
+  aputure_light::MeshStoreData data;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Loaded),
       static_cast<int>(store.load(data)));
   TEST_ASSERT_EQUAL_UINT8(2, data.nodeCount);
-  const amaran_light::MeshNodeRecord* first =
-      amaran_light::findNode(data, 41);
-  const amaran_light::MeshNodeRecord* second =
-      amaran_light::findNode(data, 42);
+  const aputure_light::MeshNodeRecord* first =
+      aputure_light::findNode(data, 41);
+  const aputure_light::MeshNodeRecord* second =
+      aputure_light::findNode(data, 42);
   TEST_ASSERT_NOT_NULL(first);
   TEST_ASSERT_NOT_NULL(second);
   TEST_ASSERT_EQUAL_UINT8(0, first->routingSelector);
@@ -4117,9 +4113,9 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
   RUN_TEST(test_ble_device_advertisement_matchers);
-  RUN_TEST(test_amaran_crypto_and_network_vectors);
-  RUN_TEST(test_amaran_access_payloads_and_validation);
-  RUN_TEST(test_amaran_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_aputure_light_crypto_and_network_vectors);
+  RUN_TEST(test_aputure_light_access_payloads_and_validation);
+  RUN_TEST(test_aputure_light_store_and_sequence_reservation_survive_restart);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);

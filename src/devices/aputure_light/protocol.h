@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace amaran_light {
+namespace aputure_light {
 
 constexpr uint16_t kCctMinKelvin = 2300;
 constexpr uint16_t kCctMaxKelvin = 10000;
@@ -86,4 +86,4 @@ bool inferKnownVendorModel(const char* displayName, const char* bleName,
 
 uint8_t vendorChecksum(const uint8_t tail[9]);
 
-}  // namespace amaran_light
+}  // namespace aputure_light

@@ -15,8 +15,8 @@
 #include "devices/tascam_x8/ui.h"
 #include "devices/home_assistant/ui.h"
 #include "devices/home_assistant/client.h"
-#include "devices/amaran_light/ui.h"
-#include "devices/amaran_light/runtime.h"
+#include "devices/aputure_light/ui.h"
+#include "devices/aputure_light/runtime.h"
 #include "devices/zhiyun_x100/ui.h"
 #include "haptic_feedback.h"
 #include "portal_service.h"
@@ -269,12 +269,12 @@ int main() {
   studio::InstanceId pano120Id = studio::kInvalidInstanceId;
   studio::InstanceId ace25Id = studio::kInvalidInstanceId;
   studio::InstanceId zhiyunId = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Key", pano60Id);
-  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Fill", pano120Id);
-  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Rim", ace25Id);
-  studio::InstanceId amaranFourthId = studio::kInvalidInstanceId;
-  studio::devices().add(studio::DriverId::AmaranLight, "Amaran Background",
-                        amaranFourthId);
+  studio::devices().add(studio::DriverId::AputureLight, "Aputure Key", pano60Id);
+  studio::devices().add(studio::DriverId::AputureLight, "Aputure Fill", pano120Id);
+  studio::devices().add(studio::DriverId::AputureLight, "Aputure Rim", ace25Id);
+  studio::InstanceId aputureFourthId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::AputureLight, "Aputure Background",
+                        aputureFourthId);
   studio::devices().add(studio::DriverId::ZhiyunLight, "MOLUS X100", zhiyunId);
   studio::InstanceId zhiyunId2 = studio::kInvalidInstanceId;
   studio::InstanceId zhiyunId3 = studio::kInvalidInstanceId;
@@ -299,7 +299,7 @@ int main() {
       pano60Id == studio::kInvalidInstanceId ||
       pano120Id == studio::kInvalidInstanceId ||
       ace25Id == studio::kInvalidInstanceId ||
-      amaranFourthId == studio::kInvalidInstanceId ||
+      aputureFourthId == studio::kInvalidInstanceId ||
       zhiyunId == studio::kInvalidInstanceId ||
       zhiyunId2 == studio::kInvalidInstanceId ||
       zhiyunId3 == studio::kInvalidInstanceId ||
@@ -624,54 +624,54 @@ int main() {
 
   tascam_x8_ui::hide();
   ui::showHome();
-  amaran_light_ui::show(pano60Id);
+  aputure_light_ui::show(pano60Id);
   pump(300);
-  if (!capture("20d_amaran_pairing")) return 1;
-  amaran_light::runtime()->simSetPhase(
-      pano60Id, amaran_light::AmaranLightState::Phase::Ready);
+  if (!capture("20d_aputure_light_pairing")) return 1;
+  aputure_light::runtime()->simSetPhase(
+      pano60Id, aputure_light::AputureLightState::Phase::Ready);
   pump(300);
   studio::DeviceCommand lightOn;
   lightOn.instanceId = pano60Id;
   lightOn.type = studio::CommandType::TurnOn;
   studio::devices().enqueue(lightOn);
   pump(20);
-  amaran_light_ui::simSetCctLook(4300, 120, 72);
+  aputure_light_ui::simSetCctLook(4300, 120, 72);
   pump(400);
-  const amaran_light::AmaranLightState* lightState =
-      amaran_light::runtime()->state(pano60Id);
+  const aputure_light::AputureLightState* lightState =
+      aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
       lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
-    std::fprintf(stderr, "Amaran CCT draft was not applied\n");
+    std::fprintf(stderr, "Aputure Light CCT draft was not applied\n");
     return 1;
   }
-  amaran_light_ui::simSetRgbLook(0x3366ff, 38);
+  aputure_light_ui::simSetRgbLook(0x3366ff, 38);
   pump(400);
-  lightState = amaran_light::runtime()->state(pano60Id);
+  lightState = aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->rgb == 0xffffff ||
       lightState->rgbBrightness != 38) {
-    std::fprintf(stderr, "Amaran RGB draft was not applied\n");
+    std::fprintf(stderr, "Aputure Light RGB draft was not applied\n");
     return 1;
   }
-  amaran_light_ui::simShowCct();
+  aputure_light_ui::simShowCct();
   pump(400);
-  lightState = amaran_light::runtime()->state(pano60Id);
+  lightState = aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
       lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
-    std::fprintf(stderr, "Amaran CCT look was not recalled\n");
+    std::fprintf(stderr, "Aputure Light CCT look was not recalled\n");
     return 1;
   }
-  if (!capture("20e_amaran_cct_optimistic")) return 1;
-  amaran_light_ui::simShowRgb();
+  if (!capture("20e_aputure_light_cct_optimistic")) return 1;
+  aputure_light_ui::simShowRgb();
   pump(400);
-  lightState = amaran_light::runtime()->state(pano60Id);
+  lightState = aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->rgb == 0xffffff ||
       lightState->rgbBrightness != 38 ||
-      lightState->mode != amaran_light::AmaranLightState::Mode::Rgb) {
-    std::fprintf(stderr, "Amaran RGB look was not recalled\n");
+      lightState->mode != aputure_light::AputureLightState::Mode::Rgb) {
+    std::fprintf(stderr, "Aputure Light RGB look was not recalled\n");
     return 1;
   }
-  if (!capture("20f_amaran_rgb")) return 1;
-  amaran_light_ui::hide();
+  if (!capture("20f_aputure_light_rgb")) return 1;
+  aputure_light_ui::hide();
 
   zhiyun_x100_ui::show(zhiyunId);
   pump(300);

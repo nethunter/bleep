@@ -25,7 +25,7 @@ FAMILIES = {
         "studio::HomeAssistantDriver",
         "home_assistant::HomeAssistantClient",
     ),
-    "amaran": ("studio::AmaranLightDriver", "amaran_light::AmaranRuntime"),
+    "aputure": ("studio::AputureLightDriver", "aputure_light::AputureLightRuntime"),
     "zhiyun": ("studio::ZhiyunLightDriver", "zhiyun_x100::X100Client"),
     "gopro": ("studio::GoProDriver", "gopro::GoProClient"),
     "insta360": ("studio::Insta360Driver", "insta360::kShutterCommand"),
@@ -33,16 +33,16 @@ FAMILIES = {
     "phone_camera": ("studio::PhoneCameraDriver", "NimBLEHIDDevice"),
 }
 
-# Zhiyun mesh nodes intentionally use the shared Amaran proxy runtime without
-# linking the Amaran driver adapter.
+# Zhiyun mesh nodes intentionally use the shared Aputure Light proxy runtime
+# without linking the Aputure Light driver adapter.
 PROFILES = {
     "shark_nano_ii": {"shark"},
     "canon_ble": {"canon_ble"},
     "canon_trigger": {"canon_trigger"},
     "tascam_x8": {"tascam"},
     "home_assistant": {"home_assistant"},
-    "amaran_light": {"amaran"},
-    "zhiyun_x100": {"zhiyun", "amaran"},
+    "aputure_light": {"aputure"},
+    "zhiyun_x100": {"zhiyun", "aputure"},
     "gopro": {"gopro"},
     "insta360": {"insta360"},
     "dji_osmo": {"dji_osmo"},
@@ -55,7 +55,7 @@ DRIVER_GLOBAL_CONSTRUCTORS = (
     "_GLOBAL__sub_I__ZN13canon_trigger",
     "_GLOBAL__sub_I__ZN9tascam_x8",
     "_GLOBAL__sub_I__ZN14home_assistant",
-    "_GLOBAL__sub_I__ZN12amaran_light",
+    "_GLOBAL__sub_I__ZN12aputure_light",
     "_GLOBAL__sub_I__ZN11zhiyun_x100",
     "_GLOBAL__sub_I__ZN5gopro",
     "_GLOBAL__sub_I__ZN8insta360",

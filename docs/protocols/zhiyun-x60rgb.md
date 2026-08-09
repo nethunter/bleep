@@ -117,9 +117,9 @@ reply or timeout policy rather than inference from the shared gateway link.
 ## Cross-brand panel-owned mesh probe
 
 A factory-reset X60RGB was provisioned into the same private panel-owned test
-network as one Aputure MC Pro and one Amaran Ace 25c. It received unicast
+network as one Aputure MC Pro and one amaran Ace 25c. It received unicast
 address `0x0004`, reported one element, and reappeared with both Mesh Proxy
-`0x1828` and proprietary control `0xFEE9` available. Amaran-specific AppKey and
+`0x1828` and proprietary control `0xFEE9` available. Sidus-family AppKey and
 model configuration was deliberately skipped for the X60RGB.
 
 The X60RGB then served as the sole BLE Mesh Proxy for five read-only

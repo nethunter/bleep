@@ -81,7 +81,7 @@ principles:
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and
   remain immediately reusable while healthy. Ordinary devices consume one
-  group each; every Amaran, Aputure, and Zhiyun member provisioned into the
+  group each; every Aputure Light and Zhiyun member provisioned into the
   same panel-owned mesh shares one group and one proxy connection. An ownerless retained session is parked
   after an unexpected drop instead of reconnecting indefinitely. The controller
   retains up to 16 NimBLE bond records independently of the saved-device limit.
@@ -108,7 +108,7 @@ principles:
   devices and current Start/Stop sequences. It can rename, enable, disable, or
   remove existing devices and create, duplicate, reorder, and edit sequences;
   physical pairing and runtime control remain on the panel.
-- Experimental native `Amaran Light` support with panel-owned PB-GATT
+- Experimental native `Aputure Light` support with panel-owned PB-GATT
   provisioning, one cross-brand shared Mesh Proxy connection, per-member
   vendor color groups, optimistic color-property
   controls, and a unified parameterized `Set color` sequence action. The
@@ -142,8 +142,8 @@ principles:
 - Native tests for protocol parsing, state reducers, device/scene registries,
   command routing, persistence, and shared BLE scheduling.
 
-Groups, existing Amaran mesh import, success-journal rollback, and full
-Canon Wi-Fi/CCAPI control are roadmap work. Home Assistant and native Amaran
+Groups, existing Sidus mesh import, success-journal rollback, and full
+Canon Wi-Fi/CCAPI control are roadmap work. Home Assistant and Aputure Light
 are experimental bounded tranches whose hardware gates remain open. See
 [project progress](docs/progress.md) for the exact current gates and
 [the implementation roadmap](docs/implementation-roadmap.md) for sequencing.
@@ -165,7 +165,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
-| Amaran Light | Experimental | Adds factory-reset Amaran/Aputure fixtures to the panel-owned mesh. Ace 25c/MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and Pano validation remain open. |
+| Aputure Light | Experimental | Adds factory-reset Aputure and amaran fixtures to the panel-owned mesh. amaran Ace 25c/Aputure MC Pro common-group power and separate vendor-group RGB control are physically verified; authenticated status keeps each member's power/reachability separate. Composition-status enforcement, reset/recovery, and amaran Pano validation remain open. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Adds each fixture as a logical member of the same one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
@@ -226,6 +226,11 @@ values shown on the Shark screen come from the slider.
 You need a compatible Python 3 installation and PlatformIO. From the repository
 root:
 
+This `0.2.0-dev` naming baseline intentionally does not migrate the former
+Amaran driver IDs or `amaran_mesh` NVS key. Before flashing it over an earlier
+development build, use **Settings > Factory Reset** on the currently installed
+firmware. The reset clears saved configuration; it does not erase firmware.
+
 ```sh
 python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
@@ -239,7 +244,7 @@ The main Montserrat profile compiles every current driver and is the standard
 local firmware check. GitHub Actions is the cross-profile testing ground: every
 pull request and push to `main` builds the full Montserrat and Roboto profiles,
 plus the isolated Shark, Canon Smart, Canon Trigger, Tascam X8, Home Assistant,
-Aputure/Amaran, Zhiyun, GoPro, Phone Camera, Insta360, and DJI Osmo profiles.
+  Aputure Light, Zhiyun, GoPro, Phone Camera, Insta360, and DJI Osmo profiles.
 Build an isolated profile locally only when diagnosing a profile-specific
 failure.
 

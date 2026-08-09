@@ -17,8 +17,8 @@
 #if CONFIG_DRIVER_HOME_ASSISTANT
 #include "devices/home_assistant/driver.h"
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-#include "devices/amaran_light/driver.h"
+#if CONFIG_DRIVER_APUTURE_LIGHT
+#include "devices/aputure_light/driver.h"
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
 #include "devices/zhiyun_x100/driver.h"
@@ -63,9 +63,9 @@ static_assert(sizeof(TascamX8Driver) <= 64,
 static_assert(sizeof(HomeAssistantDriver) <= 64,
               "Home Assistant driver shell must stay dormant");
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-static_assert(sizeof(AmaranLightDriver) <= 64,
-              "Amaran driver shell must stay dormant");
+#if CONFIG_DRIVER_APUTURE_LIGHT
+static_assert(sizeof(AputureLightDriver) <= 64,
+              "Aputure Light driver shell must stay dormant");
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
 static_assert(sizeof(ZhiyunLightDriver) <= 64,
@@ -107,10 +107,8 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_HOME_ASSISTANT
   static HomeAssistantDriver homeAssistantDriver;
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-  static AmaranLightDriver amaranLight(DriverId::AmaranLight);
-  static AmaranLightDriver amaranPano120c(DriverId::AmaranPano120c);
-  static AmaranLightDriver amaranAce25c(DriverId::AmaranAce25c);
+#if CONFIG_DRIVER_APUTURE_LIGHT
+  static AputureLightDriver aputureLight;
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   static ZhiyunLightDriver zhiyunLightDriver;
@@ -146,10 +144,8 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_HOME_ASSISTANT
       &homeAssistantDriver,
 #endif
-#if CONFIG_DRIVER_AMARAN_LIGHT
-      &amaranLight,
-      &amaranPano120c,
-      &amaranAce25c,
+#if CONFIG_DRIVER_APUTURE_LIGHT
+      &aputureLight,
 #endif
 #if CONFIG_DRIVER_ZHIYUN_X100
       &zhiyunLightDriver,

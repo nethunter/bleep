@@ -1,8 +1,8 @@
-#include "devices/amaran_light/crypto.h"
+#include "devices/aputure_light/crypto.h"
 
 #include <cstring>
 
-namespace amaran_light {
+namespace aputure_light {
 namespace {
 
 constexpr uint8_t kSbox[256] = {
@@ -287,4 +287,4 @@ bool aesCcmDecrypt(const uint8_t key[16], const uint8_t* nonce,
   return true;
 }
 
-}  // namespace amaran_light
+}  // namespace aputure_light

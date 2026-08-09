@@ -502,7 +502,7 @@
                 "CONFIG_DRIVER_CANON_BLE=1",
                 "CONFIG_DRIVER_TASCAM_X8=1",
                 "CONFIG_DRIVER_HOME_ASSISTANT=1",
-                "CONFIG_DRIVER_AMARAN_LIGHT=1",
+                "CONFIG_DRIVER_APUTURE_LIGHT=1",
                 "CONFIG_DRIVER_ZHIYUN_X100=1",
                 "CONFIG_DRIVER_GOPRO=1",
                 "CONFIG_DRIVER_ACTION_CAMERA_RESEARCH=1",

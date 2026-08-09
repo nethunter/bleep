@@ -19,14 +19,14 @@ flowchart TB
   DriverCatalog --> DeviceManager
   Groups --> DeviceManager
   DeviceManager --> SharkDriver
-  DeviceManager --> AmaranDriver
+  DeviceManager --> AputureLightDriver
   DeviceManager --> ZhiyunLightDriver
   DeviceManager --> CanonTriggerDriver
   DeviceManager --> CanonSmartDriver
   DeviceManager --> HomeAssistantDriver
   DeviceManager --> FutureRecorderDrivers
   SharkDriver --> BluetoothRuntime
-  AmaranDriver --> BluetoothRuntime
+  AputureLightDriver --> BluetoothRuntime
   ZhiyunLightDriver --> BluetoothRuntime
   CanonTriggerDriver --> BluetoothRuntime
   CanonSmartDriver --> BluetoothRuntime
@@ -47,17 +47,16 @@ ADR-013 advances a bounded subset of this architecture before the transport
 feasibility spikes:
 
 - the main profile's `DriverCatalog` contains Shark Nano II, Canon Trigger,
-  Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Amaran
+  Canon Smart, Tascam X8, Home Assistant, and one discoverable generic Aputure
   Light entry, and one experimental multi-instance Zhiyun Light entry for
   captured MOLUS profiles;
-  hidden legacy Amaran model IDs remain resolvable for persisted records;
   smaller profiles compile selected drivers out;
 - `DeviceManager` owns a dynamically allocated registry with a fixed persisted
   ceiling, command/result queues, up to eight logical active instances grouped
   onto four physical BLE transport slots, per-owner lifecycle, and persistence;
 - schema version 2 stores up to twenty-four device records in the `studio` NVS
   namespace, migrates v1 BLE records unchanged, and retains records for
-  unavailable driver IDs. HA credentials/token and Amaran mesh secrets use
+  unavailable driver IDs. HA credentials/token and panel-owned mesh secrets use
   separate checksummed records;
 - a missing registry is initialized empty. A paired Shark from the pre-registry
   `shark` namespace is still migrated, while the untouched unpaired Shark
@@ -74,7 +73,7 @@ feasibility spikes:
   clients. Panel Scenes (ADR-020/037) provide generated or custom Stop
   sequences with concurrent Canon Smart + Tascam links. ADR-023 adds bounded
   Portal provisioning and four local HA entities. ADR-024 adds an experimental
-  userspace PB-GATT/Mesh Proxy Amaran tranche. Both target hardware gates remain
+  userspace PB-GATT/Mesh Proxy Aputure Light tranche. Both target hardware gates remain
   open. ADR-028 shares that panel-owned provisioning repository and PB-GATT
   engine with Zhiyun lights, then adds model-profiled direct `0xFEE9` control
   with confirmed readback;
@@ -342,7 +341,7 @@ Scene handoff does not proactively tear down either HA or physical retained
 sessions. Old-only targets become ownerless but stay connected while the
 four-resource pool has capacity. Acquiring a fifth logical resource or BLE key
 uses the normal LRU paths, which skip every shared target because it retains
-sequence ownership. This keeps HA, Canon, Tascam, and Amaran connected together
+sequence ownership. This keeps HA, Canon, Tascam, and Aputure Light connected together
 when they exactly fill the pool. Action execution still follows the authored
 order after all targets prepare. The LVGL pool is held to 64 KiB
 and the target keeps two 15-row DMA display strips, returning 47.2 KiB of
@@ -431,13 +430,13 @@ GATT is accessed through a transport facade:
 
 - all current BLE builds use one lazy NimBLE central;
 - Shark, Canon, and Tascam use their device-specific GATT services;
-- Amaran and Zhiyun lights share one panel-owned mesh repository, durable unicast
+- Aputure Light and Zhiyun lights share one panel-owned mesh repository, durable unicast
   allocator, and userspace no-OOB PB-GATT provisioner over that central;
 - the mesh runtime owns one retained proxy client. It exposes standard Mesh
-  Proxy Data In/Out to Amaran/Aputure access messages and lets saved Zhiyun
+  Proxy Data In/Out to Aputure Light access messages and lets saved Zhiyun
   sessions attach their separate `0xFEE9` characteristics to that same native
   client;
-- `DeviceManager` charges the complete panel-owned Amaran/Aputure/Zhiyun mesh one
+- `DeviceManager` charges the complete panel-owned Aputure Light/Zhiyun mesh one
   `BleSlotKey`, so adding or retaining another member does not consume another
   one of the four physical slots;
 - the generic, multi-instance Zhiyun driver accepts reset or provisioned
@@ -453,7 +452,7 @@ GATT is accessed through a transport facade:
 - callbacks enqueue only bounded events or raw bytes; mesh crypto, parsing,
   persistence, and writes remain on the main loop.
 
-Concurrent Amaran proxy, Shark/Canon/Tascam GATT, provisioning recovery, and
+Concurrent Aputure Light proxy, Shark/Canon/Tascam GATT, provisioning recovery, and
 post-teardown heap remain an ESP32-C3 hardware feasibility gate.
 
 ## Dedicated Portal mode
@@ -520,7 +519,7 @@ Versioned persistent records cover:
 
 - Wi-Fi credentials and Canon endpoints;
 - runtime device instances and groups;
-- Amaran mesh identity and keys;
+- panel-owned mesh identity and keys;
 - scenes and execution metadata;
 - schema version and migration status.
 - panel preferences such as haptic enablement.

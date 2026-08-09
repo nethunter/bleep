@@ -1,4 +1,4 @@
-#include "devices/amaran_light/ui.h"
+#include "devices/aputure_light/ui.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -6,14 +6,14 @@
 #include <cstdio>
 
 #include "core/device_manager.h"
-#include "devices/amaran_light/state.h"
+#include "devices/aputure_light/state.h"
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
 #include "ui/round_page.h"
 #include "../../ui.h"
 
-namespace amaran_light_ui {
+namespace aputure_light_ui {
 namespace {
 constexpr uint32_t kBg=0x05070a, kPanel=0x12161d, kAccent=0x35c7f2,
                    kText=0xf3f4f6, kMuted=0x8a94a6, kDanger=0xf26d6d;
@@ -56,7 +56,7 @@ void renderMode(){lv_obj_set_style_bg_color(modeCct,lv_color_hex(rgbMode?kPanel:
 void markDirty(lv_event_t*){if(syncingControls)return;captureDraft();dirty=true;applyAt=millis()+350;}
 void setMode(bool rgb){if(rgb==rgbMode)return;captureDraft();rgbMode=rgb;renderMode();restoreDraft();dirty=true;applyAt=millis()+350;}
 void onCct(lv_event_t*){setMode(false);} void onRgb(lv_event_t*){setMode(true);}
-void onPower(lv_event_t*){const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));queue(s&&s->on?studio::CommandType::TurnOff:studio::CommandType::TurnOn);}
+void onPower(lv_event_t*){const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));queue(s&&s->on?studio::CommandType::TurnOff:studio::CommandType::TurnOn);}
 void onRetry(lv_event_t*){if(studio::devices().pendingAddCommitFailed(instanceId))studio::devices().retryPendingAdd(instanceId);else queue(studio::CommandType::Connect);}
 void onBack(lv_event_t*){haptic_feedback::request(haptic_feedback::Pattern::Back);hide();ui::showDeviceParent();}
 lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj_t*& slider){
@@ -80,27 +80,27 @@ void ensure(){if(screen)return;screen=lv_obj_create(nullptr);lv_obj_set_style_bg
   power=button(screen,"POWER",onPower,kAccent);lv_obj_set_size(power,94,28);lv_obj_align(power,LV_ALIGN_BOTTOM_MID,0,-16);
   lv_obj_move_background(cctBody);lv_obj_move_background(rgbBody);
 }
-const char* phase(const amaran_light::AmaranLightState* s){if(!s)return "Unavailable";switch(s->phase){case amaran_light::AmaranLightState::Phase::Unprovisioned:return "Not provisioned";case amaran_light::AmaranLightState::Phase::Scanning:return "Scanning for light";case amaran_light::AmaranLightState::Phase::Provisioning:return "Provisioning";case amaran_light::AmaranLightState::Phase::PendingConfig:return "Configuring mesh";case amaran_light::AmaranLightState::Phase::ConnectingProxy:return "Connecting proxy";case amaran_light::AmaranLightState::Phase::Ready:return s->powerConfirmed&&s->nodeReachable?"Ready / confirmed":(s->optimistic?"Ready / optimistic":"Ready / state unknown");case amaran_light::AmaranLightState::Phase::Failed:return s->error[0]?s->error:"Failed";}return "Unknown";}
-void showForState(const amaran_light::AmaranLightState* s){
-  if(studio::devices().pendingAddCommitFailed(instanceId)){pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Amaran Light");pairingScreen.setStatus("Couldn't save","Retry to add this device",false,true,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());return;}
-  if(s&&s->phase==amaran_light::AmaranLightState::Phase::Ready){if(lv_scr_act()!=screen)lv_scr_load(screen);return;}
-  pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Amaran Light");
-  const bool failed=s&&s->phase==amaran_light::AmaranLightState::Phase::Failed;
-  const bool scanning=!s||s->phase==amaran_light::AmaranLightState::Phase::Unprovisioned||s->phase==amaran_light::AmaranLightState::Phase::Scanning;
+const char* phase(const aputure_light::AputureLightState* s){if(!s)return "Unavailable";switch(s->phase){case aputure_light::AputureLightState::Phase::Unprovisioned:return "Not provisioned";case aputure_light::AputureLightState::Phase::Scanning:return "Scanning for light";case aputure_light::AputureLightState::Phase::Provisioning:return "Provisioning";case aputure_light::AputureLightState::Phase::PendingConfig:return "Configuring mesh";case aputure_light::AputureLightState::Phase::ConnectingProxy:return "Connecting proxy";case aputure_light::AputureLightState::Phase::Ready:return s->powerConfirmed&&s->nodeReachable?"Ready / confirmed":(s->optimistic?"Ready / optimistic":"Ready / state unknown");case aputure_light::AputureLightState::Phase::Failed:return s->error[0]?s->error:"Failed";}return "Unknown";}
+void showForState(const aputure_light::AputureLightState* s){
+  if(studio::devices().pendingAddCommitFailed(instanceId)){pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Aputure Light");pairingScreen.setStatus("Couldn't save","Retry to add this device",false,true,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());return;}
+  if(s&&s->phase==aputure_light::AputureLightState::Phase::Ready){if(lv_scr_act()!=screen)lv_scr_load(screen);return;}
+  pairingScreen.create(onBack,onRetry);const auto* r=studio::devices().find(instanceId);pairingScreen.setTitle(r?r->displayName:"Aputure Light");
+  const bool failed=s&&s->phase==aputure_light::AputureLightState::Phase::Failed;
+  const bool scanning=!s||s->phase==aputure_light::AputureLightState::Phase::Unprovisioned||s->phase==aputure_light::AputureLightState::Phase::Scanning;
   const char* detail=scanning?"Factory-reset light nearby":failed?"Check light and try again":"Keep the light powered on";
   pairingScreen.setStatus(phase(s),detail,!failed,scanning||failed,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());
 }
-void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Amaran");lv_label_set_text(status,phase(s));if(!s)return;
-  if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=hsv.s;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==amaran_light::AmaranLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
+void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Aputure Light");lv_label_set_text(status,phase(s));if(!s)return;
+  if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=hsv.s;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==aputure_light::AputureLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
   lv_obj_set_style_bg_color(power,lv_color_hex(s->on?kDanger:kAccent),0);
 }
 void apply(){studio::DeviceRuntimeState rt=studio::devices().runtimeState(instanceId);if(!rt.protocolReady||rt.commandPending)return;captureDraft();if(rgbMode)queue(studio::CommandType::SetLightRgb,draftRgb,draftRgbBrightness);else queue(studio::CommandType::SetLightCct,draftKelvin,draftCctBrightness,draftTint);dirty=false;}
 }
-void show(studio::InstanceId id){ensure();instanceId=id;visible=studio::devices().acquire(id,studio::ConnectionOwner::Foreground);dirty=false;draftInitialized=false;refresh();showForState(static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(id)));}
+void show(studio::InstanceId id){ensure();instanceId=id;visible=studio::devices().acquire(id,studio::ConnectionOwner::Foreground);dirty=false;draftInitialized=false;refresh();showForState(static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(id)));}
 void hide(){if(visible)studio::devices().release(instanceId,studio::ConnectionOwner::Foreground);visible=false;instanceId=studio::kInvalidInstanceId;}
 void release(){if(visible)return;if(screen){lv_obj_del(screen);screen=title=status=cctBody=rgbBody=kelvinSlider=tintSlider=cctBrightness=wheel=rgbSaturation=rgbBrightness=modeCct=modeRgb=power=nullptr;}pairingScreen.destroy();}
 bool active(){return visible;}
-void tick(){if(!visible)return;uint32_t now=millis();if(dirty&&static_cast<int32_t>(now-applyAt)>=0)apply();if(now-lastRefresh>=250){lastRefresh=now;const auto* s=static_cast<const amaran_light::AmaranLightState*>(studio::devices().specializedState(instanceId));refresh();showForState(s);}}
+void tick(){if(!visible)return;uint32_t now=millis();if(dirty&&static_cast<int32_t>(now-applyAt)>=0)apply();if(now-lastRefresh>=250){lastRefresh=now;const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));refresh();showForState(s);}}
 void handleShortPress(){onPower(nullptr);}void handleLongPress(){onBack(nullptr);}
 #ifdef UI_SIMULATOR
 void simSetCctLook(int kelvin,int tintPermille,int brightness){if(rgbMode)setMode(false);syncingControls=true;lv_slider_set_value(kelvinSlider,kelvin,LV_ANIM_OFF);lv_slider_set_value(tintSlider,tintPermille,LV_ANIM_OFF);lv_slider_set_value(cctBrightness,brightness,LV_ANIM_OFF);syncingControls=false;markDirty(nullptr);}
@@ -108,4 +108,4 @@ void simSetRgbLook(uint32_t rgb,int brightness){if(!rgbMode)setMode(true);lv_col
 void simShowCct(){setMode(false);}
 void simShowRgb(){setMode(true);}
 #endif
-}  // namespace amaran_light_ui
+}  // namespace aputure_light_ui

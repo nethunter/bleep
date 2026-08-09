@@ -17,10 +17,7 @@ enum class DriverId : uint16_t {
   TascamX8 = 3,
   CanonTrigger = 4,   // Canon (Trigger) BR-E1-compatible BLE
   HomeAssistant = 5,
-  AmaranLight = 6,
-  AmaranPano60c = 6,
-  AmaranPano120c = 7,
-  AmaranAce25c = 8,
+  AputureLight = 6,
   ZhiyunLight = 9,
   ZhiyunX100 = 9,
   GoPro = 10,
