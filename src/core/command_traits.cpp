@@ -4,6 +4,7 @@ namespace studio {
 namespace {
 
 constexpr CommandTrait kTraits[] = {
+    {CommandType::RecordTrigger, Capability::RecordTrigger, true},
     {CommandType::RecordStart, Capability::RecordStart, true},
     {CommandType::RecordStop, Capability::RecordStop, true},
     {CommandType::TurnOn, Capability::TurnOn, true},

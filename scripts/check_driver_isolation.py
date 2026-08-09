@@ -27,6 +27,10 @@ FAMILIES = {
     ),
     "amaran": ("studio::AmaranLightDriver", "amaran_light::AmaranRuntime"),
     "zhiyun": ("studio::ZhiyunLightDriver", "zhiyun_x100::X100Client"),
+    "gopro": ("studio::GoProDriver", "gopro::GoProClient"),
+    "insta360": ("studio::Insta360Driver", "insta360::kShutterCommand"),
+    "dji_osmo": ("studio::DjiOsmoDriver", "dji_osmo::Client"),
+    "phone_camera": ("studio::PhoneCameraDriver", "NimBLEHIDDevice"),
 }
 
 # Zhiyun mesh nodes intentionally use the shared Amaran proxy runtime without
@@ -39,6 +43,10 @@ PROFILES = {
     "home_assistant": {"home_assistant"},
     "amaran_light": {"amaran"},
     "zhiyun_x100": {"zhiyun", "amaran"},
+    "gopro": {"gopro"},
+    "insta360": {"insta360"},
+    "dji_osmo": {"dji_osmo"},
+    "phone_camera": {"phone_camera"},
 }
 
 DRIVER_GLOBAL_CONSTRUCTORS = (
@@ -49,6 +57,10 @@ DRIVER_GLOBAL_CONSTRUCTORS = (
     "_GLOBAL__sub_I__ZN14home_assistant",
     "_GLOBAL__sub_I__ZN12amaran_light",
     "_GLOBAL__sub_I__ZN11zhiyun_x100",
+    "_GLOBAL__sub_I__ZN5gopro",
+    "_GLOBAL__sub_I__ZN8insta360",
+    "_GLOBAL__sub_I__ZN8dji_osmo",
+    "_GLOBAL__sub_I__ZN12phone_camera",
 )
 
 

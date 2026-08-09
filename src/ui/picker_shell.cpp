@@ -159,7 +159,8 @@ bool deviceSupportsSceneActions(const studio::DeviceRecord& record,
     return false;
   }
   const uint32_t caps = profile.capabilities;
-  return (caps & studio::capabilityBit(studio::Capability::RecordStart)) != 0 ||
+  return (caps & studio::capabilityBit(studio::Capability::RecordTrigger)) != 0 ||
+         (caps & studio::capabilityBit(studio::Capability::RecordStart)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::RecordStop)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::TurnOn)) != 0 ||
          (caps & studio::capabilityBit(studio::Capability::TurnOff)) != 0 ||
@@ -715,6 +716,16 @@ void refreshActions() {
     lv_label_set_text(empty, "Missing device");
     lv_obj_set_style_text_color(empty, lv_color_hex(kColMuted), 0);
     return;
+  }
+  if ((profile.capabilities &
+       studio::capabilityBit(studio::Capability::RecordTrigger)) != 0) {
+    void* userData = reinterpret_cast<void*>(
+        static_cast<uintptr_t>(studio::CommandType::RecordTrigger));
+    lv_obj_t* button =
+        makeButton(body, "Shutter Toggle", onChooseAction, kColAccent);
+    lv_obj_set_size(button, lv_pct(100), 36);
+    lv_obj_remove_event_cb(button, onChooseAction);
+    lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
   }
   if ((profile.capabilities &
        studio::capabilityBit(studio::Capability::RecordStart)) != 0) {

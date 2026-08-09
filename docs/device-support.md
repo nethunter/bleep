@@ -28,8 +28,9 @@ when their last owner leaves.
 
 ## Home Assistant
 
-- Status: `Experimental`; software/build/simulator gates pass, target HA
-  feasibility gate remains open.
+- Status: `Experimental`; mixed four-link BLE plus local-HA readiness and
+  Start/Stop action delivery are hardware-verified. Broader lifecycle and
+  entity-domain gates remain open.
 - Transport: local plaintext Wi-Fi using bearer-authenticated REST and the
   authenticated `/api/websocket` endpoint. No TLS, cloud, OAuth, or inbound HA
   integration.
@@ -50,13 +51,19 @@ when their last owner leaves.
   on its Portal screen. `http://bleep.local` is a best-effort mDNS alias.
   Wi-Fi credentials and token are stored separately from ordinary device
   records and are not returned by the configuration endpoint.
-- Runtime: four HA instances share one lazy retained session. Protocol-ready
-  requires Wi-Fi, WebSocket authentication, selected-entity subscription, and
-  initial REST state. Stateful actions wait for subscribed confirmation; a
-  five-second miss reports failure and schedules REST refresh.
-- Hardware gate: AP-to-LAN handoff and listener teardown, external state updates, all six domain
-  mappings, failure recovery, mixed HA/BLE sequences, and ten lifecycle/heap
-  cycles remain unverified on a real local Home Assistant installation.
+- Runtime: four HA instances share one lazy retained session. Wi-Fi, WebSocket
+  authentication, and the selected-entity subscription establish command
+  readiness. A memory-deferred initial REST read leaves state explicitly
+  unknown. Successful service results complete delivery even when an
+  idempotent action produces no state-change event; only REST or subscribed
+  events confirm entity state.
+- Hardware evidence: a local-HA Sequence 4 reached Ready while Insta360, Phone
+  Camera, Canon Smart, and Tascam occupied the four BLE links. HA Start and Stop
+  returned successful service results and the operator confirmed both complete
+  mixed sequences worked without a false Failed state.
+- Remaining gate: AP-to-LAN handoff/listener teardown, external state updates,
+  every supported entity domain, failure recovery, and ten lifecycle/heap
+  cycles on a real local Home Assistant installation.
 
 ## iFootage
 
@@ -266,6 +273,96 @@ Reference research:
 - <https://developers.canon-europe.com/developers/s/article/Latest-CCAPI>
 - <https://developercommunity.usa.canon.com/s/article/CCAPI-Function-List>
 - <https://github.com/pklaus/canoremote>
+
+## Action cameras and phone shutters
+
+Compatibility evidence is deliberately split from protocol availability:
+
+| Target | Implementation | Hardware evidence in this tranche |
+| --- | --- | --- |
+| GoPro models in the current Open GoPro support table | Implemented, experimental | No camera tested yet. Retailer-only HERO8/MAX/MINI claims are not inherited. |
+| Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
+| Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
+| Insta360 X5 | Implemented, experimental | GPS-remote connection and mixed-sequence shutter operation are operator-confirmed. |
+| Insta360 GO 3 | Implemented candidate | No model-specific result recorded. |
+| Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; legacy GPS-remote compatibility is not established. |
+| DJI Osmo Action 5 Pro | Implemented candidate | No camera tested yet. |
+| DJI Osmo 360 | Implemented candidate | No camera tested yet. |
+| Sony RMT-P1BT-compatible cameras | Research only | No savable driver or camera test yet. |
+
+### GoPro
+
+- Status: `Experimental`, hardware verification pending.
+- Driver: `GoPro` (`DriverId::GoPro = 10`), up to four instances.
+- Transport: Ble(e)p is the central and the camera is the peripheral. Discovery
+  requires advertised service `0xFEA6`; pairing is bonded without MITM.
+- Commands: official Open GoPro command/response characteristics and Set
+  Pairing State plus Set Shutter on/off. Successful command responses are shown
+  as optimistic state, never as camera-confirmed recording.
+- Compatibility claim: only models covered by the current Open GoPro supported
+  camera table should be treated as candidates. HERO8, legacy MAX/MINI, or any
+  retailer-only claim remains unverified until tested.
+- Evidence: <https://gopro.github.io/OpenGoPro/docs/ble/protocol/ble_setup/>
+  and <https://gopro.github.io/OpenGoPro/docs/ble/control/>.
+
+### Phone Camera
+
+- Status: `Experimental`; Google Pixel 9 bonded reconnect and shutter behavior
+  in a mixed sequence are operator-confirmed. Other phone models and multi-phone
+  verification remain pending.
+- Driver: `Phone Camera` (`DriverId::PhoneCamera = 14`), up to four bonded
+  phones and four concurrent physical links within the global limit.
+- Transport: Ble(e)p advertises one lazy BLE HID Consumer Control peripheral.
+  Each instance binds to the authenticated peer identity. Shutter sends Volume
+  Increment press/release only to that peer, matching the common phone-camera
+  hardware-button convention.
+- Reconnect: the saved identity receives a short directed-advertising attempt
+  followed by a normal discoverable window. The phone is the BLE central, so
+  its OS ultimately decides whether to reconnect automatically. Multiple saved
+  phones receive separate windows and remain concurrently connected afterward,
+  subject to the global physical-link limit.
+- Boundary: camera-app response to the volume key is not observable over HID,
+  so the panel reports only that the report was sent.
+
+### Insta360
+
+- Status: `Experimental`; Insta360 X5 GPS-remote connection and mixed-sequence
+  shutter operation are operator-confirmed. GO 3 validation remains pending.
+- Transport: Ble(e)p emulates an Insta360 GPS remote with service `0xCE80`;
+  the camera scans and connects to the panel. A shutter press notifies
+  `FC EF FE 86 00 03 01 02 00` on `0xCE82`.
+- Candidates: X5 and GO 3. GO 3 is a separate camera, not an alias for GO
+  Ultra. GO Ultra remains a visibly experimental probe
+  because current vendor material does not establish legacy GPS-remote support.
+- Boundary: the command is a mode-dependent toggle and has no decoded status
+  response, so the UI reports send success rather than recording state. Scenes
+  expose the same explicit `Shutter Toggle` action in either authored list.
+- Research reference: <https://github.com/theserialhobbyist/insta360_m5StickC_remote>.
+
+### DJI Osmo
+
+- Status: `Experimental`; target hardware verification pending.
+- Transport: central-role service `0xFFF0`, notifications on `0xFFF4`, and
+  write-without-response on `0xFFF5`.
+- Protocol: DJI's connection request/camera approval handshake, explicit
+  record start/stop (`1D/03`), and 2 Hz status subscription (`1D/05`). Valid
+  camera status pushes (`1D/02`) are the only source of confirmed recording.
+- Candidates: Osmo Action 5 Pro and Osmo 360, both listed by DJI's reference.
+- Evidence: <https://github.com/dji-sdk/Osmo-GPS-Controller-Demo>.
+
+### Sony Camera
+
+- Status: `Research`; the catalog entry is visible but cannot be saved.
+- Sony's RMT-P1BT behavior has a usable Apache-licensed independent protocol
+  description, including Sony company ID `0x012D`, service
+  `8000FF00-FF00-FFFF-FFFF-FFFFFFFFFFFF`, and shutter press sequencing. Because
+  the camera connects to the remote, implementation requires the same
+  peripheral-role boundary as Phone Camera plus real-camera validation. It
+  remains blocked until that gate can be exercised.
+- Research references: <https://github.com/coral/freemote>,
+  <https://helpguide.sony.net/ilc/1820/v1/en/contents/TP1000770077.html>,
+  <https://onlinemanual.insta360.com/onex2/en-us/specs/bluetooth>, and
+  <https://repair.dji.com/help/content?customId=01700008289&lang=en&paperDocType=ARTICLE&re=US&spaceId=17>.
 
 ## Audio recorders
 

@@ -11,6 +11,11 @@
 #include "devices/canon_trigger/state.h"
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/state.h"
+#include "devices/gopro/state.h"
+#include "devices/gopro/protocol.h"
+#include "devices/insta360/state.h"
+#include "devices/dji_osmo/state.h"
+#include "devices/action_camera_research/driver.h"
 #include "devices/home_assistant/driver.h"
 #include "devices/amaran_light/driver.h"
 #include "devices/zhiyun_x100/state.h"
@@ -453,6 +458,83 @@ class SimZhiyunX100Driver : public DeviceDriver {
   zhiyun_x100::X100State state_;
 };
 
+class SimGoProDriver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::GoPro; }
+  bool activate(const DeviceRecord& record) override {
+    activeInstance_ = record.instanceId;
+    state_.link = gopro::GoProState::Link::Connected;
+    state_.hasSavedDevice = true;
+    pairingChanged_ = !record.paired;
+    return true;
+  }
+  void deactivate(InstanceId instanceId) override {
+    if (instanceId == activeInstance_) activeInstance_ = kInvalidInstanceId;
+  }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    if (command.instanceId != activeInstance_) return CommandStatus::Unavailable;
+    if (command.type == CommandType::RecordStart ||
+        command.type == CommandType::RecordStop) {
+      const bool start = command.type == CommandType::RecordStart;
+      gopro::markCommandQueued(state_, start);
+      gopro::reduceCommandResponse(state_, start, gopro::kSuccessStatus);
+      return CommandStatus::Succeeded;
+    }
+    return CommandStatus::Unsupported;
+  }
+  DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
+    DeviceRuntimeState runtime;
+    if (instanceId != activeInstance_) return runtime;
+    runtime.link = LinkState::Connected;
+    runtime.protocolReady = true;
+    runtime.quality = StateQuality::Optimistic;
+    return runtime;
+  }
+  const void* specializedState(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override {
+    if (instanceId != activeInstance_ || !pairingChanged_) return false;
+    pairingChanged_ = false;
+    record.paired = true;
+    std::strncpy(record.bleAddress, "10:20:30:40:50:60",
+                 sizeof(record.bleAddress) - 1);
+    std::strncpy(record.bleName, "GoPro SIM", sizeof(record.bleName) - 1);
+    return true;
+  }
+ private:
+  InstanceId activeInstance_ = kInvalidInstanceId;
+  bool pairingChanged_ = false;
+  gopro::GoProState state_;
+};
+
+class SimInsta360Driver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::Insta360; }
+  bool activate(const DeviceRecord& record) override { id_=record.instanceId; state_.link=insta360::State::Link::Connected; return true; }
+  void deactivate(InstanceId id) override { if(id==id_)id_=kInvalidInstanceId; }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& c) override { if(c.instanceId!=id_)return CommandStatus::Unavailable;if(c.type!=CommandType::RecordTrigger)return CommandStatus::Unsupported;++state_.triggerCount;return CommandStatus::Succeeded; }
+  DeviceRuntimeState runtimeState(InstanceId id) const override { DeviceRuntimeState r;if(id==id_){r.link=LinkState::Connected;r.protocolReady=true;r.quality=StateQuality::Optimistic;}return r; }
+  const void* specializedState(InstanceId id) const override { return id==id_?&state_:nullptr; }
+  bool consumePairingUpdate(InstanceId,DeviceRecord&) override{return false;}
+ private: InstanceId id_=kInvalidInstanceId; insta360::State state_;
+};
+
+class SimDjiOsmoDriver : public DeviceDriver {
+ public:
+  DriverId driverId() const override { return DriverId::DjiOsmo; }
+  bool activate(const DeviceRecord& record) override { id_=record.instanceId;state_.link=dji_osmo::State::Link::Connected;state_.recording=dji_osmo::State::Recording::Stopped;state_.statusConfirmed=true;return true; }
+  void deactivate(InstanceId id) override { if(id==id_)id_=kInvalidInstanceId; }
+  void loop() override {}
+  CommandStatus dispatch(const DeviceCommand& c) override { if(c.instanceId!=id_)return CommandStatus::Unavailable;if(c.type==CommandType::RecordStart)state_.recording=dji_osmo::State::Recording::Recording;else if(c.type==CommandType::RecordStop)state_.recording=dji_osmo::State::Recording::Stopped;else return CommandStatus::Unsupported;return CommandStatus::Succeeded; }
+  DeviceRuntimeState runtimeState(InstanceId id) const override { DeviceRuntimeState r;if(id==id_){r.link=LinkState::Connected;r.protocolReady=true;r.quality=StateQuality::Confirmed;r.recordingConfirmed=true;r.recording=state_.recording==dji_osmo::State::Recording::Recording;}return r; }
+  const void* specializedState(InstanceId id) const override { return id==id_?&state_:nullptr; }
+  bool consumePairingUpdate(InstanceId,DeviceRecord&) override{return false;}
+ private: InstanceId id_=kInvalidInstanceId; dji_osmo::State state_;
+};
+
 MemoryConfigBackend gBackend;
 MemoryConfigBackend gScenesBackend;
 MemoryConfigBackend gPanelSettingsBackend;
@@ -466,11 +548,21 @@ AmaranLightDriver gAmaranPano60(DriverId::AmaranLight);
 AmaranLightDriver gAmaranPano120(DriverId::AmaranPano120c);
 AmaranLightDriver gAmaranAce25(DriverId::AmaranAce25c);
 SimZhiyunX100Driver gZhiyunX100Driver;
+SimGoProDriver gGoProDriver;
+SimInsta360Driver gInsta360Driver;
+SimDjiOsmoDriver gDjiOsmoDriver;
+ActionCameraResearchDriver gSonyCameraDriver(DriverId::SonyCamera);
+ActionCameraResearchDriver gPhoneCameraDriver(DriverId::PhoneCamera);
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver, &gHomeAssistantDriver,
                             &gAmaranPano60, &gAmaranPano120, &gAmaranAce25,
-                            &gZhiyunX100Driver};
-DeviceManager gManager(gBackend, gLegacy, gDrivers, 9);
+                            &gZhiyunX100Driver, &gGoProDriver,
+                            &gInsta360Driver, &gDjiOsmoDriver,
+                            &gSonyCameraDriver, &gPhoneCameraDriver};
+static_assert(sizeof(gDrivers) / sizeof(gDrivers[0]) <=
+                  DeviceManager::kMaxCompiledDrivers,
+              "simulated driver table exceeds DeviceManager capacity");
+DeviceManager gManager(gBackend, gLegacy, gDrivers, 14);
 SceneService gScenes(gScenesBackend, gManager);
 PanelSettingsService gPanelSettings(gPanelSettingsBackend);
 

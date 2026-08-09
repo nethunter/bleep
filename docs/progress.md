@@ -5,13 +5,26 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: experimental bounded Amaran Phase 4 tranche (ADR-024), beside
-  the existing Scenes/shared-central work and remaining hardware gates.
+- Current phase: bounded action-camera tranche (ADR-036), beside the
+  experimental Amaran Phase 4 tranche (ADR-024), existing Scenes/shared-BLE
+  work, and remaining hardware gates.
 - Firmware state: Home-first, persistent device registry, retained on-demand Shark,
   Canon (Trigger)/(Smart), Tascam X8, and panel Scenes with authored Start/Stop
   lists, prepare-on-open concurrent links (protocol-ready `Ready`), settings cog
-  (rename/edit/delete), and NVS scene persistence. Lazy UI allocation keeps
-  Home/Devices resident; scene UI loads on demand.
+  (rename/edit/delete) that cancels pending preparation before configuration,
+  and NVS scene persistence. Lazy UI allocation keeps Home/Devices resident;
+  scene UI loads on demand.
+- Camera catalog/runtime: GoPro, Insta360, DJI Osmo, Sony Camera, and Phone
+  Camera are separate Camera-family entries. GoPro has bonded, multi-instance
+  Open GoPro shutter start/stop with response-gated optimistic state. Phone
+  Camera exposes a bonded, multi-instance BLE HID volume-up shutter. Insta360
+  now emulates the GPS-remote service and toggle shutter for X5/GO 3 candidates;
+  GO Ultra remains a distinct experimental probe. DJI now implements its
+  published controller handshake, explicit record control, and status push for
+  Action 5 Pro/Osmo 360 candidates. Sony remains capture-required. An Insta360
+  X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
+  mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
+  mixed-sequence shutter operation.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -67,7 +80,20 @@ short, factual, and reproducible.
 
 ## Next task
 
-Exercise the newly flashed cross-brand mesh runtime from the panel: add or open
+First, continue the camera hardware matrix. Pair Insta360 X5 and GO 3
+through their GPS Remote menu, probe GO Ultra separately without assuming it
+shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
+their remote-controller flow. Confirm add, reconnect, shutter/start/stop,
+camera-originated DJI status, forget/re-pair, and two-camera concurrency. Then
+pair one supported GoPro,
+confirm reconnect and start/stop responses without claiming camera-reported
+recording state, then pair representative iOS and Android phones to
+`Ble(e)p Shutter` and confirm the system camera app responds to the physical and
+on-screen shutter. Google Pixel 9 reconnect/shutter and Insta360 X5
+mixed-sequence paths have passed. Exercise two simultaneous phone instances and mixed camera slot
+accounting. Sony still requires a capture before enabling Add Device.
+
+Then exercise the newly flashed cross-brand mesh runtime from the panel: add or open
 MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts
 them as one physical slot, and verify that the retained X60RGB proxy carries
 both Mesh Proxy and selector-0 `0xFEE9` traffic. Repeat the observed MC-red,
@@ -115,6 +141,151 @@ Amaran/Aputure support:
 ## Measurements
 
 Record values with the exact build environment and commit/worktree state.
+
+### Mixed four-link Home Assistant readiness fix
+
+- Date: 2026-08-08.
+- Live Sequence 4 evidence showed that Wi-Fi joined and the Home Assistant
+  WebSocket completed `auth_ok` plus a successful trigger subscription. At
+  that point 29-31 KiB heap remained but the largest contiguous block was only
+  9.2-11.8 KiB, so the guarded initial REST state read repeatedly logged
+  `rest_deferred` and the HA target never became protocol-ready.
+- A successful authenticated subscription now makes configured entities
+  command-ready with an explicit unknown state when their initial REST read is
+  memory-deferred. REST reconciliation and subscribed state events still
+  provide confirmation later; no connected BLE camera, recorder, light, or
+  peripheral session is released to achieve readiness.
+- Native tests passed 67/67. `crowpanel_128` built at 1,903,000 bytes flash and
+  142,324 bytes static RAM.
+- The first live retry then reached `all_targets_ready`, and the operator
+  reported that every physical action worked, but the sequence ended Failed.
+  Inspection found that the nominal two-frame WebSocket ring used a sentinel
+  slot and therefore held only one frame. A back-to-back service result and
+  subscribed state event could drop the second frame and mark an otherwise
+  successful command failed. The ring now tracks occupancy explicitly and uses
+  both existing 2 KiB slots without increasing its payload allocation.
+- The queue fix passed the 67/67 native suite. `crowpanel_128` built at
+  1,903,234 bytes flash and 142,324 bytes static RAM; live Start/Stop
+  confirmation remains the next check.
+- A second live Start and Stop again completed every observed action and
+  produced no `frame_fault`, but both ended Failed. This isolated the remaining
+  false failure to state confirmation: Home Assistant may emit no state event
+  for an idempotent service call, while REST is memory-deferred. Successful
+  service results now complete delivery in both directions without claiming
+  confirmed entity state.
+- Final native tests passed 67/67. `crowpanel_128` built at 1,903,354 bytes
+  flash and 142,324 bytes static RAM, then uploaded to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset.
+- The final hardware retry reached `all_targets_ready`; both Start and Stop
+  logged successful HA service results (`id=11` and `id=12`) while all physical
+  actions completed. The operator confirmed that both directions finished
+  normally with no Failed state.
+
+### Sequence Settings preparation boundary and Wi-Fi reconnect timing
+
+- Date: 2026-08-08.
+- Opening a sequence's Settings overlay now cancels non-running preparation and
+  releases every `ConnectionOwner::Sequence` target before showing Rename/Edit
+  controls. Active Start, armed recording, and Stop phases are protected from
+  this cancellation, as are partial action failures that still permit authored
+  Stop cleanup.
+- The simulator regression begins with disconnected Canon/Tascam targets,
+  opens the real Settings event handler during `Connecting`, and verifies an
+  idle runner with no held links or sequence owners. The full `ui_sim` build
+  and capture run passed.
+- Corrected Home Assistant reconnect timing in the same flashed image: the
+  ten-second Wi-Fi restart threshold now measures one continuous disconnected
+  interval instead of elapsed time since the original `WiFi.begin()`. Live
+  Home Assistant/Wi-Fi recovery remains operator-unverified.
+- Native tests passed 67/67. `crowpanel_128` built at 1,902,902 bytes flash and
+  142,324 bytes static RAM and uploaded successfully to
+  `/dev/cu.usbserial-211240`.
+
+### Sequence 4 peripheral GATT mutation crash fix
+
+- Date: 2026-08-08.
+- Captured the reproducible hardware assertion when entering Sequence 4:
+  `ble_svc_gap_init` failed while `PhoneCameraDriver::Runtime::begin()` called
+  `NimBLEServer::start()`. The sequence had already activated Insta360, so its
+  scan was an active GAP procedure while Phone Camera tried to extend the
+  singleton peripheral GATT table.
+- Peripheral service setup now stops advertising and temporarily pauses shared
+  central discovery before a GATT-table mutation. It refuses the mutation when
+  a peripheral peer is already connected, producing a normal activation
+  failure instead of entering NimBLE's assertion path. Logical scan requests
+  remain intact and resume on the next main-loop pass.
+- Phone Camera retains and reuses its HID wrapper with NimBLE's retained
+  singleton services, avoiding duplicate HID service registration after a
+  radio lease is released and reacquired.
+- Native tests passed 67/67, including a regression that verifies a requested
+  scan pauses for the mutation and resumes afterward. `crowpanel_128` built at
+  1,901,602 bytes flash and 142,028 bytes static RAM, then uploaded to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset.
+- Live verification entered Sequence 4 without a reset, passed the former
+  Insta360-to-Phone-Camera activation point, and brought its Canon Smart target
+  through `protocol_ready`. At 31 seconds the device reported 87,992 bytes free
+  heap, an 87,604-byte minimum, a 69,620-byte largest block, and Wi-Fi Off.
+
+### Sequence 4 parallel peripheral reconnect follow-up
+
+- Date: 2026-08-08.
+- Root cause: Insta360 and Phone Camera independently reset the ESP32-C3's one
+  legacy advertising object. Phone Camera also treated any active advertising
+  payload as its own HID identity, so its bonded phone received no reliable
+  reconnect window.
+- The first peripheral-camera activation now registers every compiled GATT
+  service before accepting peers. A shared advertiser serializes only
+  discovery/reconnect windows; established phone, Insta360, Canon, Tascam, and
+  other BLE sessions remain concurrent within the four-link limit. Each bonded
+  phone has its own candidate, with a short directed attempt followed by a
+  longer normal HID window.
+- Live Sequence 4 evidence showed valid Insta360 and Phone Camera advertising,
+  Canon Smart on link 3, Tascam X8 on link 4, and the operator's phone connected
+  after selecting `Ble(e)p Shutter`. The run then logged
+  `sequence/all_targets_ready`, including its deferred Home Assistant target.
+  This proves concurrent readiness, not synchronized physical shutter response.
+- After the directed-to-discoverable fallback was flashed, the operator
+  confirmed that the phone connects normally. Generic BLE HID reconnect timing
+  remains ultimately controlled by the phone OS.
+
+### Insta360 sequence visibility follow-up
+
+- Date: 2026-08-08.
+- Hardware evidence: the operator confirmed the tested camera was an Insta360
+  X5. It connected successfully to Ble(e)p as a GPS remote and its shutter
+  worked in the mixed Start/Stop sequence.
+- Root cause: `RecordTrigger` was a runtime capability but was absent from both
+  the scene-command traits and the sequence device/action filters. Insta360 was
+  therefore intentionally omitted by the generic picker despite being saved.
+- Added scene-safe `RecordTrigger`, exposed it as `Shutter Toggle`, and rendered
+  it as `Shutter` in sequence rows. The same explicit toggle can be authored in
+  Start and Stop; it is not mislabeled as confirmed recording state.
+- Native tests passed 66/66, including validation and execution of trigger
+  actions in both lists. The complete `ui_sim` capture run passed.
+- `crowpanel_128` built at 1,901,000 bytes flash and 142,020 bytes static RAM,
+  then uploaded to `/dev/cu.usbserial-211240` with written-image hash
+  verification and hard reset.
+
+### Camera Add-screen compiled-driver capacity fix
+
+- Date: 2026-08-08.
+- Rebased `codex/add-action-cameras` onto `main` at `e218613`; the uncommitted
+  camera tranche was restored with both progress-log histories preserved.
+- Root cause: the full firmware compiled 14 driver adapters, but
+  `DeviceManager` retained only the first 10 pointers. The catalog still
+  displayed Insta360, DJI Osmo, Sony Camera, and Phone Camera, while their Add
+  flows could not resolve a runtime driver and immediately canceled back to
+  Devices.
+- Raised the adapter-pointer capacity to 16 and added production/simulator
+  compile-time table guards. A native regression verifies the 14th compiled
+  driver can begin and acquire a provisional Add session.
+- Native tests passed 65/65. The complete `ui_sim` capture run passed and now
+  explicitly opens and cancels provisional Add screens for GoPro, Insta360,
+  DJI Osmo, Sony Camera, and Phone Camera.
+- `crowpanel_128` built at 1,900,884 bytes flash and 142,020 bytes static RAM,
+  then uploaded to `/dev/cu.usbserial-211240` with written-image hash
+  verification and hard reset. Physical touch confirmation remains for the
+  operator.
 
 ### Dynamic driver activation review fixes
 
@@ -197,6 +368,52 @@ Record values with the exact build environment and commit/worktree state.
   usable immediately. Native tests remain 61/61 and the desktop simulator
   completes all captures; final flash and same-session panel confirmation
   remain pending.
+
+### Insta360 GPS-remote and DJI Osmo controller implementation
+
+- Date: 2026-08-08.
+- Worktree/branch: `/Users/nethunter/.codex/worktrees/7525/bleep`,
+  `codex/add-action-cameras`, with uncommitted tranche edits.
+- Native tests: 62/62 passed. New coverage verifies DJI CRC/frame generation
+  against the official 51-byte connection vector, record-control parsing, the
+  exact Insta360 shutter notification, and separate X5/GO 3/GO Ultra matching.
+- Firmware: `crowpanel_128` succeeded using the shared PlatformIO cache. Size:
+  1,895,694 bytes flash and 141,988 bytes static RAM. The isolated `insta360`
+  and `dji_osmo` profiles also built successfully and retained only their
+  intended camera driver symbols.
+- UI simulator: `ui_sim` built and the complete capture run succeeded;
+  `03_camera_families.png` shows the expanded scrollable Cameras list. This is
+  layout evidence, not live camera proof.
+- Hardware: the combined image uploaded to `/dev/cu.usbserial-211240`, verified
+  every written-region hash, and hard-reset. All X5, GO 3, GO Ultra, Action 5
+  Pro, and Osmo 360 pairing/shutter/status checks remain operator-unverified.
+- Boundary: DJI is based on DJI's public controller demo; Insta360 is based on
+  a community MIT implementation plus vendor compatibility material. GO Ultra
+  remains explicitly experimental because its documented accessory path
+  differs from the legacy GPS remote.
+
+### Action-camera catalog, GoPro control, and phone HID
+
+- Date: 2026-08-08.
+- Worktree/branch: `/Users/nethunter/.codex/worktrees/7525/bleep`,
+  `codex/add-action-cameras`, based on `dac630d` with uncommitted tranche edits.
+- Native tests: 60/60 passed. Coverage includes stable catalog IDs/capabilities,
+  separate Camera-family descriptors, exact GoPro pairing/shutter packets,
+  response parsing, and optimistic state reduction.
+- UI simulator: `ui_sim` built and its complete capture run passed. The new
+  `03_camera_families.png` shows the separate scrollable camera entries on the
+  240x240 layout; no live touch or peripheral behavior is implied.
+- Firmware builds: `crowpanel_128`, `crowpanel_128_roboto`, `shark_nano_ii`,
+  `canon_ble`, `canon_trigger`, `tascam_x8`, `home_assistant`, `amaran_light`,
+  `zhiyun_x100`, `gopro`, and `phone_camera` succeeded sequentially. The
+  nine-profile driver-isolation audit passed.
+- Full-profile size: 1,882,000 bytes flash and 141,876 bytes static RAM. Roboto
+  size: 1,844,948 bytes flash and 141,876 bytes static RAM. The Phone Camera
+  isolated profile uses 1,742,122 bytes flash and 141,076 bytes static RAM.
+- Flash: the full profile uploaded successfully to
+  `/dev/cu.usbserial-211240`; the uploader hard-reset the board afterward. GoPro
+  shutter behavior, phone HID pairing/capture, multi-peer routing, and all
+  Insta360/DJI/Sony protocols remain physical hardware gates.
 
 ### All-driver dormant-resource audit
 

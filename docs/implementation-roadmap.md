@@ -366,6 +366,31 @@ Completion gate:
 - transport fallback is deterministic;
 - HTTP success is not presented as confirmed recording until state readback.
 
+### Action-camera shutter tranche (ADR-036)
+
+This experimental tranche extends Phase 5 without changing its Canon gates:
+
+- expose separate GoPro, Insta360, DJI Osmo, Sony Camera, and Phone Camera
+  choices under Cameras;
+- implement GoPro Open GoPro BLE pairing and response-gated Set Shutter;
+- implement Phone Camera as a bonded, per-peer BLE HID shutter peripheral;
+- implement Insta360 GPS-remote peripheral emulation for X5/GO 3 candidates,
+  keeping the separate GO Ultra target visibly experimental until hardware
+  proves compatibility, and expose its state-unknown sequence command as an
+  explicit shutter toggle;
+- implement DJI's published Osmo controller handshake, recording controls, and
+  camera-status subscription for Action 5 Pro and Osmo 360 candidates;
+- keep Sony onboarding blocked on a clear research screen until its
+  peripheral-role protocol is hardware-validated;
+- preserve the four physical-link budget across central and peripheral roles.
+
+Completion gate: representative GoPro and phone hardware pass add, shutter,
+bonded reconnect, multi-instance routing, forget/re-pair, cancellation, and
+heap/coexistence tests. Insta360 GPS-remote connection is operator-confirmed,
+but shutter/sequence behavior and the remaining coexistence gates stay open.
+DJI has host vectors but still requires its physical gates; Sony requires both
+implementation and physical proof.
+
 ## Phase 6: Scene engine
 
 Work:
@@ -403,7 +428,8 @@ Bounded gate for the ADR-019/020 tranche:
 - Press Stop: Canon `RecordStop`, then Tascam `RecordStop`;
 - opening a sequence prepares all targets concurrently before Start;
 - `Ready` requires every target's physical link and protocol initialization;
-- links stay held while the run screen is open and through armed/Stop;
+- links stay held while the run screen is open and through armed/Stop, but
+  opening Settings cancels preparation and releases sequence ownership;
 - target chips expose full controls without releasing the sequence's held
   links, and show per-target connection/protocol readiness;
 - authored step order and the editable 500 ms wait remain scene data;

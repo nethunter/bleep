@@ -43,6 +43,21 @@
 #if CONFIG_DRIVER_ZHIYUN_X100
 #include "devices/zhiyun_x100/ui.h"
 #endif
+#if CONFIG_DRIVER_GOPRO
+#include "devices/gopro/ui.h"
+#endif
+#if CONFIG_DRIVER_INSTA360
+#include "devices/insta360/ui.h"
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+#include "devices/dji_osmo/ui.h"
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#include "devices/action_camera_research/ui.h"
+#endif
+#if CONFIG_DRIVER_PHONE_CAMERA
+#include "devices/phone_camera/ui.h"
+#endif
 
 namespace ui {
 
@@ -1239,6 +1254,21 @@ void buildRenameOverlay() {
 }  // namespace
 
 void releaseDeviceUis() {
+#if CONFIG_DRIVER_INSTA360
+  insta360_ui::release();
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  dji_osmo_ui::release();
+#endif
+#if CONFIG_DRIVER_PHONE_CAMERA
+  phone_camera_ui::release();
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  action_camera_research_ui::release();
+#endif
+#if CONFIG_DRIVER_GOPRO
+  gopro_ui::release();
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   zhiyun_x100_ui::release();
 #endif
@@ -1340,6 +1370,27 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
+#if CONFIG_DRIVER_PHONE_CAMERA
+  if (phone_camera_ui::active()) {
+    phone_camera_ui::tick();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_INSTA360
+  if (insta360_ui::active()) { insta360_ui::tick(); return; }
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  if (dji_osmo_ui::active()) { dji_osmo_ui::tick(); return; }
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  if (action_camera_research_ui::active()) return;
+#endif
+#if CONFIG_DRIVER_GOPRO
+  if (gopro_ui::active()) {
+    gopro_ui::tick();
+    return;
+  }
+#endif
   if (settingsHeaderNeedsRefresh && settingsHeader != nullptr) {
     settingsHeaderNeedsRefresh = false;
     lv_obj_move_foreground(settingsHeader);
@@ -1433,6 +1484,27 @@ void tick() {
 }
 
 void handleShortPress() {
+#if CONFIG_DRIVER_PHONE_CAMERA
+  if (phone_camera_ui::active()) {
+    phone_camera_ui::handleShortPress();
+    return;
+  }
+#endif
+#if CONFIG_DRIVER_INSTA360
+  if (insta360_ui::active()) { insta360_ui::handleShortPress(); return; }
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  if (dji_osmo_ui::active()) { dji_osmo_ui::handleShortPress(); return; }
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  if (action_camera_research_ui::active()) return;
+#endif
+#if CONFIG_DRIVER_GOPRO
+  if (gopro_ui::active()) {
+    gopro_ui::handleShortPress();
+    return;
+  }
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::handleShortPress();
@@ -1482,6 +1554,30 @@ void handleShortPress() {
 }
 
 bool handleLongPress() {
+#if CONFIG_DRIVER_PHONE_CAMERA
+  if (phone_camera_ui::active()) {
+    phone_camera_ui::handleLongPress();
+    return true;
+  }
+#endif
+#if CONFIG_DRIVER_INSTA360
+  if (insta360_ui::active()) { insta360_ui::handleLongPress(); return true; }
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  if (dji_osmo_ui::active()) { dji_osmo_ui::handleLongPress(); return true; }
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  if (action_camera_research_ui::active()) {
+    action_camera_research_ui::handleLongPress();
+    return true;
+  }
+#endif
+#if CONFIG_DRIVER_GOPRO
+  if (gopro_ui::active()) {
+    gopro_ui::handleLongPress();
+    return true;
+  }
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::handleLongPress();
@@ -1561,6 +1657,21 @@ bool handleLongPressToHome() {
 }
 
 void showHome() {
+#if CONFIG_DRIVER_INSTA360
+  if (insta360_ui::active()) insta360_ui::hide();
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
+#endif
+#if CONFIG_DRIVER_PHONE_CAMERA
+  if (phone_camera_ui::active()) phone_camera_ui::hide();
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
+#endif
+#if CONFIG_DRIVER_GOPRO
+  if (gopro_ui::active()) gopro_ui::hide();
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::hide();
@@ -1622,6 +1733,21 @@ void showSettings() {
 }
 
 void showDevices() {
+#if CONFIG_DRIVER_INSTA360
+  if (insta360_ui::active()) insta360_ui::hide();
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
+#endif
+#if CONFIG_DRIVER_PHONE_CAMERA
+  if (phone_camera_ui::active()) phone_camera_ui::hide();
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
+#endif
+#if CONFIG_DRIVER_GOPRO
+  if (gopro_ui::active()) gopro_ui::hide();
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
   if (zhiyun_x100_ui::active()) {
     zhiyun_x100_ui::hide();
@@ -1691,6 +1817,31 @@ void showDevice(studio::InstanceId instanceId) {
   }
   releaseDeviceRows();
   switch (record->driverId) {
+#if CONFIG_DRIVER_PHONE_CAMERA
+    case studio::DriverId::PhoneCamera:
+      phone_camera_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_GOPRO
+    case studio::DriverId::GoPro:
+      gopro_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_INSTA360
+    case studio::DriverId::Insta360:
+      insta360_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+    case studio::DriverId::DjiOsmo:
+      dji_osmo_ui::show(instanceId);
+      break;
+#endif
+#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+    case studio::DriverId::SonyCamera:
+      action_camera_research_ui::show(instanceId);
+      break;
+#endif
 #if CONFIG_DRIVER_ZHIYUN_X100
     case studio::DriverId::ZhiyunLight:
       zhiyun_x100_ui::show(instanceId);

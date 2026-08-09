@@ -232,6 +232,26 @@ slot generation that queued them, so an event already waiting when LRU eviction
 reuses a logical handle is discarded instead of being delivered to the
 replacement device.
 
+Peripheral-role profiles share that same lazy NimBLE host rather than starting
+a second controller. Phone Camera and Insta360 use a shared server-callback
+dispatcher so the singleton NimBLE server never has competing callback owners.
+The first active peripheral-camera driver registers every compiled camera
+peripheral service before accepting a connection, because NimBLE cannot safely
+extend its GATT table around retained peers. A shared advertiser gives each
+disconnected peripheral family or bonded phone a bounded reconnect window;
+connected sessions remain simultaneous and advertising continues for the next
+offline target. Phone Camera keeps the host alive through a private radio lease
+and routes each authenticated inbound connection by bonded identity. Insta360
+advertises its GPS-remote service, scans camera advertisements for peer
+classification, and routes an inbound camera connection to its saved or
+provisional instance. The
+inbound connection still has its own `BleSlotKey`, so it counts against the
+same four-link budget as outbound central connections. Server callbacks enqueue
+only bounded connection/authentication events; security requests, HID/shutter
+reports, state changes, persistence updates, and teardown run from the main loop. Sony
+remote emulation will use this peripheral-role boundary only after hardware
+validation of its public reverse-engineered protocol.
+
 ## Capabilities and unified UI
 
 Shared device-type UI modules consume capabilities rather than brand-specific
@@ -277,13 +297,19 @@ Opening an HA screen or preparing an HA scene target allocates and acquires the
 shared `HomeAssistantRuntime`. It joins Wi-Fi, authenticates `/api/websocket`, fetches
 each active entity's initial state through REST, and installs a
 `subscribe_trigger` state subscription containing only active entity IDs.
+Once that authenticated subscription succeeds, the transport is command-ready;
+if the memory-gated initial REST read is still deferred, the configured entity
+is exposed as available with unknown state until REST or a subscribed event
+confirms it. This keeps state reporting honest without blocking mixed-radio
+sequence preparation on an optional readback.
 Callbacks copy at most two 2048-byte frames; the main loop parses them with
 ArduinoJson, mutates state, sends service calls, and updates LVGL. Malformed,
 oversized, or dropped frames mark state unknown and schedule a bounded REST
-refresh. When a subscribed confirmation has not arrived after five seconds,
-the runtime reconciles the individual entity through a heap-gated REST request
-before reporting failure. A matching refreshed state succeeds; only HTTP 404 means missing,
-while transport and parse failures remain unknown. The runtime disconnects
+refresh. A successful service result completes action delivery because an
+idempotent call may not emit a state-change event. Subscribed events and
+heap-gated REST reconciliation update state independently, so API acceptance
+does not promote unknown state to confirmed. Only HTTP 404 means missing, while
+transport and parse failures remain unknown. The runtime disconnects
 Wi-Fi after its final HA instance is evicted or explicitly unlinked. Merely
 saving HA entities or credentials does not allocate the client or start Wi-Fi;
 outside Portal and active HA ownership the radio is explicitly `WIFI_OFF`.
@@ -310,9 +336,9 @@ two 2 KiB WebSocket frame slots; oversized state events intentionally become
 unknown and use the individual REST recovery path. A WebSocket disconnect is
 reported to the main loop as a flag, where authentication and subscription
 state are cleared and a bounded reconnect is scheduled.
-Transient failures while resolving an entity's initial REST state do not leave
-protocol readiness permanently false: one entity is retried at a time after a
-two-second delay. HTTP 404 remains a terminal missing-entity result; transport,
+Transient failures while resolving an entity's initial REST state leave the
+entity command-ready but unknown: one entity is retried at a time after a
+bounded delay. HTTP 404 remains a terminal missing-entity result; transport,
 other HTTP, and malformed JSON results remain unknown and retry.
 
 Drivers publish limits and availability. For example, a CCT-only light does

@@ -8,7 +8,9 @@
 // At most one adapter owns the shell at a time.
 namespace recorder_shell {
 
-enum class Owner : uint8_t { None, CanonBle, TascamX8 };
+enum class Owner : uint8_t {
+  None, CanonBle, TascamX8, GoPro, PhoneCamera, Insta360, DjiOsmo
+};
 
 struct Options {
   bool enablePower = false;

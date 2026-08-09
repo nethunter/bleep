@@ -227,7 +227,7 @@ bool HomeAssistantClient::connectRuntime() {
   WiFi.setSleep(true);
   WiFi.begin(config_.wifiSsid, config_.wifiPassword);
   wifiStarted_ = true;
-  connectionStarted_ = nowMs();
+  wifiDisconnectedAt_ = nowMs();
   retryAt_ = 0;
   return true;
 }
@@ -242,8 +242,9 @@ void HomeAssistantClient::disconnectRuntime() {
   WiFi.disconnect(true, false);
   WiFi.mode(WIFI_OFF);
   wifiStarted_ = websocketStarted_ = authenticated_ = subscribed_ = false;
+  wifiDisconnectedAt_ = 0;
   subscriptionId_ = 0;
-  frameHead_ = frameTail_ = 0;
+  frameHead_ = frameTail_ = frameCount_ = 0;
   frameFault_ = false;
   websocketDisconnected_ = false;
 }
@@ -253,15 +254,15 @@ void HomeAssistantClient::enqueueFrame(const uint8_t* payload, size_t length) {
     frameFault_ = true;
     return;
   }
-  const uint8_t next = static_cast<uint8_t>((frameHead_ + 1) % 2);
-  if (next == frameTail_) {
+  if (frameCount_ >= 2) {
     frameFault_ = true;
     return;
   }
   std::memcpy(frames_[frameHead_], payload, length);
   frames_[frameHead_][length] = '\0';
   frameLengths_[frameHead_] = length;
-  frameHead_ = next;
+  frameHead_ = static_cast<uint8_t>((frameHead_ + 1) % 2);
+  ++frameCount_;
 }
 
 void HomeAssistantClient::markWebsocketDisconnected() {
@@ -345,6 +346,19 @@ void HomeAssistantClient::processMessage(const char* payload, size_t length) {
       subscribed_ = success;
       HA_LOG.printf("ha event=subscription_result success=%u\n",
                     success ? 1u : 0u);
+      if (success) {
+        // A subscribed WebSocket is sufficient to route service calls. Initial
+        // REST reads are best-effort state confirmation and may be deferred
+        // under mixed BLE/Wi-Fi memory pressure; keep that state honest as
+        // unknown without holding sequence preparation in Connecting.
+        for (auto& session : sessions_) {
+          if (session.instanceId != studio::kInvalidInstanceId &&
+              !session.state.present) {
+            markStateUnknown(session.state);
+          }
+        }
+        HA_LOG.println("ha event=protocol_ready state=unknown");
+      }
       return;
     }
     for (auto& session : sessions_) {
@@ -353,11 +367,18 @@ void HomeAssistantClient::processMessage(const char* payload, size_t length) {
       if (!success) {
         session.state.commandPending = false;
         session.state.lastCommand = studio::CommandStatus::Unavailable;
-      } else if (session.domain == studio::HomeAssistantDomain::Button ||
-                 session.domain == studio::HomeAssistantDomain::Scene ||
-                 session.domain == studio::HomeAssistantDomain::Script) {
+        HA_LOG.printf("ha event=service_result id=%lu success=0\n",
+                      static_cast<unsigned long>(id));
+      } else {
+        // Idempotent service calls may not produce a state-change event. API
+        // acceptance completes delivery, but does not change the separately
+        // confirmed entity state shown by the UI.
         session.state.commandPending = false;
         session.state.lastCommand = studio::CommandStatus::Succeeded;
+        session.refreshNeeded = true;
+        session.refreshAfterMs = nowMs() + 1000;
+        HA_LOG.printf("ha event=service_result id=%lu success=1\n",
+                      static_cast<unsigned long>(id));
       }
       return;
     }
@@ -512,7 +533,8 @@ void HomeAssistantClient::loop() {
     return;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    if (now - connectionStarted_ > 10000) {
+    if (wifiDisconnectedAt_ == 0) wifiDisconnectedAt_ = now;
+    if (now - wifiDisconnectedAt_ > 10000) {
       HA_LOG.printf("ha event=wifi_timeout status=%d free_heap=%lu max_alloc=%lu\n",
                     static_cast<int>(WiFi.status()),
                     static_cast<unsigned long>(ESP.getFreeHeap()),
@@ -524,6 +546,7 @@ void HomeAssistantClient::loop() {
     }
     return;
   }
+  wifiDisconnectedAt_ = 0;
   if (!websocketStarted_) {
     if (retryAt_ != 0 && static_cast<int32_t>(now - retryAt_) < 0) return;
     char host[80];
@@ -562,11 +585,13 @@ void HomeAssistantClient::loop() {
   }
   if (frameFault_) {
     frameFault_ = false;
+    HA_LOG.println("ha event=frame_fault");
     setFailure(studio::CommandStatus::InvalidArgument);
   }
-  while (frameTail_ != frameHead_) {
+  while (frameCount_ > 0) {
     processMessage(frames_[frameTail_], frameLengths_[frameTail_]);
     frameTail_ = static_cast<uint8_t>((frameTail_ + 1) % 2);
+    --frameCount_;
   }
   if (subscriptionDirty_) rebuildSubscription();
   for (auto& session : sessions_) {

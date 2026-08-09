@@ -9,7 +9,10 @@ namespace studio {
 
 class DeviceManager {
  public:
-  static constexpr size_t kMaxCompiledDrivers = 10;
+  // This bounds driver-adapter pointers, not saved devices or active links.
+  // Keep spare entries so enabling a new compile-time family cannot silently
+  // make later catalog items impossible to open.
+  static constexpr size_t kMaxCompiledDrivers = 16;
   static constexpr size_t kMaxActiveInstances = CONFIG_MAX_ACTIVE_INSTANCES;
   // Compatibility name for existing driver/test code; this is now an active
   // instance bound, not the physical BLE link bound.

@@ -194,7 +194,9 @@ void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
   const studio::DeviceRecord* device = studio::devices().find(step.targetId);
   const char* name = device != nullptr ? device->displayName : "?";
   const char* command =
-      step.command == studio::CommandType::RecordStart
+      step.command == studio::CommandType::RecordTrigger
+          ? "Shutter"
+          : step.command == studio::CommandType::RecordStart
           ? "Rec"
           : (step.command == studio::CommandType::RecordStop
                  ? "Stop"
@@ -503,6 +505,22 @@ void buildSettingsOverlay() {
 void onOpenSettings(lv_event_t*) {
   if (ui::renamePromptActive()) {
     return;
+  }
+  const studio::SceneProgress& progress = studio::scenes().progress();
+  const bool activeRun =
+      progress.sceneId == currentScene &&
+      (progress.phase == studio::ScenePhase::RunningStart ||
+       progress.phase == studio::ScenePhase::RunningStop ||
+       progress.phase == studio::ScenePhase::IdleArmed ||
+       (progress.phase == studio::ScenePhase::Failed &&
+        progress.stepCount > 0) ||
+       (progress.phase == studio::ScenePhase::Connecting &&
+        progress.runningStart));
+  if (!activeRun && progress.sceneId == currentScene &&
+      (studio::scenes().holdsLinks() || studio::scenes().busy() ||
+       progress.phase != studio::ScenePhase::Idle)) {
+    studio::scenes().cancel();
+    refreshRun();
   }
   buildSettingsOverlay();
 }
@@ -1217,6 +1235,8 @@ void simShowSettings(studio::SceneId sceneId) {
   lv_scr_load(scrRun);
   buildSettingsOverlay();
 }
+
+void simOpenSettings() { onOpenSettings(nullptr); }
 
 void simOpenDeviceControl(studio::InstanceId instanceId) {
   lv_event_t event{};
