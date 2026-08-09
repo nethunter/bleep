@@ -56,6 +56,38 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
 
+### 2026-08-09: Aputure Light control-state synchronization
+
+- Aputure Light vendor status handling currently confirms power only; it cannot
+  read back CCT/RGB mode, color, brightness, or tint. When the control reaches
+  Ready, it now applies the displayed look once after the normal 350 ms
+  debounce. Reopening the control does the same, keeping the fixture aligned
+  with the values shown on screen without changing tab timing.
+- Added a simulator case that starts the fixture in a mismatched RGB look and
+  verifies the displayed CCT look is applied after Ready. The complete `ui_sim`
+  capture traversal passed, and the full Montserrat `bleep` profile built
+  successfully with 140,340 / 327,680 bytes static RAM and 1,906,428 /
+  3,145,728 bytes flash. Hardware upload and optical behavior remain unverified
+  for this change.
+
+### 2026-08-09: Aputure Light RGB saturation default
+
+- A fresh Aputure Light RGB draft now starts at 100% saturation instead of the
+  zero-saturation value implied by the untouched white placeholder. Once an RGB
+  look has been applied, reopening the control keeps the saturation encoded by
+  that in-memory RGB value.
+- Added a simulator assertion for the 100% initial saturation. The complete
+  `ui_sim` capture traversal passed, and the full Montserrat `bleep` profile
+  built successfully with 140,340 / 327,680 bytes static RAM and 1,906,362 /
+  3,145,728 bytes flash. With explicit worktree approval, upload to
+  `/dev/cu.usbserial-211240` succeeded; every written region passed hash
+  verification and the panel hard-reset.
+- Connection status remains evidence-scoped: proxy setup immediately sends the
+  verified group physical-power Get and repeats it every five seconds. An
+  authenticated per-source response confirms On/Off and reachability for the
+  tested amaran Ace 25c/Aputure MC Pro path. CCT, tint, RGB, and brightness
+  remain optimistic because no verified property-status decoder exists.
+
 ### 2026-08-09: Aputure Light canonical identity
 
 - Unified the Amaran/Aputure logical driver under `Aputure Light` across the

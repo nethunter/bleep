@@ -21,13 +21,13 @@ studio::InstanceId instanceId=studio::kInvalidInstanceId;
 lv_obj_t *screen=nullptr,*title=nullptr,*status=nullptr,*cctBody=nullptr,*rgbBody=nullptr,
          *kelvinSlider=nullptr,*tintSlider=nullptr,*cctBrightness=nullptr,
          *wheel=nullptr,*rgbSaturation=nullptr,*rgbBrightness=nullptr,*modeCct=nullptr,*modeRgb=nullptr,*power=nullptr;
-bool visible=false, rgbMode=false, dirty=false;
+bool visible=false, rgbMode=false, dirty=false, lookAppliedForView=false;
 bool draftInitialized=false, syncingControls=false;
 uint16_t draftKelvin=5600;
 int16_t draftTint=0;
 uint8_t draftCctBrightness=50;
 uint32_t draftRgb=0xffffff;
-uint8_t draftRgbSaturation=0;
+uint8_t draftRgbSaturation=100;
 uint8_t draftRgbBrightness=50;
 uint32_t applyAt=0,lastRefresh=0;
 studio_ui::BlePairingScreen pairingScreen;
@@ -38,8 +38,8 @@ lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t cb,uint32_t col
   lv_obj_t* l=lv_label_create(b); lv_label_set_text(l,text); lv_obj_set_style_text_font(l,UI_FONT_14,0); lv_obj_center(l);
   if(cb) lv_obj_add_event_cb(b,cb,LV_EVENT_CLICKED,nullptr); return b;
 }
-void queue(studio::CommandType type,int v0=0,int v1=0,int v2=0){
-  studio::DeviceCommand c; c.instanceId=instanceId;c.type=type;c.value0=v0;c.value1=v1;c.value2=v2;studio::devices().enqueue(c);
+bool queue(studio::CommandType type,int v0=0,int v1=0,int v2=0){
+  studio::DeviceCommand c; c.instanceId=instanceId;c.type=type;c.value0=v0;c.value1=v1;c.value2=v2;return studio::devices().enqueue(c);
 }
 void captureDraft(){
   if(syncingControls)return;
@@ -91,12 +91,13 @@ void showForState(const aputure_light::AputureLightState* s){
   pairingScreen.setStatus(phase(s),detail,!failed,scanning||failed,"Retry");if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());
 }
 void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Aputure Light");lv_label_set_text(status,phase(s));if(!s)return;
-  if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=hsv.s;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==aputure_light::AputureLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
+  if(!draftInitialized){draftKelvin=s->kelvin;draftTint=s->tintPermille;draftCctBrightness=s->cctBrightness;draftRgb=s->rgb;lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(draftRgb>>16),static_cast<uint8_t>(draftRgb>>8),static_cast<uint8_t>(draftRgb));draftRgbSaturation=s->mode==aputure_light::AputureLightState::Mode::Rgb?hsv.s:100;draftRgbBrightness=s->rgbBrightness;rgbMode=s->mode==aputure_light::AputureLightState::Mode::Rgb;draftInitialized=true;renderMode();restoreDraft();}
+  if(s->phase==aputure_light::AputureLightState::Phase::Ready&&!lookAppliedForView){lookAppliedForView=true;dirty=true;applyAt=millis()+350;}
   lv_obj_set_style_bg_color(power,lv_color_hex(s->on?kDanger:kAccent),0);
 }
-void apply(){studio::DeviceRuntimeState rt=studio::devices().runtimeState(instanceId);if(!rt.protocolReady||rt.commandPending)return;captureDraft();if(rgbMode)queue(studio::CommandType::SetLightRgb,draftRgb,draftRgbBrightness);else queue(studio::CommandType::SetLightCct,draftKelvin,draftCctBrightness,draftTint);dirty=false;}
+void apply(){studio::DeviceRuntimeState rt=studio::devices().runtimeState(instanceId);if(!rt.protocolReady||rt.commandPending)return;captureDraft();const bool queued=rgbMode?queue(studio::CommandType::SetLightRgb,draftRgb,draftRgbBrightness):queue(studio::CommandType::SetLightCct,draftKelvin,draftCctBrightness,draftTint);if(queued)dirty=false;}
 }
-void show(studio::InstanceId id){ensure();instanceId=id;visible=studio::devices().acquire(id,studio::ConnectionOwner::Foreground);dirty=false;draftInitialized=false;refresh();showForState(static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(id)));}
+void show(studio::InstanceId id){ensure();instanceId=id;visible=studio::devices().acquire(id,studio::ConnectionOwner::Foreground);dirty=false;draftInitialized=false;lookAppliedForView=false;refresh();showForState(static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(id)));}
 void hide(){if(visible)studio::devices().release(instanceId,studio::ConnectionOwner::Foreground);visible=false;instanceId=studio::kInvalidInstanceId;}
 void release(){if(visible)return;if(screen){lv_obj_del(screen);screen=title=status=cctBody=rgbBody=kelvinSlider=tintSlider=cctBrightness=wheel=rgbSaturation=rgbBrightness=modeCct=modeRgb=power=nullptr;}pairingScreen.destroy();}
 bool active(){return visible;}
@@ -107,5 +108,6 @@ void simSetCctLook(int kelvin,int tintPermille,int brightness){if(rgbMode)setMod
 void simSetRgbLook(uint32_t rgb,int brightness){if(!rgbMode)setMode(true);lv_color_hsv_t hsv=lv_color_rgb_to_hsv(static_cast<uint8_t>(rgb>>16),static_cast<uint8_t>(rgb>>8),static_cast<uint8_t>(rgb));syncingControls=true;lv_colorwheel_set_hsv(wheel,lv_color_hsv_t{hsv.h,100,100});lv_slider_set_value(rgbSaturation,hsv.s,LV_ANIM_OFF);lv_slider_set_value(rgbBrightness,brightness,LV_ANIM_OFF);syncingControls=false;markDirty(nullptr);}
 void simShowCct(){setMode(false);}
 void simShowRgb(){setMode(true);}
+int simRgbSaturation(){return lv_slider_get_value(rgbSaturation);}
 #endif
 }  // namespace aputure_light_ui

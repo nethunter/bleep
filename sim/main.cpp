@@ -627,9 +627,32 @@ int main() {
   aputure_light_ui::show(pano60Id);
   pump(300);
   if (!capture("20d_aputure_light_pairing")) return 1;
+  studio::DeviceCommand physicalRgb;
+  physicalRgb.instanceId = pano60Id;
+  physicalRgb.type = studio::CommandType::SetLightRgb;
+  physicalRgb.value0 = 0x00ff00;
+  physicalRgb.value1 = 25;
+  studio::devices().enqueue(physicalRgb);
+  pump(20);
   aputure_light::runtime()->simSetPhase(
       pano60Id, aputure_light::AputureLightState::Phase::Ready);
   pump(300);
+  pump(400);
+  const aputure_light::AputureLightState* lightState =
+      aputure_light::runtime()->state(pano60Id);
+  if (lightState == nullptr ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Cct ||
+      lightState->kelvin != 5600 || lightState->tintPermille != 0 ||
+      lightState->cctBrightness != 50) {
+    std::fprintf(stderr, "Aputure Light displayed look was not applied on ready\n");
+    return 1;
+  }
+  aputure_light_ui::simShowRgb();
+  if (aputure_light_ui::simRgbSaturation() != 100) {
+    std::fprintf(stderr, "Aputure Light default saturation was not 100\n");
+    return 1;
+  }
+  aputure_light_ui::simShowCct();
   studio::DeviceCommand lightOn;
   lightOn.instanceId = pano60Id;
   lightOn.type = studio::CommandType::TurnOn;
@@ -637,8 +660,7 @@ int main() {
   pump(20);
   aputure_light_ui::simSetCctLook(4300, 120, 72);
   pump(400);
-  const aputure_light::AputureLightState* lightState =
-      aputure_light::runtime()->state(pano60Id);
+  lightState = aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr || lightState->kelvin != 4300 ||
       lightState->tintPermille != 120 || lightState->cctBrightness != 72) {
     std::fprintf(stderr, "Aputure Light CCT draft was not applied\n");

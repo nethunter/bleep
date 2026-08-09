@@ -15,5 +15,6 @@ void simSetCctLook(int kelvin, int tintPermille, int brightness);
 void simSetRgbLook(uint32_t rgb, int brightness);
 void simShowCct();
 void simShowRgb();
+int simRgbSaturation();
 #endif
 }  // namespace aputure_light_ui
