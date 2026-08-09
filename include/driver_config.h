@@ -101,6 +101,19 @@
 #define CONFIG_BLE_TX_POWER_DBM 6
 #endif
 
+#ifndef CONFIG_BLE_SCAN_INTERVAL_UNITS
+#define CONFIG_BLE_SCAN_INTERVAL_UNITS 100
+#endif
+
+#ifndef CONFIG_BLE_SCAN_WINDOW_UNITS
+#define CONFIG_BLE_SCAN_WINDOW_UNITS 40
+#endif
+
+#if CONFIG_BLE_SCAN_INTERVAL_UNITS == 0 || CONFIG_BLE_SCAN_WINDOW_UNITS == 0 || \
+    CONFIG_BLE_SCAN_WINDOW_UNITS > CONFIG_BLE_SCAN_INTERVAL_UNITS
+#error "BLE scan window must be between 1 and the scan interval"
+#endif
+
 #if CONFIG_BLE_TX_POWER_DBM < -24 || CONFIG_BLE_TX_POWER_DBM > 20
 #error "CONFIG_BLE_TX_POWER_DBM must be between -24 and 20 dBm"
 #endif

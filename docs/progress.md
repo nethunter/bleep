@@ -142,6 +142,31 @@ Amaran/Aputure support:
 
 Record values with the exact build environment and commit/worktree state.
 
+### Dynamic 40-percent BLE discovery duty
+
+- Date: 2026-08-09.
+- Increased the shared NimBLE active-scan window from 20/100 to 40/100 to hear
+  sparse advertisements sooner. The interval/window are compile-time settings
+  with bounds validation.
+- The coordinator now suspends the one shared scan before initiating a BLE
+  connection and keeps it suspended through security. Per-link scan requests
+  remain intact, so discovery resumes automatically for every other preparing
+  device once the controller procedure completes. Established retained links
+  are not disconnected.
+- Native tests passed 71/71, including scan suspension across connection and
+  security and automatic resume for another requester. All 13 firmware profiles
+  built sequentially. Default `crowpanel_128` used 142,316 / 327,680 bytes
+  static RAM and 1,903,824 / 3,145,728 bytes flash. It uploaded to
+  `/dev/cu.usbserial-211240` with image hash verification and hard reset.
+- Hardware: a cold `HML Studio` run connected Canon physically at 2.13 seconds,
+  completed its security at 2.68 seconds, then started X8. X8 connected
+  physically in 0.83 seconds and both devices reached protocol-ready at about
+  4.59 seconds total without NimBLE reason `520` or `574`. HA authenticated and
+  subscribed roughly 0.65 seconds into its separate stage. Switching to
+  Sequence 3 reused HA without another Wi-Fi/WebSocket startup and brought the
+  Amaran proxy protocol-ready in 1.62 seconds. Repeat-run consistency and the
+  higher discovery duty's battery endurance impact remain hardware gates.
+
 ### Mixed-scene staged timeout and retained HA reuse
 
 - Date: 2026-08-09.

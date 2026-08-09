@@ -377,8 +377,8 @@ bool BleNimbleBackend::begin() {
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setScanCallbacks(&impl_->scanCallbacks, true);
   scan->setActiveScan(true);
-  scan->setInterval(100);
-  scan->setWindow(20);
+  scan->setInterval(CONFIG_BLE_SCAN_INTERVAL_UNITS);
+  scan->setWindow(CONFIG_BLE_SCAN_WINDOW_UNITS);
   scan->setMaxResults(0);
   impl_->initialized = true;
   impl_->shutdownPending = false;

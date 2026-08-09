@@ -2942,6 +2942,47 @@ void test_ble_central_pauses_scan_for_peripheral_gatt_mutation() {
   central.release(link);
 }
 
+void test_ble_central_suspends_shared_scan_during_connect_and_security() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate connecting;
+  BleTestDelegate scanning;
+  studio::ble::ConnectPolicy policy;
+  policy.security = studio::ble::SecurityPolicy::BondSecure;
+  const studio::ble::LinkHandle connectingLink =
+      central.acquire(connecting, policy);
+  const studio::ble::LinkHandle scanningLink = central.acquire(scanning, {});
+  connecting.central = &central;
+  connecting.requestSecurityOnConnect = true;
+
+  TEST_ASSERT_TRUE(central.requestScan(scanningLink));
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.requestConnect(
+      connectingLink, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(scanningLink));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = connectingLink;
+  TEST_ASSERT_TRUE(backend.emit(connected));
+  central.loop(100);
+  TEST_ASSERT_TRUE(connecting.securityRequested);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+
+  studio::ble::Event secured;
+  secured.type = studio::ble::EventType::SecurityComplete;
+  secured.link = connectingLink;
+  secured.succeeded = true;
+  TEST_ASSERT_TRUE(backend.emit(secured));
+  central.loop(101);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(scanningLink));
+
+  central.release(connectingLink);
+  central.release(scanningLink);
+}
+
 void test_ble_central_ignores_queued_event_from_evicted_link_generation() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -2991,9 +3032,17 @@ void test_ble_central_shared_scan_claims_and_independent_release() {
   TEST_ASSERT_EQUAL_UINT32(1, first.advertisements);
   TEST_ASSERT_EQUAL_UINT32(1, second.advertisements);
   TEST_ASSERT_TRUE(first.selected);
-  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_TRUE(central.scanning(secondLink));
   TEST_ASSERT_FALSE(
       central.selectAdvertisement(secondLink, advertisement));
+
+  studio::ble::Event connected;
+  connected.type = studio::ble::EventType::Connected;
+  connected.link = firstLink;
+  TEST_ASSERT_TRUE(backend.emit(connected));
+  central.loop(11);
+  TEST_ASSERT_TRUE(backend.scanRunning());
 
   central.release(secondLink);
   TEST_ASSERT_FALSE(backend.scanRunning());
@@ -3701,6 +3750,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
   RUN_TEST(test_ble_central_pauses_scan_for_peripheral_gatt_mutation);
+  RUN_TEST(test_ble_central_suspends_shared_scan_during_connect_and_security);
   RUN_TEST(test_ble_central_ignores_queued_event_from_evicted_link_generation);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);

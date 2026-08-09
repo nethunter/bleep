@@ -185,11 +185,14 @@ subscriptions, handshakes, commands, and notification parsing.
 
 One physical scanner fans fixed-size advertisement observations to every
 interested link. It runs in four-second bursts separated by 1.5-second pauses,
-with a 20/100 scan window/interval while active. Selecting a peer removes only
+with a 40/100 scan window/interval while active. Selecting a peer removes only
 that subscriber's scan demand;
-other preparing devices continue to receive observations. Address claims keep
-two clients from selecting the same peer. Connects are asynchronous and use
-independent slots with a bounded watchdog and `1500 * min(failures, 4)` retry
+other preparing devices continue to receive observations except while the
+controller is initiating or securing a connection. Discovery pauses for that
+bounded procedure and resumes automatically for every remaining requester.
+Address claims keep two clients from selecting the same peer. Connects are
+asynchronous and use independent slots with a bounded watchdog and
+`1500 * min(failures, 4)` retry
 backoff. A saved target receives three direct attempts before rediscovery, which
 avoids paying scan latency for the common case where a nearby peripheral needs
 one or two radio-wakeup retries. The ESP32-C3 initiates at most one physical connection or security

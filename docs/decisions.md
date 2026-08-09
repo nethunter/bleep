@@ -515,14 +515,21 @@ the replacement.
   schematics, part identification, current waveforms, and destructive analysis
   are available.
 - Decision: Initialize BLE from the compile-time `CONFIG_BLE_TX_POWER_DBM`
-  setting, defaulting firmware profiles to +6 dBm; use a 20/100 active scan
-  window/interval in four-second bursts with 1.5-second pauses; request 30-50
+  setting, defaulting firmware profiles to +6 dBm; use a 40/100 active scan
+  window/interval in four-second bursts with 1.5-second pauses; suspend scanning
+  while the controller initiates or secures a connection, then resume it for
+  remaining discovery requesters; request 30-50
   ms connection intervals after protocol setup; and enable Wi-Fi station modem
   sleep for the retained Home Assistant session. Healthy protocol-ready sessions remain
   retained across navigation. If an ownerless retained session drops
   unexpectedly, deactivate it instead of running background reconnect. Canon
   Smart's intentional `PoweredOff` state remains retained so acquiring it can
   run the accepted wake path.
+- Amendment (2026-08-09): the prior 20/100 duty cycle was raised to 40/100 to
+  reduce sparse-advertisement discovery latency. Suspending discovery during
+  connection establishment confines the additional scan airtime to periods
+  when it cannot compete with the failure-prone initiator/security procedure.
+  Battery endurance and cold multi-device readiness remain hardware gates.
 - Display: Keep the screen and backlight on continuously. The PI4IOE5V6408
   exposes the backlight as a plain GPIO with no hardware brightness level, and
   the operator prefers immediate input without dimming or wake suppression.
