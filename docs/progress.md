@@ -55,6 +55,29 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
 
+### 2026-08-09: DJI multi-camera sequence addressing
+
+- Diagnosed a two-DJI scene where individual camera controls worked but the
+  scene's Start/Stop affected only the first camera. Instance routing and
+  notification ownership were already per-client; every DJI handshake instead
+  returned camera number `0`, which DJI defines as a single-camera connection.
+- Each active DJI session now returns a distinct positive camera number from
+  the bounded session slot, encoded across the protocol's full four-byte
+  reserved field. The request-side `conidx` remains reserved and unchanged.
+- Rebased again onto current `main` and audited the DJI view against the shared
+  round-page layout. DJI already reaches `RoundPageHeader` through
+  `recorder_shell`, so verification, ready, pending, recording, and failure
+  states share the standard header anchors and marquee title. The complete
+  `ui_sim` traversal passed, and `03_camera_dji_verification.png` was visually
+  checked with no clipping or round-edge collision; no UI source change was
+  needed.
+- After rebasing the branch onto `main`, native tests passed 72/72, including a
+  second-camera connection-response vector. The `dji_osmo` profile and renamed
+  full `bleep` profile built successfully; `bleep` used 1,901,492 bytes flash
+  and 140,364 bytes static RAM, then uploaded to `/dev/cu.usbserial-211240`
+  with hash verification and hard reset. A live two-DJI Sequence 3 Start/Stop
+  run remains the required confirmation.
+
 ### 2026-08-09: Resource-based scene growth
 
 - Removed the configured four-scene ceiling. `SceneRegistry` now grows with
@@ -71,8 +94,8 @@ short, factual, and reproducible.
   All 13 firmware profiles built sequentially. `crowpanel_128` used 1,901,304
   bytes flash and 140,364 bytes static RAM, then uploaded to
   `/dev/cu.usbserial-211240`; every region passed hash verification and the
-  panel hard-reset. Creating more than four scenes on the live panel remains an
-  operator check.
+  panel hard-reset. Creating and persisting a fifth scene then passed on the
+  live panel, confirming the former four-scene boundary is removed.
 
 ## Completed planning
 

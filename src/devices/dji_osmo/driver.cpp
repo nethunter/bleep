@@ -15,14 +15,16 @@ const DjiOsmoDriver::Session* DjiOsmoDriver::sessionFor(InstanceId id) const {
 }
 bool DjiOsmoDriver::activate(const DeviceRecord& record) {
   if (sessionFor(record.instanceId) != nullptr) return true;
-  for (Session*& session : sessions_) {
+  for (size_t slot = 0; slot < sizeof(sessions_) / sizeof(sessions_[0]); ++slot) {
+    Session*& session = sessions_[slot];
     if (session != nullptr) continue;
     session = new (std::nothrow) Session;
     if (session == nullptr) return false;
     session->instanceId = record.instanceId;
     session->client.activate(record.bleAddress, record.bleAddressType,
                              record.bleName[0] ? record.bleName : record.displayName,
-                             record.paired, 0xB1EE0000UL | (record.instanceId & 0xffff));
+                             record.paired, 0xB1EE0000UL | (record.instanceId & 0xffff),
+                             static_cast<uint32_t>(slot + 1));
     return true;
   }
   return false;

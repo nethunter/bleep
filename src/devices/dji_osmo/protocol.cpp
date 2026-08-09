@@ -88,10 +88,10 @@ Packet buildConnectionRequest(uint16_t sequence, uint32_t deviceId,
 }
 
 Packet buildConnectionResponse(uint16_t sequence, uint32_t deviceId,
-                               uint8_t cameraIndex) {
+                               uint32_t cameraNumber) {
   uint8_t payload[9] = {};
   put32(payload, deviceId);
-  payload[5] = cameraIndex;
+  put32(payload + 5, cameraNumber);
   return build(kCmdSetGeneral, kCmdConnection, 0x20, sequence, payload,
                sizeof(payload));
 }

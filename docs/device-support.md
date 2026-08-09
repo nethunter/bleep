@@ -349,6 +349,9 @@ Compatibility evidence is deliberately split from protocol availability:
 - Protocol: DJI's connection request/camera approval handshake, explicit
   record start/stop (`1D/03`), and 2 Hz status subscription (`1D/05`). Valid
   camera status pushes (`1D/02`) are the only source of confirmed recording.
+  Concurrent sessions return distinct positive camera numbers in the
+  connection response; DJI reserves camera number `0` for a single-camera
+  connection.
   First pairing sends verification mode `1` and displays the same zero-padded
   four-digit code that the operator must match on the camera; saved reconnects
   use verification mode `0`.

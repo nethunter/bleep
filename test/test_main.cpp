@@ -1097,6 +1097,16 @@ void test_dji_osmo_protocol_matches_official_connection_vector() {
   TEST_ASSERT_EQUAL_UINT8(42, parsedFirstPair.payload[27]);
   TEST_ASSERT_EQUAL_UINT8(0, parsedFirstPair.payload[28]);
 
+  const auto secondCamera = dji_osmo::buildConnectionResponse(
+      3, 0x12345678, 2);
+  const auto parsedSecondCamera =
+      dji_osmo::parseFrame(secondCamera.bytes, secondCamera.len);
+  TEST_ASSERT_TRUE(parsedSecondCamera.valid);
+  TEST_ASSERT_EQUAL_UINT8(2, parsedSecondCamera.payload[5]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[6]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[7]);
+  TEST_ASSERT_EQUAL_UINT8(0, parsedSecondCamera.payload[8]);
+
   bool recording = true;
   TEST_ASSERT_TRUE(dji_osmo::decodeCameraRecordingStatus(0x01, 0x00,
                                                          recording));

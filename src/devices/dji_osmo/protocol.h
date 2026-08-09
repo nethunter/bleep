@@ -37,7 +37,7 @@ Packet buildConnectionRequest(uint16_t sequence, uint32_t deviceId,
                               uint8_t verificationMode,
                               uint16_t verificationCode);
 Packet buildConnectionResponse(uint16_t sequence, uint32_t deviceId,
-                               uint8_t cameraIndex = 0);
+                               uint32_t cameraNumber = 0);
 Packet buildStatusSubscription(uint16_t sequence);
 Packet buildRecordControl(uint16_t sequence, bool start);
 Frame parseFrame(const uint8_t* data, size_t length);

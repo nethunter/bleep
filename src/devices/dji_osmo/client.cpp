@@ -51,9 +51,10 @@ void Client::begin() {
 }
 
 void Client::activate(const char* address, uint8_t addressType, const char* name,
-                      bool paired, uint32_t deviceId) {
+                      bool paired, uint32_t deviceId, uint32_t cameraNumber) {
   begin();
   deviceId_ = deviceId == 0 ? 0x12345678 : deviceId;
+  cameraNumber_ = cameraNumber;
   connectRequested_ = initialized_;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
   paired_ = paired;
@@ -238,7 +239,7 @@ void Client::handleFrame(const uint8_t* data, size_t length) {
       studio::ble::bleCentral().markProtocolFailed(link_, false);
       return;
     }
-    if (send(buildConnectionResponse(frame.sequence, deviceId_))) {
+    if (send(buildConnectionResponse(frame.sequence, deviceId_, cameraNumber_))) {
       statusSubscriptionAttempts_ = 0;
       statusSubscriptionPending_ = true;
       statusSubscriptionAtMs_ = millis() + kInitialStatusSubscriptionDelayMs;
