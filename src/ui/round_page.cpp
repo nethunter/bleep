@@ -54,4 +54,20 @@ RoundPageHeader createRoundPageHeader(
   return header;
 }
 
+lv_obj_t* createRoundPageMenuBody(lv_obj_t* parent, lv_coord_t rowGap) {
+  lv_obj_t* body = lv_obj_create(parent);
+  lv_obj_set_size(body, kRoundMenuWidth, kRoundMenuHeight);
+  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, kRoundPageContentY);
+  lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(body, 0, 0);
+  lv_obj_set_style_pad_all(body, 0, 0);
+  lv_obj_set_style_pad_row(body, rowGap, 0);
+  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_scrollbar_mode(body, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  return body;
+}
+
 }  // namespace studio_ui

@@ -459,32 +459,23 @@ void onCloseSettings(lv_event_t*) { closeSettings(); }
 void buildSettingsOverlay() {
   closeSettings();
   settingsOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(settingsOverlay, 236, 236);
+  lv_obj_set_size(settingsOverlay, 240, 240);
   lv_obj_center(settingsOverlay);
-  lv_obj_set_style_radius(settingsOverlay, 118, 0);
+  lv_obj_set_style_radius(settingsOverlay, 120, 0);
   lv_obj_set_style_bg_color(settingsOverlay, lv_color_hex(kColBg), 0);
   lv_obj_set_style_border_width(settingsOverlay, 0, 0);
   lv_obj_set_style_pad_all(settingsOverlay, 0, 0);
   lv_obj_clear_flag(settingsOverlay, LV_OBJ_FLAG_SCROLLABLE);
 
   studio_ui::RoundPageHeaderOptions header;
-  header.title = "Settings";
+  header.title = "Sequence settings";
   header.backSymbol = LV_SYMBOL_CLOSE;
   header.onBack = onCloseSettings;
   header.panelColor = kColPanel;
   header.textColor = kColText;
   studio_ui::createRoundPageHeader(settingsOverlay, header);
 
-  lv_obj_t* body = lv_obj_create(settingsOverlay);
-  lv_obj_set_size(body, 168, 140);
-  lv_obj_align(body, LV_ALIGN_TOP_MID, 0, studio_ui::kRoundPageContentY);
-  lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(body, 0, 0);
-  lv_obj_set_style_pad_row(body, 4, 0);
-  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_scrollbar_mode(body, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_t* body = studio_ui::createRoundPageMenuBody(settingsOverlay);
 
   lv_obj_t* rename = makeButton(body, "Rename", onRenameScene);
   lv_obj_set_size(rename, lv_pct(100), 32);

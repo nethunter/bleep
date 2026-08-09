@@ -11,6 +11,8 @@ constexpr lv_coord_t kRoundHeaderControlY = 24;
 constexpr lv_coord_t kRoundHeaderTitleY = 28;
 constexpr lv_coord_t kRoundPageContentY = 58;
 constexpr lv_coord_t kRoundHeaderTitleWidth = 92;
+constexpr lv_coord_t kRoundMenuWidth = 168;
+constexpr lv_coord_t kRoundMenuHeight = 158;
 
 struct RoundPageHeaderOptions {
   const char* title = "";
@@ -40,5 +42,8 @@ lv_obj_t* createRoundPageHeaderButton(lv_obj_t* parent, const char* symbol,
 
 RoundPageHeader createRoundPageHeader(
     lv_obj_t* parent, const RoundPageHeaderOptions& options);
+
+lv_obj_t* createRoundPageMenuBody(lv_obj_t* parent,
+                                  lv_coord_t rowGap = 4);
 
 }  // namespace studio_ui
