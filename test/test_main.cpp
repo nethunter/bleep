@@ -2503,6 +2503,30 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(store.load(rejected)));
 }
 
+void test_scene_registry_and_store_grow_beyond_legacy_limit() {
+  MemoryBackend backend;
+  studio::SceneStore store(backend);
+  studio::SceneRegistry source;
+  for (size_t i = 0; i < 12; ++i) {
+    char name[studio::kDeviceNameCapacity];
+    std::snprintf(name, sizeof(name), "Sequence %u",
+                  static_cast<unsigned>(i + 1));
+    studio::SceneId id = studio::kInvalidSceneId;
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(studio::SceneRegistryStatus::Ok),
+        static_cast<int>(source.add(name, id)));
+  }
+  TEST_ASSERT_EQUAL_UINT32(12, source.count());
+  TEST_ASSERT_TRUE(store.save(source));
+
+  studio::SceneRegistry restored;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(store.load(restored)));
+  TEST_ASSERT_EQUAL_UINT32(12, restored.count());
+  TEST_ASSERT_EQUAL_STRING("Sequence 12", restored.at(11)->name);
+}
+
 void test_scene_v1_migration_zeroes_action_arguments() {
   V1SceneBackend backend;
   studio::SceneStore store(backend);
@@ -3772,6 +3796,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_cancels_unready_release_and_reuses_ready_session);
   RUN_TEST(test_manager_parks_ownerless_drop_but_keeps_intentional_offline);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
+  RUN_TEST(test_scene_registry_and_store_grow_beyond_legacy_limit);
   RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_authored_stop);

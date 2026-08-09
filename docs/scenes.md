@@ -95,6 +95,13 @@ A scene contains:
 - default timeout and failure policy;
 - optional descriptive notes.
 
+The number of scenes is not a compile-time product limit. The registry grows
+on demand and schema-v3 persistence stores only authored steps. Creation is
+transactional: if RAM or NVS cannot hold another scene, that attempted scene is
+not committed and existing scenes remain intact. The per-scene step bound is
+retained because the runner and editor operate on fixed, explicitly validated
+Start and Stop command lists.
+
 Step types:
 
 - `Action`: send one typed command to a device or group;

@@ -55,6 +55,25 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-09.
 
+### 2026-08-09: Resource-based scene growth
+
+- Removed the configured four-scene ceiling. `SceneRegistry` now grows with
+  checked dynamic allocation, and every service mutation snapshots the current
+  registry before changing it so allocation or persistence failure preserves
+  all existing scenes.
+- Scene persistence schema v3 uses a 32-bit count and writes only authored
+  Start/Stop steps instead of all reserved step slots. Existing v1/v2 blobs
+  remain readable. Portal overview now reports the sequence count without a
+  misleading capacity denominator; a real storage failure returns an explicit
+  insufficient-storage response.
+- Native tests passed 72/72, including a twelve-scene persistence round trip
+  beyond the former limit. The complete `ui_sim` capture traversal passed.
+  All 13 firmware profiles built sequentially. `crowpanel_128` used 1,901,304
+  bytes flash and 140,364 bytes static RAM, then uploaded to
+  `/dev/cu.usbserial-211240`; every region passed hash verification and the
+  panel hard-reset. Creating more than four scenes on the live panel remains an
+  operator check.
+
 ## Completed planning
 
 - Defined compile-time Kconfig/menuconfig driver selection.
@@ -87,7 +106,8 @@ through their GPS Remote menu, probe GO Ultra separately without assuming it
 shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
 their remote-controller flow. Action 5 Pro and Osmo 360 pairing plus recording
 start/stop have passed; continue their saved reconnect, camera-originated
-status, forget/re-pair, and two-camera concurrency checks. Then
+status on Action 5 Pro, forget/re-pair, and two-camera concurrency checks. The
+Osmo 360 camera-confirmed status retest now passes. Then
 pair one supported GoPro,
 confirm reconnect and start/stop responses without claiming camera-reported
 recording state, then pair representative iOS and Android phones to
@@ -121,11 +141,11 @@ accounting. Sony still requires a capture before enabling Add Device.
 - Hardware: `crowpanel_128` uploaded to `/dev/cu.usbserial-211240`; all written
   regions passed hash verification and the panel hard-reset. A live DJI camera
   test then confirmed that Osmo Action 5 Pro and Osmo 360 pairing plus explicit
-  recording start/stop work. Both still showed `STATUS PENDING`, so saved
-  reconnect, camera-originated status, forget/re-pair, and coexistence remain
-  unverified. The follow-up status firmware also uploaded with hash
-  verification and hard-reset; its live `CAMERA CONFIRMED` result remains
-  pending operator retest.
+  recording start/stop work. Both initially showed `STATUS PENDING`. The
+  follow-up status firmware also uploaded with hash verification and hard-reset;
+  Osmo 360 then passed the live `CAMERA CONFIRMED` status retest. Saved
+  reconnect, Action 5 Pro status, forget/re-pair, and coexistence remain
+  unverified.
 
 Then exercise the newly flashed cross-brand mesh runtime from the panel: add or open
 MC Pro, Ace 25c, and X60RGB together, confirm the Devices/sequence layer counts

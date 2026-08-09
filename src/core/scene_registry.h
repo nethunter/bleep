@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include "core/scene_types.h"
 
 namespace studio {
@@ -13,10 +15,17 @@ enum class SceneRegistryStatus : uint8_t {
 
 class SceneRegistry {
  public:
-  size_t capacity() const { return CONFIG_MAX_SCENES; }
+  SceneRegistry() = default;
+  SceneRegistry(const SceneRegistry& other);
+  SceneRegistry(SceneRegistry&& other) noexcept;
+  SceneRegistry& operator=(const SceneRegistry& other);
+  SceneRegistry& operator=(SceneRegistry&& other) noexcept;
+  ~SceneRegistry();
+
   size_t count() const { return count_; }
   bool initialized() const { return initialized_; }
   SceneId nextSceneId() const { return nextSceneId_; }
+  bool healthy() const { return healthy_; }
 
   const SceneRecord* at(size_t index) const;
   SceneRecord* at(size_t index);
@@ -32,12 +41,17 @@ class SceneRegistry {
   void clear(bool initialized = true);
   bool restore(const SceneRecord* records, size_t count, SceneId nextSceneId,
                bool initialized);
+  void swap(SceneRegistry& other) noexcept;
 
  private:
-  SceneRecord records_[CONFIG_MAX_SCENES] = {};
+  bool reserve(size_t requested);
+
+  SceneRecord* records_ = nullptr;
   size_t count_ = 0;
+  size_t capacity_ = 0;
   SceneId nextSceneId_ = 1;
   bool initialized_ = false;
+  bool healthy_ = true;
 };
 
 }  // namespace studio

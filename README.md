@@ -93,7 +93,9 @@ principles:
 - On-device sequences with separately authored Start and Stop steps, waits,
   persistent storage, concurrent device preparation, and a hardware-button
   trigger. A partial Start failure can run Stop for cleanup and then retry
-  Start; devices already confirmed stopped do not abort that cleanup.
+  Start; devices already confirmed stopped do not abort that cleanup. There is
+  no configured sequence-count ceiling; the registry grows until the panel
+  cannot safely allocate or persist another sequence.
 - Experimental local Home Assistant control for four selected lights, switches,
   input booleans, buttons, scenes, or scripts through a temporary setup Portal
   and one shared on-demand Wi-Fi session. An authenticated event subscription

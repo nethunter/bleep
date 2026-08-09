@@ -1,17 +1,21 @@
 #include "core/scene_store.h"
 
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace studio {
 namespace {
 
 constexpr uint8_t kMagic[] = {'S', 'C', 'N', '1'};
-constexpr size_t kHeaderSize = 12;
+constexpr size_t kLegacyHeaderSize = 12;
+constexpr size_t kHeaderSize = 15;
 constexpr size_t kEncodedV1StepSize = 1 + 4 + 1 + 4;
 constexpr size_t kEncodedStepSize = kEncodedV1StepSize + 4 + 4 + 4;
-constexpr size_t encodedSceneSize(size_t stepSize) {
+constexpr size_t kEncodedSceneHeaderSize = 4 + 1 + kDeviceNameCapacity + 1 + 1;
+constexpr size_t encodedLegacySceneSize(size_t stepSize) {
   return
-    4 + 1 + kDeviceNameCapacity + 1 + 1 +
+    kEncodedSceneHeaderSize +
     CONFIG_MAX_SCENE_STEPS * stepSize * 2;
 }
 constexpr size_t kChecksumSize = 4;
@@ -85,39 +89,51 @@ SceneStep decodeStep(const uint8_t*& in, bool hasValues) {
 }  // namespace
 
 ConfigLoadStatus SceneStore::load(SceneRegistry& registry) {
-  uint8_t blob[kMaxBlobSize];
-  const size_t length = backend_.read(blob, sizeof(blob));
+  std::unique_ptr<uint8_t[]> blob(new (std::nothrow) uint8_t[kMaxBlobSize]);
+  if (!blob) return ConfigLoadStatus::Corrupt;
+  const size_t length = backend_.read(blob.get(), kMaxBlobSize);
   if (length == 0) {
     return ConfigLoadStatus::Missing;
   }
-  if (length < kHeaderSize + kChecksumSize ||
-      std::memcmp(blob, kMagic, sizeof(kMagic)) != 0) {
+  if (length < kLegacyHeaderSize + kChecksumSize ||
+      std::memcmp(blob.get(), kMagic, sizeof(kMagic)) != 0) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  const uint8_t* cursor = blob + sizeof(kMagic);
+  const uint8_t* cursor = blob.get() + sizeof(kMagic);
   const uint16_t version = getU16(cursor);
+  const bool legacy = version == 1 || version == 2;
+  if (!legacy && version != kSchemaVersion) return ConfigLoadStatus::Corrupt;
   const bool initialized = *cursor++ != 0;
-  const uint8_t count = *cursor++;
+  const uint32_t count = legacy ? *cursor++ : getU32(cursor);
   const SceneId nextSceneId = getU32(cursor);
-  const bool v1 = version == 1;
-  const size_t stepSize = v1 ? kEncodedV1StepSize : kEncodedStepSize;
-  const size_t expectedLength = kHeaderSize + static_cast<size_t>(count) *
-      encodedSceneSize(stepSize) + kChecksumSize;
-  if ((!v1 && version != kSchemaVersion) || count > CONFIG_MAX_SCENES ||
-      length != expectedLength) {
+  if (legacy) {
+    const size_t stepSize = version == 1 ? kEncodedV1StepSize : kEncodedStepSize;
+    const size_t expectedLength = kLegacyHeaderSize + static_cast<size_t>(count) *
+        encodedLegacySceneSize(stepSize) + kChecksumSize;
+    if (length != expectedLength) return ConfigLoadStatus::Corrupt;
+  } else if (length < kHeaderSize + kChecksumSize ||
+             count > (length - kHeaderSize - kChecksumSize) /
+                         kEncodedSceneHeaderSize) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  const uint8_t* storedChecksumCursor = blob + length - kChecksumSize;
-  const uint32_t storedChecksum = getU32(storedChecksumCursor);
-  if (storedChecksum != checksum(blob, length - kChecksumSize)) {
+  const uint8_t* storedChecksumCursor = blob.get() + length - kChecksumSize;
+  const uint8_t* checksumCursor = storedChecksumCursor;
+  const uint32_t storedChecksum = getU32(checksumCursor);
+  if (storedChecksum != checksum(blob.get(), length - kChecksumSize)) {
     return ConfigLoadStatus::Corrupt;
   }
 
-  SceneRecord records[CONFIG_MAX_SCENES] = {};
+  std::unique_ptr<SceneRecord[]> records(
+      count == 0 ? nullptr : new (std::nothrow) SceneRecord[count]());
+  if (count > 0 && !records) return ConfigLoadStatus::Corrupt;
   for (size_t i = 0; i < count; ++i) {
     SceneRecord& record = records[i];
+    if (static_cast<size_t>(storedChecksumCursor - cursor) <
+        kEncodedSceneHeaderSize) {
+      return ConfigLoadStatus::Corrupt;
+    }
     record.sceneId = getU32(cursor);
     record.enabled = (*cursor++ != 0);
     decodeText(record.name, cursor);
@@ -127,34 +143,60 @@ ConfigLoadStatus SceneStore::load(SceneRegistry& registry) {
         record.stopCount > CONFIG_MAX_SCENE_STEPS) {
       return ConfigLoadStatus::Corrupt;
     }
-    for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
-      record.startSteps[s] = decodeStep(cursor, !v1);
+    const uint8_t encodedStartCount = legacy ? CONFIG_MAX_SCENE_STEPS
+                                              : record.startCount;
+    const uint8_t encodedStopCount = legacy ? CONFIG_MAX_SCENE_STEPS
+                                             : record.stopCount;
+    const size_t encodedStepSize = version == 1 ? kEncodedV1StepSize
+                                                 : kEncodedStepSize;
+    const size_t stepsLength =
+        static_cast<size_t>(encodedStartCount + encodedStopCount) *
+        encodedStepSize;
+    if (static_cast<size_t>(storedChecksumCursor - cursor) < stepsLength) {
+      return ConfigLoadStatus::Corrupt;
     }
-    for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
-      record.stopSteps[s] = decodeStep(cursor, !v1);
+    for (uint8_t s = 0; s < encodedStartCount; ++s) {
+      const SceneStep step = decodeStep(cursor, version != 1);
+      if (s < record.startCount) record.startSteps[s] = step;
+    }
+    for (uint8_t s = 0; s < encodedStopCount; ++s) {
+      const SceneStep step = decodeStep(cursor, version != 1);
+      if (s < record.stopCount) record.stopSteps[s] = step;
     }
   }
 
-  if (!registry.restore(records, count, nextSceneId, initialized)) {
+  if (cursor != storedChecksumCursor) return ConfigLoadStatus::Corrupt;
+
+  if (!registry.restore(records.get(), count, nextSceneId, initialized)) {
     return ConfigLoadStatus::Corrupt;
   }
   return ConfigLoadStatus::Loaded;
 }
 
 bool SceneStore::save(const SceneRegistry& registry) {
-  const size_t length =
-      kHeaderSize + registry.count() * encodedSceneSize(kEncodedStepSize) + kChecksumSize;
-  if (length > kMaxBlobSize || registry.count() > 255) {
-    return false;
+  size_t length = kHeaderSize + kChecksumSize;
+  for (size_t i = 0; i < registry.count(); ++i) {
+    const SceneRecord* record = registry.at(i);
+    if (record == nullptr || record->startCount > CONFIG_MAX_SCENE_STEPS ||
+        record->stopCount > CONFIG_MAX_SCENE_STEPS) return false;
+    const size_t recordSize = kEncodedSceneHeaderSize +
+        static_cast<size_t>(record->startCount + record->stopCount) *
+            kEncodedStepSize;
+    if (length > kMaxBlobSize || recordSize > kMaxBlobSize - length) {
+      return false;
+    }
+    length += recordSize;
   }
 
-  uint8_t blob[kMaxBlobSize] = {};
-  uint8_t* cursor = blob;
+  if (registry.count() > UINT32_MAX) return false;
+  std::unique_ptr<uint8_t[]> blob(new (std::nothrow) uint8_t[length]());
+  if (!blob) return false;
+  uint8_t* cursor = blob.get();
   std::memcpy(cursor, kMagic, sizeof(kMagic));
   cursor += sizeof(kMagic);
   putU16(cursor, kSchemaVersion);
   *cursor++ = registry.initialized() ? 1 : 0;
-  *cursor++ = static_cast<uint8_t>(registry.count());
+  putU32(cursor, static_cast<uint32_t>(registry.count()));
   putU32(cursor, registry.nextSceneId());
 
   for (size_t i = 0; i < registry.count(); ++i) {
@@ -165,17 +207,17 @@ bool SceneStore::save(const SceneRegistry& registry) {
     cursor += sizeof(record->name);
     *cursor++ = record->startCount;
     *cursor++ = record->stopCount;
-    for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
+    for (uint8_t s = 0; s < record->startCount; ++s) {
       encodeStep(cursor, record->startSteps[s]);
     }
-    for (uint8_t s = 0; s < CONFIG_MAX_SCENE_STEPS; ++s) {
+    for (uint8_t s = 0; s < record->stopCount; ++s) {
       encodeStep(cursor, record->stopSteps[s]);
     }
   }
 
-  putU32(cursor, checksum(blob, length - kChecksumSize));
-  return static_cast<size_t>(cursor - blob) == length &&
-         backend_.write(blob, length);
+  putU32(cursor, checksum(blob.get(), length - kChecksumSize));
+  return static_cast<size_t>(cursor - blob.get()) == length &&
+         backend_.write(blob.get(), length);
 }
 
 }  // namespace studio
