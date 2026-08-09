@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 #include "core/ble/ble_central.h"

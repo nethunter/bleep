@@ -3390,3 +3390,16 @@ Record values with the exact build environment and commit/worktree state.
   full image uploaded to `/dev/cu.usbserial-211240` with hash verification and
   hard reset. A live two-Canon Sequence 4 prepare and Start/Stop run remains the
   required peripheral verification.
+
+### 2026-08-09: Ubuntu native-test compile repair
+
+- Fixed the GitHub Actions native-test compile failure by explicitly including
+  `<cstdio>` in `test/test_main.cpp`, which uses `std::snprintf`. The previous
+  source relied on a transitive declaration available in the local macOS header
+  graph but absent from the Ubuntu runner.
+- Native passed 71/71. The full Montserrat `crowpanel_128` profile built with
+  142,308 / 327,680 bytes static RAM (43.4%) and 1,897,428 / 3,145,728 bytes
+  flash (60.3%). Alternate profiles were left to GitHub Actions.
+- The full image uploaded successfully to `/dev/cu.usbserial-211240`; all
+  written-region hashes verified and the board hard-reset. The next CI run
+  remains the authoritative Ubuntu verification of the repaired include.
