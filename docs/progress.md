@@ -54,7 +54,26 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-09.
+- Last updated: 2026-08-10.
+
+### 2026-08-10: Maintainable illustrated instruction manual
+
+- Added a user-facing instruction manual with consistent technical line
+  illustrations generated from the supplied hardware reference photos,
+  including the five-prototype overview with every screen shown on,
+  representative simulator captures, setup and operating procedures, a complete
+  user-function reference, exact-model compatibility matrix, recovery guidance,
+  and explicit Current/Experimental/Candidate/Research boundaries.
+- The editable source is `docs/manual/manual.md`; a pinned ReportLab builder and
+  short maintenance guide compile it to
+  `output/pdf/bleep-instruction-manual.pdf`. The documentation index links the
+  manual source.
+- The final 23-page A4 PDF passed metadata/outline checks, text extraction for
+  every page, expected-content assertions, and full-page rendered visual
+  inspection with no blank pages, clipping, broken tables, or unreadable
+  figures. The full Montserrat `bleep` profile also built successfully with
+  140,340 / 327,680 bytes static RAM and 1,906,428 / 3,145,728 bytes flash.
+  Firmware behavior did not change, so no board upload was attempted.
 
 ### 2026-08-09: Aputure Light control-state synchronization
 
