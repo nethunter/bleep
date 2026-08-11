@@ -542,6 +542,13 @@ the replacement.
   correct an underspecified diode/MOSFET, or guarantee that D1 will survive.
   New boards still require external battery-path protection or replacement
   power hardware before a multi-day endurance result can be treated as safe.
+- Assembly amendment (2026-08-11): The reference enclosure build desolders and
+  removes the CrowPanel's original D1, then installs an external through-hole
+  1N5819 in its place. The original and replacement must not remain connected
+  in parallel. The hardware guide owns removal, wiring, polarity, insulation,
+  strain-relief, and first-power checks. This standard assembly step does not
+  close the endurance gate or establish a universal current or thermal rating
+  for manufacturer-variable diode parts.
 - Gate: On a protected new board, verify scan/connect latency, command and
   notification reliability, Canon powered-off reacquire, mixed BLE/HA sequence
   concurrency, and battery-path voltage/temperature over at least a seven-day

@@ -22,12 +22,13 @@ short, factual, and reproducible.
   now emulates the GPS-remote service and toggle shutter for X5/GO 3 candidates;
   GO Ultra remains a distinct experimental probe. DJI now implements its
   published controller handshake, on-panel four-digit first-pair verification,
-  explicit record control, and status push for Action 5 Pro/Osmo 360
-  candidates. Sony remains capture-required. An Insta360
+  explicit record control, and status push for Action 5 Pro/Osmo 360.
+  Sony remains capture-required. An Insta360
   X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
   mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
   mixed-sequence shutter operation. DJI Osmo Action 5 Pro and Osmo 360 first
-  pairing plus explicit recording start/stop are now operator-confirmed.
+  pairing, explicit recording start/stop, and camera-confirmed recording status
+  are now operator-confirmed.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -54,7 +55,89 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-09.
+- Last updated: 2026-08-11.
+
+### 2026-08-11: Owner-focused manual editorial pass
+
+- Reframed the illustrated manual as an owner's guide for a creative operator:
+  a seven-step quick start now leads into navigation, equipment setup, device
+  control, repeatable workflows, studio services, recovery, function reference,
+  exact-model compatibility, and safety.
+- Consolidated electronics, capacity limits, pin assignments, enclosure parts,
+  print settings, assembly, switched-battery wiring, the standard external D1
+  battery-path diode installation, and firmware commands into one final
+  advanced developer/builder section. Manual-maintenance instructions remain
+  only in the source README.
+- The rebuilt 26-page A4 PDF passed metadata and expected-content checks, text
+  extraction on every page, and full rendered-page visual inspection. The full
+  Montserrat `bleep` profile built successfully with 140,340 / 327,680 bytes
+  static RAM and 1,906,428 / 3,145,728 bytes flash. This documentation-only
+  change was not uploaded to hardware.
+- Rebuilt the cover as separate text and illustration columns so the device art
+  cannot obscure the title or subtitle. Owner-facing references now call the
+  optional control the Action Button, and shared-light behavior is explained as
+  one private light network/connection before the technical chapter introduces
+  Bluetooth Mesh terminology.
+- Added minimum remaining-page-space guards for every heading level so a title
+  moves to the next page instead of becoming the last line on a page.
+- Made removal of the original CrowPanel D1 and installation of an external
+  1N5819 replacement part of the standard reference assembly in both the
+  owner's manual and `hardware/README.md`; the two diodes must not be run in
+  parallel.
+  The hardware bill of materials now identifies the reference JLJLUP 3.7 V,
+  1100 mAh protected 1S pack (ASIN B0GR14VMW5) and its listed dimensions,
+  plug, weight, and discharge rate; the owner's PDF includes the specifications
+  without a retailer link.
+- Reduced compatibility status labels to Supported, Experimental, Candidate,
+  Research, and Later. Canon EOS R6 Mark II and Mark III Smart Phone Mode are
+  now Supported for the verified BLE recording-control path; the separate
+  Wi-Fi/CCAPI omission remains explicit.
+- Replaced the cover logo and controller artwork with alpha-channel PNGs. Both
+  now render directly on the dark cover without black or white rectangular
+  backgrounds; the title block remains unobstructed.
+- Reordered the owner chapters as Cameras, Lights, Audio, Motion, then Studio
+  Services, which contains Portal and Home Assistant setup. Workflow-building
+  now follows those chapters, and the generated contents uses the same sequence.
+- Made Audio and Motion category chapters, nesting Tascam Portacapture X8 and
+  iFootage Shark Nano II beneath them so future devices can be added alongside
+  the current models without changing the guide's top-level structure.
+- Combined Canon guidance into one camera section with Trigger Mode and Smart
+  Phone Mode explained as separate pairings with different controls and state
+  feedback.
+- Added a screen-by-screen Action Button reference covering every active camera,
+  light, recorder, slider, Home Assistant entity, and scene screen, plus the
+  navigation and research screens where a short press is intentionally ignored.
+  Updated exact-model evidence: Canon EOS R6 Mark II now passes both Trigger
+  Mode and Smart Phone Mode, and both DJI Osmo Action 5 Pro and Osmo 360 now
+  report camera-confirmed recording status.
+- Moved the Shark Nano II slider to the end of the compatibility list. The
+  compatibility table now reserves a wider Status column and disables
+  mid-word table wrapping so all five status labels remain intact.
+- Re-edited every owner-facing chapter around visible actions, decisions, and
+  outcomes. Removed implementation terms such as GPIO, service IDs, transport,
+  provisioning, proxy, NVS, heap, WebSocket, and protocol acknowledgements from
+  the owner's path. Hardware specifications, the controller battery-sensing
+  limitation, capacity internals, wiring, repair, and firmware work now appear
+  only under **Advanced: developers and builders**.
+
+### 2026-08-10: Maintainable illustrated instruction manual
+
+- Added a user-facing instruction manual with consistent technical line
+  illustrations generated from the supplied hardware reference photos,
+  including the five-prototype overview with every screen shown on,
+  representative simulator captures, setup and operating procedures, a complete
+  user-function reference, exact-model compatibility matrix, recovery guidance,
+  and explicit Current/Experimental/Candidate/Research boundaries.
+- The editable source is `docs/manual/manual.md`; a pinned ReportLab builder and
+  short maintenance guide compile it to
+  `output/pdf/bleep-instruction-manual.pdf`. The documentation index links the
+  manual source.
+- The final 23-page A4 PDF passed metadata/outline checks, text extraction for
+  every page, expected-content assertions, and full-page rendered visual
+  inspection with no blank pages, clipping, broken tables, or unreadable
+  figures. The full Montserrat `bleep` profile also built successfully with
+  140,340 / 327,680 bytes static RAM and 1,906,428 / 3,145,728 bytes flash.
+  Firmware behavior did not change, so no board upload was attempted.
 
 ### 2026-08-09: Aputure Light control-state synchronization
 
@@ -198,10 +281,9 @@ short, factual, and reproducible.
 First, continue the camera hardware matrix. Pair Insta360 X5 and GO 3
 through their GPS Remote menu, probe GO Ultra separately without assuming it
 shares that compatibility, and test DJI Osmo Action 5 Pro plus Osmo 360 through
-their remote-controller flow. Action 5 Pro and Osmo 360 pairing plus recording
-start/stop have passed; continue their saved reconnect, camera-originated
-status on Action 5 Pro, forget/re-pair, and two-camera concurrency checks. The
-Osmo 360 camera-confirmed status retest now passes. Then
+their remote-controller flow. Action 5 Pro and Osmo 360 pairing, recording
+start/stop, and camera-confirmed status have passed; continue their saved
+reconnect, forget/re-pair, and two-camera concurrency checks. Then
 pair one supported GoPro,
 confirm reconnect and start/stop responses without claiming camera-reported
 recording state, then pair representative iOS and Android phones to

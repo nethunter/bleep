@@ -70,6 +70,12 @@ Follow these rules while building:
   exact build environment, results, measurements, hardware checks, blockers,
   and next safe task. Update `README.md` when current user-visible behavior
   changes.
+- For every major change to user-visible functionality, setup, supported
+  equipment, workflows, hardware assembly, or safety guidance, update
+  `docs/manual/manual.md` in the same tranche and rebuild
+  `output/pdf/bleep-instruction-manual.pdf`. Render and inspect the affected PDF
+  pages before handoff. Keep `hardware/README.md` aligned when hardware or
+  assembly guidance changes.
 
 ## Conventions
 

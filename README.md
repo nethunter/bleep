@@ -154,14 +154,14 @@ are experimental bounded tranches whose hardware gates remain open. See
 | --- | --- | --- |
 | iFootage Shark Nano II | Current | Pair/reconnect, battery, keypoints, manual movement, timing, loop/direction, and run control. |
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
-| Canon EOS R6 Mark III smartphone mode | Experimental | Bonded BLE pairing, explicit movie start/stop, camera-reported recording state, automatic wake when reopening an offline camera, and explicit power-down through `Canon (Smart)`. |
+| Canon EOS R6 Mark II/III smartphone mode | Current, bounded scope | Bonded BLE pairing, explicit movie start/stop, and camera-reported recording state through `Canon (Smart)` are verified on both models; automatic wake and explicit power-down are included in the workflow. |
 | GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
 | Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
 | Insta360 X5 | Experimental; verified path | GPS-remote connection and mixed-sequence toggle shutter are operator-confirmed; camera state is not readable. |
 | Insta360 GO 3 | Experimental candidate | Uses the same implemented GPS-remote path but has no model-specific hardware result yet. |
 | Insta360 GO Ultra | Experimental probe | Separate target with no established legacy GPS-remote compatibility and no hardware result yet. |
-| DJI Osmo Action 5 Pro | Experimental; verified path | On-panel first-pair verification and explicit recording start/stop are operator-confirmed. Reconnect and camera-originated status checks remain open. |
-| DJI Osmo 360 | Experimental; verified path | On-panel first-pair verification and explicit recording start/stop are operator-confirmed. Reconnect and camera-originated status checks remain open. |
+| DJI Osmo Action 5 Pro | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
+| DJI Osmo 360 | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
