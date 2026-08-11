@@ -1,94 +1,108 @@
 ---
-title: "Ble(e)p Instruction Manual"
-subtitle: "Setup, operation, device support, and recovery for the open studio controller"
-edition: "0.2.0-dev / source e97d0b6"
-date: "10 August 2026"
+title: "Ble(e)p Owner's Guide"
+subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
+edition: "0.2.0-dev"
+date: "11 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
 ---
 
-# Welcome to Ble(e)p
+# Welcome
 
-Ble(e)p is a compact, touch-first controller for studio equipment. Its playful name means **Bluetooth Links Everything, Eventually, Probably**; the practical expansion is **Bluetooth Low Energy Equipment Panel**. It runs locally on an ESP32-C3 CrowPanel with a 1.28-inch round touchscreen and brings motion, recording, lighting, Home Assistant, and multi-device sequences into one interface.
+Ble(e)p puts the controls you need during a shoot in one small, touch-first remote. Use it to move a slider, roll cameras and audio, set lights, trigger a phone, call Home Assistant actions, or start several of them in a repeatable sequence. Its playful name means **Bluetooth Links Everything, Eventually, Probably**; the practical expansion is **Bluetooth Low Energy Equipment Panel**.
 
-> This manual describes development firmware, not a finished consumer product. Read the support status and limitations for each device before relying on it for paid or unrepeatable work. A protocol acknowledgement is not always proof that a camera recorded, a light changed, or a slider moved.
+![Five Ble(e)p enclosure finishes. All five use the same circular interface.](assets/controller-family-line.png){width=6.4}
+
+> Ble(e)p is still in development. Check the support status for your exact equipment before relying on it for paid or unrepeatable work. When Ble(e)p says **Sent** but cannot confirm the result, check the camera, recorder, light, or slider itself.
 
 ## What this manual covers
 
-- identifying and operating the controller;
+- getting from power-on to your first controlled device;
 - adding, managing, reconnecting, and removing devices;
-- using every currently exposed user function;
+- using every control available on the device;
 - building and running Start/Stop sequences;
 - configuring the temporary Portal and local Home Assistant control;
-- supported, experimental, candidate, research-only, and later devices;
-- troubleshooting, Factory Reset, safety, and maintenance of this manual.
+- checking exact device compatibility and confidence levels;
+- troubleshooting and safely resetting the controller;
+- printing, assembling, repairing, and developing the project in the final advanced section.
 
 ## Status words used here
 
 | Label | Meaning |
 | --- | --- |
-| Current | Implemented and hardware-verified for the stated bounded feature set. Remaining endurance or coexistence checks may still be open. |
-| Experimental; verified path | Implemented and proven on the exact named model and path, but broader coverage remains open. |
-| Experimental | Implemented, but some important real-device, recovery, coexistence, or endurance checks remain open. |
-| Candidate | An implemented protocol path may apply; there is no model-specific hardware result yet. |
-| Research | Visible or documented, but not ready to save and control as a normal device. |
-| Later | Not implemented. Architecture or protocol research still has to begin. |
+| Supported | Used repeatedly with the exact named model for the functions listed. |
+| Experimental | Available, but some important real-world or recovery testing is still unfinished. |
+| Candidate | Ble(e)p may work with this model, but that exact combination has not been tested. |
+| Research | Listed for investigation only; normal control is not available. |
+| Later | Not available in this version. |
 
-<!-- pagebreak -->
+# Quick start
 
-# Hardware tour
+Ble(e)p starts at Home and waits for you. It does not scan, reconnect, open a device, or start Wi-Fi by itself, so powering it on will not unexpectedly wake studio equipment.
 
-The current target is the **ESP32-C3 CrowPanel 1.28-inch round display** with a 240 x 240 GC9A01 LCD, CST816D touch controller, PI4IOE5V6408 I/O expander, and vibration motor. Enclosures and external controls are community-built and may vary.
+1. Turn on the controller with its hardware power switch.
+2. From Home, open **Devices**.
+3. Open a saved device, or choose **Add device** and follow the pairing instructions for your equipment.
+4. Wait for **Ready** before sending a command.
+5. Use the on-screen control or the optional action button.
+6. Check the real camera, recorder, light, or slider whenever Ble(e)p reports **Sent**, **Optimistic**, or **Unknown**.
+7. Select Back or Done when finished. Use **Manage > Disconnect** only when you need to release the connection immediately.
 
-![Line illustration of five Ble(e)p prototypes. The firmware and circular UI are shared across the enclosure colors.](assets/controller-family-line.png){width=6.4}
-
-## Controls
+## Your controls
 
 | Control | Short action | Long action |
 | --- | --- | --- |
 | Touchscreen | Select cards, buttons, tabs, fields, devices, steps, and controls. Drag scrollable lists. | Where a screen offers a hold-to-confirm control, keep touching it for the displayed duration. |
-| Optional GPIO 1 button | Runs the screen's primary action. On a sequence run screen it starts from Ready and stops once armed or while Start is running. On supported device screens it activates the primary Shark, Canon, GoPro, Phone Camera, or Tascam action. | At 700 ms: Back, cancel, or close the current overlay. Continue the same hold to 2 seconds: unwind navigation and return to Home. |
-| Hardware power switch | Turns the controller hardware on or off. | No firmware action. The GPIO 1 action button does not control power. |
+| Action Button | Runs the main action on the current screen. In a sequence, it starts from Ready and stops after the sequence is armed. On supported equipment screens, it performs the main displayed action. | Hold for about three-quarters of a second to go Back, cancel, or close a pop-up. Keep holding for two seconds to return Home. |
+| Hardware power switch | Turns Ble(e)p on or off. | The Action Button does not control power. |
+
+## Action Button by screen
+
+This table describes a short press. The action runs only when the corresponding on-screen control is available.
+
+| Screen | Short press |
+| --- | --- |
+| Home, Devices, Add device, Manage, Settings, Portal, and pop-ups | No action. Use the touchscreen. |
+| Canon - Trigger Mode | Sends the movie trigger, which starts or stops recording without reading the camera's state. |
+| Canon - Smart Phone Mode | Starts recording unless the camera has confirmed that it is already recording; then it stops. Select camera power on-screen. |
+| GoPro | Runs the displayed Record Start or Record Stop action. |
+| Phone Camera | Sends the shutter command. |
+| Insta360 | Sends Shutter Toggle. |
+| DJI Osmo | Runs the displayed Record Start or Record Stop action. Recording status is camera-confirmed on the verified models. It does nothing while the pairing code is awaiting approval. |
+| Sony Camera research screen | No action. Control is not available. |
+| Aputure and amaran light | Toggles the selected light On or Off. |
+| Zhiyun light | Toggles the selected light On or Off. |
+| Tascam Portacapture X8 | Starts recording unless the recorder has confirmed that it is already recording; then it stops. |
+| Shark Nano II Keypoints | Opens the Run screen. |
+| Shark Nano II Run | Runs the displayed Standby, Start, or Stop action. |
+| Home Assistant entity | Light or switch: On; input boolean: On/Off toggle; button: Press; scene or script: Activate. Use the on-screen Off control for a Home Assistant light or switch. |
+| Scene Run | Starts when Ready; once started or armed, stops the scene. Scene lists, editors, settings, and pickers ignore short presses. |
+
+When a control screen displays **Retry**, the Action Button retries on either Canon mode, GoPro, Insta360, DJI Osmo, and Tascam screens. A hold still performs Back at about three-quarters of a second and returns Home at two seconds.
 
 Accepted touches produce a short haptic tap when haptics are enabled. Ready uses two quick ticks, Back uses two uneven taps, and a newly surfaced error uses two strong pulses. Scrolling and canceled touches do not vibrate.
 
-![Line illustration of the enclosure side profile. The orange hardware control belongs to this enclosure build; placement can differ.](assets/controller-side-line.png){width=2.0}
-
-## Important hardware limits
-
-- The screen and backlight remain on continuously in the current firmware.
-- The CrowPanel does not measure its own battery voltage. Any battery value on the Shark screen belongs to the slider, not the controller.
-- Up to 24 device records and 16 BLE bonds can be saved. Up to four physical BLE transport groups may remain connected. All Aputure Light and Zhiyun Light members on the panel-owned mesh share one physical group.
-- Normal Home and Settings use does not start Wi-Fi. Wi-Fi runs only for Portal or an active Home Assistant owner, then returns to `WIFI_OFF`.
-
-# First start and navigation
-
-Ble(e)p always boots to a neutral Home screen. It does not scan, pair, reconnect, or open the last device automatically. This keeps startup predictable and avoids waking studio equipment unexpectedly.
+# Find your way around
 
 ![Home: Devices, Groups, Scenes, and Portal. The small cog opens Settings.](assets/ui-home.png){width=2.7}
 
 ## Home destinations
 
-| Destination | Purpose | Current status |
+| Destination | Purpose | Availability |
 | --- | --- | --- |
 | Devices | Add physical equipment and Home Assistant entities; open, rename, enable, disable, disconnect, forget/re-pair, or delete saved records. | Available |
-| Groups | Intended for named, capability-safe user groups. | Not implemented yet; do not confuse this with the internal shared light-mesh transport. |
+| Groups | Intended for named groups of compatible equipment. | Not available yet. |
 | Scenes | Create and run ordered Start sequences with generated or custom Stop lists. | Available |
-| Portal | Temporarily start setup or studio Wi-Fi administration. | Available; local plaintext HTTP on a trusted network only. |
-| Settings cog | About/build information, saved Wi-Fi status, haptics, diagnostics, and Factory Reset. | Available |
+| Portal | Open browser-based setup and Home Assistant options. | Available; use it only on a trusted local network. |
+| Settings cog | View version information, Wi-Fi status, haptics, diagnostics, and Factory Reset. | Available |
 
-## Everyday operating pattern
+## What Ready means
 
-1. Power on and wait for Home.
-2. Open **Devices** and select a saved device, or open **Scenes** and select a saved sequence.
-3. Wait for the screen to report protocol-ready status. A Bluetooth link alone may not be enough.
-4. Use touch or the optional action button.
-5. Use Back or Done when finished. Healthy sessions can stay retained for quick reuse.
-6. Use **Manage > Disconnect** when you need to release a link immediately.
+**Connecting** means Ble(e)p is finding and connecting to your equipment. **Preparing** means it is finishing setup. **Ready** means you can send a command. Ready does not guarantee that a later action physically happened, so watch the equipment when confirmation is unavailable.
 
 <!-- pagebreak -->
 
-# Add and manage devices
+# Set up your equipment
 
 ## Add a physical device
 
@@ -96,8 +110,8 @@ Ble(e)p always boots to a neutral Home screen. It does not scan, pair, reconnect
 2. Scroll to and select **Add device**.
 3. Choose the equipment category, then the device family.
 4. Put the real device in the exact pairing mode listed in this manual.
-5. Wait for Ble(e)p to finish both connection and protocol setup.
-6. Confirm the Ready state. The record is saved only after a first-time attempt reaches protocol ready; Back or a failed attempt leaves no half-paired device record.
+5. Wait for Ble(e)p to finish connecting and show **Ready**.
+6. If you go Back or setup fails, Ble(e)p will not leave an incomplete device in your list.
 
 ![The Add device category picker. Device choices are grouped by capability rather than by one long brand list.](assets/ui-add-device.png){width=2.7}
 
@@ -105,106 +119,88 @@ Ble(e)p always boots to a neutral Home screen. It does not scan, pair, reconnect
 
 Open **Devices**, select the device's management control, then choose an available operation:
 
-- **Open/control:** connect on demand and open the device UI.
+- **Open/control:** connect and open the device's control screen.
 - **Rename:** edit the panel-visible name.
-- **Enable/disable:** hide or restore the device in operational pickers without deleting its configuration.
-- **Disconnect:** release the active session explicitly.
-- **Forget/re-pair:** remove the saved bond or pairing identity and repeat onboarding.
-- **Delete/remove:** permanently remove the record after a named confirmation. Removal is blocked while a sequence still references the device.
+- **Enable/disable:** hide or restore the device in control and sequence lists without deleting it.
+- **Disconnect:** end the current connection.
+- **Forget/re-pair:** remove the saved pairing and set up the device again.
+- **Delete/remove:** permanently remove the device after confirmation. Remove it from any sequence first.
 
-The Devices list shows up to six records without paging, then pages six at a time. Long names scroll horizontally. Driver records omitted by a custom firmware build remain preserved but unavailable.
+The Devices list shows six devices at a time. Long names scroll so you can still read them. Devices not included in the installed version stay saved but cannot be opened.
 
 ## Connection and state labels
 
 | Label or behavior | Meaning |
 | --- | --- |
-| Connecting / Preparing | Ble(e)p is acquiring the transport and completing required protocol setup. |
-| Ready | Required transport and protocol initialization succeeded. It does not prove a later physical action. |
-| Pending | A command is awaiting device-originated confirmation or a bounded result. |
-| Confirmed | State came from a decoded device or service response appropriate to that integration. |
-| Optimistic / Sent | The command or response succeeded, but physical or recording state is not readable. |
-| Unknown | No trustworthy state readback has arrived. Use the real device display or physical observation. |
-| Unavailable / Failed | The device, protocol, or service did not become ready. Use Retry when shown, or return and reopen after checking the target. |
+| Connecting / Preparing | Ble(e)p is connecting and getting the device ready. |
+| Ready | You can send a command. This does not guarantee that the next physical action will succeed. |
+| Pending | Ble(e)p is waiting for the device to answer. |
+| Confirmed | The device reported the displayed state. |
+| Optimistic / Sent | Ble(e)p sent the command but cannot check the physical result. |
+| Unknown | Ble(e)p does not have a reliable current state. Check the equipment itself. |
+| Unavailable / Failed | The device did not become ready. Check it and choose Retry, or go Back and reopen it. |
 
-# Motion control: iFootage Shark Nano II
+# Control cameras
 
-## Pair
+## Canon cameras
 
-1. Make the Shark Nano II discoverable.
-2. On Ble(e)p choose **Devices > Add device > Motion > Shark Nano II**.
-3. Ble(e)p matches service `0xFFF0` or an advertised name containing `Nano` or `Shark`.
-4. Wait for the specialized Shark screen to become ready.
+Ble(e)p offers two separate Canon connections. Pair the mode you want to use; the camera stores Trigger Mode and Smart Phone Mode as different pairings.
 
-## Functions
+| Mode | Best for | Controls and feedback |
+| --- | --- | --- |
+| Trigger Mode | The quickest remote-control setup | One movie trigger starts or stops recording. Ble(e)p cannot read the recording state. |
+| Smart Phone Mode | Separate recording controls and camera feedback | Record Start, Record Stop, confirmed recording state, automatic wake, and on-screen power-down on the supported EOS R6 Mark II and Mark III paths. |
 
-- read slider battery, keypoints, run state, and progress;
-- save and select keypoints A-H;
-- move manually with positioning controls and joystick;
-- set speed and hold timing per keypoint;
-- choose run direction and looping;
-- enter Standby, Start, and Stop the programmed move;
-- reconnect on demand and retain a healthy session across navigation.
-
-![Shark Run shows progress, direction, looping, and the primary run-state action.](assets/ui-shark-run.png){width=2.7}
-
-> Slider movement can damage equipment or injure people. Clear the rail, secure the payload, and test at low speed. A GATT write or ACK is not proof that motion completed.
-
-<!-- pagebreak -->
-
-# Camera control
-
-## Canon (Trigger): BR-E1-compatible mode
-
-Use this for the fast, stateless Canon Bluetooth-remote workflow.
+### Trigger Mode
 
 1. On the camera open its **Bluetooth remote / BR-E1** pairing menu.
 2. On Ble(e)p choose **Canon (Trigger)**.
 3. Complete pairing and wait for Ready.
-4. Use **Trigger** on screen or the optional short-press hardware action.
+4. Use **Trigger** on screen or press the Action Button.
 
-The same movie trigger changes recording in either direction. Ble(e)p cannot read the camera's recording state in this mode and does not show separate Start and Stop commands.
+The same movie trigger starts or stops recording. Ble(e)p cannot tell which state the camera is in, so check the camera before pressing it again.
 
-Verified exact models: **Canon EOS R6 Mark II** and **Canon EOS R6 Mark III** for pairing, bonded reconnect, and the movie trigger. EOS R6 is not yet claimed.
+Verified exact models: **Canon EOS R6 Mark II** and **Canon EOS R6 Mark III** for pairing, automatic reconnection, and the movie trigger. The original EOS R6 has not been tested.
 
-## Canon (Smart): smartphone BLE experiment
+### Smart Phone Mode
 
 1. On the camera choose **Connect to smartphone > Add a device to connect to**.
-2. On Ble(e)p choose **Canon (Smart)**. A phone registration and BR-E1 pairing are different bonds.
+2. On Ble(e)p choose **Canon (Smart)**. The camera treats smartphone mode and BR-E1 mode as separate pairings.
 3. Complete pairing, wait for setup, and use explicit **Record Start** or **Record Stop**.
-4. Treat recording as confirmed only after a camera-originated notification.
+4. Treat recording as confirmed only when Ble(e)p reports confirmation from the camera.
 
-The EOS R6 Mark III path supports smartphone-mode pairing, explicit record control, camera-reported recording state, captured automatic wake when reopening a camera Ble(e)p powered down, and explicit on-screen power-down. Power-down is blocked while recording is confirmed or a record command is pending. Back releases panel ownership but does not power off the camera.
+On the supported EOS R6 Mark II and EOS R6 Mark III, this mode provides separate Record Start and Record Stop controls with recording confirmation from the camera. Automatic wake when reopening the camera and the on-screen power-down command are part of the Smart Phone Mode workflow. Ble(e)p will not power down the camera while recording or while a record command is still pending. Going Back leaves the camera powered on.
 
-Full automatic Wi-Fi/CCAPI control is not implemented. It remains blocked on network-side endpoint evidence. EOS R6 Mark II Smart needs a fresh camera-side Add a device test; an old phone registration can produce **Connection target not found**.
+Both the EOS R6 Mark II and EOS R6 Mark III have been verified in Trigger Mode and Smart Phone Mode. Other wireless camera controls are not included. If the camera shows **Connection target not found**, remove its old phone registration and pair again.
 
 ## GoPro
 
-Ble(e)p implements bonded multi-instance discovery and Open GoPro Set Shutter Start/Stop. Choose **GoPro**, place a candidate camera in its supported wireless pairing mode, and wait for Ready. Successful protocol responses produce optimistic state; camera-confirmed recording status is not implemented.
+Choose **GoPro**, put the camera in its supported wireless pairing mode, and wait for Ready. Ble(e)p provides separate shutter Start and Stop controls, but it cannot confirm the camera's recording state.
 
 No GoPro camera has been physically verified in this project snapshot. Treat only models in GoPro's current official Open GoPro support table as candidates, and do not infer support for legacy HERO8, MAX, or MINI models from retailer claims.
 
 ## Phone Camera
 
-Ble(e)p behaves as a bonded BLE HID volume-up remote.
+Ble(e)p appears to the phone as a wireless volume-up remote, which many camera apps can use as a shutter button.
 
 1. Add **Phone Camera** on Ble(e)p.
 2. Open Bluetooth settings on the phone and pair with **Ble(e)p Shutter**.
 3. Open a camera app that maps Volume Up to shutter.
-4. Use the on-screen Shutter action or the short-press hardware action.
+4. Use the on-screen Shutter action or press the Action Button.
 
-Ble(e)p can save up to four phone identities and sends to the authenticated peer. The phone OS controls reconnect behavior. The panel can confirm only that the HID report was sent, not that the app captured a photo or video.
+Ble(e)p can remember up to four phones. The phone controls reconnection behavior. Ble(e)p can confirm only that the button command was sent, not that the camera app captured a photo or video.
 
-Verified exact model: **Google Pixel 9** for bonded reconnect and mixed-sequence shutter operation. Other phone models, camera apps, iOS/Android/HarmonyOS coverage, and multi-phone operation remain unverified.
+Verified exact model: **Google Pixel 9** for automatic reconnection and mixed-sequence shutter operation. Other phone models, camera apps, mobile platforms, and multi-phone use remain unverified.
 
 ## Insta360
 
-Ble(e)p emulates a GPS remote and sends a mode-dependent shutter toggle.
+Ble(e)p appears to the camera as a GPS Remote and sends the camera's shutter-toggle command.
 
 1. Open the camera's **GPS Remote** pairing menu.
 2. Add **Insta360** on Ble(e)p and wait for the camera to connect to the panel.
-3. Use **Shutter Toggle**. Generated Stop repeats the same toggle because no state or inverse command is known.
+3. Use **Shutter Toggle**. Because Ble(e)p cannot tell whether the camera is recording, a generated Stop repeats the same toggle.
 
-Verified exact model: **Insta360 X5** for GPS-remote connection and mixed-sequence shutter operation. **Insta360 GO 3** is an unverified candidate. **GO Ultra** is a separate experimental probe with no established legacy GPS-remote compatibility.
+Verified exact model: **Insta360 X5** for GPS Remote connection and mixed-sequence shutter operation. **Insta360 GO 3** is an unverified candidate. **GO Ultra** is listed for research; compatibility with the older GPS Remote method is unknown.
 
 ## DJI Osmo
 
@@ -213,216 +209,241 @@ Verified exact model: **Insta360 X5** for GPS-remote connection and mixed-sequen
 3. During first pairing, compare the four-digit code shown on the panel with the camera and approve it.
 4. Wait for Ready, then use explicit Record Start/Stop.
 
-Pairing and explicit recording start/stop are operator-confirmed on **DJI Osmo Action 5 Pro** and **DJI Osmo 360**. Osmo 360 camera-confirmed status has also passed a retest. Saved reconnect, Action 5 Pro status, forget/re-pair, two-camera concurrency, and broader coexistence remain open.
+Pairing, separate Record Start/Stop controls, and camera-confirmed recording status have been verified on both the **DJI Osmo Action 5 Pro** and **DJI Osmo 360**. Automatic reconnection, forget/re-pair, and using two DJI cameras together still need more testing.
 
 ## Sony Camera
 
-The Sony entry stops at a recoverable research screen. No device record is committed and no control is available. RMT-P1BT-compatible peripheral-role behavior still needs implementation and camera validation.
+The Sony entry is for research only. It does not save a camera or provide controls yet.
 
 <!-- pagebreak -->
 
-# Audio recording: Tascam Portacapture X8
-
-The bounded Tascam integration requires the **AK-BT1** Bluetooth adapter.
-
-## Pair and operate
-
-1. Install the AK-BT1 in the Portacapture X8.
-2. Make the recorder available to its remote-app connection.
-3. Choose **Tascam X8** on Ble(e)p and wait for Ready.
-4. Use explicit **Record Start** and **Record Stop**. The hardware button invokes the primary action for the current confirmed state.
-5. Trust Recording or Stopped only after the recorder's own protocol event or restored state field is decoded.
-
-Verified: start/stop, media-file creation, persisted reconnect, state restoration after remote restart, stopping an existing recording, and idempotent Stop when already stopped. Battery, media status, and broader recorder features remain research work.
-
-# Light control
+# Control lights
 
 ## Aputure Light
 
-The generic **Aputure Light** entry provisions compatible factory-reset Aputure and amaran fixtures into one panel-owned mesh. All members share one retained proxy link, but user-facing device records and supported per-member color routes stay separate.
+The generic **Aputure Light** entry adds compatible factory-reset Aputure and amaran fixtures to a private light network created by Ble(e)p. Several compatible lights can share one maintained Bluetooth connection, while each light still has its own saved record and available color controls.
 
-1. Factory-reset the target fixture and place only the intended nearby light in provisioning mode.
+1. Factory-reset the light and place only that light nearby in pairing mode.
 2. Choose **Devices > Add device > Lights > Aputure Light**.
-3. Wait for PB-GATT provisioning, mesh configuration, proxy discovery, and Ready.
-4. Use explicit On/Off, CCT/tint/brightness, or RGB/saturation/brightness controls as exposed.
-5. Observe the fixture. Power has authenticated per-source readback on the tested path; color-property values remain optimistic.
+3. Wait while Ble(e)p adds the light and shows **Ready**.
+4. Use On/Off, color temperature (CCT), tint, brightness, or RGB color controls as shown.
+5. Watch the fixture. Ble(e)p can confirm power on the tested lights, but color settings are still shown as sent rather than confirmed.
 
-![Aputure Light RGB controls. Color values are responsive, but property readback remains optimistic.](assets/ui-aputure-rgb.png){width=2.7}
+![Aputure Light RGB controls. Color changes are sent quickly, but the displayed values are not read back from the light.](assets/ui-aputure-rgb.png){width=2.7}
 
-Physical evidence currently covers **amaran Ace 25c** and **Aputure MC Pro** provisioning, common-group physical power, separate vendor-group RGB output, and authenticated per-member power/reachability. CCT/property readback, composition-driven enforcement, interrupted provisioning recovery, safe reset, and amaran Pano 60c/120c validation remain open.
+The **amaran Ace 25c** and **Aputure MC Pro** have been tested for first-time setup, shared On/Off, separate RGB color control, and power confirmation. Color-temperature confirmation, recovery from interrupted setup, and the amaran Pano 60c/120c still need testing.
 
-> Do not describe common mesh power as independent fixture power. The tested Ace 25c/MC Pro pair uses mesh-wide common-group On/Off; separate per-member vendor groups are verified for RGB/color routing.
+> On the tested Ace 25c/MC Pro pair, On/Off currently affects the shared light network. Do not rely on it as independent power control for one fixture. Separate color control is verified for each light.
 
 ## Zhiyun Light: MOLUS X100 and X60RGB
 
 1. Choose **Add device > Lights > Zhiyun Light** once for each fixture.
-2. Keep one intended X100 or X60RGB nearby. Factory-reset and previously provisioned fixtures are accepted.
-3. Wait while Ble(e)p detects the model, provisions if needed, rediscovers the proxy, opens proprietary control, and reads initial state.
-4. Use power and CCT/brightness. X60RGB also exposes hue/saturation RGB control.
+2. Keep only the intended X100 or X60RGB nearby. Ble(e)p accepts a factory-reset light or one it previously added.
+3. Wait while Ble(e)p identifies the model, connects, and reads its current settings.
+4. Use power, color temperature, and brightness. The X60RGB also offers hue and saturation controls.
 
-![X60RGB control after correlated device replies. X100 uses the same driver but omits RGB.](assets/ui-zhiyun-rgb.png){width=2.7}
+![X60RGB control. The X100 uses the same layout without the RGB tab.](assets/ui-zhiyun-rgb.png){width=2.7}
 
-**MOLUS X100:** implemented with power and 2700-6500 K CCT/brightness. Current progress records a panel-live verified path; boundary, power-cycle, multi-fixture, recovery, and coexistence gates remain open before production status.
+**MOLUS X100:** provides power plus 2700-6500 K color temperature and brightness. Normal control has been tested on the panel; extreme values, power cycling, multiple lights, recovery, and use alongside every other supported device still need more testing.
 
-**MOLUS X60RGB:** adds captured hue/saturation control. Host-originated optical evidence exists, while the shared embedded panel path, reconnect, reset recovery, simultaneous X100/X60RGB use, and full coexistence gates remain open.
+**MOLUS X60RGB:** adds hue and saturation. Color output has been observed, but panel control, reconnection, reset recovery, simultaneous X100/X60RGB use, and broader mixed-device use still need more testing.
 
-Existing Sidus/amaran mesh import is not supported. Aputure and Zhiyun share internal mesh transport only; Zhiyun remains a separate logical driver.
+Importing a light network previously created in Sidus Link is not supported. Ble(e)p handles Aputure and Zhiyun lights through the same behind-the-scenes connection, but they remain separate choices with their own controls.
+
+# Control audio
+
+## Tascam Portacapture X8
+
+Tascam control requires the **AK-BT1** Bluetooth adapter.
+
+### Pair and operate
+
+1. Install the AK-BT1 in the Portacapture X8.
+2. Make the recorder available to its remote-app connection.
+3. Choose **Tascam X8** on Ble(e)p and wait for Ready.
+4. Use **Record Start** and **Record Stop**. The Action Button performs the appropriate action for the state shown.
+5. Trust Recording or Stopped only when Ble(e)p says the recorder confirmed it.
+
+Tested: starting and stopping, creating a media file, reconnecting, restoring the recording state after restarting the remote, stopping a recording that was already running, and safely pressing Stop when already stopped. Battery level, media status, and the recorder's other features are not included.
 
 <!-- pagebreak -->
 
-# Scenes and sequences
+# Control motion
 
-Scenes coordinate supported actions across saved device instances and Home Assistant entities. The panel prepares targets concurrently, then executes action and wait steps in order. There is no configured scene-count ceiling; creation continues until safe allocation or persistence fails.
+## iFootage Shark Nano II
+
+### Pair
+
+1. Make the Shark Nano II discoverable.
+2. On Ble(e)p choose **Devices > Add device > Motion > Shark Nano II**.
+3. Wait for the Shark control screen to show **Ready**.
+
+### Functions
+
+- read slider battery, keypoints, run state, and progress;
+- save and select keypoints A-H;
+- move manually with positioning controls and joystick;
+- set speed and hold timing per keypoint;
+- choose run direction and looping;
+- enter Standby, Start, and Stop the programmed move;
+- reconnect when opened and return quickly while the connection remains healthy.
+
+![Shark Run shows progress, direction, looping, and the primary run-state action.](assets/ui-shark-run.png){width=2.15}
+
+> Slider movement can damage equipment or injure people. Clear the rail, secure the payload, and test at low speed. Watch the slider until the move is complete.
+
+# Studio Services
+
+Portal is a temporary browser-based setup mode. Normal device control pauses while Portal is open and resumes after you leave.
+
+## First-time Portal setup
+
+1. From Home open **Portal**.
+2. Scan the QR code or manually join the temporary `Bleep-Setup-...` network with password `12345678`.
+3. Open the phone's sign-on page, or browse to the numeric setup address on the panel.
+4. Scan for or manually enter the trusted studio Wi-Fi and password.
+5. After Ble(e)p joins, note the web address shown on its screen. Rejoin the normal studio Wi-Fi on your phone or computer.
+6. Open the displayed address while Ble(e)p remains on the Portal screen. You can also try `http://bleep.local`, although it may not work on every network.
+
+![Portal after LAN handoff. The address exists only while the Portal screen is active.](assets/ui-portal-lan.png){width=2.7}
+
+The browser Portal provides **Overview**, **Devices**, **Sequences**, and **Home Assistant**. You can rename, enable, disable, or remove saved devices and create, duplicate, reorder, and edit sequences. Pair new physical equipment on Ble(e)p itself. Choose **Finish & Exit** in the browser or Exit on the panel when finished.
+
+## Link Home Assistant entities
+
+1. In Portal open **Home Assistant**.
+2. Enter a local `http://` Home Assistant URL and long-lived access token.
+3. Select up to four supported Home Assistant entities.
+4. Save and exit Portal.
+5. Open the saved entity under Devices or add it to a sequence.
+
+Supported: lights, switches, input booleans, buttons, scenes, and scripts. Ble(e)p can turn switch-like items On or Off, press a button, or activate a scene or script. Brightness, color, Toggle, sensors, covers, climate, media, automations, Home Assistant devices/areas, cloud sign-in, and exposing Ble(e)p equipment back to Home Assistant are not included.
+
+Home Assistant can be Ready while an entity still shows **Unknown**. A successful command means Home Assistant accepted it; check the target if you need to confirm that something physically changed.
+
+> Portal traffic is not encrypted in this development version. Use it only on a trusted studio network. Your saved Wi-Fi details and Home Assistant token remain on Ble(e)p until you unlink them or perform Factory Reset.
+
+<!-- pagebreak -->
+
+# Build repeatable workflows
+
+Ble(e)p calls a saved multi-device workflow a **scene** or **sequence**. Use one for a repeatable start-of-take routine, a reliable stop order, or a deliberate pause between pieces of equipment. Ble(e)p gets every target ready, then runs your actions and waits in order. You can keep adding scenes until the controller runs out of storage.
 
 ## Create a scene on the panel
 
 1. Open **Scenes** and select **Add sequence**.
 2. Build the **Start** list with **Add step**. Choose a target, action, and any parameters.
 3. Add Wait steps in milliseconds where equipment needs time between actions.
-4. Select the header arrow to review the generated **Stop** list. It reverses Start order and uses safe inverses where known.
+4. Select the header arrow to review the generated **Stop** list. It reverses Start order and adds the matching Stop action where one is known.
 5. Optional: choose **Customize Stop** to copy the generated list into an independently editable Stop list.
 6. Use the checkmark, enter a name, and save.
 
-Editing Start regenerates the read-only generated Stop preview. **Use generated Stop** discards a custom override only after confirmation. Existing steps can be edited and reordered. An orphaned custom row remains deletable if its target device was removed.
+Editing Start updates the generated Stop preview. **Use generated Stop** replaces a custom Stop list only after confirmation. You can edit and reorder existing steps. If a saved device is no longer available, you can still delete its step from a custom Stop list.
 
 ## Run a scene
 
 1. Open the scene. Ble(e)p begins preparing every target.
-2. Wait for **Ready**. Each target must have a physical transport and completed protocol initialization.
-3. Select Start or short-press the hardware action button.
-4. Watch per-step progress. Circular target chips show readiness and open full device controls without releasing the other scene links.
-5. Once armed, use Stop or the hardware action button. A partial Start failure can still run Stop for cleanup, then allow Start to be retried.
+2. Wait for **Ready**. Every target must be connected and prepared.
+3. Select Start or press the Action Button.
+4. Watch each step progress. Circular equipment shortcuts show readiness and open full controls without disconnecting the other equipment.
+5. Once armed, use Stop or press the Action Button. If Start fails partway through, you can still run Stop for cleanup and then try Start again.
 6. Select Done or Back when finished.
 
-![A prepared multi-target sequence. Target chips provide readiness and access to retained device controls.](assets/ui-scene-ready.png){width=2.7}
+![A prepared multi-device sequence. The circular equipment shortcuts show readiness and open individual controls.](assets/ui-scene-ready.png){width=2.7}
 
-Opening scene Settings cancels pending preparation and releases ownership so editing is safe. It does not interrupt an active Start, armed recording, Stop, or a partial failure that still permits cleanup. Parallel steps, user Groups, import/export, and success-journal rollback are not implemented.
+Opening scene Settings cancels preparation so you can edit safely. It does not interrupt an active Start, an armed recording, Stop, or a failed Start that may still need cleanup. Parallel steps, user Groups, import/export, and automatic undo are not available.
 
 ## Action behavior to understand
 
 | Integration | Start/Stop behavior in scenes |
 | --- | --- |
-| Canon Trigger | Stateless Record Trigger; state remains unknown. |
-| Canon Smart, DJI, Tascam, GoPro | Separate start/stop actions; confidence depends on each driver's readback boundary. |
+| Canon Trigger | Record Trigger; Ble(e)p cannot tell whether recording started or stopped. |
+| Canon Smart, DJI, Tascam, GoPro | Separate Start and Stop actions. Confirmation varies by device. |
 | Insta360 | Explicit Shutter Toggle in both authored lists; generated Stop repeats it. |
-| Phone Camera | Sends a volume-up HID shutter report; app response is not observable. |
-| Lights and HA switch-like entities | Explicit On/Off. Aputure Set color carries CCT or RGB parameters. |
+| Phone Camera | Sends a volume-up command; Ble(e)p cannot see what the camera app did. |
+| Lights and Home Assistant switches | Separate On/Off. Aputure Set color includes color temperature or RGB settings. |
 | Home Assistant button | Press. |
 | Home Assistant scene/script | Activate. |
-| Wait | Non-blocking millisecond delay. |
-
-# Portal and Home Assistant
-
-Portal is a temporary administration mode. It suspends normal physical-device control while active and tears down the server and Wi-Fi when you leave.
-
-## First-time Portal setup
-
-1. From Home open **Portal**.
-2. Scan the on-panel QR code or manually join the temporary `Bleep-Setup-...` WPA2 network with password `12345678`.
-3. Open the phone's sign-on page, or browse to the numeric setup address on the panel.
-4. Scan for or manually enter the trusted studio Wi-Fi and password.
-5. After Ble(e)p joins, note its numeric LAN address. Rejoin the normal studio Wi-Fi on your phone or computer.
-6. Open the numeric address while the panel remains on Portal. `http://bleep.local` is a best-effort convenience and may not resolve on every network.
-
-![Portal after LAN handoff. The address exists only while the Portal screen is active.](assets/ui-portal-lan.png){width=2.7}
-
-The browser Portal provides **Overview**, **Devices**, **Sequences**, and **Home Assistant**. It can rename, enable, disable, or remove committed devices and create, duplicate, reorder, and edit sequences. Physical pairing stays on the panel. Choose **Finish & Exit** in the browser or Exit on the panel when finished.
-
-## Link Home Assistant entities
-
-1. In Portal open **Home Assistant**.
-2. Enter a local `http://` Home Assistant URL and long-lived access token.
-3. Select at most four canonical entity IDs in the supported domains.
-4. Save and exit Portal.
-5. Open the saved entity under Devices or add it to a sequence.
-
-Supported: `light`, `switch`, and `input_boolean` power; `button` Press; `scene` and `script` Activate. Unsupported: brightness, color, Toggle, arbitrary values, sensors, covers, climate, media, automations, HA devices/areas, cloud/OAuth, and exposing Ble(e)p-controlled equipment back to HA.
-
-An authenticated WebSocket subscription can be Ready while initial state remains `UNKNOWN`. A successful service result proves action delivery, including an idempotent action with no state-change event; it does not by itself prove a changed external state.
-
-> Portal and Home Assistant credentials use local plaintext HTTP in this development version. Use only a trusted studio network. Portal is temporary, but saved Wi-Fi credentials and the HA token persist until unlinked or Factory Reset.
+| Wait | Pause for the chosen number of milliseconds. |
 
 <!-- pagebreak -->
 
-# Settings, diagnostics, and reset
+# Personalize, diagnose, and reset
 
-Open the cog on Home for local settings that do not start the radio.
+Open the cog on Home to adjust Ble(e)p and check its status.
 
 ![Settings includes About, Wi-Fi status, haptics, system information, and Factory Reset.](assets/ui-settings.png){width=2.7}
 
 | Function | What it does |
 | --- | --- |
-| About | Shows the Ble(e)p identity, firmware/build information, and commit date. |
-| Wi-Fi | Shows saved SSID and the normal radio-off state. Changing Wi-Fi transfers to Portal. |
+| About | Shows the Ble(e)p version and build information. |
+| Wi-Fi | Shows the saved network. Changing Wi-Fi opens Portal. |
 | Haptics | Persistently enables or disables semantic vibration patterns. |
-| System Info | Shows sanitized heap, largest allocation, minimum heap, physical BLE groups, and Wi-Fi mode without exposing secrets or stable device identifiers. |
-| Factory Reset | After a separate warning and three-second hold, cancels work, deactivates transports, erases the complete NVS configuration partition, and reboots. |
+| System Info | Shows diagnostic information that may help with troubleshooting or support. |
+| Factory Reset | After a separate warning and three-second hold, removes saved setup and restarts Ble(e)p. |
 
 ## Factory Reset consequences
 
-Factory Reset removes saved devices, BLE bonds, scenes, Wi-Fi credentials, Home Assistant tokens/entities, mesh identity/keys, and preferences. It does **not** erase the installed firmware application.
+Factory Reset removes saved devices and pairings, scenes, Wi-Fi details, Home Assistant links, saved light setup, and preferences. It does **not** remove the installed software.
 
-The `0.2.0-dev` Aputure Light naming/storage baseline intentionally does not migrate former Amaran driver IDs or the old `amaran_mesh` key. Before flashing this build over earlier development firmware, perform Factory Reset from the currently installed firmware. Do not erase flash regions manually unless you have confirmed the board partition table and intend to destroy configuration.
-
-# Complete user-function reference
+# Owner's function reference
 
 | Area | Function | Availability and boundary |
 | --- | --- | --- |
-| Startup | Neutral Home boot | Available; no automatic scan, pairing, reconnect, or Wi-Fi. |
-| Navigation | Touch cards, lists, tabs, overlays, Back/Done | Available; round-safe UI with scrolling titles. |
+| Startup | Neutral Home screen | Ble(e)p waits for you instead of reconnecting to equipment automatically. |
+| Navigation | Touch cards, lists, tabs, pop-ups, Back, and Done | Long titles scroll so they remain readable. |
 | Feedback | Tap, Ready, Back, Error haptic patterns | Available and globally toggleable. |
-| Hardware action | Short primary action; 700 ms Back; 2 s Home | Available when optional GPIO 1 button is fitted. No power action. |
-| Registry | Save up to 24 devices; retain dormant records | Available. Up to 16 BLE bonds. |
-| Device setup | Add, protocol-ready commit, cancel/retry | Available per implemented driver. Physical pairing stays on panel. |
-| Device management | Open, rename, enable, disable, disconnect, forget/re-pair, delete | Available; referenced devices cannot be deleted. |
-| Connection pool | Retain and reuse up to four physical BLE groups | Available. Eight logical active instances; one shared light mesh consumes one group. |
-| Shark | Battery, A-H keypoints, manual/joystick move, speed, hold, direction, loop, run/progress | Current bounded hardware path. Movement needs physical observation. |
-| Cameras | Trigger, explicit Start/Stop, toggle, power, status, or HID shutter | Varies by driver; see compatibility matrix. |
-| Tascam | Record Start/Stop and restored confirmed recording state | Current bounded X8 + AK-BT1 path. |
-| Aputure Light | On/Off, CCT/tint/brightness, RGB/saturation/brightness, Set color scene action | Experimental; power/status evidence is stronger than color-property state. |
-| Zhiyun X100 | On/Off and CCT/brightness | Experimental, correlated readback path. |
-| Zhiyun X60RGB | On/Off, CCT/brightness, hue/saturation | Experimental, correlated capture-backed replies. |
-| Scenes | Create, rename, enable, disable, duplicate, delete | Available on panel/Portal as applicable. |
-| Scene editing | Ordered Action/Wait, in-place edit, reorder, generated Stop, Custom Stop | Available. Parallel, groups, import/export, and rollback journal are not. |
-| Scene running | Concurrent preparation, Ready gate, Start/Stop, cleanup after partial failure, target chips | Available within transport and driver limits. |
-| Portal | Temporary setup AP, LAN handoff, device/sequence/HA administration | Experimental; local plaintext HTTP, active only on Portal screen. |
-| Home Assistant | Four entities; light/switch/input_boolean On/Off, button Press, scene/script Activate | Experimental local integration. No cloud/OAuth or inbound HA exposure. |
-| Groups | Capability-intersection user groups | Not implemented. Internal shared mesh transport is not a user Group. |
-| Settings | About, saved Wi-Fi status, haptics, diagnostics | Available without starting radio. |
-| Recovery | Named delete confirmations, Retry paths, three-second Factory Reset | Available. Factory Reset destroys all NVS configuration, not firmware. |
-| Power/battery | Hardware switch; Shark battery readout | No firmware power command for the controller and no controller battery gauge. |
+| Action Button | Short primary action; 700 ms Back; 2 s Home | Available when the optional Action Button is fitted. It does not control power. |
+| Saved equipment | Save up to 24 devices | Devices stay saved until you remove or reset them. |
+| Device setup | Add, cancel, or retry setup | Pair new physical equipment on Ble(e)p itself. |
+| Device management | Open, rename, enable, disable, disconnect, forget/re-pair, and delete | Remove a device from any sequence before deleting it. |
+| Connections | Keep up to four equipment connections ready | Compatible Aputure and Zhiyun lights share one connection. |
+| Shark | Battery, A-H keypoints, manual/joystick move, speed, hold, direction, loop, run/progress | Supported. Movement needs physical observation. |
+| Cameras | Trigger, Start/Stop, toggle, power, status, or phone shutter | Available controls vary; see the compatibility matrix. |
+| Tascam | Record Start/Stop and restored confirmed recording state | Supported on the X8 + AK-BT1 path. |
+| Aputure Light | On/Off, color temperature, tint, brightness, RGB color, and Set color scene action | Experimental. Power confirmation is more reliable than confirmation of color settings. |
+| Zhiyun X100 | On/Off, color temperature, and brightness | Experimental. Normal panel control has been tested. |
+| Zhiyun X60RGB | On/Off, color temperature, brightness, hue, and saturation | Experimental. More panel and reconnect testing is needed. |
+| Scenes | Create, rename, enable, disable, duplicate, and delete | Available on Ble(e)p and in Portal where shown. |
+| Scene editing | Ordered actions and waits, editing, reordering, generated Stop, and Custom Stop | Parallel steps, groups, import/export, and automatic undo are not available. |
+| Scene running | Prepare equipment, Start/Stop, cleanup after a partial failure, and target shortcuts | Available within the connection limits. |
+| Portal | Temporary browser setup for devices, sequences, Wi-Fi, and Home Assistant | Experimental. Use only on a trusted network and keep the Portal screen open. |
+| Home Assistant | Up to four lights, switches, input booleans, buttons, scenes, or scripts | Experimental. Cloud sign-in and controlling Ble(e)p equipment from Home Assistant are not included. |
+| Groups | User-created groups of compatible equipment | Not available yet. |
+| Settings | About, saved Wi-Fi status, haptics, and diagnostics | Available from the Home cog. |
+| Recovery | Named delete confirmations, Retry, and three-second Factory Reset | Factory Reset removes saved setup but leaves the installed software. |
 
 <!-- pagebreak -->
 
 # Device compatibility matrix
 
-Compatibility is intentionally exact. “Implemented” is not the same as “verified on this model.”
+Compatibility is intentionally exact. A similar model is not automatically supported.
 
 | Device or service | Status | Available functions | Key limitation or open gate |
 | --- | --- | --- | --- |
-| iFootage Shark Nano II | Current | Pair/reconnect, battery, A-H keypoints, manual movement, timing, loop/direction, run/progress | Preserve physical movement safety; broad endurance remains development work. |
-| Canon EOS R6 Mark II via BR-E1 | Current bounded path | Stateless movie trigger, bonded reconnect | No recording-state readback. |
-| Canon EOS R6 Mark III via BR-E1 | Current bounded path | Stateless movie trigger, bonded reconnect | No recording-state readback. |
-| Canon EOS R6 | Unverified candidate | Driver architecture includes R6 family intent | Exact model is not claimed. |
-| Canon EOS R6 Mark III smartphone mode | Experimental; verified path | Pair/reconnect, explicit record start/stop, camera notifications, wake/power-down | Full Wi-Fi/CCAPI is blocked; extended coexistence remains open. |
-| Canon EOS R6 Mark II smartphone mode | Experimental candidate | Same implemented BLE path | Needs fresh camera-side pairing and hardware verification. |
-| GoPro models in current official Open GoPro table | Experimental candidates | Bonded pairing, response-gated shutter start/stop | No camera has been tested; state is optimistic. |
-| Google Pixel 9 | Experimental; verified path | Bonded BLE HID volume-up shutter and reconnect | App result is not observable; other phones remain unverified. |
-| Other iOS/Android/HarmonyOS phones | Implemented candidates | BLE HID volume-up shutter | Model/app and multi-phone tests remain open. |
-| Insta360 X5 | Experimental; verified path | GPS-remote pairing and shutter toggle in mixed sequence | No camera-state readback. |
-| Insta360 GO 3 | Candidate | Implemented GPS-remote path | No model-specific result. |
-| Insta360 GO Ultra | Experimental probe | Separate visible target | Legacy GPS-remote compatibility is not established. |
-| DJI Osmo Action 5 Pro | Experimental; verified path | Four-digit pairing, explicit record start/stop | Reconnect, camera status, forget/re-pair, coexistence open. |
-| DJI Osmo 360 | Experimental; verified path | Four-digit pairing, explicit record start/stop, confirmed-status retest | Reconnect, forget/re-pair, multi-camera coexistence open. |
-| Sony RMT-P1BT-compatible cameras | Research | Capture-required screen only | No savable driver or camera test. |
-| Tascam Portacapture X8 + AK-BT1 | Current bounded path | Record start/stop, confirmed/restored recording state | Battery, media status, extended behavior remain research. |
-| Home Assistant local entities | Experimental; mixed path verified | Four `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities | Full domains, failure recovery, and lifecycle/heap gate open. |
-| amaran Ace 25c | Experimental; verified light path | Provisioning, common-group power, separate RGB route, authenticated power status | Independent fixture power is not verified; CCT/property readback and recovery open. |
-| Aputure MC Pro | Experimental; verified light path | Provisioning, common-group power, separate RGB route, authenticated power status | Same common-power boundary; recovery and wider model coverage open. |
-| amaran Pano 60c / Pano 120c | Validation targets | Generic Aputure Light implementation may be applicable | No model-specific validation yet. |
-| Zhiyun MOLUS X100 | Experimental; verified path | Power and CCT/brightness with correlated readback | Boundary, power-cycle, multi-fixture, recovery, and coexistence gates remain open. |
-| Zhiyun MOLUS X60RGB | Experimental | Power, CCT/brightness, hue/saturation | Shared embedded panel path and broader gates remain open. |
-| Deity PR4 | Later | None | Protocol and transport research have not started. |
+| Canon EOS R6 Mark II - Trigger Mode | Supported | Movie trigger and automatic reconnection | Ble(e)p cannot tell whether the camera is recording. |
+| Canon EOS R6 Mark III - Trigger Mode | Supported | Movie trigger and automatic reconnection | Ble(e)p cannot tell whether the camera is recording. |
+| Canon EOS R6 | Candidate | Intended to use Canon Trigger controls | This exact model has not been tested. |
+| Canon EOS R6 Mark III - Smart Phone Mode | Supported | Separate Record Start/Stop, recording confirmation, wake, and power-down | Other wireless camera controls are not included. |
+| Canon EOS R6 Mark II - Smart Phone Mode | Supported | Separate Record Start/Stop and recording confirmation | Other wireless camera controls are not included. |
+| GoPro models supported by Open GoPro | Candidate | Separate shutter Start and Stop | No GoPro has been tested; recording is not confirmed. |
+| Google Pixel 9 | Experimental | Wireless volume-up shutter and reconnection | Ble(e)p cannot see whether the camera app captured an image. |
+| Other iOS, Android, and HarmonyOS phones | Candidate | Wireless volume-up shutter | Phone model, camera app, and multi-phone testing remain open. |
+| Insta360 X5 | Experimental | GPS Remote pairing and shutter toggle in a mixed sequence | Ble(e)p cannot read the camera's recording state. |
+| Insta360 GO 3 | Candidate | Intended to use GPS Remote shutter control | This exact model has not been tested. |
+| Insta360 GO Ultra | Research | Listed for investigation | Compatibility with the older GPS Remote method is unknown. |
+| DJI Osmo Action 5 Pro | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
+| DJI Osmo 360 | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
+| Sony cameras using RMT-P1BT remotes | Research | Listed for investigation | Pairing and control are not available. |
+| Tascam Portacapture X8 + AK-BT1 | Supported | Record Start/Stop and confirmed recording state | Battery, media status, and other recorder features are not included. |
+| Home Assistant local entities | Experimental | Control up to four lights, switches, input booleans, buttons, scenes, or scripts | Other entity types and cloud sign-in are not included. |
+| amaran Ace 25c | Experimental | First-time setup, shared power, separate RGB color, and power confirmation | Independent power and confirmation of color settings need more testing. |
+| Aputure MC Pro | Experimental | First-time setup, shared power, separate RGB color, and power confirmation | Independent power and wider model testing remain open. |
+| amaran Pano 60c / Pano 120c | Candidate | Intended to use Aputure Light controls | These exact models have not been tested. |
+| Zhiyun MOLUS X100 | Experimental | Power, color temperature, brightness, and current-setting display | Power cycling, multiple lights, and recovery need more testing. |
+| Zhiyun MOLUS X60RGB | Experimental | Power, color temperature, brightness, hue, and saturation | Panel use, reconnection, reset recovery, and mixed-light use need more testing. |
+| Deity PR4 | Later | None | Support has not been developed. |
+| iFootage Shark Nano II slider | Supported | Pair/reconnect, battery, A-H keypoints, manual movement, timing, loop/direction, run/progress | Secure the payload and observe every move. |
 
 # Troubleshooting
 
@@ -432,15 +453,15 @@ Compatibility is intentionally exact. “Implemented” is not the same as “ve
 - Keep only the intended first-time light or camera nearby when discovery could match multiple devices.
 - Return with Back, re-enter the target's pairing mode, and retry. Failed first-time attempts do not create a saved record.
 - If the device was paired to another phone or remote, remove the old registration or use Forget/re-pair as appropriate.
-- For Canon, do not interchange BR-E1 and smartphone bonds.
+- For Canon, do not interchange BR-E1 and smartphone pairings.
 
 ## A saved device will not reconnect
 
-- Open the saved device so it acquires an owner; an ownerless dropped session does not reconnect indefinitely.
+- Open the saved device to begin reconnecting.
 - Confirm the target is awake and still trusts Ble(e)p.
 - Use **Manage > Disconnect**, then reopen.
-- Use **Forget/re-pair** only when you intend to remove the existing bond.
-- If all four physical groups are occupied, close or disconnect an unneeded session so normal retained-session eviction can proceed.
+- Use **Forget/re-pair** only when you intend to remove the existing pairing.
+- Ble(e)p can keep four equipment connections ready at once. Disconnect something you are not using, then try again.
 
 ## A command says Sent, Optimistic, or Unknown
 
@@ -448,53 +469,137 @@ This is expected when the integration cannot read physical state. Check the came
 
 ## A scene cannot reach Ready
 
-- Open the failed target chip or device and resolve its pairing/protocol issue.
-- Confirm every referenced device is enabled and available in the installed build.
-- Check the four-link budget. The shared Aputure/Zhiyun mesh counts once; Home Assistant uses Wi-Fi and no BLE group.
+- Open the failed target and resolve its pairing or connection problem.
+- Confirm every device used by the scene is enabled and available in the installed version.
+- Check the four-connection limit. Compatible Aputure and Zhiyun lights share one connection; Home Assistant does not use one of the four.
 - Use the in-place Retry flow when shown. If preparation is still pending, opening scene Settings cancels it safely.
 
 ## Portal does not open
 
-- Keep the panel on the Portal screen. Leaving it destroys the listener and Wi-Fi session.
+- Keep Ble(e)p on the Portal screen. Leaving it closes Portal.
 - During first setup, join `Bleep-Setup-...` and try the numeric setup address if the phone sign-on page does not appear.
-- After LAN handoff, rejoin studio Wi-Fi and use the numeric address shown on the panel.
-- Treat `bleep.local` as optional; multicast DNS may be blocked by the network.
-- Portal has no TLS. Do not expose it to an untrusted or routed network.
+- After Ble(e)p joins the studio network, reconnect your phone or computer to that network and use the address shown on the panel.
+- If `bleep.local` does not work, use the numeric address shown on Ble(e)p.
+- Portal is not encrypted. Use it only on a trusted local network.
 
-## The controller behaves like an older development build
-
-Check **Settings > About** for build identity. If moving from firmware that used the former Amaran identity/storage key to `0.2.0-dev`, perform the documented Factory Reset before flashing. Remember that reset removes all configuration and bonds.
-
-# Safety, privacy, and known limits
+# Work safely
 
 - Secure cameras, sliders, lights, cables, and recorders before sending commands.
 - Observe real hardware for movement, recording, power, and light-output confirmation whenever state is optimistic or unknown.
-- Use Portal and Home Assistant only on a trusted local network; credentials cross local plaintext HTTP in this version.
-- Treat mesh keys, Wi-Fi passwords, HA tokens, BLE bonds, and device identities as secrets. Factory Reset removes them from the controller's NVS.
-- Do not rely on Groups, Canon Wi-Fi/CCAPI, existing Sidus mesh import, scene Parallel, import/export, success-journal rollback, Sony control, Deity control, or controller battery measurement; they are not implemented.
-- Four retained BLE transport groups, 16 bonds, and constrained ESP32-C3 memory are product limits of this profile, not suggestions to bypass without measurement.
+- Use Portal and Home Assistant only on a trusted local network; Portal traffic is not encrypted in this version.
+- Treat saved Wi-Fi details, Home Assistant tokens, pairing information, and device identities as private. Factory Reset removes them from Ble(e)p.
+- Do not rely on Groups, additional Canon wireless controls, importing a Sidus Link setup, parallel scene steps, import/export, automatic scene undo, Sony control, or Deity control; they are not available.
+- Ble(e)p can keep four equipment connections ready at once. Disconnect something you are not using if another device cannot connect.
 - This project is independent and is not endorsed by iFootage, Canon, GoPro, Insta360, DJI, Sony, Tascam, Aputure, amaran, Zhiyun, Deity, Espressif, Elecrow, or Home Assistant.
 
-# Maintaining this manual
+<!-- pagebreak -->
 
-The editable source is `docs/manual/manual.md`; assets are in `docs/manual/assets/`; the reproducible PDF builder is `docs/manual/build_manual.py`. The stable output is `output/pdf/bleep-instruction-manual.pdf`.
+# Advanced: developers and builders
 
-## Update checklist
+This section is for people building, repairing, or developing Ble(e)p. Owners of a completed device can stop at the end of the previous chapter. Opening the enclosure, modifying the battery lead, or repairing the board is not part of normal use.
 
-1. Confirm current behavior in `README.md`, `docs/device-support.md`, `docs/progress.md`, decisions, and the relevant roadmap phase.
-2. Update exact model claims. Never widen compatibility from a shared protocol alone.
-3. Label ACK-only or send-only behavior as optimistic/unknown and record physical evidence separately.
-4. Replace simulator figures when the illustrated UI changes and update the source snapshot in the front matter.
-5. Build with the pinned requirements and inspect every rendered page for clipping, overflow, broken tables, or unreadable images.
-6. Keep the manual explicitly development/WIP until the repository's hardware and release gates pass.
+## Platform and operating limits
 
-Build commands:
+The reference build uses the **Elecrow CrowPanel ESP32 1.28-inch round display, model DIS12824D**: an ESP32-C3, 240 x 240 GC9A01 LCD, CST816D capacitive touch controller, PI4IOE5V6408 I/O expander, and onboard vibration motor. The case adds an optional Action Button and an SS12D00G slide switch for power.
 
-```sh
-cd docs/manual
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-make PYTHON=.venv/bin/python pdf
+![Side profile of the reference enclosure. The orange actuator belongs to this build; placement can differ on community enclosures.](assets/controller-side-line.png){width=2.0}
+
+- The screen and backlight remain on continuously in the current firmware.
+- The board does not sense its own battery voltage. A battery value on the Shark screen belongs to the slider.
+- The registry holds 24 device records and NimBLE retains up to 16 bonds.
+- Up to four physical BLE transport groups can remain connected. Eight logical instances may be active. Compatible Aputure and Zhiyun fixtures use Bluetooth Mesh, the technical name for the shared light network described in the owner's chapters; those fixtures share one physical group and proxy.
+- Normal Home and Settings use does not start Wi-Fi. Portal or an active Home Assistant owner starts it; the final owner returning releases it to `WIFI_OFF`.
+
+| Function | GPIO or address |
+| --- | --- |
+| LCD DC / CS / SCK / MOSI | GPIO 2 / 10 / 6 / 7 |
+| I2C SDA / SCL | GPIO 4 / 5 |
+| Touch interrupt | GPIO 0 |
+| Action Button | GPIO 1, active low |
+| Vibration motor | I/O expander P0 |
+| I/O expander | I2C `0x43` |
+| CST816D touch | I2C `0x15` |
+| BM8563 RTC | I2C `0x51` |
+
+## Parts and tools
+
+The maintained bill of materials and source links live in `hardware/README.md`. The reference assembly uses:
+
+| Item | Specification |
+| --- | --- |
+| Display/controller | Elecrow CrowPanel ESP32 1.28-inch, DIS12824D |
+| Power switch | SS12D00G SPDT, 5 mm actuator |
+| Battery | JLJLUP 3.7 V 1100 mAh 1S LiPo with protection board, 25 x 10 x 42 mm, and JST 1.25 plug; replace the plug during assembly |
+| Battery pigtail | JST SH 1.0 mm, 2 pin |
+| Threaded hardware | 3 x M3 x 6 x 5 mm heat-set inserts; 3 x M3 x 8 mm socket-head screws |
+| Replacement battery-path diode | 1N5819 Schottky, DO-41; replaces the original CrowPanel D1 |
+
+You also need a multimeter, temperature-controlled soldering iron, heat-set insertion tip, soldering supplies, heat-shrink or suitable insulation, and ordinary 3D-print cleanup tools. Battery packs and community kits vary; confirm every electrical rating rather than assuming a linked or visually similar part is correct.
+
+## Print the enclosure
+
+The `hardware/` directory contains top, bottom, and button parts as 3MF and STL files. Use 3MF where supported. `Bleep Remote.step` is the editable assembly model for enclosure changes.
+
+The original print used a Bambu Lab X1 Carbon, 0.4 mm nozzle, SuperTack plate, Bambu PLA Matte, and the stock `0.12mm High Quality @BBL X1C` preset. Enable supports and select **Normal (Auto)** rather than **Tree (Auto)**; otherwise keep the selected process and filament defaults. Put each part on its own plate and print the button first as a quick fit test.
+
+## Assemble the enclosure
+
+1. Clean the prints and dry-fit the display, slide switch, action-button actuator, battery, and both shells before soldering. The CrowPanel fits directly into the top shell without adhesive.
+2. Confirm that the printed Action Button moves freely and transfers a case press to the board control. It is an action/navigation button, not a power button.
+3. With a temperature-controlled iron and suitable tip, install the three heat-set inserts square to their bosses. Stop when each is flush; excessive heat or force can deform the shell.
+4. Let the plastic cool completely. Do not install or wire the battery while the shell is still warm.
+5. Complete and verify the switched battery lead as described below.
+6. Remove the original CrowPanel D1 and install the external 1N5819 replacement as described below.
+7. Route and insulate wiring so it cannot touch the PCB, antenna, USB connector, screw bosses, or moving switch parts. Fit the CrowPanel and battery without pinching a conductor.
+8. Join the shells with three M3 x 8 mm screws. Tighten only until secure; overtightening can strip an insert or distort the print.
+9. Before final use, check switch operation, button travel, charging behavior, and boot from battery with the enclosure attended.
+
+## Wire the battery and power switch
+
+The reference battery's original plug is incompatible with the CrowPanel socket. Replace it with a correctly wired JST SH 1.0 mm two-pin pigtail and put the slide switch in series with **one** battery lead:
+
+```text
+Battery lead A -- switch COM -- selected throw -- connector lead A
+Battery lead B ------------------------------- connector lead B
 ```
 
-The detailed architecture, protocol evidence, and implementation roadmap remain in the repository documentation. This manual summarizes user-visible behavior; it does not replace those engineering sources of truth.
+Use only the common terminal and one throw; insulate the unused throw. Identify the switch terminals with a multimeter, not by physical orientation. Verify continuity in both positions, then verify the finished connector's voltage and polarity against the CrowPanel markings and documentation **before** plugging it in.
+
+Battery leads remain live during connector replacement. Cut and splice only one conductor at a time, insulate that joint before exposing the other conductor, and cover finished joints with heat-shrink. Never solder directly to a cell or its tabs. Do not charge, use, or enclose a damaged or swollen lithium battery, and prevent bare terminals from touching the board or each other.
+
+## Replace the CrowPanel D1 battery path
+
+The DIS12824D V1.0 schematic identifies D1 as a `B5819WT` Schottky diode in SOD-523, in series from `VBAT` to the board load. The reference assembly removes the original D1 and replaces it with a physically larger, through-hole 1N5819. **Never leave both diodes connected in parallel, and never substitute a wire.**
+
+Disconnect USB and the battery. Use a multimeter to identify the actual VBAT and board-load nets rather than trusting wire colors:
+
+```text
+battery-positive / VBAT -- unbanded [ 1N5819 ] banded -- board-load side
+                           anode                 cathode
+```
+
+1. With all power removed, confirm the board-load side is not shorted to ground. If resistance stays near zero, stop and find the fault before continuing.
+2. Confirm and mark the original D1 end connected to battery positive as the VBAT side and the opposite end as the board-load side.
+3. Carefully desolder and remove the original D1. Heat each joint only as long as needed, lift the component without prying, then clean and inspect both pads. Stop if either pad or trace lifts.
+4. Connect the external 1N5819's unbanded anode to VBAT. The verified battery-positive connector joint may be mechanically safer than loading the tiny former D1 pad.
+5. Connect the banded cathode to the board-load side with short, flexible insulated wire. Do not let the DO-41 body pull on the former D1 pad.
+6. Confirm that the removed D1 is no longer electrically connected. Insulate all exposed conductors, strain-relieve the replacement diode, and keep it clear of the antenna, USB connector, fasteners, and exposed pads.
+7. Inspect for bridges, then make the first test from battery only. Disconnect immediately if the diode heats quickly, board voltage stays near zero, or operation is abnormal.
+
+A build using this arrangement measured 4.0 V at the battery and 3.7 V on the load side while running. Before closing the case, exercise representative BLE scanning and connected operation while monitoring diode temperature and voltage drop. Disconnect immediately if the diode heats quickly or the voltage becomes unstable. The longer battery-endurance gate remains open.
+
+## Build, test, and flash firmware
+
+Use a compatible Python 3 installation and PlatformIO from the repository root. The full Montserrat profile is `bleep`:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -U pip platformio
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio test -e native
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep -t upload
+```
+
+The configured upload port is `/dev/cu.usbserial-211240`; do not guess another port if it is absent. The `0.2.0-dev` Aputure Light storage baseline does not migrate former Amaran driver IDs or the old `amaran_mesh` key. Before installing it over that older development firmware, run Factory Reset from the currently installed firmware. Reset destroys saved configuration and bonds, not the application image.
+
+Build success is not proof of panel behavior, peripheral compatibility, browser behavior, tactile feel, or endurance. Record those separately and retain exact-model confidence labels.

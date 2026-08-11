@@ -486,7 +486,7 @@
             },
             "defines": [
                 "BLEEP_FIRMWARE_VERSION=\"0.1.0-dev\"",
-                "BLEEP_GIT_COMMIT=\"9c03830-dirty\"",
+                "BLEEP_GIT_COMMIT=\"376cbea\"",
                 "BLEEP_GIT_DATE=\"2026-08-09\"",
                 "PLATFORMIO=60119",
                 "ARDUINO_ESP32C3_DEV",

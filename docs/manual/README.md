@@ -1,4 +1,4 @@
-# Ble(e)p instruction manual source
+# Ble(e)p owner's guide source
 
 The manual is maintained in [`manual.md`](manual.md). Images live in
 `assets/`, while typography, tables, page furniture, and PDF rendering live in
@@ -35,3 +35,7 @@ Hardware views are line illustrations generated from the user-supplied reference
 photographs. UI figures are simulator captures from the same `e97d0b6` source
 snapshot. Regenerate hardware illustrations only when the enclosure changes,
 and replace UI captures whenever the illustrated screens materially change.
+Keep normal ownership and creative workflows in the main guide. Consolidate
+electronics, printing, assembly, repair, and firmware work in the final
+advanced developer/builder section. Document-maintenance instructions belong
+here in the source README, not in the owner's guide itself.

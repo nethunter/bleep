@@ -10,9 +10,9 @@ controller.
 
 ## Documents
 
-- [Instruction manual](manual/README.md) — maintainable Markdown source,
-  reusable PDF builder, illustrations, operating instructions, full user-function
-  reference, and compatibility matrix.
+- [Owner's guide](manual/README.md) — maintainable Markdown source, reusable
+  PDF builder, illustrated creative workflows, full user-function reference,
+  compatibility matrix, and one advanced developer/builder section.
 - [Architecture](architecture.md) — system boundaries, driver model,
   transports, runtime instances, groups, and UI structure.
 - [Implementation roadmap](implementation-roadmap.md) — ordered phases,

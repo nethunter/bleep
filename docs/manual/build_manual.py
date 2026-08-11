@@ -19,6 +19,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate,
+    CondPageBreak,
     Flowable,
     Frame,
     Image,
@@ -150,12 +151,12 @@ class ManualDocTemplate(BaseDocTemplate):
         rightMargin=18 * mm,
         topMargin=21 * mm,
         bottomMargin=18 * mm,
-        title=metadata.get("title", "Ble(e)p Instruction Manual"),
+        title=metadata.get("title", "Ble(e)p Owner's Guide"),
         author=metadata.get("author", "Ble(e)p project"),
         subject=metadata.get("subtitle", "User and compatibility guide"),
     )
     self.metadata = metadata
-    self.current_section = "Instruction manual"
+    self.current_section = "Owner's guide"
     cover_frame = Frame(0, 0, A4[0], A4[1], id="cover", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
     body_frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id="body")
     self.addPageTemplates([
@@ -183,7 +184,7 @@ class ManualDocTemplate(BaseDocTemplate):
     canvas.drawString(self.leftMargin, A4[1] - 10 * mm, "BLE(E)P")
     canvas.setFont(FONT, 7.5)
     canvas.setFillColor(MUTED)
-    header = "Instruction manual"
+    header = "Owner's guide"
     canvas.drawRightString(A4[0] - self.rightMargin, A4[1] - 10 * mm, header)
     canvas.line(self.leftMargin, 12 * mm, A4[0] - self.rightMargin, 12 * mm)
     canvas.setFont(FONT, 7.5)
@@ -232,10 +233,11 @@ def make_styles():
   ))
   styles.add(ParagraphStyle(
       "ManualTable", fontName=FONT, fontSize=7.1, leading=9.4, textColor=INK,
+      splitLongWords=False,
   ))
   styles.add(ParagraphStyle(
       "ManualTableHead", fontName=FONT_BOLD, fontSize=7.2, leading=9.4,
-      textColor=colors.white,
+      textColor=colors.white, splitLongWords=False,
   ))
   styles.add(ParagraphStyle(
       "ManualCode", fontName="Courier", fontSize=7.5, leading=10,
@@ -285,6 +287,9 @@ def parse_table(lines: list[str]) -> Table:
     weights.append(max(8, min(max_len, 38)))
   total_weight = sum(weights)
   widths = [usable * weight / total_weight for weight in weights]
+  is_compatibility = columns == 4 and rows[0][:2] == ["Device or service", "Status"]
+  if is_compatibility:
+    widths = [43 * mm, 25 * mm, 50 * mm, 56 * mm]
   data = []
   for row_index, row in enumerate(rows):
     style = "ManualTableHead" if row_index == 0 else "ManualTable"
@@ -298,8 +303,8 @@ def parse_table(lines: list[str]) -> Table:
       ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, PALE_GRAY]),
       ("LEFTPADDING", (0, 0), (-1, -1), 5),
       ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-      ("TOPPADDING", (0, 0), (-1, -1), 4),
-      ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+      ("TOPPADDING", (0, 0), (-1, -1), 3 if is_compatibility else 4),
+      ("BOTTOMPADDING", (0, 0), (-1, -1), 3 if is_compatibility else 4),
   ]))
   return table
 
@@ -348,7 +353,8 @@ def parse_markdown(lines: list[str], source_dir: Path) -> list[Flowable]:
     flush_list()
     flush_table()
 
-  for raw in lines + [""]:
+  content_lines = lines + [""]
+  for line_index, raw in enumerate(content_lines):
     line = raw.rstrip()
     if line.startswith("```"):
       if in_code:
@@ -370,6 +376,14 @@ def parse_markdown(lines: list[str], source_dir: Path) -> list[Flowable]:
     if heading:
       flush_all()
       level = len(heading.group(1)) - 1
+      minimum_space = (32, 25, 20)[level] * mm
+      next_content = next(
+          (candidate.strip() for candidate in content_lines[line_index + 1:] if candidate.strip()),
+          "",
+      )
+      if next_content.startswith("!["):
+        minimum_space = max(minimum_space, 105 * mm)
+      story.append(CondPageBreak(minimum_space))
       flowable = Paragraph(inline_markup(heading.group(2)), STYLES[f"ManualH{level + 1}"])
       flowable.toc_level = level
       story.append(flowable)
@@ -440,32 +454,28 @@ def cover_story(metadata: dict) -> list[Flowable]:
       ("TOPPADDING", (0, 0), (-1, -1), 6),
       ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
   ]))
+  cover_copy = [
+      Paragraph(inline_markup(metadata.get("title", "Ble(e)p Owner's Guide")), title_style),
+      Spacer(1, 8 * mm),
+      Paragraph(inline_markup(metadata.get("subtitle", "User guide")), subtitle_style),
+  ]
   return [
-      Spacer(1, 22 * mm),
-      Table([[logo, cover_photo]], colWidths=[84 * mm, 90 * mm], style=TableStyle([
+      Spacer(1, 18 * mm),
+      Table([[logo, ""]], colWidths=[96 * mm, 78 * mm], style=TableStyle([
           ("VALIGN", (0, 0), (-1, -1), "TOP"),
           ("LEFTPADDING", (0, 0), (-1, -1), 0),
           ("RIGHTPADDING", (0, 0), (-1, -1), 0),
       ])),
-      Spacer(1, -104 * mm),
-      Table([[
-          Paragraph(inline_markup(metadata.get("title", "Ble(e)p Instruction Manual")), title_style),
-          "",
-      ]], colWidths=[91 * mm, 83 * mm], style=TableStyle([
-          ("VALIGN", (0, 0), (-1, -1), "TOP"),
+      Spacer(1, 8 * mm),
+      Table([[cover_copy, cover_photo]], colWidths=[96 * mm, 78 * mm], style=TableStyle([
+          ("VALIGN", (0, 0), (0, 0), "MIDDLE"),
+          ("VALIGN", (1, 0), (1, 0), "TOP"),
           ("LEFTPADDING", (0, 0), (-1, -1), 0),
           ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+          ("TOPPADDING", (0, 0), (-1, -1), 0),
+          ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
       ])),
-      Spacer(1, 6 * mm),
-      Table([[
-          Paragraph(inline_markup(metadata.get("subtitle", "User guide")), subtitle_style),
-          "",
-      ]], colWidths=[82 * mm, 92 * mm], style=TableStyle([
-          ("VALIGN", (0, 0), (-1, -1), "TOP"),
-          ("LEFTPADDING", (0, 0), (-1, -1), 0),
-          ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-      ])),
-      Spacer(1, 25 * mm),
+      Spacer(1, 10 * mm),
       badge,
       Spacer(1, 4 * mm),
       Paragraph(

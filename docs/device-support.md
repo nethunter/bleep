@@ -246,11 +246,12 @@ EOS R6 Mark II and Mark III BR-E1 pairing, bonded reconnect, and the
 movie-mode `0x88`/`0x08` press/release trigger have been functionally verified
 for `Canon (Trigger)`. Extended cycle, forget/re-pair, latency, heap, and
 coexistence checks remain open. Smartphone-mode pairing, explicit movie
-control, state notifications, and reconnect are verified on the EOS R6 Mark III
-for `Canon (Smart)`. The EOS R6 Mark II still needs a fresh camera-side
-**Add a device** pair; reconnecting a body that still points at an old
-smartphone registration produces Canon's **Connection target not found** error
-even when the panel is scanning.
+control, and recording-state notifications are verified on both the EOS R6
+Mark II and EOS R6 Mark III for `Canon (Smart)`. Broader reconnect-cycle,
+forget/re-pair, latency, heap, and coexistence checks remain open. A body that
+still points at an old smartphone registration can produce Canon's
+**Connection target not found** error; remove the old registration before
+pairing Ble(e)p.
 
 ### Camera Connect handoff capture
 
@@ -287,8 +288,8 @@ Compatibility evidence is deliberately split from protocol availability:
 | Insta360 X5 | Implemented, experimental | GPS-remote connection and mixed-sequence shutter operation are operator-confirmed. |
 | Insta360 GO 3 | Implemented candidate | No model-specific result recorded. |
 | Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; legacy GPS-remote compatibility is not established. |
-| DJI Osmo Action 5 Pro | Implemented, experimental | Pairing and explicit recording start/stop are operator-confirmed. Reconnect, camera-originated status, forget/re-pair, and coexistence remain open. |
-| DJI Osmo 360 | Implemented, experimental | Pairing and explicit recording start/stop are operator-confirmed. Reconnect, camera-originated status, forget/re-pair, and coexistence remain open. |
+| DJI Osmo Action 5 Pro | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
+| DJI Osmo 360 | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | Sony RMT-P1BT-compatible cameras | Research only | No savable driver or camera test yet. |
 
 ### GoPro
@@ -342,9 +343,10 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### DJI Osmo
 
-- Status: `Experimental`; Osmo Action 5 Pro and Osmo 360 pairing plus explicit
-  recording start/stop are operator-confirmed. Saved reconnect,
-  camera-originated status, forget/re-pair, and coexistence remain pending.
+- Status: verified bounded path; Osmo Action 5 Pro and Osmo 360 pairing,
+  explicit recording start/stop, and camera-originated recording status are
+  operator-confirmed. Saved reconnect, forget/re-pair, and coexistence remain
+  pending.
 - Transport: central-role service `0xFFF0`, notifications on `0xFFF4`, and
   write-without-response on `0xFFF5`.
 - Protocol: DJI's connection request/camera approval handshake, explicit
