@@ -84,10 +84,11 @@ Acceptance:
 
 ## Tranche 3: Independent mesh creation and recovery
 
-The repository already fills missing Network Key and AppKey records with the
-ESP hardware RNG and immediately saves them. Preserve that behavior and make it
-explicitly testable through an injected random source. Never derive mesh keys
-from the public unit ID or MAC.
+The repository now assembles a missing mesh in temporary state through an
+injectable random-fill seam. Both Network Key and AppKey must be filled and the
+complete existing-schema blob must save before the live repository publishes
+it. RNG and save failures leave the caller unchanged. Production uses the ESP
+hardware RNG; keys are never derived from the public unit ID or MAC.
 
 Add validation for:
 
@@ -104,10 +105,16 @@ firmware should report merely `mesh initialized` and its node count.
 
 ## Tranche 4: Same-room device selection
 
-The current first-nearby factory-reset-light behavior is unsafe when multiple
-operators or fixtures are present. Replace it with a bounded picker containing
-advertised model/name, radio-address suffix, and RSSI. The operator must choose
-the intended fixture before PB-GATT provisioning begins.
+Fresh Aputure Light and Zhiyun adds now use a bounded four-entry picker with
+advertised model/name, radio-address suffix, and RSSI. Duplicate observations
+retain a stable address-plus-type selection token, and a full list replaces
+only its weakest member with a stronger candidate. The operator must choose the
+intended fixture before PB-GATT provisioning begins; saved-target reconnect is
+still automatic.
+
+Software gates cover stable refresh, weakest replacement, selection rollback,
+cancel, and no normal registry commit before protocol-ready. The two-panel,
+two-fixture acceptance below remains entirely unverified on hardware.
 
 For ordinary GATT devices, continue persisting the full discovered BLE identity
 and address type. For mesh nodes, persist the device UUID, device key, assigned

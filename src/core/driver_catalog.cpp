@@ -81,7 +81,8 @@ constexpr DriverDescriptor kDrivers[] = {
         "Aputure",
         "Aputure Light",
         DeviceType::Light,
-        capabilityBit(Capability::Link) | capabilityBit(Capability::TurnOn) |
+        capabilityBit(Capability::Link) |
+            capabilityBit(Capability::TurnOn) |
             capabilityBit(Capability::TurnOff) |
             capabilityBit(Capability::SetLightCct) |
             capabilityBit(Capability::SetLightRgb) |

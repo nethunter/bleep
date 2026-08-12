@@ -14,12 +14,18 @@ class AputureLightDriver : public DeviceDriver {
   void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
+  void cancelPendingCommand(InstanceId instanceId) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
+  bool lightControlState(InstanceId instanceId,
+                         LightControlState& state) const override;
   void forgetPairing(const DeviceRecord& record) override;
-  void cancelOnboarding(const DeviceRecord& record) override {
-    forgetPairing(record);
-  }
+  bool cancelOnboarding(const DeviceRecord& record) override;
+  size_t onboardingCandidateCount(InstanceId instanceId) const override;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const override;
+  bool selectOnboardingCandidate(InstanceId instanceId,
+                                 uint32_t token) override;
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
 };

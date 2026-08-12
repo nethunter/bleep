@@ -11,13 +11,25 @@ class ZhiyunLightDriver : public DeviceDriver {
   BleSlotKey bleSlotKey(const DeviceRecord&) const override {
     return {DriverId::PanelOwnedMesh, 1};
   }
+  InstanceProfile instanceProfile(
+      const DeviceRecord& record,
+      const InstanceProfile& catalogProfile) const override;
   bool activate(const DeviceRecord& record) override;
+  bool resume(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
+  void cancelPendingCommand(InstanceId instanceId) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
-  void cancelOnboarding(const DeviceRecord& record) override;
+  bool lightControlState(InstanceId instanceId,
+                         LightControlState& state) const override;
+  bool cancelOnboarding(const DeviceRecord& record) override;
+  size_t onboardingCandidateCount(InstanceId instanceId) const override;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const override;
+  bool selectOnboardingCandidate(InstanceId instanceId,
+                                 uint32_t token) override;
   void preferSkipPeer(InstanceId instanceId,
                       const char* bleAddress) override;
   bool consumePairingUpdate(InstanceId instanceId,
@@ -33,6 +45,9 @@ class ZhiyunLightDriver : public DeviceDriver {
     bool gatewayAttached = false;
     uint32_t gatewayGeneration = 0xffffffffu;
     uint32_t gatewayAttachRetryAt = 0;
+    enum class CompoundStage : uint8_t { None, Look, Power };
+    CompoundStage compoundStage = CompoundStage::None;
+    bool compoundFailed = false;
   };
 
   Session* find(InstanceId instanceId);

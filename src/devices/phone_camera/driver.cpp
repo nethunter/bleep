@@ -347,8 +347,9 @@ void PhoneCameraDriver::forgetPairing(const DeviceRecord& record) {
   ble::bleCentral().deleteBond(peer);
 }
 
-void PhoneCameraDriver::cancelOnboarding(const DeviceRecord& record) {
+bool PhoneCameraDriver::cancelOnboarding(const DeviceRecord& record) {
   forgetPairing(record);
+  return true;
 }
 
 bool PhoneCameraDriver::consumePairingUpdate(InstanceId id, DeviceRecord& record) {

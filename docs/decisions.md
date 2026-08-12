@@ -691,8 +691,10 @@ the replacement.
   a temporary exclusive operation and is not a second retained device slot.
 - Routing: Persist routing independently from product identity. Each
   Sidus-family node receives a deterministic vendor-model control group derived
-  from its provisioned address; common group `0xC000` owns mesh-wide physical
-  power. Each Zhiyun node receives a persisted ordinal `0xFEE9` member selector.
+  from its provisioned address. ADR-039 supersedes this ADR's common-group
+  physical-power behavior: ordinary fixture commands use only the member's
+  control group and `0xC000` is reserved for a future explicit group action.
+  Each Zhiyun node receives a persisted ordinal `0xFEE9` member selector.
   Mesh-store schema 2 reads schema 1, assigns existing Zhiyun selectors in
   saved-node order, and preserves keys and sequence high-water state.
 - Evidence: In one panel-owned mesh, MC Pro `0x0002` vendor model
@@ -932,9 +934,143 @@ the replacement.
   existing on-device Factory Reset before flashing over an earlier development
   build; firmware is not erased by that reset and no automatic erase occurs.
 - Shared transport: Zhiyun stays a separate logical driver and retains its
-  model-specific UI, commands, confirmed reply semantics, and routing selector.
-  It continues sharing the one panel-owned mesh repository and retained proxy
-  client with Aputure Light.
+  model-specific commands, confirmed reply semantics, and routing selector.
+  ADR-039 moves its panel controls into the shared capability-driven light
+  shell. It continues sharing the one panel-owned mesh repository and retained
+  proxy client with Aputure Light.
+
+## ADR-039: Light controls and sequence looks are capability-driven and per target
+
+- Status: Experimental; implementation and host gates passed, full fixture
+  isolation/coexistence/soak matrix open.
+- Routing: Every ordinary Aputure Light On, Off, CCT, tint, brightness, and RGB
+  operation targets the fixture's persisted node unicast address. Refresh does
+  not transmit until a read-only query is captured. `0xC000` remains
+  provisioned for transport compatibility but
+  is reserved for a future explicit mesh/group action. Source-addressed status
+  updates only the matching logical session. Zhiyun retains its per-member
+  selector and selector/sequence-correlated confirmation while sharing the
+  same retained proxy connection.
+- State and UI: Drivers publish normalized light modes, limits, values, power,
+  pending/error state, and confirmation quality through `LightControlState`.
+  One shared round-panel shell renders only the supported controls: full
+  Aputure CCT/tint/RGB, X100 CCT, X60RGB CCT/RGB, or HA light power only.
+- Scenes: append `SetLightCctAndOn` and `SetLightRgbAndOn` without changing the
+  scene record layout. Validation requires both Turn On and the selected color
+  capability. The panel picker exposes one **Set look + On** action, defaulted
+  to 5600 K, 50% brightness, and neutral tint; generated Stop materializes one
+  Turn Off. A compound driver transaction remains pending across look and
+  power stages and reports any sub-step failure for Stop and Retry recovery.
+  The editor previews the currently selected mode and values after a bounded
+  debounce while retaining foreground ownership. Aputure compound execution
+  sends power first and the requested look last, matching the working Studio
+  Lighter transaction and preventing a trailing On packet from restoring CCT.
+- Compatibility: the selected clean-storage `0.2.0-dev` baseline does not
+  migrate or normalize older two-step light scenes. Factory Reset is the
+  documented test baseline.
+- Gate: physical output, response attribution, gateway fallback, mixed-device
+  operation, reboot cycles, and the two-hour soak must pass per exact fixture
+  model before its support claim is promoted.
+
+## ADR-040: Ordinary Aputure controls must never expose mesh-wide power
+
+- Status: Accepted safety correction; independent emitter-power protocol
+  remains Blocked.
+- Evidence: On the tested Ace 25c and MC Pro, vendor opcode `0x26` changes
+  physical emitter power only at common group `0xC000`, where both fixtures
+  change together. The same captured command was physically inert at node
+  unicast and at each deterministic private group. Generic OnOff is only a
+  writable shadow model and does not control either emitter.
+- Decision: Aputure device screens and ordinary sequence actions expose only
+  independently routed CCT/tint/RGB/brightness looks. They do not advertise
+  Turn On, Turn Off, or compound look-and-On commands. The shared shell hides
+  power and the scene picker labels the action **Set look**. `0xC000` remains
+  read-only for authenticated physical-status polling and reserved for a future
+  explicit group action; no ordinary device command writes to it.
+- Zhiyun boundary: X100/X60RGB retain confirmed per-selector power and therefore
+  keep **Set look + On** with generated Turn Off. Aborting Start cancels the
+  exact queued/result request and the driver's pending compound transaction
+  before Stop begins, so a late look reply cannot re-arm power-on.
+- Recovery: a failed, unconfigured Aputure node may be re-identified as Ace 25c
+  or MC Pro after any configuration rejection. Exact device naming follows the
+  corrected tuple without overwriting user-authored names.
+- Supersession: This ADR supersedes ADR-039 only for Aputure power capability
+  and compound actions. The normalized shared shell, per-member look routing,
+  and Zhiyun transaction design remain in force.
+
+## ADR-041: Restore captured Aputure per-node power and prohibit command-as-poll
+
+- Status: Experimental correction; host gates passed, four-fixture hardware
+  isolation gate open.
+- Evidence correction: The working Studio Lighter implementation sends vendor
+  power payloads `26 8D ... 01 8C` and `26 8C ... 00 8C` to each light's
+  persisted mesh unicast address. Its ordinary state builder selects
+  `light.mesh_address` before the network group. Captures likewise show source
+  `0x0001` to target `0x0002`. The prior private-group probe did not test this
+  production unicast path consistently and therefore cannot establish that
+  unicast power is unsupported.
+- Decision: Restore Aputure Turn On, Turn Off, and compound **Set look + On**.
+  Send every ordinary power and look payload to the selected node's unicast
+  address while retaining per-session optimistic/pending state and
+  source-correlated replies. Keep the private vendor groups as configuration
+  metadata only; reserve `0xC000` for a future explicit user group action.
+- Polling safety: Payload `26 0E ... 0E` is a captured group power-on command,
+  not a read-only status query. Remove automatic group polling and make Refresh
+  a no-write operation until a verified read-only query exists. Proxy/GATT
+  connectivity remains bearer evidence, not fixture-state confirmation.
+- Identity: The recovery UI offers Ace 25c, Pano 60c, Pano 120c, and MC Pro.
+  New nodes first receive Config Composition Data Get. Authenticated,
+  device-key-encrypted segmented Composition Data Status selects MC Pro
+  `0x03F6:0x1000` or the Ace/Pano `0x0211:0x0000` command model without asking
+  the operator. Ace/Pano models share that tuple, so an exact advertised
+  product name is persisted separately when available; manual recovery remains
+  only for an unsupported or malformed composition response.
+- Supersession: This ADR supersedes ADR-040's protocol conclusion and the
+  private-group routing sentence in ADR-039. ADR-040 remains the record of the
+  safety response to the misleading group experiment.
+
+## ADR-042: Mesh creation and light selection are transactional
+
+- Status: Accepted software boundary; two-panel and physical-selection gates
+  remain open.
+- Mesh creation: A missing panel-owned mesh is assembled in temporary state.
+  An injectable entropy source must successfully fill both the Network Key and
+  AppKey, and the complete existing-schema blob must persist, before the live
+  repository publishes it. RNG or save failure leaves caller state unchanged.
+  Keys are never derived from panel identity, MAC, Portal identity, or setup
+  SSID. Existing sequence high-water and node schema semantics are unchanged.
+- Selection: A fresh Aputure Light or Zhiyun add scans without claiming a BLE
+  peer. The shared round picker exposes at most four compatible advertisements
+  with advertised name/model, address suffix, and RSSI. Identity is address
+  plus address type and selection uses an opaque stable token. Duplicate
+  observations update in place; when full, only a stronger advertisement may
+  replace the weakest entry. If exactly one candidate remains through a 750 ms
+  discovery-settling window, it is selected automatically without displaying
+  a one-row picker. Two or more candidates always require an explicit tap. A
+  failed automatic claim exposes the row for manual retry.
+- Transaction boundary: PB-GATT connect/provisioning starts only after the
+  bounded selection decision. Immediate claim failure rolls back to Scanning.
+  A failed
+  onboarding/configuration transaction restores the pre-provision mesh node
+  set and next unicast address while never decreasing a reserved sequence
+  high-water mark. Rollback itself is publish-after-save: if the replacement
+  blob cannot persist, the snapshot and pending add remain retryable rather
+  than presenting a successful cancel with stale NVS. The normal device record
+  still commits only after protocol-ready confirmation. Back/cancel removes
+  the draft and provisional mesh allocation.
+- Post-provision correlation: Aputure and Zhiyun rediscovery accept the exact
+  selected address/type or a standard Mesh Proxy Network ID derived from this
+  panel's Network Key. Aputure keeps the provisional transaction across an
+  expected post-provision reboot/connect miss and resumes configuration through
+  the correlated proxy; a 60-second overall deadline rolls it back. A proxy
+  with neither identity nor network proof is ignored. Physical cross-mesh
+  rejection remains part of the open hardware gate.
+- Compatibility: Saved targets continue automatic reconnect and Aputure and
+  Zhiyun retain ADR-041/039 shared-mesh routing. This decision does not alter
+  `panel_identity`, `Bleep-Setup-XXXXX`, Portal storage/security, mesh schema
+  bytes, or ordinary per-fixture command destinations.
+- Gate: native and interactive simulator evidence does not prove physical
+  selection, cross-mesh rejection, fallback, or multi-panel coexistence.
 
 ## Open decisions
 

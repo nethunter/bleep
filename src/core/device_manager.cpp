@@ -212,6 +212,7 @@ void DeviceManager::loop() {
     }
     const DeviceRuntimeState runtime =
         activeDriver->runtimeState(activeRecord->instanceId);
+    if (!runtime.commandPending) slot.pendingRequestId = 0;
     if (runtime.protocolReady) {
       slot.retained = true;
     }
@@ -241,7 +242,17 @@ void DeviceManager::loop() {
   result.requestId = command.requestId;
   result.instanceId = command.instanceId;
   result.status = dispatch(command);
-  results_.push(result);
+  if (result.status == CommandStatus::Succeeded) {
+    ActiveSlot* slot = slotFor(command.instanceId);
+    if (slot != nullptr && runtimeState(command.instanceId).commandPending) {
+      slot->pendingRequestId = command.requestId;
+    }
+  }
+  if (!results_.push(result)) {
+    CommandResult discarded;
+    results_.pop(discarded);
+    results_.push(result);
+  }
 }
 
 RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
@@ -303,13 +314,37 @@ bool DeviceManager::retryPendingAdd(InstanceId instanceId) {
   return commitPendingAdd();
 }
 
+size_t DeviceManager::onboardingCandidateCount(InstanceId instanceId) const {
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr ? driver->onboardingCandidateCount(instanceId) : 0;
+}
+
+bool DeviceManager::onboardingCandidate(
+    InstanceId instanceId, size_t index,
+    OnboardingCandidate& candidate) const {
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr &&
+         driver->onboardingCandidate(instanceId, index, candidate);
+}
+
+bool DeviceManager::selectOnboardingCandidate(InstanceId instanceId,
+                                              uint32_t token) {
+  if (!isPendingAdd(instanceId) || token == 0) return false;
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr &&
+         driver->selectOnboardingCandidate(instanceId, token);
+}
+
 RegistryStatus DeviceManager::cancelPendingAdd(InstanceId instanceId) {
   if (!isPendingAdd(instanceId)) {
     return RegistryStatus::NotFound;
   }
   DeviceDriver* driver = driverFor(pendingRecord_.driverId);
-  if (driver != nullptr) {
-    driver->cancelOnboarding(pendingRecord_);
+  if (driver != nullptr && !driver->cancelOnboarding(pendingRecord_)) {
+    return RegistryStatus::Invalid;
   }
   if (isActive(instanceId)) {
     deactivate(instanceId);
@@ -698,11 +733,42 @@ void DeviceManager::deactivateAll() {
   }
 }
 
-bool DeviceManager::enqueue(DeviceCommand command) {
+bool DeviceManager::enqueue(DeviceCommand command, uint32_t* assignedRequestId) {
   if (command.requestId == 0) {
     command.requestId = nextRequestId_++;
   }
-  return commands_.push(command);
+  if (!commands_.push(command)) return false;
+  if (assignedRequestId != nullptr) *assignedRequestId = command.requestId;
+  return true;
+}
+
+bool DeviceManager::cancelCommand(uint32_t requestId, InstanceId instanceId) {
+  if (requestId == 0 || instanceId == kInvalidInstanceId) return false;
+  const bool queued = commands_.removeFirst(
+      [requestId](const DeviceCommand& command) {
+        return command.requestId == requestId;
+      });
+  results_.removeFirst([requestId](const CommandResult& result) {
+    return result.requestId == requestId;
+  });
+  ActiveSlot* slot = slotFor(instanceId);
+  const bool dispatched = slot != nullptr && slot->pendingRequestId == requestId;
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  if (driver != nullptr && dispatched) {
+    driver->cancelPendingCommand(instanceId);
+    slot->pendingRequestId = 0;
+  }
+  return queued || dispatched;
+}
+
+bool DeviceManager::takeResult(uint32_t requestId, CommandResult& result) {
+  if (requestId == 0) return false;
+  return results_.takeFirst(
+      [requestId](const CommandResult& candidate) {
+        return candidate.requestId == requestId;
+      },
+      result);
 }
 
 DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
@@ -713,6 +779,15 @@ DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {
   DeviceDriver* driver = driverFor(record->driverId);
   return driver != nullptr ? driver->runtimeState(instanceId)
                            : DeviceRuntimeState{};
+}
+
+bool DeviceManager::lightControlState(InstanceId instanceId,
+                                      LightControlState& state) const {
+  state = LightControlState{};
+  const DeviceRecord* record = find(instanceId);
+  if (record == nullptr || !isActive(instanceId)) return false;
+  DeviceDriver* driver = driverFor(record->driverId);
+  return driver != nullptr && driver->lightControlState(instanceId, state);
 }
 
 InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
@@ -754,9 +829,12 @@ InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
     return profile;
   }
   const DriverDescriptor* descriptor = DriverCatalog::find(record->driverId);
-  return descriptor != nullptr
-             ? InstanceProfile{descriptor->type, descriptor->capabilities}
-             : InstanceProfile{};
+  if (descriptor == nullptr) return {};
+  const InstanceProfile catalogProfile{descriptor->type,
+                                       descriptor->capabilities};
+  DeviceDriver* driver = driverFor(record->driverId);
+  return driver != nullptr ? driver->instanceProfile(*record, catalogProfile)
+                           : catalogProfile;
 }
 
 const void* DeviceManager::specializedState(InstanceId instanceId) const {

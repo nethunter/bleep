@@ -24,6 +24,7 @@ void show(Mode mode, const Callbacks& callbacks);
 void showSceneStep(const studio::SceneStep& step, const Callbacks& callbacks);
 void hide();
 bool active();
+void tick();
 // Returns true when the short-press was consumed by the picker.
 bool handleBack();
 
@@ -34,6 +35,9 @@ void simShowActions(Mode mode, studio::InstanceId instanceId);
 void simShowLightColor(Mode mode, studio::InstanceId instanceId, bool rgb);
 void simSaveWait(uint32_t waitMs);
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint);
+void simSetLightRgb(uint16_t hue, int32_t saturation, int32_t brightness);
+void simSaveCurrentLight();
+bool simLightEditorRgb();
 void simChooseDriver(studio::DriverId driverId);
 #endif
 

@@ -91,34 +91,48 @@ of successful movement.
 - Transport: PB-GATT provisioning and Mesh Proxy GATT over the shared NimBLE
   central, with one proxy link shared by logical lights across the three tested
   brands.
-- Initial capabilities: power, independently remembered 2300-10000 K
-  CCT/tint/brightness and RGB/saturation/brightness looks. Sequence authoring
-  exposes one `Set color` action with CCT and RGB modes.
+- Initial capabilities: independently remembered 2300-10000 K
+  power, CCT/tint/brightness, and RGB/saturation/brightness controls. Sequence
+  authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Onboarding: choose `Aputure Light`; the first nearby factory-reset fixture
-  advertising Mesh Provisioning is provisioned into the panel-owned mesh. The
-  fixture model is not selected because onboarding and the supported Telink
-  command family are mesh/protocol concerns rather than catalog concerns.
-  amaran Pano 60c, amaran Pano 120c, and amaran Ace 25c remain the initial
-  validation set. Existing
+- Onboarding: choose `Aputure Light`. One compatible candidate is selected
+  automatically after a 750 ms settling window; two to four nearby candidates
+  use the explicit picker before PB-GATT begins. The selected factory-reset
+  fixture is provisioned into the panel-owned mesh. The runtime then reads the
+  authenticated Composition Data Status and selects MC Pro
+  (`0x03F6:0x1000`) or the shared Ace/Pano model (`0x0211:0x0000`)
+  automatically. Exact advertised product naming is kept independently of the
+  shared Amaran vendor tuple. These four
+  fixtures remain the initial validation set. Existing
   Sidus/amaran mesh import remains deferred.
+  If a provisioned-but-unconfigured fixture returns an unsupported or malformed
+  composition, onboarding stops instead of guessing and the recovery screen
+  offers all four exact choices. Model-specific support remains blocked until
+  each fixture passes its physical gate.
+  After PB-GATT, the panel waits for either the selected address or this mesh's
+  Network ID instead of treating the fixture's expected reboot as an immediate
+  failure. Provisioning and post-provision configuration have bounded rollback
+  deadlines and cannot remain pending indefinitely.
 
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is
 charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
 composition evidence, cross-node routing, proxy fallback, and group-addressed
-physical power Set/Get are confirmed. Standard Generic OnOff
+power experiments are confirmed. Standard Generic OnOff
 is only a writable shadow/reachability model on both fixtures. Firmware sends
-mesh power through the common vendor group and CCT/RGB through deterministic
-per-member vendor groups. MC red and Ace green were optically observed at 5%
-after separate group writes, followed by common-group On/Off. CCT, property
+ordinary power, CCT/tint/brightness, and RGB through each fixture's node
+unicast address, matching Studio Lighter. Common group `0xC000` is never
+written by ordinary device control. Automatic polling is disabled because
+`26 0E` is a captured group power-on command, not a read query. MC red and
+Ace green were previously optically
+observed at 5% after separate group writes, followed by the now-superseded
+common-group On/Off test. Four-member power isolation, CCT, property
 readback, decoded configuration-status enforcement, reboot/interruption
 recovery, Pano fixtures, and safe node reset remain open before this becomes
-Current. Firmware does implement authenticated vendor
-power readback: one group poll updates each member by source address, polls
-every five seconds, and marks a member stale after three missed intervals while
-leaving the shared proxy bearer connected.
+Current. Source-addressed replies update only the matching session; absent a
+verified read-only query, optimistic control state is kept distinct from the
+shared proxy bearer state.
 
 Reference research:
 
@@ -153,16 +167,22 @@ product-qualified advertisement and identity response.
   by correlated reads of power, brightness, and CCT was live-confirmed. A
   driver can therefore remain non-optimistic by publishing the value only
   after matching device-originated readback.
-- Implemented tranche: Add light selects either a factory-reset `pl105` on
-  `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
+- Implemented tranche: Add light lists compatible advertisements and requires
+  an explicit stable-token selection before connecting to a factory-reset
+  `pl105` on `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
   panel-owned network and a durable Device Key/unicast allocation, then is
   rediscovered and validated on `0xFEE9`. The normal device record commits only
-  after confirmed Ready. Power and CCT/
+  after confirmed Ready; failed or canceled onboarding restores the provisional
+  mesh allocation without rewinding reserved sequence high-water. A failed
+  rollback save keeps the pending add and snapshot retryable. Post-provision
+  discovery accepts only the selected BLE identity or a Mesh Proxy Network ID
+  matching this panel's Network Key. Power and CCT/
   brightness commands remain pending until matching correlated replies arrive;
   scenes therefore wait for confirmation instead of treating the write as
   success. X100 exposes no tint or RGB capability at runtime.
-- Missing before production: reconciliation when a light accepts Provisioning
-  Data but completion/persistence is interrupted, verified reset/retry,
+- Missing before production: power-loss reconciliation after a light accepts
+  Provisioning Data, physical picker selection and competing-panel recovery,
+  verified reset/retry,
   boundary and power-cycle checks, rotating-address recovery, firmware
   compatibility policy, multiple live fixtures, retained/session and mixed-device
   coexistence measurements, plus independently observed optical output.
@@ -186,8 +206,8 @@ product-qualified advertisement and identity response.
   command. Ble(e)p confirms RGB hue, saturation, and brightness in the
   capture-backed order;
   shared power/CCT control keeps the conservative read-after-write path.
-- Implemented tranche: the same Add light entry detects X60RGB and opens CCT
-  and RGB tabs. RGB UI values remain responsive and debounced, while command
+- Implemented tranche: the same bounded Add-light picker detects X60RGB only
+  after operator selection and then opens CCT and RGB tabs. RGB UI values remain responsive and debounced, while command
   completion waits for matching device-originated replies.
 - Missing before production: physical panel verification, mode/effect command
   research, reset and interrupted-provisioning recovery, firmware compatibility,

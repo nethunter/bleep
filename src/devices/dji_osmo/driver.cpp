@@ -63,7 +63,7 @@ DeviceRuntimeState DjiOsmoDriver::runtimeState(InstanceId id) const {
 }
 const void* DjiOsmoDriver::specializedState(InstanceId id) const { const Session* s = sessionFor(id); return s ? &s->client.state() : nullptr; }
 void DjiOsmoDriver::forgetPairing(const DeviceRecord& record) { Session* s = sessionFor(record.instanceId); if (s) s->client.forgetBond(record.bleAddress, record.bleAddressType); }
-void DjiOsmoDriver::cancelOnboarding(const DeviceRecord& record) { Session* s = sessionFor(record.instanceId); if (s) s->client.forgetDevice(); else forgetPairing(record); }
+bool DjiOsmoDriver::cancelOnboarding(const DeviceRecord& record) { Session* s = sessionFor(record.instanceId); if (s) s->client.forgetDevice(); else forgetPairing(record); return true; }
 bool DjiOsmoDriver::consumePairingUpdate(InstanceId id, DeviceRecord& record) {
   Session* s = sessionFor(id); char address[kBleAddressCapacity] = ""; char name[kBleNameCapacity] = ""; uint8_t type = 0; bool paired = false;
   if (!s || !s->client.consumePairingUpdate(address, sizeof(address), type, name, sizeof(name), paired)) return false;

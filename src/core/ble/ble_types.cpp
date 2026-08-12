@@ -163,4 +163,20 @@ uint16_t manufacturerCompanyId(const Advertisement& advertisement) {
   return 0xffff;
 }
 
+bool meshProxyNetworkId(const Advertisement& advertisement,
+                        uint8_t output[8]) {
+  if (output == nullptr) return false;
+  size_t offset = 0;
+  Field field;
+  while (nextField(advertisement, offset, field)) {
+    // Service Data - 16-bit UUID, Mesh Proxy UUID 0x1828, Network ID type.
+    if (field.type == 0x16 && field.length >= 11 && field.data[0] == 0x28 &&
+        field.data[1] == 0x18 && field.data[2] == 0x00) {
+      std::memcpy(output, field.data + 3, 8);
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace studio::ble

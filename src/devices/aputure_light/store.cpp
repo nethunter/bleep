@@ -222,6 +222,33 @@ uint16_t defaultControlGroupAddress(const MeshStoreData& data,
   return address <= 0xfeff ? static_cast<uint16_t>(address) : 0;
 }
 
+uint16_t memberControlGroupAddress(const MeshStoreData& data,
+                                   studio::InstanceId instanceId) {
+  const MeshNodeRecord* node = findNode(data, instanceId);
+  return node != nullptr ? defaultControlGroupAddress(data, *node) : 0;
+}
+
+bool assignVendorModel(MeshStoreData& data, studio::InstanceId instanceId,
+                       uint16_t companyId, uint16_t modelId) {
+  MeshNodeRecord* node = findNode(data, instanceId);
+  if (node == nullptr || node->configured || companyId == 0) return false;
+  node->vendorCompanyId = companyId;
+  node->vendorModelId = modelId;
+  node->controlGroupAddress = defaultControlGroupAddress(data, *node);
+  return true;
+}
+
+bool isKnownMeshProxyAddress(const MeshStoreData& data, const char* address) {
+  if (address == nullptr || address[0] == '\0') return false;
+  for (uint8_t i = 0; i < data.nodeCount; ++i) {
+    if (data.nodes[i].bleAddress[0] != '\0' &&
+        std::strcmp(data.nodes[i].bleAddress, address) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data) {
   bool used[0xff] = {};
   for (uint8_t i = 0; i < data.nodeCount; ++i) {

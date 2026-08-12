@@ -173,6 +173,14 @@ Completion gate:
 - the factory process flashes one common image and never clones configured NVS;
 - build and simulator results remain labeled separately from two-panel proof.
 
+Current software tranche (ADR-042): mesh key creation is transactional and
+identity-independent. A single stable Aputure/Zhiyun candidate is selected
+automatically; multiple candidates require explicit selection from a bounded
+stable picker before PB-GATT. Native and interactive simulator
+gates pass. Simultaneous physical panels, phone/captive Portal behavior,
+fixture selection, cross-mesh rejection, reboot/fallback, and coexistence soak
+remain open completion gates.
+
 ## Phase 2: Kconfig and core driver framework
 
 Work:
@@ -272,26 +280,37 @@ passed this phase's completion gate.
 Work:
 
 - implement Telink opcode `0x26` commands;
-- support power, brightness, CCT/tint, and RGB with validated 2300-10000 K
-  model limits;
+- support independently routed brightness, CCT/tint, and RGB with validated
+  2300-10000 K model limits, plus per-node power using the Studio Lighter
+  unicast route under ADR-041;
 - provision factory-reset lights into a panel-owned mesh;
 - persist pending configuration and reserve replay-safe sequence blocks;
 - implement best-available state readback and mark optimistic state explicitly.
+- route every ordinary look and power command to the selected member's
+  persisted unicast address; do not emit an automatic refresh write until a
+  read-only query is captured; reserve `0xC000` for a future explicit
+  mesh/group action;
+- use the capability-driven shared light shell. Aputure and power-capable
+  Zhiyun fixtures expose **Set look + On** under ADR-039/ADR-041.
 
 Deferred from this tranche: existing Sidus mesh import, user-authored native
 groups, HSIC, interpolation, and confirmed color-property readback. The
-panel-owned vendor-model group and physically correlated power status are now
-research-confirmed for Ace 25c/MC Pro. Firmware now performs authenticated
-group status polling with per-source freshness; enabling the correlated group
-power Set path is integrated. Deterministic per-member vendor groups are also
-integrated from the optically verified MC-red/Ace-green test. Decoded
-configuration-status gating and the remaining real-panel checks stay open.
+panel-owned vendor-model group experiments and group-wide power are
+research-confirmed for Ace 25c/MC Pro. Firmware ordinary controls instead use
+the captured per-node unicast path, and the unsafe command-as-poll behavior is
+removed. Deterministic per-member vendor groups remain configuration metadata
+from the optically verified MC-red/Ace-green test. Decoded
+configuration-status gating now includes segmented Composition Data Status and
+automatic vendor-model selection. The newly integrated panel path and the
+remaining real-fixture checks stay open.
 
 Completion gate:
 
 - PB-GATT onboarding, interrupted configuration recovery, proxy fallback, and
   verified reset work on all three real target lights;
 - commands and mixed-device sequences target individual lights;
+- two-light alternating power/look tests produce zero non-target changes and
+  zero source-misattributed replies;
 - credentials never leak into normal logs or unprotected exports.
 
 ### Phase 4b: Zhiyun Light direct-control tranche
@@ -340,6 +359,13 @@ Completion gate:
 - failure and timeout paths preserve the last confirmed state and remain
   retryable;
 - the full profile passes mixed-device coexistence and memory recovery checks.
+
+Shared Phase 4/4b acceptance additionally covers every available Aputure pair,
+X100/X60RGB, every cross-brand pairing through each suitable gateway, the
+four-logical-target limit, mixed camera/recorder/HA scenes, 100 sequence cycles
+over two hours, and 20 reboot/reconnect cycles. Record destination or selector,
+confirmed versus optimistic state, latency, heap minimum/largest block, and
+observed physical output. Unavailable models remain Blocked, not inferred.
 
 ## Phase 5: Canon camera drivers
 

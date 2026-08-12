@@ -47,18 +47,208 @@ short, factual, and reproducible.
   scenes, and UI are implemented. Panel-owned Ace 25c/MC Pro provisioning,
   composition, configuration status, standard OnOff model transactions, Ace
   Light Lightness model transactions, cross-proxy routing, and group messaging
-  are host-proven. Group-addressed vendor power Set/Get is physically correlated
-  on the Ace 25c/MC Pro pair;
-  firmware common-power/per-member-color integration is complete; decoded
+  are host-proven. ADR-041 restores the working Studio Lighter per-node unicast
+  route for ordinary power and looks and removes the unsafe `26 0E`
+  command-as-poll behavior. Four-fixture isolation is awaiting physical
+  validation. Per-member color integration is complete; decoded
   configuration-status enforcement is implemented and live-confirmed on MC
-  Pro; composition-driven configuration and safe reset gates remain open.
+  Pro. Segmented Composition Data Status now drives automatic vendor-model
+  selection in firmware; its new panel onboarding run and safe reset gate
+  remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
   and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
   routed CCT/power control; X60RGB adds captured hue/saturation control. Saved
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-11.
+- Last updated: 2026-08-12.
+
+### 2026-08-12: Sequence look preview, RGB final-state ordering, and automatic composition identity
+
+- The shared sequence look editor now retains foreground ownership and sends a
+  debounced live `Set look + On` preview for CCT/tint/brightness or RGB while
+  the controls move. Saving uses the same captured draft, so the previewed RGB
+  mode and value are the values persisted into the scene.
+- Added a scene-store RGB round trip and a runner regression proving a stored
+  blue `SetLightRgbAndOn` reaches the driver without falling back to CCT. The
+  Aputure compound transaction now follows the working Studio Lighter order:
+  unicast power On first, requested look last. Pending remains asserted between
+  stages; a failed look reports action failure while preserving the honest
+  optimistic On state.
+- Aputure configuration now starts at Composition Data Get instead of skipping
+  directly to AppKey Add. The runtime reassembles authenticated segmented
+  device-key replies, parses the reported vendor model, persists it before use,
+  and automatically selects MC Pro `0x03F6:0x1000` or Ace/Pano
+  `0x0211:0x0000`. Exact Ace/Pano names still come from a recognized advertised
+  product label because those fixtures share one composition tuple. Manual
+  identity remains only an unsupported/malformed-composition recovery path.
+- Native tests passed 87/87. The complete `ui_sim` traversal passed, including
+  interactive RGB preview and save under normal refresh ticks. Full Montserrat
+  `bleep` compiled at 141,428 bytes static RAM (43.2%) and 1,930,326 bytes flash
+  (61.4%). The final identity-corrected image was uploaded to the configured
+  `/dev/cu.usbserial-211240` and reset the panel without erasing NVS. The
+  integrated composition path, MC Pro RGB final output, and sequence preview
+  still require physical observation.
+- Corrected the untouched RGB default from white/zero saturation to red at
+  100% saturation across normalized light state, Aputure, Zhiyun X60RGB, the
+  shared control shell, and the sequence picker. Previously saved RGB values
+  still derive and restore their actual saturation. Native tests remain 87/87,
+  the complete `ui_sim` traversal passed, and `bleep` compiled at 141,428 bytes
+  static RAM (43.2%) and 1,930,324 bytes flash (61.4%). The image uploaded
+  successfully to `/dev/cu.usbserial-211240` without erasing NVS.
+- Corrected Aputure/amaran control-screen entry when the remembered state is
+  Off. The screen still restores the remembered sliders, but now sends only an
+  explicit per-node Off after the proxy becomes ready; it no longer transmits
+  a look packet that wakes the fixture while the button continues to display
+  **Turn On**. If the remembered state is On, entry still reapplies its look.
+  Native 87/87 and the complete `ui_sim` traversal pass. `bleep` compiled at
+  141,428 bytes static RAM (43.2%) and 1,930,562 bytes flash (61.4%), then
+  uploaded successfully without erasing NVS; physical confirmation on the
+  Ace/Pano-class fixture remains required.
+- Scene light authoring now resolves capabilities from each saved Zhiyun
+  fixture instead of the shared driver's catalog-wide capability superset.
+  MOLUS X100 therefore retains the unified light editor but exposes only CCT
+  and brightness, while MOLUS X60RGB retains both CCT and RGB. Unknown Zhiyun
+  identities fail conservatively to CCT-only. Native tests passed 88/88 and the
+  complete `ui_sim` traversal passed with an interaction assertion that rejects
+  an RGB editor for X100 while preserving X60RGB. Full Montserrat `bleep` built
+  with 141,428 bytes static RAM (43.2%) and 1,930,924 bytes flash (61.4%), then
+  uploaded successfully to `/dev/cu.usbserial-211240` without erasing NVS.
+- Added bounded Scene diagnostics for stored step values, per-target
+  acquisition/readiness, dispatch results, confirmation, and the exact failing
+  step. A live Sequence 3 trace with four lights reached shared readiness in
+  8.2 seconds after one recovered direct-connect miss, then completed two full
+  Start/Stop cycles without a software failure. Aputure targets 19 and 18 used
+  distinct unicasts `0x000B` and `0x000A`; both Zhiyun actions reported
+  correlated confirmation. Native tests passed 88/88. Full Montserrat `bleep`
+  built with 141,428 bytes static RAM (43.2%) and 1,932,130 bytes flash (61.4%)
+  and uploaded successfully without erasing NVS. Physical output confirmation
+  for all four fixtures is still required because dispatch/confirmation alone
+  is not proof of the requested optical state.
+- Corrected the retained/direct Zhiyun reconnect path after the operator
+  observed X100 fail its first opening and connect on the second while X60RGB
+  remained available through the shared proxy. Saved-target Resume and Retry
+  now preserve the persisted peer instead of entering the onboarding scan path,
+  and a failed blind direct attempt falls back to advertisement scanning after
+  one miss instead of three. Native tests passed 89/89, including the new
+  one-miss scan-fallback regression. Full Montserrat `bleep` built with 141,428
+  bytes static RAM (43.2%) and 1,932,346 bytes flash (61.4%) and uploaded to
+  `/dev/cu.usbserial-211240` without erasing NVS. A cold first-opening X100
+  reconnect remains to be confirmed physically.
+
+### 2026-08-11: Light/mesh review corrections
+
+- Live Aputure diagnostics separated a 43.6-second wait for the reset fixture's
+  first compatible advertisement from the PB-GATT exchange, which completed in
+  about 1.6 seconds. The actual completion failure was the expected fixture
+  reboot followed by a 584 ms direct-connect miss: the runtime incorrectly
+  rolled back immediately instead of waiting for the provisioned proxy.
+- A single stable Aputure or Zhiyun candidate now auto-selects after a 750 ms
+  discovery-settling window without displaying a one-row picker. Multiple
+  candidates retain the stable explicit picker. Immediate auto-selection
+  failure exposes the row for manual retry, and failed attempts clear stale
+  candidates before scanning again.
+- Aputure now distinguishes `Connecting to light`, PB-GATT `Provisioning`, and
+  `Configuring mesh`. PB-GATT has a 30-second deadline. After provisioning, an
+  expected reboot/connect miss preserves the provisional transaction, scans for
+  the exact address or this mesh's standard Network ID, and resumes
+  configuration through that proxy. A 60-second overall configuration deadline
+  rolls back the provisional node and unicast allocation instead of waiting
+  forever.
+- Entering the unified Aputure control applies the displayed default look as
+  intended. If the fixture was Off, the same per-node transaction follows the
+  look with an explicit Off and keeps only that session pending, so opening the
+  screen or changing look controls does not leave an Off fixture powered On.
+- Fixed request ownership for sequence cancellation. `DeviceManager` now
+  records the request ID that actually created each driver's asynchronous
+  pending transaction. Removing a command that is still queued no longer
+  cancels an unrelated manual transaction on the same fixture.
+- Mesh onboarding rollback now persists a complete replacement blob before
+  publishing it live. A failed rollback save retains the snapshot and pending
+  add for retry instead of discarding recovery state and allowing a phantom
+  node or consumed unicast address to return after reboot. Early Zhiyun PB-GATT
+  disconnects return to the picker rather than remaining at Idle.
+- Zhiyun post-provision scanning now accepts the exact selected address/type or
+  a standards Mesh Proxy Network ID matching `k3(Network Key)`. Arbitrary
+  same-model proxies are ignored. Physical rotating-address, cross-mesh, and
+  competing-panel behavior remains unverified.
+- Removed the superseded Aputure and Zhiyun control widget trees. Their UI
+  modules now own onboarding only; Ready uses the single capability-driven
+  light shell. Home Assistant lights also skip construction of the generic
+  entity screen, while non-light HA domains keep it.
+- Native passed 86/86. The complete `ui_sim` traversal and screenshots passed,
+  including candidate scrolling/tapping during refresh and Aputure CCT/RGB,
+  single-candidate auto-selection, X100, X60RGB, and HA power-only shared-shell
+  views. Simulator LVGL reported
+  42,848 bytes free after maximum-device initialization, 23,576 after sequence
+  Stop/settings, and 26,480 after remove refresh. The full Montserrat `bleep`
+  profile built with 141,420 / 327,680 bytes static RAM and 1,927,556 /
+  3,145,728 bytes flash. The image uploaded to the configured
+  `/dev/cu.usbserial-211240`; all written-region hashes verified and the board
+  hard-reset. NVS was not erased or factory-reset.
+- Still unverified: physical fixture selection, early-disconnect recovery,
+  rollback under real NVS failure, cross-mesh rejection, reboot/fallback,
+  two-panel/two-fixture behavior, all four Aputure fixtures together,
+  Aputure/Zhiyun coexistence, phone/captive Portal behavior, and soak testing.
+
+### 2026-08-10: Mesh isolation safety and recovery corrections
+
+- Follow-up correction (ADR-041): comparison with the working Studio Lighter
+  source showed ordinary `26 8D`/`26 8C` power is addressed to each light's
+  persisted unicast node. The earlier failed private-group experiment did not
+  disprove this route. Aputure Turn On/Off and compound **Set look + On** are
+  restored, and ordinary power/CCT/RGB now share the target unicast address.
+  `26 0E` is a captured group power-on command, not a read-only status query;
+  the five-second automatic write and setup/config refresh writes were removed.
+  Refresh is now a safe no-write operation pending a verified query.
+- Recovery identification now offers and persists exact Ace 25c, Pano 60c,
+  Pano 120c, and MC Pro names. Pano aliases share the known Amaran tuple without
+  collapsing their display name to Ace. Native verification passes 78/78,
+  including the exact encrypted source-1 to destination-2 power packet vector
+  derived from the desktop reference. The complete `ui_sim` capture traversal
+  passes with 42,848 bytes free after maximum-device initialization, 23,584
+  bytes after sequence Stop/settings, and 26,472 after remove refresh. The full
+  Montserrat `bleep` profile builds with 140,468 / 327,680 bytes static RAM and
+  1,918,196 / 3,145,728 bytes flash. Flash and four-fixture hardware results
+  are recorded below when completed. The approved upload attempt found
+  `/dev/cu.usbserial-211240` initially, but the port disappeared before esptool
+  could open it and did not re-enumerate during the following 30 seconds; the
+  two remaining USB modem ports belong to NocFree peripherals and were not
+  guessed as targets.
+
+- Historical firmware, the desktop reference, and the retained hardware record
+  confirm that Aputure vendor power is physically effective only at common group
+  `0xC000`; unicast and private-group writes were inert on Ace 25c and MC Pro.
+  Ordinary Aputure Turn On/Off and compound look-and-On capabilities are now
+  hidden rather than presenting mesh-wide power as independent control. The
+  shared shell hides its power button and sequence authoring exposes per-member
+  **Set look**; Zhiyun retains confirmed **Set look + On** and generated Off.
+- Scene commands now retain their assigned request ID. Stopping an in-flight
+  Start removes that exact queued/result request and cancels the driver's
+  asynchronous transaction before generated Stop begins. Zhiyun clears its
+  selector-correlated pending operation and compound stage so a late look reply
+  cannot schedule power-on after Stop. Result lookup now preserves unrelated
+  replies, and a full fire-and-forget result queue evicts its oldest entry so a
+  newly dispatched scene result cannot be silently lost.
+- Shared-mesh scan fallback now accepts the BLE address of any persisted member,
+  after the preferred direct gateway attempts fail. A powered-off Zhiyun member
+  therefore cannot prevent fallback through a live Ace/MC proxy. Exact-address
+  matching still excludes unrelated Mesh Proxy advertisers.
+- A failed unconfigured Aputure node keeps exact Ace 25c/MC Pro identification
+  available after configuration rejection. Correcting the tuple also corrects
+  an automatically managed model name while preserving custom user names.
+  Temporary global `CORE_DEBUG_LEVEL=4` was removed from normal firmware builds.
+- Native verification passed 78/78, including in-flight compound Stop
+  cancellation, exact result lookup under a full queue, Aputure capability
+  boundaries, repeatable model assignment, and known-member gateway address
+  matching. The `ui_sim` profile built and its complete capture traversal
+  passed; LVGL reported 42,848 bytes free after maximum-device initialization
+  and 23,544 bytes free after sequence Stop/settings. The full Montserrat
+  `bleep` profile built with 140,460 / 327,680 bytes static RAM and 1,917,454 /
+  3,145,728 bytes flash. After the panel was reconnected, the approved upload to
+  the explicitly selected `/dev/cu.usbserial-211240` port succeeded; every
+  written region passed hash verification and the board hard-reset through RTS.
+  Hardware gateway/model recovery checks remain pending.
 
 ### 2026-08-11: Main-only owner's guide refresh
 
@@ -387,6 +577,181 @@ short, factual, and reproducible.
   figures. The full Montserrat `bleep` profile also built successfully with
   140,340 / 327,680 bytes static RAM and 1,906,428 / 3,145,728 bytes flash.
   Firmware behavior did not change, so no board upload was attempted.
+### 2026-08-09: Independent mesh lights, common controls, and compound looks
+
+- Superseded ordinary common-group Aputure power under ADR-039. On, Off,
+  refresh, CCT/tint/brightness, and RGB now use the selected instance's
+  persisted control group; source-addressed status mutates only that session.
+  `0xC000` remains reserved for a future explicit mesh/group action. Zhiyun
+  keeps its persisted selector, reply correlation, gateway attachment retry,
+  and the same one-proxy cross-brand transport.
+- Added normalized `LightControlState` publication and one capability-driven
+  control shell. Simulator captures cover Aputure CCT/tint and RGB, X100
+  CCT-only, X60RGB CCT/RGB, and Home Assistant light power-only states,
+  including pending/error presentation.
+- Appended compound CCT/RGB-and-On commands. Scene validation requires color
+  plus Turn On, the picker exposes one **Set look + On** action at 5600 K/50%
+  brightness/neutral tint, editing restores stored values, and generated Stop
+  creates one reverse-order Turn Off. Aputure keeps only the target session
+  pending across its two writes; Zhiyun waits for correlated look confirmation
+  before power confirmation. No old two-step scene migration was added for the
+  clean-storage baseline.
+- Host verification: native tests passed 76/76; `ui_sim` compiled and its full
+  capture traversal completed. Simulator LVGL telemetry reported 42,848 bytes
+  free after maximum-device initialization and 23,512 bytes free after sequence
+  Stop/settings. The full Montserrat `bleep` profile built successfully with
+  140,452 / 327,680 bytes static RAM and 1,913,148 / 3,145,728 bytes flash.
+  This does not replace the existing pre-Wi-Fi hardware guidance of roughly
+  40 KiB free heap and more than 36 KiB largest allocation.
+- With explicit approval, the full `bleep` image uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset through RTS. Fixture validation remains Blocked/pending:
+  no physical light output was observed. The required exact-model matrix is
+  amaran Ace 25c, Pano 60c, Pano 120c, Aputure MC Pro, Zhiyun MOLUS
+  X100, and X60RGB. Run factory-reset/reconnect and capability boundaries per
+  model; 30 alternating per-target power/distinct-look isolation commands;
+  every available same-brand and cross-brand pair through each gateway plus
+  gateway loss/fallback; four logical mesh targets with camera/recorder/HA;
+  compound Start/Stop failure/retry/reboot/scene-switch cases; then at least
+  100 mixed cycles over two hours and 20 reboot/reconnect cycles. Record heap
+  minima/largest block, latency, destination or selector, state quality, and
+  physical output. An unavailable model stays Blocked and is not inferred.
+- Live MC Pro onboarding after that upload reached pending mesh configuration
+  with `Unknown vendor model`: its provisioning advertisement did not use the
+  previously recognized literal `Mesh Device`, so the pending node had no
+  vendor tuple. The failure screen now offers an explicit **MC PRO** recovery
+  action. Confirming it transactionally persists the hardware-verified
+  `0x03F6:0x1000` identity and resumes configuration without reprovisioning or
+  guessing for other fixtures. Native tests passed 76/76; the full simulator
+  traversal and new `20da_aputure_mc_pro_identify.png` capture passed. The full
+  profile built with 140,452 / 327,680 bytes static RAM and 1,913,726 /
+  3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; all written regions passed hash verification and
+  the panel hard-reset. Live MC Pro recovery/configuration remains to be
+  confirmed by the operator.
+- Live follow-up found that switching the shared light shell between CCT and
+  RGB restored the saved sliders on screen but did not dispatch that recalled
+  look until a slider moved. Tab selection now marks the restored look dirty
+  and sends it through the same 350 ms debounce. Simulator assertions cover
+  both CCT-to-RGB and RGB-to-CCT application. Native tests passed 76/76 and the
+  full simulator traversal passed. The full profile built with 140,452 /
+  327,680 bytes static RAM and 1,913,752 / 3,145,728 bytes flash, then uploaded
+  successfully to `/dev/cu.usbserial-211240`; all regions passed hash
+  verification and the panel hard-reset.
+- The MC Pro recovery also exposed that Aputure pairing updates left the
+  registry record at the generic `Aputure Light` catalog name. Confirmed vendor
+  tuples now assign the exact fixture name (`Aputure MC Pro` or
+  `amaran Ace 25c`) and persist the proxy address metadata when adding or
+  recovering a fixture. An operator-created custom display name is preserved.
+  The recovery screen now states `Identify fixture` / `Confirm Aputure MC Pro`
+  instead of presenting `Unknown vendor model` beside an ambiguous `MC PRO`
+  button. Confirmation resumes at the already-reached vendor-bind stage and
+  publishes the model-name update immediately while configuration continues.
+  Native tests passed 76/76 and the full simulator traversal passed. The full
+  profile built with 140,452 / 327,680 bytes static RAM and 1,913,968 /
+  3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset. Live confirmation and configuration completion remain
+  to be observed on the MC Pro.
+- The full `bleep` profile now compiles with Arduino/NimBLE debug logging. The
+  Aputure runtime additionally records the matched provisioning/proxy
+  advertisement address, address type, and device name; the inferred vendor
+  tuple after provisioning; and every explicit MC Pro identification outcome
+  and resumed configuration stage. This is diagnostic evidence only and does
+  not elevate an ACK or connection to physical fixture proof.
+- The first live debug capture proved that explicit MC Pro confirmation saved
+  `0x03F6:0x1000` and resumed at vendor bind, but the fixture returned Config
+  Model App Status `0x02` (`Invalid Model`). A subsequent retry raced the still
+  connected NimBLE client, left a stale Proxy Data In pointer, and crashed in
+  `NimBLERemoteValueAttribute::writeValue`. Retry on an intact proxy now
+  restarts the configuration transaction in place instead of reconnecting the
+  live client, and raw configuration Proxy PDUs are logged for the next
+  composition-driven model-selection implementation. That implementation and
+  another live capture are still required before the MC Pro gate can pass. The
+  corrected debug profile built with 140,460 / 327,680 bytes static RAM and
+  1,954,444 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset.
+- A fresh live debug capture then provisioned another one-element Aputure node
+  at unicast `0x0005`. The PB-GATT advertisement at
+  `a4:c1:38:50:c6:22` had an empty GAP name; its service data exposed
+  `400U5-50C62200fp`. The firmware therefore persisted company/model as zero,
+  AppKey Add completed with status zero, and configuration stopped at the
+  explicit unknown-vendor gate before any confirmation was pressed. The
+  corrected retry build did not crash during this capture. The service-data
+  identity and composition response now need to replace GAP-name inference.
+- The operator confirmed that this empty-name fixture is an amaran Ace 25c and
+  observed the mesh reject the UI's hardcoded MC Pro bind. Unknown-fixture
+  recovery now presents separate **Ace 25c** and **MC Pro** choices; selecting
+  Ace persists its confirmed `0x0211:0x0000` tuple and exact fixture name.
+  Pano models remain blocked rather than inheriting either tuple. The complete
+  simulator traversal passed and the round-screen capture fits both choices.
+  The debug profile built with 140,468 / 327,680 bytes static RAM and
+  1,954,734 / 3,145,728 bytes flash, then uploaded successfully to
+  `/dev/cu.usbserial-211240`; every written region passed hash verification and
+  the panel hard-reset. Live Ace bind/configuration remains to be confirmed.
+- The operator then reported a panel crash during the Ace recovery attempt.
+  Opening the monitor rebooted the panel before the original panic could be
+  captured; the post-reboot trace showed only an Aputure proxy scan and no
+  `identify_requested` event or new panic. Because pending device-add state is
+  volatile while the provisioned mesh node is durable, that reboot left the
+  current reproduction unable to return to the model chooser without a
+  deliberate recovery/reset step. Do not mark the Ace recovery safe until the
+  exact tap-to-panic interval is captured and decoded.
+- A later live control capture did not reproduce the crash: persisted instance
+  3 connected to the shared proxy and reached protocol-ready, while the MC Pro
+  continued to respond physically and the Ace did not. Framework logs showed
+  GATT writes but not their mesh destination or access payload. Debug output
+  now inventories each persisted Aputure node and logs every application
+  access transmit (destination/sequence/payload/result) plus every decrypted
+  access reply (source/destination/sequence/payload) for exact correlation.
+- Correlated hardware evidence then showed MC Pro instance 2 at unicast
+  `0x0004` / private group `0xC003` and Ace instance 3 at unicast `0x0006` /
+  private group `0xC005`. Ace control and polling writes were sent only to
+  `0xC005` and completed at GATT, but produced no decrypted access reply or
+  physical response; the MC Pro remained functional. This rules out accidental
+  fan-out for that reproduction and isolates the failure to the Ace's private
+  subscription or command handling.
+- Configuration ACK handling previously matched only source, destination, and
+  opcode. Repeated Mesh Model Subscription Status messages can share opcode
+  `0x801F`, so a retransmitted common-group ACK could incorrectly satisfy the
+  following private-group step. Status correlation now also requires the exact
+  element, AppKey/group, SIG/vendor model, company, and model fields. The mesh
+  configuration revision is 3 so persisted nodes re-run the corrected bind and
+  subscription transaction without an NVS reset or re-provisioning.
+- Native passed 76/76, including duplicated-group and wrong-element rejection.
+  The full Montserrat `bleep` profile built with 140,468 / 327,680 bytes static
+  RAM (42.9%) and 1,955,840 / 3,145,728 bytes flash (62.2%), then uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and hard reset. Exact Ace
+  subscription ACKs and physical power/color behavior remain the active
+  hardware gate; do not claim Ace 25c support until they pass.
+- The revision-3 Ace refresh then completed on hardware with exact success
+  correlation for segmented AppKey Add, vendor bind, common vendor
+  subscription, private `0xC005` vendor subscription, Generic OnOff bind, and
+  Generic OnOff subscription. Subsequent vendor power Get/On/Off writes to
+  `0xC005` still produced no authenticated access reply or physical response.
+  This reproduces the existing protocol record that dedicated-group look
+  writes work but this fixture's captured `0x26` power path responds only on
+  the common group. Therefore correct subscription routing does not satisfy
+  ADR-039's independent physical-power requirement; the protocol/behavior gate
+  remains blocked rather than inferred from configuration ACKs.
+- Source-history comparison identified the regression in `48b358c`: the
+  unified-light tranche changed vendor power Set/Get and the power stage of
+  compound look+On from the physically verified common group to each fixture's
+  private look group. The desktop mesh probe and immediately preceding
+  firmware both use private groups for CCT/RGB/look and `0xC000` for physical
+  power/status. That proven split is restored while retaining the unified UI,
+  shared proxy, exact model naming, and strict configuration-status matching.
+- The restored firmware produced authenticated common-group power replies from
+  both current nodes (`0x0004` and `0x0006`) while look writes remained isolated
+  to `0xC003` or `0xC005`. Native passed 76/76; full `bleep` used 140,468 bytes
+  static RAM and 1,955,854 bytes flash and uploaded with hash verification.
+  The operator confirmed both the Ace and MC Pro physically turned Off and On.
+  This restores the known-good baseline and proves the Ace is healthy, but the
+  simultaneous output change also confirms it does not itself satisfy
+  independent physical power; that remains a separate hardware-backed design
+  requirement.
+
 ### 2026-08-09: Aputure Light control-state synchronization
 
 - Aputure Light vendor status handling currently confirms power only; it cannot
@@ -4045,3 +4410,37 @@ Record values with the exact build environment and commit/worktree state.
   full `bleep` profile built with 140,364 bytes static RAM (42.8%) and 1,901,478
   bytes flash (60.4%), then uploaded to `/dev/cu.usbserial-211240`; all written
   regions passed hash verification and the board hard-reset.
+### 2026-08-11: Transactional mesh creation and explicit light selection
+
+- Ported only the still-relevant transaction/selection concepts from historical
+  commit `8532ef3`; no wholesale cherry-pick was used. Current `panel_identity`,
+  `Bleep-Setup-XXXXX`, offline Portal/security repairs, Aputure Light paths,
+  shared Aputure/Zhiyun mesh transport, per-fixture unicast control, and compound
+  scene behavior remain intact. `bdc9aaa` and the old identity/Portal code were
+  not ported. The pre-existing `stash@{0}` safety stash remains untouched.
+- Missing mesh initialization now fills Network Key and AppKey in temporary
+  state through an injectable random seam, persists the existing schema before
+  publishing it, and leaves live caller state unchanged on entropy or save
+  failure. No panel identity participates in key generation.
+- Fresh Aputure Light and Zhiyun adds now expose a four-entry scrollable picker
+  with advertised name/model, address suffix, and RSSI. Address plus address
+  type owns a stable selection token; duplicate updates stay in place and a
+  stronger candidate replaces only the weakest full-list entry. Saved targets
+  continue automatic reconnect. Immediate selection failure, connect/
+  provisioning/configuration failure, competing loss, and Back/cancel return to
+  Scanning without a normal registry commit. Provisional node/unicast state is
+  restored without decreasing reserved sequence high-water.
+- Native passed 84/84. The complete `ui_sim` traversal passed, including a real
+  four-row candidate interaction that retained identical LVGL row objects over
+  750 ms of normal refresh ticks, scrolled the list, tapped a stable-token row,
+  and canceled the pending add. The full Montserrat `bleep` profile built with
+  141,524 / 327,680 bytes static RAM (43.2%) and 1,931,720 / 3,145,728 bytes
+  flash (61.4%). Per repository policy, alternate profiles remain CI-owned.
+- The configured `/dev/cu.usbserial-211240` target was present. The validated
+  `bleep` image uploaded successfully, every written-region hash verified, and
+  the ESP32-C3 hard-reset. NVS at `0x9000` was not erased or factory-reset.
+- Still unverified: two physical panels/two fixtures, phone and captive-Portal
+  behavior, physical fixture selection and competing provisioning, cross-mesh
+  rejection, reboot/fallback proxy ownership, all four Aputure fixtures,
+  Aputure/Zhiyun coexistence, and the two-hour soak. Build, simulator, ACK, and
+  proxy evidence do not satisfy these gates.

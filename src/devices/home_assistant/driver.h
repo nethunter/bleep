@@ -15,6 +15,8 @@ class HomeAssistantDriver : public DeviceDriver {
   CommandStatus dispatch(const DeviceCommand& command) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
+  bool lightControlState(InstanceId instanceId,
+                         LightControlState& state) const override;
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
 
  private:

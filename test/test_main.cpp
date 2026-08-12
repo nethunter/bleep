@@ -7,7 +7,10 @@
 
 #include "core/ble/ble_central.h"
 #include "core/ble/fake_ble_backend.h"
+#include "core/ble/onboarding_candidates.h"
+#include "core/ble/onboarding_auto_select.h"
 #include "core/config_store.h"
+#include "core/command_traits.h"
 #include "core/device_driver.h"
 #include "core/device_manager.h"
 #include "core/driver_catalog.h"
@@ -44,6 +47,7 @@
 #include "devices/zhiyun_x100/state.h"
 #include "portal_scene_parser.h"
 #include "core/mesh/provisioning_policy.h"
+#include "core/mesh/mesh_initializer.h"
 
 using namespace shark;
 
@@ -405,6 +409,13 @@ class FakeDriver : public studio::DeviceDriver {
       studio::DriverId id = studio::DriverId::SharkNanoII)
       : id_(id) {}
   studio::DriverId driverId() const override { return id_; }
+  studio::InstanceProfile instanceProfile(
+      const studio::DeviceRecord&,
+      const studio::InstanceProfile& catalogProfile) const override {
+    studio::InstanceProfile profile = catalogProfile;
+    profile.capabilities &= ~capabilityClearMask;
+    return profile;
+  }
   studio::BleSlotKey bleSlotKey(
       const studio::DeviceRecord& record) const override {
     if (noBleSlot || id_ == studio::DriverId::HomeAssistant) return {};
@@ -463,12 +474,20 @@ class FakeDriver : public studio::DeviceDriver {
   void loop() override { ++loopCount; }
   studio::CommandStatus dispatch(const studio::DeviceCommand& command) override {
     lastCommand = command.type;
+    lastValue0 = command.value0;
+    lastValue1 = command.value1;
+    lastValue2 = command.value2;
     ++dispatchCount;
     if (failCommandCount > 0 && command.type == failCommand) {
       --failCommandCount;
       return studio::CommandStatus::Unavailable;
     }
+    if (command.type == pendingCommand) commandPending = true;
     return studio::CommandStatus::Succeeded;
+  }
+  void cancelPendingCommand(studio::InstanceId) override {
+    ++cancelPendingCount;
+    commandPending = false;
   }
   studio::DeviceRuntimeState runtimeState(studio::InstanceId instanceId) const override {
     studio::DeviceRuntimeState state;
@@ -488,8 +507,33 @@ class FakeDriver : public studio::DeviceDriver {
   void forgetPairing(const studio::DeviceRecord&) override {
     ++forgetPairingCount;
   }
-  void cancelOnboarding(const studio::DeviceRecord&) override {
+  bool cancelOnboarding(const studio::DeviceRecord&) override {
     ++cancelOnboardingCount;
+    onboardingScanning = false;
+    return cancelOnboardingSucceeds;
+  }
+  size_t onboardingCandidateCount(studio::InstanceId) const override {
+    return onboardingCandidateAvailable ? 1 : 0;
+  }
+  bool onboardingCandidate(studio::InstanceId, size_t index,
+                           studio::OnboardingCandidate& candidate) const override {
+    if (!onboardingCandidateAvailable || index != 0) return false;
+    candidate = studio::OnboardingCandidate{};
+    candidate.token = 73;
+    std::strcpy(candidate.name, "Test Light");
+    std::strcpy(candidate.address, "11:22:33:44:55:66");
+    candidate.rssi = -48;
+    return true;
+  }
+  bool selectOnboardingCandidate(studio::InstanceId, uint32_t token) override {
+    if (token != 73 || !onboardingCandidateAvailable) return false;
+    if (onboardingSelectionFails) {
+      onboardingScanning = true;
+      return false;
+    }
+    onboardingScanning = false;
+    onboardingSelected = true;
+    return true;
   }
   bool consumePairingUpdate(studio::InstanceId,
                             studio::DeviceRecord& record) override {
@@ -513,6 +557,8 @@ class FakeDriver : public studio::DeviceDriver {
   uint32_t sharedBleGroup = 0;
   studio::DriverId sharedBleFamily = studio::DriverId::Unknown;
   bool commandPending = false;
+  studio::CommandType pendingCommand = studio::CommandType::Refresh;
+  int cancelPendingCount = 0;
   bool recordingConfirmed = false;
   bool recording = false;
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
@@ -530,9 +576,18 @@ class FakeDriver : public studio::DeviceDriver {
   int failCommandCount = 0;
   int forgetPairingCount = 0;
   int cancelOnboardingCount = 0;
+  bool cancelOnboardingSucceeds = true;
+  bool onboardingCandidateAvailable = false;
+  bool onboardingSelectionFails = false;
+  bool onboardingScanning = true;
+  bool onboardingSelected = false;
   bool pairingUpdatePending = false;
   bool pairingValue = true;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
+  uint32_t capabilityClearMask = 0;
+  int32_t lastValue0 = 0;
+  int32_t lastValue1 = 0;
+  int32_t lastValue2 = 0;
 
  private:
   studio::DriverId id_;
@@ -1028,6 +1083,10 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::capabilityBit(studio::Capability::SetLightCct) |
           studio::capabilityBit(studio::Capability::SetLightRgb),
       aputure->capabilities);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::TurnOn) |
+          studio::capabilityBit(studio::Capability::TurnOff),
+      aputure->capabilities);
   const studio::DriverDescriptor* zhiyun =
       studio::DriverCatalog::find(studio::DriverId::ZhiyunLight);
   TEST_ASSERT_NOT_NULL(zhiyun);
@@ -1043,6 +1102,12 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_BITS_LOW(
       studio::capabilityBit(studio::Capability::SetLightTint),
       zhiyun->capabilities);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(zhiyun_x100::MolusModel::X100),
+      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X100")));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
+      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X60RGB")));
   const studio::DriverDescriptor* goPro =
       studio::DriverCatalog::find(studio::DriverId::GoPro);
   TEST_ASSERT_NOT_NULL(goPro);
@@ -1968,7 +2033,7 @@ void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
   LegacyBackend legacy;
   FakeDriver cameraDriver(studio::DriverId::CanonBle);
   FakeDriver recorderDriver(studio::DriverId::TascamX8);
-  FakeDriver lightDriver(studio::DriverId::AputureLight);
+  FakeDriver lightDriver(studio::DriverId::ZhiyunLight);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   studio::DeviceDriver* drivers[] = {&cameraDriver, &recorderDriver,
                                      &lightDriver, &homeAssistantDriver};
@@ -1989,7 +2054,7 @@ void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
                                    recorderId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(devices.add(studio::DriverId::AputureLight, "Light",
+      static_cast<int>(devices.add(studio::DriverId::ZhiyunLight, "Light",
                                    lightId)));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
@@ -2333,6 +2398,97 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
   TEST_ASSERT_TRUE(manager.popResult(result));
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Disabled),
                         static_cast<int>(result.status));
+}
+
+void test_manager_uses_per_instance_driver_capabilities() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
+  zhiyun.capabilityClearMask =
+      studio::capabilityBit(studio::Capability::SetLightRgb);
+  studio::DeviceDriver* drivers[] = {&zhiyun};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::ZhiyunLight,
+                                   "MOLUS X100", id)));
+  const studio::InstanceProfile profile = manager.profile(id);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::SetLightCct),
+      profile.capabilities);
+  TEST_ASSERT_BITS_LOW(
+      studio::capabilityBit(studio::Capability::SetLightRgb),
+      profile.capabilities);
+}
+
+void test_manager_keeps_latest_tracked_result_when_result_queue_is_full() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", instanceId)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
+
+  studio::DeviceCommand command;
+  command.instanceId = instanceId;
+  command.type = studio::CommandType::Refresh;
+  for (size_t i = 0; i < CONFIG_DEVICE_COMMAND_QUEUE_SIZE; ++i) {
+    TEST_ASSERT_TRUE(manager.enqueue(command));
+    manager.loop();
+  }
+
+  uint32_t trackedRequestId = 0;
+  TEST_ASSERT_TRUE(manager.enqueue(command, &trackedRequestId));
+  manager.loop();
+  studio::CommandResult result;
+  TEST_ASSERT_TRUE(manager.takeResult(trackedRequestId, result));
+  TEST_ASSERT_EQUAL_UINT32(trackedRequestId, result.requestId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
+                        static_cast<int>(result.status));
+}
+
+void test_manager_cancels_only_the_matching_dispatched_request() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver;
+  driver.pendingCommand = studio::CommandType::Refresh;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", instanceId)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
+
+  studio::DeviceCommand command;
+  command.instanceId = instanceId;
+  command.type = studio::CommandType::Refresh;
+  uint32_t dispatchedRequest = 0;
+  TEST_ASSERT_TRUE(manager.enqueue(command, &dispatchedRequest));
+  manager.loop();
+  TEST_ASSERT_TRUE(driver.commandPending);
+
+  uint32_t queuedRequest = 0;
+  TEST_ASSERT_TRUE(manager.enqueue(command, &queuedRequest));
+  TEST_ASSERT_TRUE(manager.cancelCommand(queuedRequest, instanceId));
+  TEST_ASSERT_EQUAL_INT(0, driver.cancelPendingCount);
+  TEST_ASSERT_TRUE(driver.commandPending);
+
+  TEST_ASSERT_TRUE(manager.cancelCommand(dispatchedRequest, instanceId));
+  TEST_ASSERT_EQUAL_INT(1, driver.cancelPendingCount);
+  TEST_ASSERT_FALSE(driver.commandPending);
 }
 
 void test_manager_routes_to_canon_driver() {
@@ -2840,26 +2996,39 @@ void test_generated_stop_mapping_order_and_capacity() {
   record.startSteps[5] =
       studio::makeActionStep(5, studio::CommandType::Activate);
   record.startSteps[6] =
-      studio::makeActionStep(6, studio::CommandType::SetLightCct, 4300, 50);
+      studio::makeActionStep(6, studio::CommandType::SetLightCctAndOn, 4300, 50);
   record.startSteps[7] =
-      studio::makeActionStep(7, studio::CommandType::SetLightRgb, 0xff00ff, 75);
+      studio::makeActionStep(7, studio::CommandType::SetLightRgbAndOn, 0xff00ff, 75);
   studio::generateStopSteps(record);
 
-  TEST_ASSERT_EQUAL_UINT8(6, record.stopCount);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Activate),
-                        static_cast<int>(record.stopSteps[0].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Press),
-                        static_cast<int>(record.stopSteps[1].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
-                        static_cast<int>(record.stopSteps[2].command));
-  TEST_ASSERT_EQUAL_INT32(1, record.stopSteps[2].value0);
+  TEST_ASSERT_EQUAL_UINT8(8, record.stopCount);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(record.stopSteps[0].command));
+  TEST_ASSERT_EQUAL_UINT32(7, record.stopSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(record.stopSteps[1].command));
+  TEST_ASSERT_EQUAL_UINT32(6, record.stopSteps[1].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Activate),
+                        static_cast<int>(record.stopSteps[2].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::Press),
                         static_cast<int>(record.stopSteps[3].command));
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
-                        static_cast<int>(record.stopSteps[4].type));
-  TEST_ASSERT_EQUAL_UINT32(750, record.stopSteps[4].waitMs);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+                        static_cast<int>(record.stopSteps[4].command));
+  TEST_ASSERT_EQUAL_INT32(1, record.stopSteps[4].value0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
                         static_cast<int>(record.stopSteps[5].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(record.stopSteps[6].type));
+  TEST_ASSERT_EQUAL_UINT32(750, record.stopSteps[6].waitMs);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(record.stopSteps[7].command));
+
+  const uint32_t cctAndOn = studio::requiredCapabilities(
+      studio::CommandType::SetLightCctAndOn);
+  TEST_ASSERT_EQUAL_HEX32(
+      studio::capabilityBit(studio::Capability::SetLightCct) |
+          studio::capabilityBit(studio::Capability::TurnOn),
+      cctAndOn);
 
   for (uint8_t i = 0; i < CONFIG_MAX_SCENE_STEPS; ++i) {
     record.startSteps[i] =
@@ -2948,12 +3117,14 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(source.add("Press Record", id)));
   studio::SceneRecord* record = source.find(id);
   TEST_ASSERT_NOT_NULL(record);
-  record->startCount = 3;
+  record->startCount = 4;
   record->startSteps[0] =
-      studio::makeActionStep(2, studio::CommandType::SetLightCct, 5600, 72, -125);
+      studio::makeActionStep(2, studio::CommandType::SetLightCctAndOn, 5600, 72, -125);
   record->startSteps[1] = studio::makeWaitStep(500);
   record->startSteps[2] =
       studio::makeActionStep(3, studio::CommandType::RecordStart);
+  record->startSteps[3] = studio::makeActionStep(
+      4, studio::CommandType::SetLightRgbAndOn, 0x0000ff, 42, 0);
   record->stopMode = studio::SceneStopMode::Custom;
   record->stopCount = 2;
   record->stopSteps[0] =
@@ -2968,7 +3139,7 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_EQUAL_UINT32(1, restored.count());
   TEST_ASSERT_EQUAL_STRING("Press Record", restored.at(0)->name);
-  TEST_ASSERT_EQUAL_UINT8(3, restored.at(0)->startCount);
+  TEST_ASSERT_EQUAL_UINT8(4, restored.at(0)->startCount);
   TEST_ASSERT_EQUAL_UINT8(2, restored.at(0)->stopCount);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Custom),
                         static_cast<int>(restored.at(0)->stopMode));
@@ -2976,6 +3147,14 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_EQUAL_INT32(5600, restored.at(0)->startSteps[0].value0);
   TEST_ASSERT_EQUAL_INT32(72, restored.at(0)->startSteps[0].value1);
   TEST_ASSERT_EQUAL_INT32(-125, restored.at(0)->startSteps[0].value2);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightCctAndOn),
+      static_cast<int>(restored.at(0)->startSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightRgbAndOn),
+      static_cast<int>(restored.at(0)->startSteps[3].command));
+  TEST_ASSERT_EQUAL_INT32(0x0000ff, restored.at(0)->startSteps[3].value0);
+  TEST_ASSERT_EQUAL_INT32(42, restored.at(0)->startSteps[3].value1);
 
   backend.corruptLastByte();
   studio::SceneRegistry rejected;
@@ -3295,6 +3474,101 @@ void test_partial_start_failure_can_stop_and_restart() {
     scenes.loop(t);
   }
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::IdleArmed),
+                        static_cast<int>(scenes.progress().phase));
+}
+
+void test_scene_dispatches_persisted_rgb_look_without_cct_fallback() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver lightDriver(studio::DriverId::AputureLight);
+  studio::DeviceDriver* drivers[] = {&lightDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId lightId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::AputureLight,
+                                   "Aputure MC Pro", lightId)));
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Blue", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] = studio::makeActionStep(
+      lightId, studio::CommandType::SetLightRgbAndOn, 0x0000ff, 42, 0);
+  studio::generateStopSteps(record);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  for (uint32_t now = 0; now < 20; ++now) {
+    devices.loop();
+    scenes.loop(now);
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightRgbAndOn),
+      static_cast<int>(lightDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT32(0x0000ff, lightDriver.lastValue0);
+  TEST_ASSERT_EQUAL_INT32(42, lightDriver.lastValue1);
+}
+
+void test_stop_cancels_inflight_compound_light_action() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver lightDriver(studio::DriverId::ZhiyunLight);
+  lightDriver.pendingCommand = studio::CommandType::SetLightCctAndOn;
+  studio::DeviceDriver* drivers[] = {&lightDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId lightId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(
+          devices.add(studio::DriverId::ZhiyunLight, "Light", lightId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Light", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] = studio::makeActionStep(
+      lightId, studio::CommandType::SetLightCctAndOn, 5600, 50, 0);
+  studio::generateStopSteps(record);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  scenes.loop(0);
+  devices.loop();
+  scenes.loop(1);
+  TEST_ASSERT_TRUE(lightDriver.commandPending);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::RunningStart),
+                        static_cast<int>(scenes.progress().phase));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.stop()));
+  TEST_ASSERT_EQUAL_INT(1, lightDriver.cancelPendingCount);
+  TEST_ASSERT_FALSE(lightDriver.commandPending);
+
+  devices.loop();
+  scenes.loop(2);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
+                        static_cast<int>(lightDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Completed),
                         static_cast<int>(scenes.progress().phase));
 }
 
@@ -3750,6 +4024,31 @@ void test_tascam_reconnect_scans_after_one_direct_failure() {
   central.release(link);
 }
 
+void test_zhiyun_reconnect_scans_after_one_direct_failure() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  studio::ble::ConnectPolicy policy;
+  policy.directAttemptsBeforeScan = zhiyun_x100::kDirectAttemptsBeforeScan;
+  const studio::ble::LinkHandle link = central.acquire(delegate, policy);
+
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = link;
+  backend.emit(failed);
+  central.loop(1);
+  central.loop(1500);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(1501);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.release(link);
+}
+
 void test_ble_central_protocol_failure_can_stop_retry() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -3935,29 +4234,108 @@ void test_aputure_light_crypto_and_network_vectors() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(appKeyStatus), decoded.accessLength);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(
       appKeyStatus, decoded.access, decoded.accessLength);
+
+  const uint8_t mcComposition[] = {
+      0x02,0x00, 0xf6,0x03, 0x00,0x00, 0x00,0x00, 0x14,0x00, 0x0f,0x00,
+      0x00,0x00, 0x03,0x01, 0x00,0x00, 0x02,0x00, 0x00,0x10,
+      0xf6,0x03, 0x00,0x10};
+  aputure_light::CompositionVendorModel composition;
+  TEST_ASSERT_TRUE(aputure_light::parseCompositionVendorModel(
+      mcComposition, sizeof(mcComposition), composition));
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, composition.companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, composition.modelId);
+
+  const uint8_t aceComposition[] = {
+      0x02,0x00, 0x11,0x02, 0x00,0x00, 0x33,0x33, 0x69,0x00, 0x07,0x00,
+      0x00,0x00, 0x0a,0x01,
+      0x00,0x00, 0x02,0x00, 0x03,0x00, 0x00,0x10, 0x02,0x10,
+      0x04,0x10, 0x06,0x10, 0x07,0x10, 0x00,0x13, 0x01,0x13,
+      0x11,0x02, 0x00,0x00};
+  TEST_ASSERT_TRUE(aputure_light::parseCompositionVendorModel(
+      aceComposition, sizeof(aceComposition), composition));
+  TEST_ASSERT_EQUAL_HEX16(0x0211, composition.companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x0000, composition.modelId);
+  TEST_ASSERT_FALSE(aputure_light::parseCompositionVendorModel(
+      aceComposition, sizeof(aceComposition) - 1, composition));
+
+  const uint32_t compositionSequences[] = {0x3450, 0x3451, 0x3452};
+  aputure_light::NetworkPduBatch compositionBatch;
+  TEST_ASSERT_TRUE(aputure_light::encodeSegmentedDeviceMessage(
+      networkKey, deviceKey, mcComposition, sizeof(mcComposition),
+      compositionSequences, 3, 2, 1, 0, compositionBatch));
+  TEST_ASSERT_EQUAL_UINT8(3, compositionBatch.count);
+  aputure_light::DeviceMessageReassembly reassembly;
+  const uint8_t order[] = {1, 0, 2};
+  for (uint8_t i = 0; i < 3; ++i) {
+    const uint8_t segment = order[i];
+    TEST_ASSERT_TRUE(aputure_light::wrapProxyPdu(
+        compositionBatch.pdus[segment], proxy, sizeof(proxy), proxyLength));
+    const aputure_light::DeviceDecodeResult result =
+        aputure_light::decodeProxySegmentedDeviceMessage(
+            networkKey, deviceKey, proxy, proxyLength, 0, reassembly, decoded);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(i == 2
+                             ? aputure_light::DeviceDecodeResult::Complete
+                             : aputure_light::DeviceDecodeResult::Pending),
+        static_cast<int>(result));
+  }
+  TEST_ASSERT_EQUAL_UINT32(sizeof(mcComposition), decoded.accessLength);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(mcComposition, decoded.access,
+                                decoded.accessLength);
 }
 
 void test_aputure_light_access_payloads_and_validation() {
+  const aputure_light::AputureLightState defaultState;
+  TEST_ASSERT_EQUAL_HEX32(0xff0000, defaultState.rgb);
+
   uint16_t companyId = 0;
   uint16_t modelId = 0;
   TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "Aputure MC Pro", "", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x03f6, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, modelId);
+  TEST_ASSERT_EQUAL_STRING(
+      "Aputure MC Pro",
+      aputure_light::knownVendorModelName(companyId, modelId));
   TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "Studio light", "SLCK_BLE", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
+  TEST_ASSERT_NULL(aputure_light::knownVendorModelName(companyId, modelId));
+  TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
+      "amaran Pano 60c", "", companyId, modelId));
+  TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
+  TEST_ASSERT_EQUAL_STRING(
+      "amaran Pano 60c", aputure_light::knownProductName("Pavo 60"));
+  TEST_ASSERT_EQUAL_STRING(
+      "amaran Pano 120c",
+      aputure_light::knownProductName("amaran Pano 120c"));
   TEST_ASSERT_FALSE(aputure_light::inferKnownVendorModel(
       "Unknown light", "", companyId, modelId));
+  TEST_ASSERT_NULL(aputure_light::knownVendorModelName(0, 0));
 
   aputure_light::AccessPayload payload;
   TEST_ASSERT_TRUE(aputure_light::buildPowerAccess(true, payload));
   const uint8_t powerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOn, payload.bytes, sizeof(powerOn));
-  TEST_ASSERT_TRUE(aputure_light::buildPowerStatusGetAccess(payload));
-  const uint8_t powerGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
-  TEST_ASSERT_EQUAL_UINT8_ARRAY(powerGet, payload.bytes, sizeof(powerGet));
+  aputure_light::NetworkPdu unicastPower;
+  const uint8_t unicastNetworkKey[16] = {
+      0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
+      0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff};
+  const uint8_t unicastAppKey[16] = {
+      0xff,0xee,0xdd,0xcc,0xbb,0xaa,0x99,0x88,
+      0x77,0x66,0x55,0x44,0x33,0x22,0x11,0x00};
+  TEST_ASSERT_TRUE(aputure_light::encodeAccessMessage(
+      unicastNetworkKey, unicastAppKey, powerOn, sizeof(powerOn), 1, 1, 2, 0,
+      unicastPower));
+  const uint8_t expectedUnicastPower[] = {
+      0x1e,0x4f,0x47,0x6a,0x22,0xab,0xe7,0x25,0xf8,0x7f,
+      0x38,0x12,0x50,0x33,0x85,0x94,0xf7,0x4f,0x6b,0xf5,
+      0x06,0xc8,0x8a,0x28,0x15,0xc7,0x6c,0x42,0x29};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedUnicastPower), unicastPower.length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedUnicastPower, unicastPower.bytes,
+                                unicastPower.length);
   const uint8_t mcOff[] = {0x26,0xe8,0,0,0,0,0x20,0xa4,0x28,0xfa,0x02};
   const uint8_t aceOn[] = {0x26,0xec,1,0,0,0,0x80,0x56,0x1a,0xfa,0x01};
   aputure_light::VendorPowerStatus status;
@@ -3975,6 +4353,45 @@ void test_aputure_light_access_payloads_and_validation() {
   corruptStatus[6] ^= 1;
   TEST_ASSERT_FALSE(aputure_light::parseVendorPowerStatus(
       corruptStatus, sizeof(corruptStatus), status));
+
+  aputure_light::ConfigurationStatusExpectation configExpected;
+  configExpected.type =
+      aputure_light::ConfigurationStatusType::ModelSubscription;
+  configExpected.elementAddress = 0x0006;
+  configExpected.groupAddress = 0xc005;
+  configExpected.companyId = 0x0211;
+  configExpected.modelId = 0x0000;
+  configExpected.vendorModel = true;
+  uint8_t configStatus = 0xff;
+  const uint8_t acePrivateSubscription[] = {
+      0x80,0x1f,0x00,0x06,0x00,0x05,0xc0,0x11,0x02,0x00,0x00};
+  TEST_ASSERT_TRUE(aputure_light::matchConfigurationStatus(
+      acePrivateSubscription, sizeof(acePrivateSubscription), configExpected,
+      configStatus));
+  TEST_ASSERT_EQUAL_UINT8(0, configStatus);
+  const uint8_t duplicatedCommonSubscription[] = {
+      0x80,0x1f,0x00,0x06,0x00,0x00,0xc0,0x11,0x02,0x00,0x00};
+  TEST_ASSERT_FALSE(aputure_light::matchConfigurationStatus(
+      duplicatedCommonSubscription, sizeof(duplicatedCommonSubscription),
+      configExpected, configStatus));
+  uint8_t wrongElementSubscription[sizeof(acePrivateSubscription)];
+  std::memcpy(wrongElementSubscription, acePrivateSubscription,
+              sizeof(acePrivateSubscription));
+  wrongElementSubscription[3] = 0x04;
+  TEST_ASSERT_FALSE(aputure_light::matchConfigurationStatus(
+      wrongElementSubscription, sizeof(wrongElementSubscription),
+      configExpected, configStatus));
+
+  configExpected.type = aputure_light::ConfigurationStatusType::ModelApp;
+  const uint8_t aceModelApp[] = {
+      0x80,0x3e,0x00,0x06,0x00,0x00,0x00,0x11,0x02,0x00,0x00};
+  TEST_ASSERT_TRUE(aputure_light::matchConfigurationStatus(
+      aceModelApp, sizeof(aceModelApp), configExpected, configStatus));
+  configExpected.type = aputure_light::ConfigurationStatusType::AppKey;
+  configExpected.vendorModel = false;
+  const uint8_t appKeyStatus[] = {0x80,0x03,0x00,0x00,0x00,0x00};
+  TEST_ASSERT_TRUE(aputure_light::matchConfigurationStatus(
+      appKeyStatus, sizeof(appKeyStatus), configExpected, configStatus));
   TEST_ASSERT_TRUE(aputure_light::buildCctAccess(5000, 0, 89, payload));
   const uint8_t cct[] = {0x26,0x80,0,0,0,0,0x40,0x41,0x9f,0xde,0x82};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(cct, payload.bytes, sizeof(cct));
@@ -4059,6 +4476,47 @@ void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_HEX16(
       0xc003,
       aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
+  const aputure_light::MeshNodeRecord secondGroupNode = {
+      45, studio::DriverId::AputureLight, 5};
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc004,
+      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+  TEST_ASSERT_NOT_EQUAL(
+      aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode),
+      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+  TEST_ASSERT_EQUAL_HEX16(
+      0xc001, aputure_light::memberControlGroupAddress(loaded, 42));
+  TEST_ASSERT_EQUAL_HEX16(
+      0, aputure_light::memberControlGroupAddress(loaded, 999));
+  aputure_light::MeshNodeRecord pendingMcPro;
+  pendingMcPro.instanceId = 44;
+  pendingMcPro.model = studio::DriverId::AputureLight;
+  pendingMcPro.unicastAddress = 4;
+  TEST_ASSERT_TRUE(aputure_light::upsertNode(loaded, pendingMcPro));
+  TEST_ASSERT_TRUE(aputure_light::assignVendorModel(
+      loaded, 44, 0x03f6, 0x1000));
+  aputure_light::MeshNodeRecord* identifiedMcPro =
+      aputure_light::findNode(loaded, 44);
+  TEST_ASSERT_NOT_NULL(identifiedMcPro);
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, identifiedMcPro->vendorCompanyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, identifiedMcPro->vendorModelId);
+  TEST_ASSERT_EQUAL_HEX16(0xc003, identifiedMcPro->controlGroupAddress);
+  TEST_ASSERT_TRUE(aputure_light::assignVendorModel(
+      loaded, 44, 0x0211, 0x0000));
+  TEST_ASSERT_EQUAL_HEX16(0x0211, identifiedMcPro->vendorCompanyId);
+  TEST_ASSERT_EQUAL_HEX16(0x0000, identifiedMcPro->vendorModelId);
+  identifiedMcPro->configured = true;
+  TEST_ASSERT_FALSE(aputure_light::assignVendorModel(
+      loaded, 44, 0x0211, 0x0000));
+  std::strcpy(loaded.nodes[0].bleAddress, "aa:bb:cc:dd:ee:01");
+  std::strcpy(loaded.nodes[1].bleAddress, "aa:bb:cc:dd:ee:02");
+  TEST_ASSERT_TRUE(aputure_light::isKnownMeshProxyAddress(
+      loaded, "aa:bb:cc:dd:ee:01"));
+  TEST_ASSERT_TRUE(aputure_light::isKnownMeshProxyAddress(
+      loaded, "aa:bb:cc:dd:ee:02"));
+  TEST_ASSERT_FALSE(aputure_light::isKnownMeshProxyAddress(
+      loaded, "aa:bb:cc:dd:ee:03"));
+  TEST_ASSERT_FALSE(aputure_light::isKnownMeshProxyAddress(loaded, nullptr));
   const aputure_light::MeshNodeRecord* loadedZhiyun =
       aputure_light::findNode(loaded, 43);
   TEST_ASSERT_NOT_NULL(loadedZhiyun);
@@ -4075,6 +4533,219 @@ void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_TRUE(second.begin(store, restarted));
   TEST_ASSERT_TRUE(second.next(sequence));
   TEST_ASSERT_EQUAL_UINT32(aputure_light::kSequenceBlockSize, sequence);
+}
+
+struct RandomFillContext {
+  uint8_t next = 1;
+  int calls = 0;
+  int failOnCall = 0;
+};
+
+bool deterministicRandomFill(uint8_t* output, size_t length, void* context) {
+  auto* state = static_cast<RandomFillContext*>(context);
+  ++state->calls;
+  if (state->failOnCall == state->calls) return false;
+  for (size_t i = 0; i < length; ++i) output[i] = state->next++;
+  return true;
+}
+
+void test_mesh_initialization_is_identity_independent_and_transactional() {
+  MemoryBackend backend;
+  studio::mesh::Store store(backend);
+  studio::mesh::StoreData data;
+  data.network.ivIndex = 0x11223344;
+  data.network.sequenceHighWater = 0x556677;
+  data.nodeCount = 1;
+  data.nodes[0].instanceId = 99;
+  const studio::mesh::StoreData original = data;
+
+  RandomFillContext rngFailure;
+  rngFailure.failOnCall = 2;
+  TEST_ASSERT_FALSE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &rngFailure));
+  TEST_ASSERT_EQUAL_MEMORY(&original, &data, sizeof(data));
+  studio::mesh::StoreData absent;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Missing),
+      static_cast<int>(store.load(absent)));
+
+  backend.failWrites = true;
+  RandomFillContext saveFailure;
+  TEST_ASSERT_FALSE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &saveFailure));
+  TEST_ASSERT_EQUAL_MEMORY(&original, &data, sizeof(data));
+
+  backend.failWrites = false;
+  RandomFillContext success;
+  TEST_ASSERT_TRUE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &success));
+  TEST_ASSERT_TRUE(data.network.initialized);
+  TEST_ASSERT_EQUAL_UINT16(2, data.network.nextUnicastAddress);
+  TEST_ASSERT_EQUAL_UINT32(0, data.network.sequenceHighWater);
+  TEST_ASSERT_EQUAL_UINT8(0, data.nodeCount);
+  for (uint8_t i = 0; i < 16; ++i) {
+    TEST_ASSERT_EQUAL_UINT8(i + 1, data.network.networkKey[i]);
+    TEST_ASSERT_EQUAL_UINT8(i + 17, data.network.applicationKey[i]);
+  }
+  studio::mesh::StoreData loaded;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(loaded)));
+  TEST_ASSERT_TRUE(loaded.network.initialized);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(data.network.networkKey,
+                                loaded.network.networkKey, 16);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(data.network.applicationKey,
+                                loaded.network.applicationKey, 16);
+  TEST_ASSERT_EQUAL_UINT16(data.network.nextUnicastAddress,
+                           loaded.network.nextUnicastAddress);
+  TEST_ASSERT_EQUAL_UINT32(data.network.sequenceHighWater,
+                           loaded.network.sequenceHighWater);
+  TEST_ASSERT_EQUAL_UINT8(0, loaded.nodeCount);
+
+  MemoryBackend secondBackend;
+  studio::mesh::Store secondStore(secondBackend);
+  studio::mesh::StoreData secondPanel;
+  RandomFillContext secondEntropy;
+  secondEntropy.next = 91;
+  TEST_ASSERT_TRUE(studio::mesh::initializeNewMesh(
+      secondStore, secondPanel, deterministicRandomFill, &secondEntropy));
+  TEST_ASSERT_NOT_EQUAL(0, std::memcmp(data.network.networkKey,
+                                      secondPanel.network.networkKey, 16));
+  TEST_ASSERT_NOT_EQUAL(0, std::memcmp(data.network.applicationKey,
+                                      secondPanel.network.applicationKey, 16));
+
+  studio::mesh::StoreData replacement = data;
+  replacement.nodeCount = 1;
+  replacement.nodes[0].instanceId = 73;
+  const studio::mesh::StoreData beforeReplacement = data;
+  backend.failWrites = true;
+  TEST_ASSERT_FALSE(
+      studio::mesh::persistReplacement(store, data, replacement));
+  TEST_ASSERT_EQUAL_MEMORY(&beforeReplacement, &data, sizeof(data));
+  backend.failWrites = false;
+  TEST_ASSERT_TRUE(studio::mesh::persistReplacement(store, data, replacement));
+  TEST_ASSERT_EQUAL_UINT8(1, data.nodeCount);
+  TEST_ASSERT_EQUAL_UINT32(73, data.nodes[0].instanceId);
+}
+
+studio::ble::Advertisement onboardingAdvertisement(const char* address,
+                                                   uint8_t addressType,
+                                                   int8_t rssi,
+                                                   uint8_t marker) {
+  studio::ble::Advertisement advertisement;
+  std::strncpy(advertisement.address.value, address,
+               sizeof(advertisement.address.value) - 1);
+  advertisement.address.type = addressType;
+  advertisement.rssi = rssi;
+  advertisement.payload[0] = 2;
+  advertisement.payload[1] = 0xff;
+  advertisement.payload[2] = marker;
+  advertisement.payloadLength = 3;
+  return advertisement;
+}
+
+void test_onboarding_candidates_are_bounded_deduplicated_and_stable() {
+  studio::ble::OnboardingCandidates candidates;
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -60, 1)));
+  const uint32_t firstToken = candidates.at(0)->token;
+  TEST_ASSERT_FALSE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -60, 1)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -42, 1)));
+  TEST_ASSERT_EQUAL_UINT32(firstToken, candidates.at(0)->token);
+
+  // Address type is part of identity, so a public/random pair is not merged.
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 1, -50, 2)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:02", 0, -70, 3)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:03", 0, -65, 4)));
+  TEST_ASSERT_EQUAL_UINT32(4, candidates.count());
+
+  TEST_ASSERT_FALSE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:04", 0, -90, 5)));
+  TEST_ASSERT_NOT_NULL(candidates.find(firstToken));
+  const uint32_t weakestToken = candidates.at(2)->token;
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:04", 0, -30, 5)));
+  TEST_ASSERT_EQUAL_UINT32(4, candidates.count());
+  TEST_ASSERT_NULL(candidates.find(weakestToken));
+  TEST_ASSERT_NOT_NULL(candidates.find(firstToken));
+}
+
+void test_single_onboarding_candidate_auto_selects_after_settling() {
+  studio::ble::OnboardingAutoSelect selector;
+  using Decision = studio::ble::OnboardingAutoSelect::Decision;
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(0, 0, 100)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 42, 200)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 42, 949)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Select),
+                        static_cast<int>(selector.update(1, 42, 950)));
+
+  selector.selectionFailed(42);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::ShowPicker),
+                        static_cast<int>(selector.update(1, 42, 951)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::ShowPicker),
+                        static_cast<int>(selector.update(2, 0, 952)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 73, 1000)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Select),
+                        static_cast<int>(selector.update(1, 73, 1750)));
+}
+
+void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  driver.onboardingCandidateAvailable = true;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Candidate Light", id)));
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+  studio::OnboardingCandidate candidate;
+  TEST_ASSERT_EQUAL_UINT32(1, devices.onboardingCandidateCount(id));
+  TEST_ASSERT_TRUE(devices.onboardingCandidate(id, 0, candidate));
+
+  driver.onboardingSelectionFails = true;
+  TEST_ASSERT_FALSE(devices.selectOnboardingCandidate(id, candidate.token));
+  TEST_ASSERT_TRUE(driver.onboardingScanning);
+  TEST_ASSERT_FALSE(driver.onboardingSelected);
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+
+  driver.onboardingSelectionFails = false;
+  TEST_ASSERT_TRUE(devices.selectOnboardingCandidate(id, candidate.token));
+  driver.ready = false;
+  driver.pairingUpdatePending = true;
+  devices.loop();
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
+
+  driver.cancelOnboardingSucceeds = false;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(devices.cancelPendingAdd(id)));
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_TRUE(devices.isActive(id));
+
+  driver.cancelOnboardingSucceeds = true;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.cancelPendingAdd(id)));
+  TEST_ASSERT_FALSE(driver.onboardingScanning);
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
 }
 
 void test_mesh_store_round_trip_at_device_capacity() {
@@ -4262,6 +4933,31 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
       static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
       static_cast<int>(zhiyun_x100::advertisementModel(x60)));
   TEST_ASSERT_TRUE(zhiyun_x100::matchesMolusAdvertisement(x60, true));
+
+  uint8_t networkKey[16];
+  for (uint8_t i = 0; i < sizeof(networkKey); ++i) networkKey[i] = i + 1;
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      x100, x100.address, networkKey));
+  studio::ble::Address selectedElsewhere =
+      bleAddress("66:77:88:99:aa:bb", x100.address.type);
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      x100, selectedElsewhere, networkKey));
+  studio::ble::Advertisement matchingMesh = x100;
+  matchingMesh.address = bleAddress("77:88:99:aa:bb:cc");
+  uint8_t networkId[8];
+  aputure_light::meshK3(networkKey, networkId);
+  const uint8_t serviceDataHeader[] = {12, 0x16, 0x28, 0x18, 0x00};
+  std::memcpy(matchingMesh.payload + matchingMesh.payloadLength,
+              serviceDataHeader, sizeof(serviceDataHeader));
+  matchingMesh.payloadLength += sizeof(serviceDataHeader);
+  std::memcpy(matchingMesh.payload + matchingMesh.payloadLength, networkId,
+              sizeof(networkId));
+  matchingMesh.payloadLength += sizeof(networkId);
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      matchingMesh, selectedElsewhere, networkKey));
+  matchingMesh.payload[matchingMesh.payloadLength - 1] ^= 1;
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      matchingMesh, selectedElsewhere, networkKey));
   studio::ble::Advertisement manufacturerOnly =
       bleAdvertisement("44:55:66:77:88:99", "Other", 0x1827);
   const uint8_t manufacturer[] = {
@@ -4332,6 +5028,9 @@ int main(int, char**) {
   RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
   RUN_TEST(test_manager_preserves_renamed_unpaired_shark);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
+  RUN_TEST(test_manager_uses_per_instance_driver_capabilities);
+  RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);
+  RUN_TEST(test_manager_cancels_only_the_matching_dispatched_request);
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
@@ -4351,6 +5050,8 @@ int main(int, char**) {
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_generated_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
+  RUN_TEST(test_scene_dispatches_persisted_rgb_look_without_cct_fallback);
+  RUN_TEST(test_stop_cancels_inflight_compound_light_action);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);
   RUN_TEST(test_ble_central_timing_and_readiness_reset_on_release);
@@ -4360,6 +5061,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
   RUN_TEST(test_tascam_reconnect_scans_after_one_direct_failure);
+  RUN_TEST(test_zhiyun_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
@@ -4367,6 +5069,10 @@ int main(int, char**) {
   RUN_TEST(test_aputure_light_crypto_and_network_vectors);
   RUN_TEST(test_aputure_light_access_payloads_and_validation);
   RUN_TEST(test_aputure_light_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_mesh_initialization_is_identity_independent_and_transactional);
+  RUN_TEST(test_onboarding_candidates_are_bounded_deduplicated_and_stable);
+  RUN_TEST(test_single_onboarding_candidate_auto_selects_after_settling);
+  RUN_TEST(test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);

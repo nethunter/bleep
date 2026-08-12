@@ -204,10 +204,12 @@ void formatStep(char* buffer, size_t capacity, const studio::SceneStep& step) {
           ? "Rec"
           : (step.command == studio::CommandType::RecordStop
                  ? "Stop"
-                 : (step.command == studio::CommandType::SetLightCct
-                        ? "Set color"
-                        : (step.command == studio::CommandType::SetLightRgb
-                               ? "Set color"
+                 : (step.command == studio::CommandType::SetLightCct ||
+                    step.command == studio::CommandType::SetLightCctAndOn
+                        ? "Look + On"
+                        : (step.command == studio::CommandType::SetLightRgb ||
+                           step.command == studio::CommandType::SetLightRgbAndOn
+                               ? "Look + On"
                                : (step.command == studio::CommandType::TurnOn
                                       ? "On"
                                       : (step.command == studio::CommandType::TurnOff
@@ -1284,7 +1286,9 @@ void showEditView(studio::SceneId sceneId, bool startList) {
 void init() {}
 
 void tick() {
-  if (!visible || view != View::Run) return;
+  if (!visible) return;
+  if (picker_shell::active()) picker_shell::tick();
+  if (view != View::Run) return;
   const uint32_t now = millis();
   if (now - lastRefreshMs < 200) {
     return;

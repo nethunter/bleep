@@ -3,6 +3,10 @@
 #include <cstdio>
 #include <cstring>
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
+
 #include "core/command_traits.h"
 #include "core/ble/ble_timing.h"
 
@@ -16,6 +20,69 @@ void copyDetail(char (&destination)[48], const char* text) {
   }
   std::strncpy(destination, text, sizeof(destination) - 1);
   destination[sizeof(destination) - 1] = '\0';
+}
+
+void logSceneDefinition(const char* event, const SceneRecord& record) {
+#if defined(ARDUINO)
+#if ARDUINO_USB_CDC_ON_BOOT
+  Print& output = Serial0;
+#else
+  Print& output = Serial;
+#endif
+  output.printf("scene event=%s scene=%lu name=%s start_count=%u stop_count=%u\n",
+                event, static_cast<unsigned long>(record.sceneId), record.name,
+                static_cast<unsigned>(record.startCount),
+                static_cast<unsigned>(record.stopCount));
+  for (uint8_t i = 0; i < record.startCount; ++i) {
+    const SceneStep& step = record.startSteps[i];
+    output.printf(
+        "scene event=start_step scene=%lu step=%u type=%u target=%lu "
+        "command=%u wait_ms=%lu value0=%ld value1=%ld value2=%ld\n",
+        static_cast<unsigned long>(record.sceneId),
+        static_cast<unsigned>(i + 1), static_cast<unsigned>(step.type),
+        static_cast<unsigned long>(step.targetId),
+        static_cast<unsigned>(step.command),
+        static_cast<unsigned long>(step.waitMs), static_cast<long>(step.value0),
+        static_cast<long>(step.value1), static_cast<long>(step.value2));
+  }
+#else
+  (void)event;
+  (void)record;
+#endif
+}
+
+void logSceneAction(const char* event, SceneId sceneId, uint8_t stepIndex,
+                    const SceneStep* step, int status,
+                    const DeviceRuntimeState* runtime = nullptr) {
+#if defined(ARDUINO)
+#if ARDUINO_USB_CDC_ON_BOOT
+  Print& output = Serial0;
+#else
+  Print& output = Serial;
+#endif
+  output.printf(
+      "scene event=%s scene=%lu step=%u target=%lu command=%u status=%d "
+      "link=%u ready=%u pending=%u failed=%u\n",
+      event, static_cast<unsigned long>(sceneId),
+      static_cast<unsigned>(stepIndex + 1),
+      static_cast<unsigned long>(step != nullptr ? step->targetId
+                                                 : kInvalidInstanceId),
+      static_cast<unsigned>(step != nullptr ? step->command
+                                            : CommandType::Refresh),
+      status,
+      static_cast<unsigned>(runtime != nullptr ? runtime->link
+                                               : LinkState::Disconnected),
+      runtime != nullptr && runtime->protocolReady ? 1u : 0u,
+      runtime != nullptr && runtime->commandPending ? 1u : 0u,
+      runtime != nullptr && runtime->commandFailed ? 1u : 0u);
+#else
+  (void)event;
+  (void)sceneId;
+  (void)stepIndex;
+  (void)step;
+  (void)status;
+  (void)runtime;
+#endif
 }
 
 }  // namespace
@@ -65,8 +132,8 @@ SceneValidationStatus SceneRunner::validate(const SceneRecord& record) const {
       if (profile.type == DeviceType::Unknown) {
         return SceneValidationStatus::MissingTarget;
       }
-      const Capability required = requiredCapability(step.command);
-      if ((profile.capabilities & capabilityBit(required)) == 0) {
+      const uint32_t required = requiredCapabilities(step.command);
+      if (required == 0 || (profile.capabilities & required) != required) {
         return SceneValidationStatus::MissingCapability;
       }
       bool known = false;
@@ -165,7 +232,14 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
       if (homeAssistant != homeAssistantPass) {
         continue;
       }
-      if (!devices_.acquire(targets.ids[i], ConnectionOwner::Sequence)) {
+      const bool acquired =
+          devices_.acquire(targets.ids[i], ConnectionOwner::Sequence);
+      const SceneStep diagnosticStep =
+          makeActionStep(targets.ids[i], CommandType::Connect);
+      const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
+      logSceneAction("acquire_target", progress_.sceneId, i, &diagnosticStep,
+                     acquired ? 0 : 1, &runtime);
+      if (!acquired) {
         for (uint8_t acquired = 0; acquired < acquiredCount; ++acquired) {
           devices_.release(acquiredIds[acquired], ConnectionOwner::Sequence);
         }
@@ -257,6 +331,12 @@ bool SceneRunner::allPhysicalTargetsConnected(const TargetSet& targets,
 void SceneRunner::setDetail(const char* text) { copyDetail(progress_.detail, text); }
 
 void SceneRunner::fail(SceneRunStatus status, const char* detail) {
+  const SceneStep* step = currentStep();
+  const DeviceRuntimeState runtime =
+      step != nullptr ? devices_.runtimeState(step->targetId)
+                      : DeviceRuntimeState{};
+  logSceneAction("failed", progress_.sceneId, progress_.stepIndex, step,
+                 static_cast<int>(status), &runtime);
   progress_.lastStatus = status;
   progress_.phase = ScenePhase::Failed;
   progress_.stepResult = SceneStepResult::Failed;
@@ -317,8 +397,11 @@ SceneRunStatus SceneRunner::prepare(SceneId sceneId) {
     if (switchingScenes) cancel();
     return SceneRunStatus::Disabled;
   }
+  logSceneDefinition("prepare", *record);
   const SceneValidationStatus validation = validate(*record);
   if (validation != SceneValidationStatus::Ok) {
+    logSceneAction("validation_failed", sceneId, 0, nullptr,
+                   static_cast<int>(validation));
     if (switchingScenes) cancel();
     progress_ = SceneProgress{};
     progress_.sceneId = sceneId;
@@ -428,7 +511,11 @@ SceneRunStatus SceneRunner::start(SceneId sceneId) {
   if (!record->enabled) {
     return SceneRunStatus::Disabled;
   }
-  if (validate(*record) != SceneValidationStatus::Ok) {
+  logSceneDefinition("start", *record);
+  const SceneValidationStatus validation = validate(*record);
+  if (validation != SceneValidationStatus::Ok) {
+    logSceneAction("validation_failed", sceneId, 0, nullptr,
+                   static_cast<int>(validation));
     return SceneRunStatus::ValidationFailed;
   }
   if (record->startCount == 0) {
@@ -510,7 +597,16 @@ SceneRunStatus SceneRunner::stop() {
     return SceneRunStatus::Ok;
   }
 
-  // Abort an in-flight Start action and move to Stop while holding links.
+  // Abort an in-flight Start action and move to Stop while holding links. The
+  // request/result and driver transaction must be superseded together so a
+  // delayed compound stage cannot undo the first generated Stop action.
+  if (progress_.phase == ScenePhase::RunningStart) {
+    const SceneStep* interrupted = currentStep();
+    if (interrupted != nullptr && interrupted->type == SceneStepType::Action &&
+        pendingRequestId_ != 0) {
+      devices_.cancelCommand(pendingRequestId_, interrupted->targetId);
+    }
+  }
   waitingForResult_ = false;
   pendingRequestId_ = 0;
   direction_ = Direction::Stop;
@@ -577,14 +673,15 @@ void SceneRunner::dispatchCurrentAction() {
   command.value0 = step->value0;
   command.value1 = step->value1;
   command.value2 = step->value2;
-  if (!devices_.enqueue(command)) {
+  const DeviceRuntimeState before = devices_.runtimeState(step->targetId);
+  logSceneAction("dispatch", progress_.sceneId, progress_.stepIndex, step, 0,
+                 &before);
+  if (!devices_.enqueue(command, &pendingRequestId_)) {
     fail(SceneRunStatus::ActionFailed, "Queue full");
     return;
   }
-  // requestId assigned in enqueue; recover from next result match by instance.
   waitingForResult_ = true;
   waitingForConfirmation_ = false;
-  pendingRequestId_ = 0;
   progress_.stepResult = SceneStepResult::Running;
   char detail[48];
   std::snprintf(detail, sizeof(detail), "Step %u",
@@ -644,6 +741,11 @@ void SceneRunner::tick(uint32_t nowMs) {
   if (progress_.phase == ScenePhase::Connecting && homeAssistantDeferred_) {
     InstanceId waiting = kInvalidInstanceId;
     if (!allPhysicalTargetsConnected(targets_, waiting)) {
+      if (progress_.connectTarget != waiting) {
+        const DeviceRuntimeState runtime = devices_.runtimeState(waiting);
+        logSceneAction("waiting_for_target", progress_.sceneId, 0, nullptr,
+                       static_cast<int>(waiting), &runtime);
+      }
       progress_.connectTarget = waiting;
       const DeviceRecord* record = devices_.find(waiting);
       char detail[48];
@@ -694,6 +796,11 @@ void SceneRunner::tick(uint32_t nowMs) {
       }
       return;
     }
+    if (progress_.connectTarget != waiting) {
+      const DeviceRuntimeState runtime = devices_.runtimeState(waiting);
+      logSceneAction("waiting_for_target", progress_.sceneId, 0, nullptr,
+                     static_cast<int>(waiting), &runtime);
+    }
     progress_.connectTarget = waiting;
     const DeviceRecord* record = devices_.find(waiting);
     char detail[48];
@@ -731,8 +838,12 @@ void SceneRunner::tick(uint32_t nowMs) {
     const DeviceRuntimeState runtime = devices_.runtimeState(step->targetId);
     if (!runtime.commandPending) {
       if (runtime.commandFailed) {
+        logSceneAction("confirmation_failed", progress_.sceneId,
+                       progress_.stepIndex, step, 0, &runtime);
         fail(SceneRunStatus::ActionFailed, "Confirmation failed");
       } else {
+        logSceneAction("confirmed", progress_.sceneId, progress_.stepIndex,
+                       step, 0, &runtime);
         advanceStep(nowMs);
       }
       return;
@@ -745,16 +856,17 @@ void SceneRunner::tick(uint32_t nowMs) {
 
   if (waitingForResult_) {
     CommandResult result;
-    while (devices_.popResult(result)) {
-      if (result.instanceId != step->targetId) {
-        continue;
-      }
+    if (devices_.takeResult(pendingRequestId_, result)) {
       waitingForResult_ = false;
+      const DeviceRuntimeState runtime = devices_.runtimeState(step->targetId);
+      logSceneAction("dispatch_result", progress_.sceneId,
+                     progress_.stepIndex, step,
+                     static_cast<int>(result.status), &runtime);
       if (result.status != CommandStatus::Succeeded) {
         fail(SceneRunStatus::ActionFailed, "Action failed");
         return;
       }
-      if (devices_.runtimeState(step->targetId).commandPending) {
+      if (runtime.commandPending) {
         waitingForConfirmation_ = true;
       } else {
         advanceStep(nowMs);

@@ -117,6 +117,8 @@ enum class CommandType : uint8_t {
   Activate,
   SetLightCct,
   SetLightRgb,
+  SetLightCctAndOn,
+  SetLightRgbAndOn,
 };
 
 struct DeviceCommand {
@@ -157,6 +159,29 @@ struct DeviceRuntimeState {
   bool recording = false;
 };
 
+struct LightControlState {
+  bool available = false;
+  bool supportsPower = false;
+  bool supportsCct = false;
+  bool supportsRgb = false;
+  bool supportsTint = false;
+  bool on = false;
+  bool stateKnown = false;
+  bool commandPending = false;
+  bool commandFailed = false;
+  StateQuality quality = StateQuality::Unknown;
+  uint16_t minKelvin = 0;
+  uint16_t maxKelvin = 0;
+  uint16_t kelvin = 5600;
+  int16_t tintPermille = 0;
+  uint8_t brightness = 50;
+  uint8_t cctBrightness = 50;
+  uint8_t rgbBrightness = 50;
+  uint32_t rgb = 0xff0000;
+  bool rgbMode = false;
+  char status[48] = "Unavailable";
+};
+
 enum class ConnectionOwner : uint8_t {
   Foreground = 1u << 0,
   Sequence = 1u << 1,
@@ -168,6 +193,14 @@ constexpr size_t kDeviceNameCapacity = 32;
 constexpr size_t kBleAddressCapacity = 20;
 constexpr size_t kBleNameCapacity = 40;
 constexpr size_t kHomeAssistantEntityIdCapacity = 72;
+
+struct OnboardingCandidate {
+  uint32_t token = 0;
+  char name[kBleNameCapacity] = "";
+  char address[kBleAddressCapacity] = "";
+  uint8_t addressType = 0;
+  int8_t rssi = 0;
+};
 
 struct DeviceRecord {
   InstanceId instanceId = kInvalidInstanceId;

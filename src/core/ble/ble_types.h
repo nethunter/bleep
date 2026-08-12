@@ -104,5 +104,7 @@ bool advertisementNameContains(const Advertisement& advertisement,
                                const char* token);
 bool advertisesService(const Advertisement& advertisement, const char* uuid);
 uint16_t manufacturerCompanyId(const Advertisement& advertisement);
+bool meshProxyNetworkId(const Advertisement& advertisement,
+                        uint8_t output[8]);
 
 }  // namespace studio::ble

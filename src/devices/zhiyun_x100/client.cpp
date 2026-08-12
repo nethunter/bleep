@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <new>
 
 #include "core/ble/ble_runtime.h"
 #include "core/ble/ble_timing.h"
@@ -56,6 +57,7 @@ bool X100Client::begin() {
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 7000;
+  policy.directAttemptsBeforeScan = kDirectAttemptsBeforeScan;
   policy.security = studio::ble::SecurityPolicy::None;
   policy.diagnosticTag = "zhiyun_light";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
@@ -88,6 +90,7 @@ void X100Client::prepareActivation(studio::InstanceId instanceId,
   targetAddress_[0] = '\0';
   targetName_[0] = '\0';
   ignoredAddressCount_ = 0;
+  candidates_.clear();
   targetAddressType_ = addressType;
   if (haveTarget_) {
     std::strncpy(targetAddress_, address, sizeof(targetAddress_) - 1);
@@ -171,7 +174,40 @@ void X100Client::detachShared() {
   linkHandle_ = studio::ble::kInvalidLinkHandle;
 }
 
+void X100Client::cancelPendingCommand() {
+  awaitingResponse_ = false;
+  operation_ = Operation::None;
+  verifyAtMs_ = 0;
+  responseDeadlineMs_ = 0;
+  verificationAttempts_ = 0;
+  state_.commandPending = false;
+  state_.lastCommandFailed = false;
+  state_.verificationField = 0;
+  state_.error[0] = '\0';
+}
+
+bool X100Client::resumeConnection() {
+  if (!initialized_ || sharedTransport_) return false;
+  connectRequested_ = true;
+  state_.error[0] = '\0';
+  state_.lastCommandFailed = false;
+  const studio::ble::LinkPhase phase =
+      studio::ble::bleCentral().phase(linkHandle_);
+  if (protocolReady()) return true;
+  if (state_.hasSavedDevice && haveTarget_) {
+    if (state_.link != X100State::Link::Connected)
+      state_.link = X100State::Link::Connecting;
+    if (state_.phase == X100State::Phase::Failed)
+      state_.phase = X100State::Phase::Idle;
+    if (phase == studio::ble::LinkPhase::Idle) beginConnect();
+    return true;
+  }
+  startScan();
+  return true;
+}
+
 void X100Client::deactivate() {
+  rollbackPendingProvision();
   connectRequested_ = false;
   if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle)
     studio::ble::bleCentral().release(linkHandle_);
@@ -210,6 +246,10 @@ void X100Client::loop() {
   if (setupPending_ && static_cast<int32_t>(now - setupAtMs_) >= 0) {
     setupPending_ = false;
     if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
+      if (!state_.hasSavedDevice) {
+        returnToOnboardingPicker("Zhiyun setup failed");
+        return;
+      }
       state_.phase = X100State::Phase::Failed;
       std::strncpy(state_.error, "Zhiyun setup failed",
                    sizeof(state_.error) - 1);
@@ -223,6 +263,10 @@ void X100Client::loop() {
       static_cast<int32_t>(now - provisioningDeadlineMs_) >= 0) {
     provisioningDeadlineMs_ = 0;
     provisioner_.cancel();
+    if (!state_.hasSavedDevice) {
+      returnToOnboardingPicker("Provisioning timeout");
+      return;
+    }
     state_.phase = X100State::Phase::Failed;
     std::strncpy(state_.error, "Provisioning timeout",
                  sizeof(state_.error) - 1);
@@ -233,6 +277,11 @@ void X100Client::loop() {
   if (awaitingResponse_ &&
       static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
     if (operation_ == Operation::Initialize) {
+      if (onboardingSelectionActive_) {
+        returnToOnboardingPicker("Initialization timeout");
+        awaitingResponse_ = false;
+        return;
+      }
       state_.phase = X100State::Phase::Failed;
       std::strncpy(state_.error, "Initialization timeout",
                    sizeof(state_.error) - 1);
@@ -407,6 +456,9 @@ bool X100Client::finishProvisioning() {
     return false;
   studio::mesh::StoreData& meshData = studio::mesh::repository().data();
   const studio::mesh::StoreData previous = meshData;
+  studio::mesh::StoreData* snapshot =
+      new (std::nothrow) studio::mesh::StoreData(previous);
+  if (snapshot == nullptr) return false;
   studio::mesh::NodeRecord node;
   node.instanceId = instanceId_;
   node.model = studio::DriverId::ZhiyunLight;
@@ -415,19 +467,28 @@ bool X100Client::finishProvisioning() {
   node.configured = true;
   node.routingSelector =
       studio::mesh::nextZhiyunRoutingSelector(meshData);
-  if (node.routingSelector == 0xff) return false;
+  if (node.routingSelector == 0xff) {
+    delete snapshot;
+    return false;
+  }
   std::memcpy(node.deviceKey, provisioner_.deviceKey(), sizeof(node.deviceKey));
   std::strncpy(node.bleAddress, targetAddress_, sizeof(node.bleAddress) - 1);
   node.bleAddress[sizeof(node.bleAddress) - 1] = '\0';
   node.bleAddressType = targetAddressType_;
-  if (node.unicastAddress > 0x7fff - node.elementCount) return false;
-  if (!studio::mesh::upsertNode(meshData, node)) return false;
+  if (node.unicastAddress > 0x7fff - node.elementCount ||
+      !studio::mesh::upsertNode(meshData, node)) {
+    delete snapshot;
+    return false;
+  }
   meshData.network.nextUnicastAddress =
       static_cast<uint16_t>(node.unicastAddress + node.elementCount);
   if (!studio::mesh::repository().save()) {
     meshData = previous;
+    delete snapshot;
     return false;
   }
+  delete provisioningSnapshot_;
+  provisioningSnapshot_ = snapshot;
   routingSelector_ = node.routingSelector;
   provisioner_.cancel();
   provisioningDeadlineMs_ = 0;
@@ -444,12 +505,7 @@ bool X100Client::finishProvisioning() {
 void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
   if (data == nullptr || length == 0 ||
       length > sizeof(provisioningBytes_) - provisioningLength_) {
-    provisioner_.cancel();
-    state_.phase = X100State::Phase::Failed;
-    std::strncpy(state_.error, "Provisioning data overflow",
-                 sizeof(state_.error) - 1);
-    state_.error[sizeof(state_.error) - 1] = '\0';
-    markProtocolFailed();
+    returnToOnboardingPicker("Provisioning data overflow");
     return;
   }
   std::memcpy(provisioningBytes_ + provisioningLength_, data, length);
@@ -482,11 +538,7 @@ void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
     std::memmove(provisioningBytes_, provisioningBytes_ + wrappedLength,
                  provisioningLength_);
     if (!handled || (provisioner_.complete() && !finishProvisioning())) {
-      state_.phase = X100State::Phase::Failed;
-      std::strncpy(state_.error, "Provisioning failed",
-                   sizeof(state_.error) - 1);
-      state_.error[sizeof(state_.error) - 1] = '\0';
-      markProtocolFailed();
+      returnToOnboardingPicker("Provisioning failed");
       return;
     }
   }
@@ -508,6 +560,10 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
     else if (frame.command == kCommandPower)
       valid = parsePower(frame, state_.on, selector());
     if (!valid) {
+      if (onboardingSelectionActive_) {
+        returnToOnboardingPicker("Unexpected Zhiyun response");
+        return;
+      }
       state_.phase = X100State::Phase::Failed;
       std::strncpy(state_.error, "Unexpected Zhiyun response",
                    sizeof(state_.error) - 1);
@@ -518,6 +574,10 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
     ++step_;
     if (step_ == 7) finishInitialization();
     else if (!sendInitializationStep()) {
+      if (onboardingSelectionActive_) {
+        returnToOnboardingPicker("Initialization write failed");
+        return;
+      }
       state_.phase = X100State::Phase::Failed;
       std::strncpy(state_.error, "Initialization write failed",
                    sizeof(state_.error) - 1);
@@ -633,6 +693,9 @@ void X100Client::finishInitialization() {
   haveTarget_ = true;
   pairingChanged_ = true;
   operation_ = Operation::None;
+  delete provisioningSnapshot_;
+  provisioningSnapshot_ = nullptr;
+  onboardingSelectionActive_ = false;
   markProtocolReady();
 }
 
@@ -772,6 +835,10 @@ void X100Client::finishCommand(bool success, const char* error) {
 }
 
 void X100Client::startScan() {
+  if (provisioningSnapshot_ != nullptr) {
+    returnToOnboardingPicker();
+    if (provisioningSnapshot_ != nullptr) return;
+  }
   begin();
   connectRequested_ = initialized_;
   haveTarget_ = false;
@@ -791,6 +858,73 @@ void X100Client::forgetDevice() {
   if (connectRequested_) startScan();
 }
 
+bool X100Client::cancelOnboarding() {
+  if (!rollbackPendingProvision()) {
+    state_.phase = X100State::Phase::Failed;
+    state_.lastCommandFailed = true;
+    std::strncpy(state_.error, "Mesh rollback save failed",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    return false;
+  }
+  provisioner_.cancel();
+  candidates_.clear();
+  haveTarget_ = false;
+  targetAddress_[0] = '\0';
+  targetName_[0] = '\0';
+  provisioningLink_ = false;
+  pairingChanged_ = false;
+  onboardingSelectionActive_ = false;
+  connectRequested_ = false;
+  if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle) {
+    studio::ble::bleCentral().disconnect(linkHandle_, false);
+  }
+  return true;
+}
+
+bool X100Client::onboardingCandidate(
+    size_t index, studio::OnboardingCandidate& candidate) const {
+  const auto* entry = candidates_.at(index);
+  if (entry == nullptr) return false;
+  candidate = studio::OnboardingCandidate{};
+  candidate.token = entry->token;
+  candidate.addressType = entry->advertisement.address.type;
+  candidate.rssi = entry->advertisement.rssi;
+  std::strncpy(candidate.address, entry->advertisement.address.value,
+               sizeof(candidate.address) - 1);
+  studio::ble::advertisementName(entry->advertisement, candidate.name,
+                                 sizeof(candidate.name));
+  if (candidate.name[0] == '\0') {
+    std::strncpy(candidate.name, "Zhiyun Light", sizeof(candidate.name) - 1);
+  }
+  return true;
+}
+
+bool X100Client::selectOnboardingCandidate(uint32_t token) {
+  const auto* entry = candidates_.find(token);
+  if (entry == nullptr || haveTarget_ || state_.hasSavedDevice) return false;
+  if (!studio::ble::bleCentral().selectAdvertisement(linkHandle_,
+                                                      entry->advertisement)) {
+    state_.link = X100State::Link::Scanning;
+    state_.phase = X100State::Phase::Idle;
+    studio::ble::bleCentral().requestScan(linkHandle_, true);
+    return false;
+  }
+  const MolusModel model = advertisementModel(entry->advertisement);
+  state_.model = model;
+  provisioningLink_ = matchesMolusAdvertisement(entry->advertisement, false);
+  std::strncpy(targetAddress_, entry->advertisement.address.value,
+               sizeof(targetAddress_) - 1);
+  targetAddress_[sizeof(targetAddress_) - 1] = '\0';
+  targetAddressType_ = entry->advertisement.address.type;
+  studio::ble::advertisementName(entry->advertisement, targetName_,
+                                 sizeof(targetName_));
+  haveTarget_ = true;
+  onboardingSelectionActive_ = true;
+  state_.link = X100State::Link::Connecting;
+  return true;
+}
+
 void X100Client::ignorePeerAddress(const char* address) {
   if (address == nullptr || address[0] == '\0') return;
   for (uint8_t i = 0; i < ignoredAddressCount_; ++i) {
@@ -808,6 +942,53 @@ void X100Client::beginScan() {
   state_.link = X100State::Link::Scanning;
   state_.phase = X100State::Phase::Idle;
   studio::ble::bleCentral().requestScan(linkHandle_, true);
+}
+
+void X100Client::returnToOnboardingPicker(const char* error) {
+  if (!rollbackPendingProvision()) {
+    state_.phase = X100State::Phase::Failed;
+    state_.lastCommandFailed = true;
+    std::strncpy(state_.error, "Mesh rollback save failed",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    return;
+  }
+  provisioner_.cancel();
+  candidates_.clear();
+  haveTarget_ = false;
+  targetAddress_[0] = '\0';
+  targetName_[0] = '\0';
+  provisioningLink_ = false;
+  onboardingSelectionActive_ = false;
+  routingSelector_ = 0;
+  state_.model = MolusModel::Unknown;
+  setupPending_ = false;
+  provisioningDeadlineMs_ = 0;
+  state_.link = X100State::Link::Scanning;
+  state_.phase = X100State::Phase::Idle;
+  if (error != nullptr) {
+    std::strncpy(state_.error, error, sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+  }
+  if (linkHandle_ != studio::ble::kInvalidLinkHandle) {
+    studio::ble::bleCentral().disconnect(linkHandle_, false);
+    studio::ble::bleCentral().requestScan(linkHandle_, true);
+  }
+}
+
+bool X100Client::rollbackPendingProvision() {
+  if (provisioningSnapshot_ == nullptr) return true;
+  const uint32_t sequenceHighWater =
+      studio::mesh::repository().data().network.sequenceHighWater;
+  studio::mesh::StoreData restored = *provisioningSnapshot_;
+  if (sequenceHighWater >
+      restored.network.sequenceHighWater) {
+    restored.network.sequenceHighWater = sequenceHighWater;
+  }
+  if (!studio::mesh::repository().replace(restored)) return false;
+  delete provisioningSnapshot_;
+  provisioningSnapshot_ = nullptr;
+  return true;
 }
 
 void X100Client::beginConnect() {
@@ -875,17 +1056,38 @@ void X100Client::onBleAdvertisement(
   const bool provisioned = matchesMolusAdvertisement(advertisement, true);
   const bool unprovisioned = matchesMolusAdvertisement(advertisement, false);
   if (!provisioned && !unprovisioned) return;
-  state_.model = advertisedModel;
-  provisioningLink_ = unprovisioned;
-  std::strncpy(targetAddress_, advertisement.address.value,
-               sizeof(targetAddress_) - 1);
-  targetAddress_[sizeof(targetAddress_) - 1] = '\0';
-  targetAddressType_ = advertisement.address.type;
-  studio::ble::advertisementName(advertisement, targetName_,
-                                 sizeof(targetName_));
-  haveTarget_ = true;
-  state_.link = X100State::Link::Connecting;
-  studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
+  if (onboardingSelectionActive_ && provisioningSnapshot_ != nullptr &&
+      provisioned && !haveTarget_) {
+    studio::ble::Address selectedAddress;
+    std::strncpy(selectedAddress.value, targetAddress_,
+                 sizeof(selectedAddress.value) - 1);
+    selectedAddress.type = targetAddressType_;
+    if (!matchesSelectedProvisionedAdvertisement(
+            advertisement, selectedAddress,
+            studio::mesh::repository().data().network.networkKey)) {
+      return;
+    }
+    if (!studio::ble::bleCentral().selectAdvertisement(linkHandle_,
+                                                        advertisement)) {
+      returnToOnboardingPicker("Provisioned light unavailable");
+      return;
+    }
+    std::strncpy(targetAddress_, advertisement.address.value,
+                 sizeof(targetAddress_) - 1);
+    targetAddress_[sizeof(targetAddress_) - 1] = '\0';
+    targetAddressType_ = advertisement.address.type;
+    studio::ble::advertisementName(advertisement, targetName_,
+                                   sizeof(targetName_));
+    haveTarget_ = true;
+    state_.link = X100State::Link::Connecting;
+  } else if (state_.hasSavedDevice && haveTarget_) {
+    if (std::strcmp(targetAddress_, advertisement.address.value) == 0) {
+      state_.link = X100State::Link::Connecting;
+      studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
+    }
+  } else if (!haveTarget_) {
+    candidates_.observe(advertisement);
+  }
 }
 
 void X100Client::onBleEvent(studio::ble::LinkHandle link,
@@ -897,9 +1099,15 @@ void X100Client::onBleEvent(studio::ble::LinkHandle link,
     setupPending_ = true;
     setupAtMs_ = millis();
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
-    state_.link = X100State::Link::Disconnected;
+    if (!state_.hasSavedDevice) returnToOnboardingPicker("Connect failed");
+    else state_.link = X100State::Link::Disconnected;
   } else if (event.type == studio::ble::EventType::Disconnected) {
-    handleDisconnect();
+    if (onboardingSelectionActive_ && provisioningLink_ &&
+        provisioningSnapshot_ == nullptr) {
+      returnToOnboardingPicker("Provisioning disconnected");
+    } else {
+      handleDisconnect();
+    }
   }
 }
 

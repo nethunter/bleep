@@ -35,6 +35,15 @@ the fixture retains those values.
 
 ## Advertising and onboarding
 
+The panel now presents a bounded compatible-advertisement picker before the
+first PB-GATT connection. Selection is keyed by address plus address type, not
+by a mutable row index. A failed claim, connection, provisioning, or direct
+identity initialization returns to the picker and restores the provisional
+node/unicast allocation; the normal device record is not committed before
+confirmed Ready. The already-selected fixture is automatically rediscovered
+after Provisioning Data so the same transaction can complete on `0xFEE9`.
+Saved fixtures retain automatic reconnect.
+
 - The captured local name was `PL105_XXXX`; the suffix is device-specific.
 - Manufacturer data used company ID `0x0905` and began with ASCII `pl105\0`.
   Treat the product marker plus an expected service as stronger identity than
@@ -254,6 +263,14 @@ mesh store, then rediscovers `0x1828`. It discovers `0xFEE9` directly,
 subscribes to `...9601`, queries power, brightness, and CCT, then writes only
 the three captured setters. It does not decode or originate Bluetooth Mesh
 Network PDUs for direct controls.
+
+Post-provision rediscovery no longer accepts an arbitrary same-model proxy.
+The exact selected address/type remains valid; when a compliant rotating proxy
+advertises Network ID service data (`0x1828`, proxy type `0x00`), the runtime
+derives the expected 64-bit Network ID with Bluetooth Mesh `k3` from the
+panel-owned Network Key and requires an exact match. Node Identity advertising
+without the original address is not yet resolved and remains part of the
+reboot/fallback hardware gate.
 
 Saved Zhiyun fixtures now persist their member selector in mesh-store schema 2
 and attach to the panel-owned mesh runtime's one retained gateway client.

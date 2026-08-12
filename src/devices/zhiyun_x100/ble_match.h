@@ -3,9 +3,12 @@
 #include <cstring>
 
 #include "core/ble/ble_types.h"
+#include "devices/aputure_light/crypto.h"
 #include "devices/zhiyun_x100/protocol.h"
 
 namespace zhiyun_x100 {
+
+constexpr uint8_t kDirectAttemptsBeforeScan = 1;
 
 inline bool hasManufacturerMarker(
     const studio::ble::Advertisement& advertisement, const char* marker) {
@@ -67,8 +70,12 @@ inline MolusModel advertisementModel(
 
 inline MolusModel modelFromName(const char* name) {
   if (name == nullptr) return MolusModel::Unknown;
-  if (std::strstr(name, "PL105_") != nullptr) return MolusModel::X100;
-  if (std::strstr(name, "X104_") != nullptr) return MolusModel::X60Rgb;
+  if (std::strstr(name, "PL105_") != nullptr ||
+      std::strstr(name, "X100") != nullptr)
+    return MolusModel::X100;
+  if (std::strstr(name, "X104_") != nullptr ||
+      std::strstr(name, "X60RGB") != nullptr)
+    return MolusModel::X60Rgb;
   return MolusModel::Unknown;
 }
 
@@ -77,6 +84,25 @@ inline bool matchesMolusAdvertisement(
   if (advertisementModel(advertisement) == MolusModel::Unknown) return false;
   return studio::ble::advertisesService(
       advertisement, provisioned ? kProxyAdvertisedService : "1827");
+}
+
+inline bool matchesSelectedProvisionedAdvertisement(
+    const studio::ble::Advertisement& advertisement,
+    const studio::ble::Address& selectedAddress,
+    const uint8_t networkKey[16]) {
+  if (!matchesMolusAdvertisement(advertisement, true) || networkKey == nullptr)
+    return false;
+  if (studio::ble::addressEqual(advertisement.address, selectedAddress))
+    return true;
+  uint8_t advertisedNetworkId[8];
+  if (!studio::ble::meshProxyNetworkId(advertisement,
+                                       advertisedNetworkId)) {
+    return false;
+  }
+  uint8_t expectedNetworkId[8];
+  aputure_light::meshK3(networkKey, expectedNetworkId);
+  return std::memcmp(advertisedNetworkId, expectedNetworkId,
+                     sizeof(expectedNetworkId)) == 0;
 }
 
 inline bool matchesAdvertisement(

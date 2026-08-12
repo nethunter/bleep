@@ -86,6 +86,10 @@ inline bool makeGeneratedStopStep(const SceneStep& start, SceneStep& stop) {
     case CommandType::SetLightCct:
     case CommandType::SetLightRgb:
       return false;
+    case CommandType::SetLightCctAndOn:
+    case CommandType::SetLightRgbAndOn:
+      inverse = CommandType::TurnOff;
+      break;
     default:
       return false;
   }

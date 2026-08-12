@@ -1,6 +1,7 @@
 #include "devices/home_assistant/driver.h"
 
 #include <new>
+#include <cstring>
 
 namespace studio {
 
@@ -49,6 +50,25 @@ DeviceRuntimeState HomeAssistantDriver::runtimeState(
 
 const void* HomeAssistantDriver::specializedState(InstanceId instanceId) const {
   return client_ != nullptr ? client_->entityState(instanceId) : nullptr;
+}
+
+bool HomeAssistantDriver::lightControlState(InstanceId instanceId,
+                                            LightControlState& out) const {
+  const home_assistant::EntityState* state =
+      client_ != nullptr ? client_->entityState(instanceId) : nullptr;
+  if (state == nullptr) return false;
+  out.available = state->available;
+  out.supportsPower = true;
+  out.on = state->on;
+  out.stateKnown = state->stateKnown;
+  out.commandPending = state->commandPending;
+  out.commandFailed = state->commandAttempted &&
+                      state->lastCommand != CommandStatus::Succeeded &&
+                      state->lastCommand != CommandStatus::Queued;
+  out.quality = state->stateKnown ? StateQuality::Confirmed : StateQuality::Unknown;
+  std::strncpy(out.status, state->available ? state->stateText : "Unavailable",
+               sizeof(out.status) - 1);
+  return true;
 }
 
 }  // namespace studio

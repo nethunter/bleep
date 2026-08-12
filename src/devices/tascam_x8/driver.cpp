@@ -99,10 +99,11 @@ const void* TascamX8Driver::specializedState(InstanceId instanceId) const {
              : nullptr;
 }
 
-void TascamX8Driver::cancelOnboarding(const DeviceRecord& record) {
+bool TascamX8Driver::cancelOnboarding(const DeviceRecord& record) {
   if (session_ != nullptr && session_->instanceId == record.instanceId) {
     session_->client.forgetDevice();
   }
+  return true;
 }
 
 bool TascamX8Driver::consumePairingUpdate(InstanceId instanceId,

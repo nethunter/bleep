@@ -50,6 +50,10 @@ class DeviceManager {
     return isPendingAdd(instanceId) && pendingCommitFailed_;
   }
   bool retryPendingAdd(InstanceId instanceId);
+  size_t onboardingCandidateCount(InstanceId instanceId) const;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const;
+  bool selectOnboardingCandidate(InstanceId instanceId, uint32_t token);
   RegistryStatus cancelPendingAdd(InstanceId instanceId);
   RegistryStatus remove(InstanceId instanceId);
   RegistryStatus update(InstanceId instanceId, const char* displayName,
@@ -72,10 +76,13 @@ class DeviceManager {
   CommandStatus disconnectIdle(InstanceId instanceId);
   CommandStatus disconnect(InstanceId instanceId, bool confirmed = false);
   void deactivateAll();
-  bool enqueue(DeviceCommand command);
+  bool enqueue(DeviceCommand command, uint32_t* assignedRequestId = nullptr);
+  bool cancelCommand(uint32_t requestId, InstanceId instanceId);
+  bool takeResult(uint32_t requestId, CommandResult& result);
   bool popResult(CommandResult& result) { return results_.pop(result); }
 
   DeviceRuntimeState runtimeState(InstanceId instanceId) const;
+  bool lightControlState(InstanceId instanceId, LightControlState& state) const;
   const void* specializedState(InstanceId instanceId) const;
 
  private:
@@ -86,6 +93,7 @@ class DeviceManager {
     uint8_t owners = 0;
     bool retained = false;
     uint32_t lastUsed = 0;
+    uint32_t pendingRequestId = 0;
   };
 
   ActiveSlot* slotFor(InstanceId instanceId);

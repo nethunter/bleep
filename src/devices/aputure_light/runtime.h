@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "core/ble/ble_central.h"
+#include "core/ble/onboarding_candidates.h"
 #include "core/device_types.h"
 #include "core/mesh/pb_gatt_provisioner.h"
 #include "devices/aputure_light/state.h"
@@ -25,7 +26,18 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   const AputureLightState* state(studio::InstanceId instanceId) const;
   bool consumePairingUpdate(studio::InstanceId instanceId,
                             studio::DeviceRecord& record);
+  bool identifyVendorModel(studio::InstanceId instanceId, uint16_t companyId,
+                           uint16_t modelId,
+                           const char* productName = nullptr);
+  bool canIdentifyVendorModel(studio::InstanceId instanceId) const;
+  void cancelPendingCommand(studio::InstanceId instanceId);
   void forgetLocal(studio::InstanceId instanceId);
+  bool cancelOnboarding(studio::InstanceId instanceId);
+  size_t onboardingCandidateCount(studio::InstanceId instanceId) const;
+  bool onboardingCandidate(studio::InstanceId instanceId, size_t index,
+                           studio::OnboardingCandidate& candidate) const;
+  bool selectOnboardingCandidate(studio::InstanceId instanceId,
+                                 uint32_t token);
   // Saved mesh members from other protocol families attach to this one
   // physical proxy bearer. PB-GATT onboarding remains an exclusive temporary
   // operation; steady-state control uses the shared native client below.
@@ -45,6 +57,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool sendProvisioningPdu(const uint8_t* pdu, size_t length) override;
 #ifdef UI_SIMULATOR
   void simSetPhase(studio::InstanceId instanceId, AputureLightState::Phase phase);
+  bool simObserveCandidate(const studio::ble::Advertisement& advertisement);
 #endif
 
  private:
@@ -55,6 +68,16 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
     bool pairingDirty = false;
     bool receiveSequenceKnown = false;
     uint32_t receiveSequence = 0;
+    bool followupPowerPending = false;
+    bool followupPowerOn = false;
+    bool followupLookPending = false;
+    AccessPayload followupLook = {};
+    studio::CommandType followupLookType = studio::CommandType::Refresh;
+    int32_t followupValue0 = 0;
+    int32_t followupValue1 = 0;
+    int32_t followupValue2 = 0;
+    uint32_t followupPowerAt = 0;
+    char productName[studio::kBleNameCapacity] = "";
   };
   struct Notification {
     uint8_t bytes[80] = {};
@@ -77,12 +100,13 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool sendAccessTo(uint16_t destination, const uint8_t* access,
                     size_t length);
   uint16_t controlGroupFor(studio::InstanceId instanceId) const;
-  bool refreshGroupPower();
   void fail(Session& session, const char* error);
   void updateSharedReady();
   studio::InstanceId preferredGatewayInstance() const;
   bool hasActiveUsers() const;
-  bool isPreferredGatewayAddress(const char* address) const;
+  bool isKnownGatewayAddress(const char* address) const;
+  void returnToOnboardingPicker(const char* error = nullptr);
+  bool rollbackPendingProvision();
 
   Session sessions_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   studio::InstanceId gatewayUsers_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
@@ -94,10 +118,13 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   uint8_t configRetryCount_ = 0;
   bool configAwaitingStatus_ = false;
   NetworkPduBatch configBatch_ = {};
+  DeviceMessageReassembly configReassembly_ = {};
   uint8_t configBatchIndex_ = 0;
   uint32_t configStatusDeadlineMs_ = 0;
+  uint32_t provisioningStartedAt_ = 0;
+  uint32_t provisioningDeadlineMs_ = 0;
+  uint32_t configurationDeadlineMs_ = 0;
   uint32_t nextConfigAt_ = 0;
-  uint32_t lastPowerPollMs_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
   uint32_t gatewayGeneration_ = 0;
   NimBLERemoteCharacteristic* dataIn_ = nullptr;
@@ -107,6 +134,8 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   char provisioningAddress_[studio::kBleAddressCapacity] = "";
   uint8_t provisioningAddressType_ = 0;
   char provisioningName_[studio::kBleNameCapacity] = "";
+  studio::ble::OnboardingCandidates candidates_;
+  MeshStoreData* provisioningSnapshot_ = nullptr;
   studio::mesh::PbGattProvisioner provisioner_;
 };
 

@@ -11,7 +11,7 @@ namespace aputure_light {
 constexpr size_t kMaxMeshNodes = CONFIG_MAX_DEVICE_INSTANCES;
 constexpr uint32_t kSequenceBlockSize = 256;
 constexpr uint32_t kSequenceMaximum = 0x1000000;
-constexpr uint8_t kCurrentConfigurationVersion = 1;
+constexpr uint8_t kCurrentConfigurationVersion = 3;
 
 struct MeshNetworkRecord {
   bool initialized = false;
@@ -87,6 +87,11 @@ bool upsertNode(MeshStoreData& data, const MeshNodeRecord& node);
 bool removeNode(MeshStoreData& data, studio::InstanceId instanceId);
 uint16_t defaultControlGroupAddress(const MeshStoreData& data,
                                     const MeshNodeRecord& node);
+uint16_t memberControlGroupAddress(const MeshStoreData& data,
+                                   studio::InstanceId instanceId);
+bool assignVendorModel(MeshStoreData& data, studio::InstanceId instanceId,
+                       uint16_t companyId, uint16_t modelId);
+bool isKnownMeshProxyAddress(const MeshStoreData& data, const char* address);
 uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data);
 
 }  // namespace aputure_light
