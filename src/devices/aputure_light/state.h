@@ -8,6 +8,7 @@ struct AputureLightState {
   enum class Phase : uint8_t {
     Unprovisioned,
     Scanning,
+    ConnectingProvisioning,
     Provisioning,
     PendingConfig,
     ConnectingProxy,

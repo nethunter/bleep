@@ -8,6 +8,7 @@
 #include "core/ble/ble_central.h"
 #include "core/ble/fake_ble_backend.h"
 #include "core/ble/onboarding_candidates.h"
+#include "core/ble/onboarding_auto_select.h"
 #include "core/config_store.h"
 #include "core/command_traits.h"
 #include "core/device_driver.h"
@@ -4507,6 +4508,31 @@ void test_onboarding_candidates_are_bounded_deduplicated_and_stable() {
   TEST_ASSERT_NOT_NULL(candidates.find(firstToken));
 }
 
+void test_single_onboarding_candidate_auto_selects_after_settling() {
+  studio::ble::OnboardingAutoSelect selector;
+  using Decision = studio::ble::OnboardingAutoSelect::Decision;
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(0, 0, 100)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 42, 200)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 42, 949)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Select),
+                        static_cast<int>(selector.update(1, 42, 950)));
+
+  selector.selectionFailed(42);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::ShowPicker),
+                        static_cast<int>(selector.update(1, 42, 951)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::ShowPicker),
+                        static_cast<int>(selector.update(2, 0, 952)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Wait),
+                        static_cast<int>(selector.update(1, 73, 1000)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(Decision::Select),
+                        static_cast<int>(selector.update(1, 73, 1750)));
+}
+
 void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
   MemoryBackend backend;
   LegacyBackend legacy;
@@ -4876,6 +4902,7 @@ int main(int, char**) {
   RUN_TEST(test_aputure_light_store_and_sequence_reservation_survive_restart);
   RUN_TEST(test_mesh_initialization_is_identity_independent_and_transactional);
   RUN_TEST(test_onboarding_candidates_are_bounded_deduplicated_and_stable);
+  RUN_TEST(test_single_onboarding_candidate_auto_selects_after_settling);
   RUN_TEST(test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);

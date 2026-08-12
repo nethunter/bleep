@@ -96,8 +96,9 @@ of successful movement.
   authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Onboarding: choose `Aputure Light`, then select one of at most four compatible
-  nearby advertisements before PB-GATT begins. The selected factory-reset
+- Onboarding: choose `Aputure Light`. One compatible candidate is selected
+  automatically after a 750 ms settling window; two to four nearby candidates
+  use the explicit picker before PB-GATT begins. The selected factory-reset
   fixture is provisioned into the panel-owned mesh. If advertisement identity
   is insufficient, recovery asks for the exact
   fixture: amaran Ace 25c, Pano 60c, Pano 120c, or Aputure MC Pro. Exact product
@@ -109,6 +110,10 @@ of successful movement.
   all four choices; Ace/Pano use the known Amaran tuple (`0x0211:0x0000`) and
   MC Pro uses (`0x03F6:0x1000`). Model-specific support remains blocked until
   each fixture passes its physical gate.
+  After PB-GATT, the panel waits for either the selected address or this mesh's
+  Network ID instead of treating the fixture's expected reboot as an immediate
+  failure. Provisioning and post-provision configuration have bounded rollback
+  deadlines and cannot remain pending indefinitely.
 
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is

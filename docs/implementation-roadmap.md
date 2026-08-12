@@ -174,8 +174,9 @@ Completion gate:
 - build and simulator results remain labeled separately from two-panel proof.
 
 Current software tranche (ADR-042): mesh key creation is transactional and
-identity-independent, and fresh Aputure/Zhiyun adds require explicit selection
-from a bounded stable picker before PB-GATT. Native and interactive simulator
+identity-independent. A single stable Aputure/Zhiyun candidate is selected
+automatically; multiple candidates require explicit selection from a bounded
+stable picker before PB-GATT. Native and interactive simulator
 gates pass. Simultaneous physical panels, phone/captive Portal behavior,
 fixture selection, cross-mesh rejection, reboot/fallback, and coexistence soak
 remain open completion gates.

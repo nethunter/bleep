@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "../../ui.h"
+#include "core/ble/onboarding_auto_select.h"
 #include "core/device_manager.h"
 #include "devices/aputure_light/runtime.h"
 #include "devices/aputure_light/state.h"
@@ -24,6 +25,7 @@ studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
 uint32_t lastRefreshMs = 0;
 studio_ui::BlePairingScreen pairingScreen;
+studio::ble::OnboardingAutoSelect autoSelect;
 lv_obj_t* identifyAce = nullptr;
 lv_obj_t* identifyPano60 = nullptr;
 lv_obj_t* identifyPano120 = nullptr;
@@ -50,6 +52,8 @@ const char* phaseText(const aputure_light::AputureLightState* state) {
       return "Not provisioned";
     case aputure_light::AputureLightState::Phase::Scanning:
       return "Scanning for light";
+    case aputure_light::AputureLightState::Phase::ConnectingProvisioning:
+      return "Connecting to light";
     case aputure_light::AputureLightState::Phase::Provisioning:
       return "Provisioning";
     case aputure_light::AputureLightState::Phase::PendingConfig:
@@ -139,6 +143,22 @@ void updateCandidates(bool show) {
       ++count;
     }
   }
+  const auto decision = autoSelect.update(
+      count, count == 1 ? candidates[0].token : 0, millis());
+  if (decision == studio::ble::OnboardingAutoSelect::Decision::Select) {
+    if (!studio::devices().selectOnboardingCandidate(instanceId,
+                                                      candidates[0].token)) {
+      autoSelect.selectionFailed(candidates[0].token);
+      pairingScreen.setCandidates(candidates, count, onCandidate);
+      return;
+    }
+    pairingScreen.setCandidates(nullptr, 0, onCandidate);
+    return;
+  }
+  if (decision == studio::ble::OnboardingAutoSelect::Decision::Wait) {
+    pairingScreen.setCandidates(nullptr, 0, onCandidate);
+    return;
+  }
   pairingScreen.setCandidates(candidates, count, onCandidate);
 }
 
@@ -220,6 +240,7 @@ void showForState(const aputure_light::AputureLightState* state) {
 }  // namespace
 
 void show(studio::InstanceId id) {
+  autoSelect.reset();
   instanceId = id;
   visible =
       studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
@@ -234,6 +255,7 @@ void show(studio::InstanceId id) {
 }
 
 void hide() {
+  autoSelect.reset();
   light_control_ui::hide();
   if (visible)
     studio::devices().release(instanceId,

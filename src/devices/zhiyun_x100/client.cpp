@@ -933,6 +933,7 @@ void X100Client::returnToOnboardingPicker(const char* error) {
     return;
   }
   provisioner_.cancel();
+  candidates_.clear();
   haveTarget_ = false;
   targetAddress_[0] = '\0';
   targetName_[0] = '\0';

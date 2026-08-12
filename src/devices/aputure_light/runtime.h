@@ -68,8 +68,9 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
     bool pairingDirty = false;
     bool receiveSequenceKnown = false;
     uint32_t receiveSequence = 0;
-    bool compoundPending = false;
-    uint32_t compoundPowerAt = 0;
+    bool followupPowerPending = false;
+    bool followupPowerOn = false;
+    uint32_t followupPowerAt = 0;
     char productName[studio::kBleNameCapacity] = "";
   };
   struct Notification {
@@ -113,6 +114,9 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   NetworkPduBatch configBatch_ = {};
   uint8_t configBatchIndex_ = 0;
   uint32_t configStatusDeadlineMs_ = 0;
+  uint32_t provisioningStartedAt_ = 0;
+  uint32_t provisioningDeadlineMs_ = 0;
+  uint32_t configurationDeadlineMs_ = 0;
   uint32_t nextConfigAt_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
   uint32_t gatewayGeneration_ = 0;

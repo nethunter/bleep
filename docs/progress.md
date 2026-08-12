@@ -63,6 +63,27 @@ short, factual, and reproducible.
 
 ### 2026-08-11: Light/mesh review corrections
 
+- Live Aputure diagnostics separated a 43.6-second wait for the reset fixture's
+  first compatible advertisement from the PB-GATT exchange, which completed in
+  about 1.6 seconds. The actual completion failure was the expected fixture
+  reboot followed by a 584 ms direct-connect miss: the runtime incorrectly
+  rolled back immediately instead of waiting for the provisioned proxy.
+- A single stable Aputure or Zhiyun candidate now auto-selects after a 750 ms
+  discovery-settling window without displaying a one-row picker. Multiple
+  candidates retain the stable explicit picker. Immediate auto-selection
+  failure exposes the row for manual retry, and failed attempts clear stale
+  candidates before scanning again.
+- Aputure now distinguishes `Connecting to light`, PB-GATT `Provisioning`, and
+  `Configuring mesh`. PB-GATT has a 30-second deadline. After provisioning, an
+  expected reboot/connect miss preserves the provisional transaction, scans for
+  the exact address or this mesh's standard Network ID, and resumes
+  configuration through that proxy. A 60-second overall configuration deadline
+  rolls back the provisional node and unicast allocation instead of waiting
+  forever.
+- Entering the unified Aputure control applies the displayed default look as
+  intended. If the fixture was Off, the same per-node transaction follows the
+  look with an explicit Off and keeps only that session pending, so opening the
+  screen or changing look controls does not leave an Off fixture powered On.
 - Fixed request ownership for sequence cancellation. `DeviceManager` now
   records the request ID that actually created each driver's asynchronous
   pending transaction. Removing a command that is still queued no longer
@@ -80,13 +101,16 @@ short, factual, and reproducible.
   modules now own onboarding only; Ready uses the single capability-driven
   light shell. Home Assistant lights also skip construction of the generic
   entity screen, while non-light HA domains keep it.
-- Native passed 85/85. The complete `ui_sim` traversal and screenshots passed,
+- Native passed 86/86. The complete `ui_sim` traversal and screenshots passed,
   including candidate scrolling/tapping during refresh and Aputure CCT/RGB,
-  X100, X60RGB, and HA power-only shared-shell views. Simulator LVGL reported
+  single-candidate auto-selection, X100, X60RGB, and HA power-only shared-shell
+  views. Simulator LVGL reported
   42,848 bytes free after maximum-device initialization, 23,576 after sequence
   Stop/settings, and 26,480 after remove refresh. The full Montserrat `bleep`
-  profile built with 141,404 / 327,680 bytes static RAM and 1,926,232 /
-  3,145,728 bytes flash. No firmware upload or NVS reset was attempted.
+  profile built with 141,420 / 327,680 bytes static RAM and 1,927,556 /
+  3,145,728 bytes flash. The image uploaded to the configured
+  `/dev/cu.usbserial-211240`; all written-region hashes verified and the board
+  hard-reset. NVS was not erased or factory-reset.
 - Still unverified: physical fixture selection, early-disconnect recovery,
   rollback under real NVS failure, cross-mesh rejection, reboot/fallback,
   two-panel/two-fixture behavior, all four Aputure fixtures together,

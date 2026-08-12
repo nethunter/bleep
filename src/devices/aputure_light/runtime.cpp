@@ -155,7 +155,7 @@ bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
   provisioningAddressType_ = entry->advertisement.address.type;
   studio::ble::advertisementName(entry->advertisement, provisioningName_,
                                  sizeof(provisioningName_));
-  session->state.phase = AputureLightState::Phase::Provisioning;
+  session->state.phase = AputureLightState::Phase::ConnectingProvisioning;
   return true;
 }
 bool AputureLightRuntime::simObserveCandidate(const studio::ble::Advertisement& advertisement) { return candidates_.observe(advertisement); }
@@ -211,6 +211,7 @@ void AputureLightRuntime::returnToOnboardingPicker(const char*) {}
 #include "core/ble/ble_runtime.h"
 #include "core/mesh/mesh_repository.h"
 #include "core/preferences_store.h"
+#include "devices/aputure_light/crypto.h"
 #include "devices/aputure_light/protocol.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
@@ -502,9 +503,22 @@ void AputureLightRuntime::onBleAdvertisement(
   if (link != link_) return;
   const char* wanted = provisioningLink_ ? kProvisionAdvertisedService
                                          : kProxyAdvertisedService;
+  bool matchingProxy = isKnownGatewayAddress(advertisement.address.value);
+  if (!provisioningLink_ && !matchingProxy &&
+      provisioningSnapshot_ != nullptr) {
+    uint8_t advertisedNetworkId[8];
+    uint8_t expectedNetworkId[8];
+    if (studio::ble::meshProxyNetworkId(advertisement,
+                                        advertisedNetworkId)) {
+      meshK3(studio::mesh::repository().data().network.networkKey,
+             expectedNetworkId);
+      matchingProxy =
+          std::memcmp(advertisedNetworkId, expectedNetworkId,
+                      sizeof(expectedNetworkId)) == 0;
+    }
+  }
   if (studio::ble::advertisesService(advertisement, wanted) &&
-      (provisioningLink_ ||
-       isKnownGatewayAddress(advertisement.address.value))) {
+      (provisioningLink_ || matchingProxy)) {
     char observedName[studio::kBleNameCapacity] = "";
     studio::ble::advertisementName(advertisement, observedName,
                                    sizeof(observedName));
@@ -570,7 +584,14 @@ bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
   provisioningAddressType_ = entry->advertisement.address.type;
   studio::ble::advertisementName(entry->advertisement, provisioningName_,
                                  sizeof(provisioningName_));
-  session->state.phase = AputureLightState::Phase::Provisioning;
+  provisioningStartedAt_ = millis();
+  provisioningDeadlineMs_ = provisioningStartedAt_ + 30000;
+  session->state.phase = AputureLightState::Phase::ConnectingProvisioning;
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=provision_select address=%s name=%s rssi=%d\n",
+      provisioningAddress_,
+      provisioningName_[0] != '\0' ? provisioningName_ : "<empty>",
+      static_cast<int>(entry->advertisement.rssi));
   return true;
 }
 
@@ -586,9 +607,13 @@ void AputureLightRuntime::returnToOnboardingPicker(const char* error) {
     return;
   }
   provisioner_.cancel();
+  candidates_.clear();
   provisioningLink_ = true;
   provisioningAddress_[0] = '\0';
   provisioningName_[0] = '\0';
+  provisioningStartedAt_ = 0;
+  provisioningDeadlineMs_ = 0;
+  configurationDeadlineMs_ = 0;
   connected_ = false;
   dataIn_ = nullptr;
   if (Session* session = sessionFor(linkInstance_)) {
@@ -638,6 +663,9 @@ bool AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
   candidates_.clear();
   provisioningAddress_[0] = '\0';
   provisioningName_[0] = '\0';
+  provisioningStartedAt_ = 0;
+  provisioningDeadlineMs_ = 0;
+  configurationDeadlineMs_ = 0;
   if (link_ != studio::ble::kInvalidLinkHandle) {
     studio::ble::bleCentral().disconnect(link_, false);
   }
@@ -694,6 +722,13 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
         session.state.phase = AputureLightState::Phase::ConnectingProxy;
       }
     }
+    if (provisioningSnapshot_ != nullptr) {
+      if (Session* session = sessionFor(linkInstance_)) {
+        session->state.phase = AputureLightState::Phase::PendingConfig;
+      }
+      studio::ble::bleCentral().requestScan(link_, true);
+      return;
+    }
     const studio::InstanceId preferred = preferredGatewayInstance();
     if (link_ != studio::ble::kInvalidLinkHandle &&
         preferred != studio::kInvalidInstanceId) {
@@ -708,8 +743,15 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
       }
     }
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
-    if (provisioningLink_ || provisioningSnapshot_ != nullptr) {
+    if (provisioningLink_) {
       returnToOnboardingPicker("Connect failed");
+      return;
+    }
+    if (provisioningSnapshot_ != nullptr) {
+      if (Session* session = sessionFor(linkInstance_)) {
+        session->state.phase = AputureLightState::Phase::PendingConfig;
+      }
+      studio::ble::bleCentral().requestScan(link_, true);
       return;
     }
     if (Session* session = sessionFor(linkInstance_)) {
@@ -719,6 +761,7 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
 }
 
 bool AputureLightRuntime::setupProvisioning() {
+  const uint32_t startedAt = millis();
   NimBLEClient* client = static_cast<NimBLEClient*>(studio::ble::bleCentral().nativeClient(link_));
   if (client == nullptr) return false;
   NimBLERemoteService* service = client->getService(NimBLEUUID(kProvisionService));
@@ -726,6 +769,10 @@ bool AputureLightRuntime::setupProvisioning() {
   dataIn_ = service->getCharacteristic(NimBLEUUID(kProvisionIn));
   NimBLERemoteCharacteristic* out = service->getCharacteristic(NimBLEUUID(kProvisionOut));
   if (dataIn_ == nullptr || out == nullptr || !out->subscribe(true, notificationCallback, true)) return false;
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=provision_gatt_ready elapsed_ms=%lu total_ms=%lu\n",
+      static_cast<unsigned long>(millis() - startedAt),
+      static_cast<unsigned long>(millis() - provisioningStartedAt_));
   if (Session* session = sessionFor(linkInstance_)) session->state.phase = AputureLightState::Phase::Provisioning;
   return provisioner_.begin(studio::mesh::repository().data().network.networkKey,
                             studio::mesh::repository().data().network.ivIndex,
@@ -809,6 +856,21 @@ void AputureLightRuntime::loop() {
     notifyTail_ = static_cast<uint8_t>((notifyTail_ + 1) % 8);
     processNotification(notification);
   }
+  if (provisioningLink_ && provisioningDeadlineMs_ != 0 &&
+      static_cast<int32_t>(now - provisioningDeadlineMs_) >= 0) {
+    APUTURE_LIGHT_LOG.printf(
+        "aputure_light event=provision_timeout elapsed_ms=%lu\n",
+        static_cast<unsigned long>(now - provisioningStartedAt_));
+    returnToOnboardingPicker("Provisioning timeout");
+    return;
+  }
+  if (provisioningSnapshot_ != nullptr && configurationDeadlineMs_ != 0 &&
+      static_cast<int32_t>(now - configurationDeadlineMs_) >= 0) {
+    APUTURE_LIGHT_LOG.println(
+        "aputure_light event=config_failed reason=overall_timeout");
+    returnToOnboardingPicker("Mesh config timeout");
+    return;
+  }
   Session* configuringSession = sessionFor(linkInstance_);
   if (connected_ && !provisioningLink_ && configuringSession != nullptr &&
       configuringSession->state.phase != AputureLightState::Phase::Failed &&
@@ -823,16 +885,22 @@ void AputureLightRuntime::loop() {
             kNodeFreshnessMs) {
       session.state.nodeReachable = false;
     }
-    if (session.compoundPending &&
-        static_cast<int32_t>(now - session.compoundPowerAt) >= 0) {
+    if (session.followupPowerPending &&
+        static_cast<int32_t>(now - session.followupPowerAt) >= 0) {
       AccessPayload power;
-      const bool sent = buildPowerAccess(true, power) &&
+      const bool sent = buildPowerAccess(session.followupPowerOn, power) &&
                         sendAccess(session.instanceId, power.bytes,
                                    power.length);
-      session.compoundPending = false;
+      session.followupPowerPending = false;
       session.state.commandPending = false;
       session.state.lastCommandFailed = !sent;
       if (sent) {
+        session.state.on = session.followupPowerOn;
+        session.state.optimistic = true;
+        session.state.powerOptimistic = true;
+      } else if (!session.followupPowerOn) {
+        // Aputure look writes wake the fixture. If the corrective Off fails,
+        // expose the likely physical state rather than continuing to show Off.
         session.state.on = true;
         session.state.optimistic = true;
         session.state.powerOptimistic = true;
@@ -857,6 +925,10 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
     if (notification.length < 2 || notification.bytes[0] != 0x03) return;
     const uint8_t* pdu = notification.bytes + 1;
     const size_t length = notification.length - 1;
+    APUTURE_LIGHT_LOG.printf(
+        "aputure_light event=provision_rx pdu=0x%02x elapsed_ms=%lu\n",
+        pdu[0],
+        static_cast<unsigned long>(millis() - provisioningStartedAt_));
     bool ok = provisioner_.handle(pdu, length);
     if (ok && provisioner_.complete()) ok = completeProvisioning();
     if (!ok) {
@@ -1030,6 +1102,11 @@ bool AputureLightRuntime::completeProvisioning() {
   provisioningSnapshot_ = snapshot;
   session->state.phase = AputureLightState::Phase::PendingConfig;
   provisioningLink_ = false;
+  provisioningDeadlineMs_ = 0;
+  configurationDeadlineMs_ = millis() + 60000;
+  APUTURE_LIGHT_LOG.printf(
+      "aputure_light event=provision_complete elapsed_ms=%lu\n",
+      static_cast<unsigned long>(millis() - provisioningStartedAt_));
   connected_ = false;
   dataIn_ = nullptr;
   configBatch_ = NetworkPduBatch{};
@@ -1166,6 +1243,8 @@ bool AputureLightRuntime::configureNext() {
       }
       delete provisioningSnapshot_;
       provisioningSnapshot_ = nullptr;
+      provisioningStartedAt_ = 0;
+      configurationDeadlineMs_ = 0;
       APUTURE_LIGHT_LOG.printf("aputure_light event=config_complete step=%u\n", configStep_);
       studio::ble::bleCentral().markProtocolReady(link_);
       updateSharedReady();
@@ -1315,9 +1394,16 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
     session->state.rgb = command.value0;
     session->state.rgbBrightness = command.value1;
   }
-  if (compoundCct || compoundRgb) {
-    session->compoundPending = true;
-    session->compoundPowerAt = millis() + 100;
+  const bool lookCommand =
+      command.type == studio::CommandType::SetLightCct ||
+      command.type == studio::CommandType::SetLightRgb || compoundCct ||
+      compoundRgb;
+  const bool preserveOff = lookCommand && !compoundCct && !compoundRgb &&
+                           !session->state.on;
+  if (compoundCct || compoundRgb || preserveOff) {
+    session->followupPowerPending = true;
+    session->followupPowerOn = !preserveOff;
+    session->followupPowerAt = millis() + 100;
     session->state.commandPending = true;
   }
   return studio::CommandStatus::Succeeded;
@@ -1326,7 +1412,7 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
 studio::DeviceRuntimeState AputureLightRuntime::runtimeState(studio::InstanceId id) const {
   studio::DeviceRuntimeState out; const Session* session = sessionFor(id); if (!session) return out;
   if (session->state.phase == AputureLightState::Phase::Scanning) out.link = studio::LinkState::Scanning;
-  else if (session->state.phase == AputureLightState::Phase::Provisioning || session->state.phase == AputureLightState::Phase::ConnectingProxy || session->state.phase == AputureLightState::Phase::PendingConfig) out.link = studio::LinkState::Connecting;
+  else if (session->state.phase == AputureLightState::Phase::ConnectingProvisioning || session->state.phase == AputureLightState::Phase::Provisioning || session->state.phase == AputureLightState::Phase::ConnectingProxy || session->state.phase == AputureLightState::Phase::PendingConfig) out.link = studio::LinkState::Connecting;
   else if (session->state.phase == AputureLightState::Phase::Ready) out.link = studio::LinkState::Connected;
   out.protocolReady = session->state.phase == AputureLightState::Phase::Ready;
   out.quality = session->state.optimistic
@@ -1451,8 +1537,8 @@ bool AputureLightRuntime::canIdentifyVendorModel(studio::InstanceId id) const {
 void AputureLightRuntime::cancelPendingCommand(studio::InstanceId id) {
   Session* session = sessionFor(id);
   if (session == nullptr) return;
-  session->compoundPending = false;
-  session->compoundPowerAt = 0;
+  session->followupPowerPending = false;
+  session->followupPowerAt = 0;
   session->state.commandPending = false;
   session->state.lastCommandFailed = false;
 }

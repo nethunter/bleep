@@ -1036,9 +1036,13 @@ the replacement.
   with advertised name/model, address suffix, and RSSI. Identity is address
   plus address type and selection uses an opaque stable token. Duplicate
   observations update in place; when full, only a stronger advertisement may
-  replace the weakest entry.
-- Transaction boundary: PB-GATT connect/provisioning starts only after an
-  explicit selection. Immediate claim failure rolls back to Scanning. A failed
+  replace the weakest entry. If exactly one candidate remains through a 750 ms
+  discovery-settling window, it is selected automatically without displaying
+  a one-row picker. Two or more candidates always require an explicit tap. A
+  failed automatic claim exposes the row for manual retry.
+- Transaction boundary: PB-GATT connect/provisioning starts only after the
+  bounded selection decision. Immediate claim failure rolls back to Scanning.
+  A failed
   onboarding/configuration transaction restores the pre-provision mesh node
   set and next unicast address while never decreasing a reserved sequence
   high-water mark. Rollback itself is publish-after-save: if the replacement
@@ -1046,10 +1050,13 @@ the replacement.
   than presenting a successful cancel with stale NVS. The normal device record
   still commits only after protocol-ready confirmation. Back/cancel removes
   the draft and provisional mesh allocation.
-- Post-provision correlation: Zhiyun rediscovery accepts the exact selected
-  address/type or a standard Mesh Proxy Network ID derived from this panel's
-  Network Key. A same-model proxy with neither proof is ignored. Physical
-  cross-mesh rejection remains part of the open hardware gate.
+- Post-provision correlation: Aputure and Zhiyun rediscovery accept the exact
+  selected address/type or a standard Mesh Proxy Network ID derived from this
+  panel's Network Key. Aputure keeps the provisional transaction across an
+  expected post-provision reboot/connect miss and resumes configuration through
+  the correlated proxy; a 60-second overall deadline rolls it back. A proxy
+  with neither identity nor network proof is ignored. Physical cross-mesh
+  rejection remains part of the open hardware gate.
 - Compatibility: Saved targets continue automatic reconnect and Aputure and
   Zhiyun retain ADR-041/039 shared-mesh routing. This decision does not alter
   `panel_identity`, `Bleep-Setup-XXXXX`, Portal storage/security, mesh schema

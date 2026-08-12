@@ -712,7 +712,7 @@ int main() {
   const auto* candidateState = aputure_light::runtime()->state(candidateAddId);
   if (candidateState == nullptr ||
       candidateState->phase !=
-          aputure_light::AputureLightState::Phase::Provisioning) {
+          aputure_light::AputureLightState::Phase::ConnectingProvisioning) {
     std::fprintf(stderr, "Candidate row tap did not select stable token\n");
     return 1;
   }
@@ -720,6 +720,34 @@ int main() {
   pump(20);
   if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {
     std::fprintf(stderr, "Candidate picker back did not cancel pending add\n");
+    return 1;
+  }
+  candidateAddId = studio::kInvalidInstanceId;
+  if (studio::devices().beginAdd(studio::DriverId::AputureLight,
+                                 "Aputure Light", candidateAddId) !=
+      studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to begin single-candidate add\n");
+    return 1;
+  }
+  aputure_light_ui::show(candidateAddId);
+  aputure_light::runtime()->simObserveCandidate(candidateAdvertisements[0]);
+  pump(500);
+  if (aputure_light_ui::simCandidateRowCount() != 0) {
+    std::fprintf(stderr, "Single candidate selector was shown while settling\n");
+    return 1;
+  }
+  pump(800);
+  candidateState = aputure_light::runtime()->state(candidateAddId);
+  if (candidateState == nullptr ||
+      candidateState->phase !=
+          aputure_light::AputureLightState::Phase::ConnectingProvisioning) {
+    std::fprintf(stderr, "Single candidate was not selected automatically\n");
+    return 1;
+  }
+  aputure_light_ui::handleLongPress();
+  pump(20);
+  if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {
+    std::fprintf(stderr, "Single-candidate add did not cancel cleanly\n");
     return 1;
   }
   if (studio::devices().add(studio::DriverId::AputureLight,
@@ -755,8 +783,9 @@ int main() {
   if (lightState == nullptr ||
       lightState->mode != aputure_light::AputureLightState::Mode::Cct ||
       lightState->kelvin != 5600 || lightState->tintPermille != 0 ||
-      lightState->cctBrightness != 50) {
-    std::fprintf(stderr, "Aputure Light displayed look was not applied on ready\n");
+      lightState->cctBrightness != 50 || lightState->on) {
+    std::fprintf(stderr,
+                 "Aputure entry look did not preserve the off state\n");
     return 1;
   }
   aputure_light_ui::simShowRgb();

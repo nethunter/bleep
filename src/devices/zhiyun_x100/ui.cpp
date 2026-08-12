@@ -4,6 +4,7 @@
 #include <lvgl.h>
 
 #include "../../ui.h"
+#include "core/ble/onboarding_auto_select.h"
 #include "core/device_manager.h"
 #include "devices/zhiyun_x100/state.h"
 #include "haptic_feedback.h"
@@ -17,6 +18,7 @@ studio::InstanceId instanceId = studio::kInvalidInstanceId;
 bool visible = false;
 uint32_t lastRefreshMs = 0;
 studio_ui::BlePairingScreen pairingScreen;
+studio::ble::OnboardingAutoSelect autoSelect;
 
 void enqueueConnect() {
   studio::DeviceCommand command;
@@ -61,6 +63,22 @@ void updateCandidates(bool show) {
                                                  candidates[count])) {
       ++count;
     }
+  }
+  const auto decision = autoSelect.update(
+      count, count == 1 ? candidates[0].token : 0, millis());
+  if (decision == studio::ble::OnboardingAutoSelect::Decision::Select) {
+    if (!studio::devices().selectOnboardingCandidate(instanceId,
+                                                      candidates[0].token)) {
+      autoSelect.selectionFailed(candidates[0].token);
+      pairingScreen.setCandidates(candidates, count, onCandidate);
+      return;
+    }
+    pairingScreen.setCandidates(nullptr, 0, onCandidate);
+    return;
+  }
+  if (decision == studio::ble::OnboardingAutoSelect::Decision::Wait) {
+    pairingScreen.setCandidates(nullptr, 0, onCandidate);
+    return;
   }
   pairingScreen.setCandidates(candidates, count, onCandidate);
 }
@@ -120,6 +138,7 @@ void showForState(const zhiyun_x100::X100State* state) {
 void init() {}
 
 void show(studio::InstanceId id) {
+  autoSelect.reset();
   instanceId = id;
   visible =
       studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
@@ -134,6 +153,7 @@ void show(studio::InstanceId id) {
 }
 
 void hide() {
+  autoSelect.reset();
   light_control_ui::hide();
   if (visible)
     studio::devices().release(instanceId,
