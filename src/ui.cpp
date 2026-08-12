@@ -290,6 +290,28 @@ size_t devicePageCount() {
              : (count + kDeviceRowsPerPage - 1) / kDeviceRowsPerPage;
 }
 
+size_t buildDeviceDisplayOrder(studio::InstanceId* order, size_t capacity) {
+  const size_t count = studio::devices().count();
+  if (order == nullptr || capacity < count) return 0;
+
+  size_t next = 0;
+  for (uint8_t pass = 0; pass < 2; ++pass) {
+    const bool wantConnected = pass == 0;
+    for (size_t i = 0; i < count; ++i) {
+      const studio::DeviceRecord* record = studio::devices().at(i);
+      if (record == nullptr) continue;
+      const bool connected =
+          record->enabled &&
+          studio::devices().runtimeState(record->instanceId).link ==
+              studio::LinkState::Connected;
+      if (connected == wantConnected) {
+        order[next++] = record->instanceId;
+      }
+    }
+  }
+  return next;
+}
+
 const char* linkText(studio::LinkState link) {
   switch (link) {
     case studio::LinkState::Scanning:
@@ -356,17 +378,21 @@ void onOpenManage(lv_event_t* event) {
 void refreshDevices() {
   lv_obj_clean(deviceList);
   addButton = nullptr;
+  studio::InstanceId displayOrder[CONFIG_MAX_DEVICE_INSTANCES] = {};
+  const size_t displayCount =
+      buildDeviceDisplayOrder(displayOrder, CONFIG_MAX_DEVICE_INSTANCES);
   const bool canAdd = canAddDevice();
   const size_t pageCount = devicePageCount();
   const bool paged = pageCount > 1;
   if (devicePage >= pageCount) devicePage = pageCount - 1;
   lv_obj_set_height(deviceList, paged ? 126 : 158);
   const size_t first = devicePage * kDeviceRowsPerPage;
-  const size_t last = first + kDeviceRowsPerPage < studio::devices().count()
+  const size_t last = first + kDeviceRowsPerPage < displayCount
                           ? first + kDeviceRowsPerPage
-                          : studio::devices().count();
+                          : displayCount;
   for (size_t i = first; i < last; ++i) {
-    const studio::DeviceRecord* record = studio::devices().at(i);
+    const studio::DeviceRecord* record =
+        studio::devices().find(displayOrder[i]);
     if (record == nullptr) {
       continue;
     }
@@ -1977,6 +2003,13 @@ bool renamePromptActive() {
 }
 
 #ifdef UI_SIMULATOR
+studio::InstanceId simDeviceAtDisplayIndex(size_t index) {
+  studio::InstanceId displayOrder[CONFIG_MAX_DEVICE_INSTANCES] = {};
+  const size_t count =
+      buildDeviceDisplayOrder(displayOrder, CONFIG_MAX_DEVICE_INSTANCES);
+  return index < count ? displayOrder[index] : studio::kInvalidInstanceId;
+}
+
 bool simAddDeviceAtListEnd() {
   devicePage = devicePageCount() - 1;
   refreshDevices();

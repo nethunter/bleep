@@ -64,8 +64,9 @@ principles:
   records, enable/disable, rename, forget/re-pair, and delete. A new or
   factory-reset panel starts with an empty Devices list; add Shark or any other
   physical device explicitly through **+ Add device**. The registry holds up
-  to 24 saved devices. The Devices list remains unpaged through six configured
-  devices, then pages six devices at a time. Long screen, device, and sequence
+  to 24 saved devices. Connected devices sort to the front while other devices
+  retain their saved order. The Devices list remains unpaged through six
+  configured devices, then pages six devices at a time. Long screen, device, and sequence
   titles stay on one line and scroll horizontally instead of covering content.
   Common pages and edit overlays share the same Home-aligned title, navigation
   controls, and content start rather than maintaining separate screen geometry.

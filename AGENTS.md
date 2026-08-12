@@ -80,6 +80,12 @@ Follow these rules while building:
   a manual update. When requested, render and inspect the affected PDF pages
   before handoff. Keep `hardware/README.md` aligned when hardware or assembly
   guidance changes.
+- When the user says **"update the manual,"** identify the commit that last
+  updated the manual source or generated PDF, review every repository change
+  since that commit, and incorporate all relevant user-visible behavior,
+  setup, compatibility, safety, and troubleshooting changes into the manual
+  source before rebuilding it. Do not treat the request as merely regenerating
+  the PDF from unchanged source.
 - For a manual refresh, first collect every implementation and supporting
   documentation change made since the previous PDF generation on a separate
   branch, then rebase and merge that branch into the current `main` following

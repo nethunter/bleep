@@ -324,6 +324,18 @@ int main() {
     return 1;
   }
 
+  if (!studio::devices().acquire(tascamId,
+                                 studio::ConnectionOwner::Foreground)) {
+    std::fprintf(stderr, "Failed to activate connected-first list fixture\n");
+    return 1;
+  }
+  studio::simSetTascamConnectedState(false);
+  if (ui::simDeviceAtDisplayIndex(0) != tascamId) {
+    std::fprintf(stderr, "Connected device was not sorted to the list front\n");
+    return 1;
+  }
+  studio::devices().deactivateAll();
+
   printLvglMemory("after max-device init");
 
   ui::showHome();
