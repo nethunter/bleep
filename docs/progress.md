@@ -63,6 +63,20 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: Connected-first Devices list
+
+- The Devices list now places enabled devices with a physically connected link
+  before all other saved records, including across page boundaries. Ordering is
+  stable within the connected and remaining sections; connecting, scanning,
+  disabled, and disconnected records retain their saved order.
+- Added a simulator regression that activates a later saved recorder and proves
+  it moves to the first display position. Native tests passed 89/89, and the
+  complete `ui_sim` traversal passed. Full Montserrat `bleep` built with
+  141,428 / 327,680 bytes static RAM (43.2%) and 1,931,822 / 3,145,728 bytes
+  flash (61.4%), then uploaded successfully to `/dev/cu.usbserial-211240` with
+  hash verification and a hard reset. NVS was preserved; on-panel ordering was
+  not manually observed.
+
 ### 2026-08-12: Sequence look preview, RGB final-state ordering, and automatic composition identity
 
 - The shared sequence look editor now retains foreground ownership and sends a
@@ -249,6 +263,21 @@ short, factual, and reproducible.
   the explicitly selected `/dev/cu.usbserial-211240` port succeeded; every
   written region passed hash verification and the board hard-reset through RTS.
   Hardware gateway/model recovery checks remain pending.
+
+### 2026-08-11: Latest manual rebuild and main firmware flash
+
+- Audited changes after the previous generated owner's guide. The only later
+  repository changes were merge bookkeeping and ignored VS Code file cleanup,
+  so `docs/manual/manual.md` already matched current owner-visible behavior.
+- Rebuilt `output/pdf/bleep-instruction-manual.pdf` from primary `main` using
+  the pinned manual dependencies. The result remains 26 A4 pages; every page
+  was rendered to PNG and visually inspected with no clipping, overlap, broken
+  glyphs or tables, blank pages, or page-furniture defects.
+- Built the full Montserrat `bleep` profile successfully with 141,276 /
+  327,680 bytes static RAM (43.1%) and 1,914,386 / 3,145,728 bytes flash
+  (60.9%). Uploaded that artifact to `/dev/cu.usbserial-211240`; all written
+  regions passed hash verification and the panel hard-reset. NVS was preserved
+  and Factory Reset was not run. Peripheral behavior was not re-exercised.
 
 ### 2026-08-11: Main-only owner's guide refresh
 

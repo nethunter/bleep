@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include "core/device_types.h"
 
 // Application-level LVGL navigation. All functions are main-loop only.
@@ -37,6 +39,7 @@ void closeRenamePrompt();
 bool renamePromptActive();
 
 #ifdef UI_SIMULATOR
+studio::InstanceId simDeviceAtDisplayIndex(size_t index);
 bool simAddDeviceAtListEnd();
 void simShowAddDevice();
 void simShowManage(studio::InstanceId instanceId);
