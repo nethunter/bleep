@@ -16,6 +16,7 @@ class CanonTriggerDriver : public DeviceDriver {
   const void* specializedState(InstanceId instanceId) const override;
   void forgetPairing(const DeviceRecord& record) override;
   void cancelOnboarding(const DeviceRecord& record) override;
+  void preferSkipPeer(InstanceId instanceId, const char* bleAddress) override;
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
  private:
@@ -23,6 +24,7 @@ class CanonTriggerDriver : public DeviceDriver {
   struct Session {
     canon_trigger::CanonTriggerClient client;
     InstanceId instanceId = kInvalidInstanceId;
+    bool metadataRepairPending = false;
   };
   Session* sessionFor(InstanceId instanceId);
   const Session* sessionFor(InstanceId instanceId) const;

@@ -82,6 +82,9 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   void clearIgnoredAddresses();
   bool isIgnoredAddress(const char* address) const;
   void ignoreAddress(const char* address);
+  bool isBondedAdvertisement(
+      const studio::ble::Advertisement& advertisement) const;
+  void adoptResolvedIdentity();
   void considerScanCandidate(
       const studio::ble::Advertisement& advertisement, const char* name,
       bool hasService, bool hasMfg);

@@ -19,6 +19,7 @@
 #include "devices/canon_ble/ble_match.h"
 #include "devices/canon_ble/protocol.h"
 #include "devices/canon_ble/state.h"
+#include "devices/canon_camera_name.h"
 #include "devices/canon_trigger/ble_match.h"
 #include "devices/canon_trigger/protocol.h"
 #include "devices/canon_trigger/state.h"
@@ -780,8 +781,26 @@ void test_canon_trigger_pairing_name_and_trigger_bytes() {
                            reinterpret_cast<const char*>(&name.bytes[1]));
 }
 
+void test_canon_camera_names_and_identity_address_types() {
+  char displayName[studio::kDeviceNameCapacity] = "";
+  TEST_ASSERT_TRUE(canon_camera::canonicalDisplayName(
+      "EOSR6m2_D4D530", displayName, sizeof(displayName)));
+  TEST_ASSERT_EQUAL_STRING("Canon EOS R6 Mark II", displayName);
+  TEST_ASSERT_TRUE(canon_camera::canonicalDisplayName(
+      "EOSR6m3_ABC123", displayName, sizeof(displayName)));
+  TEST_ASSERT_EQUAL_STRING("Canon EOS R6 Mark III", displayName);
+  TEST_ASSERT_FALSE(canon_camera::canonicalDisplayName(
+      "Canon (Smart)", displayName, sizeof(displayName)));
+  TEST_ASSERT_EQUAL_UINT8(0, studio::ble::identityAddressType(2));
+  TEST_ASSERT_EQUAL_UINT8(1, studio::ble::identityAddressType(3));
+  TEST_ASSERT_EQUAL_UINT8(1, studio::ble::identityAddressType(1));
+}
+
 void test_canon_trigger_state_tracks_trigger_outcome() {
   canon_trigger::CanonTriggerState state;
+  state.claimedPeerVisible = true;
+  canon_trigger::resetTransientState(state);
+  TEST_ASSERT_FALSE(state.claimedPeerVisible);
   canon_trigger::markTriggerQueued(state);
   TEST_ASSERT_TRUE(state.triggerPending);
   TEST_ASSERT_EQUAL_UINT32(0, state.triggerCount);
@@ -4282,6 +4301,7 @@ int main(int, char**) {
   RUN_TEST(test_reset_preserves_link_identity_and_preferences);
   RUN_TEST(test_canon_smartphone_handshake_and_record_protocol);
   RUN_TEST(test_canon_trigger_pairing_name_and_trigger_bytes);
+  RUN_TEST(test_canon_camera_names_and_identity_address_types);
   RUN_TEST(test_canon_trigger_state_tracks_trigger_outcome);
   RUN_TEST(test_canon_state_requires_camera_notifications);
   RUN_TEST(test_tascam_cobs_commands_match_capture);

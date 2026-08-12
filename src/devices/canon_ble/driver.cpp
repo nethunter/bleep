@@ -3,6 +3,8 @@
 #include <cstring>
 #include <new>
 
+#include "devices/canon_camera_name.h"
+
 namespace studio {
 
 CanonBleDriver::Session* CanonBleDriver::sessionFor(InstanceId instanceId) {
@@ -33,10 +35,17 @@ bool CanonBleDriver::activate(const DeviceRecord& record) {
     session = new (std::nothrow) Session;
     if (session == nullptr) return false;
     session->instanceId = record.instanceId;
-    if (!session->client.activate(
-            record.bleAddress, record.bleAddressType,
-            record.bleName[0] != '\0' ? record.bleName : record.displayName,
-            record.paired)) {
+    char canonical[kDeviceNameCapacity] = "";
+    session->metadataRepairPending =
+        canon_camera::isGenericDisplayName(record.displayName) &&
+        canon_camera::canonicalDisplayName(record.bleName, canonical,
+                                           sizeof(canonical));
+    const char* identityName =
+        record.bleName[0] != '\0'
+            ? record.bleName
+            : (record.paired ? record.displayName : "");
+    if (!session->client.activate(record.bleAddress, record.bleAddressType,
+                                  identityName, record.paired)) {
       delete session;
       session = nullptr;
       return false;
@@ -183,15 +192,30 @@ bool CanonBleDriver::consumePairingUpdate(InstanceId instanceId,
   char name[kBleNameCapacity] = "";
   uint8_t addressType = 0;
   bool paired = false;
-  if (session == nullptr ||
-      !session->client.consumePairingUpdate(address, sizeof(address), addressType,
-                                            name, sizeof(name), paired)) {
+  if (session == nullptr) {
     return false;
   }
-  record.paired = paired;
-  record.bleAddressType = addressType;
-  std::strncpy(record.bleAddress, address, sizeof(record.bleAddress) - 1);
-  std::strncpy(record.bleName, name, sizeof(record.bleName) - 1);
+  const bool pairingChanged = session->client.consumePairingUpdate(
+      address, sizeof(address), addressType, name, sizeof(name), paired);
+  if (!pairingChanged && !session->metadataRepairPending) return false;
+  if (pairingChanged) {
+    record.paired = paired;
+    record.bleAddressType = addressType;
+    std::strncpy(record.bleAddress, address, sizeof(record.bleAddress) - 1);
+    record.bleAddress[sizeof(record.bleAddress) - 1] = '\0';
+    std::strncpy(record.bleName, name, sizeof(record.bleName) - 1);
+    record.bleName[sizeof(record.bleName) - 1] = '\0';
+  }
+  session->metadataRepairPending = false;
+  if (canon_camera::isGenericDisplayName(record.displayName)) {
+    char canonical[kDeviceNameCapacity] = "";
+    if (canon_camera::canonicalDisplayName(record.bleName, canonical,
+                                           sizeof(canonical))) {
+      std::strncpy(record.displayName, canonical,
+                   sizeof(record.displayName) - 1);
+      record.displayName[sizeof(record.displayName) - 1] = '\0';
+    }
+  }
   return true;
 }
 

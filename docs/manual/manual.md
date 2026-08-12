@@ -146,6 +146,8 @@ The Devices list shows six devices at a time. Long names scroll so you can still
 
 Ble(e)p offers two separate Canon connections. Pair the mode you want to use; the camera stores Trigger Mode and Smart Phone Mode as different pairings.
 
+When you add another Canon, Ble(e)p skips cameras that are already saved or bonded to the panel, even if a saved camera is only advertising from Bluetooth standby. **Already added** means Ble(e)p can see such a camera but is waiting for a different one. Known R6 Mark II and R6 Mark III identities are named automatically after pairing. **Retry** reconnects only to the camera saved for that entry; choose **Forget** before intentionally replacing it with another body.
+
 | Mode | Best for | Controls and feedback |
 | --- | --- | --- |
 | Trigger Mode | The quickest remote-control setup | One movie trigger starts or stops recording. Ble(e)p cannot read the recording state. |

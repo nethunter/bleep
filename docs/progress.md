@@ -274,6 +274,38 @@ short, factual, and reproducible.
 - Rebuilt the 26-page A4 owner's PDF. Expected-content and all-page nonblank
   extraction checks passed; every rendered page was visually inspected, with
   the changed Portal and troubleshooting pages checked at full resolution.
+
+### 2026-08-11: Canon multi-body identity and automatic naming repair
+
+- Reproduced the code path behind a Canon Smart report where an EOS R6 Mark III
+  in Bluetooth standby could answer while a new EOS R6 Mark II entry was
+  pairing. The Canon clients persisted the pre-bond advertisement address even
+  though NimBLE exposes the bond-resolved identity address after security; a
+  rotating private address could therefore bypass the saved-sibling filter.
+- Canon Smart and Canon Trigger now persist the resolved identity address,
+  reject already-saved and already-bonded bodies during fresh pairing, keep
+  Retry locked to the saved camera, and require Forget before replacing it.
+  Trigger also reports `ALREADY ADDED` when the only visible body is owned by
+  another entry.
+- Restored Canon Smart matching for captured `EOS`/`R6`/`PowerShot` names and
+  merge same-address advertisement plus scan-response candidates. Generic
+  Canon records now become `Canon EOS R6 Mark II` or `Canon EOS R6 Mark III`
+  when the captured `EOSR6m2_...` or `EOSR6m3_...` identity is available.
+- Native tests passed 77/77. The `ui_sim` build and complete capture run passed,
+  including `18b_canon_trigger_already_added.png`; the new status fits the
+  240x240 screen. The required full Montserrat `bleep` build passed at
+  1,909,356 bytes flash and 140,340 bytes static RAM.
+- Rebuilt the 26-page owner's guide and inspected every rendered page plus the
+  affected Canon page. Hardware pairing of two simultaneous Canon bodies and
+  the on-device naming result remain operator-pending. After explicit approval,
+  the full profile uploaded to the auto-detected `/dev/cu.usbserial-211240`;
+  esptool identified the ESP32-C3 and verified the written flash blocks.
+- After rebasing onto `main` at `6880c44`, native tests passed 79/79, `ui_sim`
+  built and completed its full screenshot traversal, and the required full
+  Montserrat profile built at 1,915,074 bytes flash and 141,276 bytes static
+  RAM. The merged 26-page PDF was regenerated and every rendered page was
+  inspected; the Canon and Portal pages were also checked at full resolution.
+
 ### 2026-08-11: Owner-focused manual editorial pass
 
 - Reframed the illustrated manual as an owner's guide for a creative operator:

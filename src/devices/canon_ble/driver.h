@@ -26,6 +26,7 @@ class CanonBleDriver : public DeviceDriver {
   struct Session {
     canon_ble::CanonBleClient client;
     InstanceId instanceId = kInvalidInstanceId;
+    bool metadataRepairPending = false;
   };
   Session* sessionFor(InstanceId instanceId);
   const Session* sessionFor(InstanceId instanceId) const;

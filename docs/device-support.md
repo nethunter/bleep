@@ -210,6 +210,14 @@ product-qualified advertisement and identity response.
   for the production Wi-Fi/CCAPI path remains `Blocked` on network-side
   DHCP/endpoint and CCAPI evidence; the EOS R6 Mark III BLE-to-Wi-Fi handoff
   capture exists.
+- Both Canon drivers persist the bond-resolved identity address rather than a
+  temporary private address. New pairing ignores bodies already owned by a
+  saved Canon entry or an existing panel bond, including standby advertising;
+  Retry remains locked to the saved body and Forget is the explicit path to a
+  replacement body.
+- Captured `EOSR6m2_...` and `EOSR6m3_...` names are canonicalized to
+  `Canon EOS R6 Mark II` and `Canon EOS R6 Mark III`. Existing generic Canon
+  records are repaired when their saved BLE name already identifies the model.
 - Smart experimental transport: smartphone-mode BLE pairing and shooting
   services without starting Wi-Fi.
 - Planned Smart transport: smartphone-mode BLE pairing and Wi-Fi handoff,

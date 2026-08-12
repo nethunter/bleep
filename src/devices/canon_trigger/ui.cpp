@@ -79,6 +79,9 @@ void refresh() {
   } else if (state != nullptr && state->lastTriggerSucceeded) {
     std::snprintf(text, sizeof(text), "TRIGGER SENT  #%lu",
                   static_cast<unsigned long>(state->triggerCount));
+  } else if (runtime.link == studio::LinkState::Scanning && state != nullptr &&
+             state->claimedPeerVisible) {
+    std::snprintf(text, sizeof(text), "ALREADY ADDED");
   } else {
     std::snprintf(text, sizeof(text), "%s", linkText(runtime.link));
   }
