@@ -26,9 +26,10 @@ short, factual, and reproducible.
   GO Ultra remains a distinct experimental probe. DJI now implements its
   published controller handshake, on-panel four-digit first-pair verification,
   explicit record control, and status push for Action 5 Pro/Osmo 360.
-  Sony remains capture-required. An Insta360
-  X5 has connected successfully to Ble(e)p as a GPS remote and worked in a
-  mixed shutter sequence. A Google Pixel 9 also passed bonded reconnect and
+  Sony remains capture-required. Insta360 X3, X4, and X4 Air are now
+  operator-confirmed working through Ble(e)p's GPS Remote path. An Insta360 X5
+  has connected successfully as a GPS remote and worked in a mixed shutter
+  sequence. A Google Pixel 9 also passed bonded reconnect and
   mixed-sequence shutter operation. DJI Osmo Action 5 Pro and Osmo 360 first
   pairing, explicit recording start/stop, and camera-confirmed recording status
   are now operator-confirmed.
@@ -62,6 +63,18 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
+
+### 2026-08-12: Insta360 X3, X4, and X4 Air compatibility confirmation
+
+- The operator approved the exact Insta360 X3, X4, and X4 Air models as
+  working with Ble(e)p. README, device support, and the GPS Remote protocol
+  boundary now record these as operator-confirmed bounded paths alongside X5.
+- No model-specific packet capture, feature-by-feature lifecycle matrix,
+  reconnect/power endurance result, or coexistence run accompanied the report,
+  so those details remain open and no claim extends to RS, ONE, GO 3, or GO
+  Ultra. This was a documentation-only evidence update; firmware was not
+  changed, built, or flashed, and the owner's guide/PDF was intentionally left
+  unchanged.
 
 ### 2026-08-12: Ray 60c and shared-light reconnect manual refresh
 

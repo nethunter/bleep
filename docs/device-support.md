@@ -321,6 +321,9 @@ Compatibility evidence is deliberately split from protocol availability:
 | GoPro models in the current Open GoPro support table | Implemented, experimental | No camera tested yet. Retailer-only HERO8/MAX/MINI claims are not inherited. |
 | Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
 | Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
+| Insta360 X3 | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
+| Insta360 X4 | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
+| Insta360 X4 Air | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
 | Insta360 X5 | Implemented, verified bounded path | Pairing, initial state, Start/Stop, reported recording status, shutdown, and physical wake are operator-confirmed. Immediate optimistic Start and wake-return address routing have been added; the latter needs one fresh reconnect check. |
 | Insta360 GO 3 | Experimental candidate | No model-specific GPS Remote result recorded. |
 | Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; GPS Remote compatibility is not established. |
@@ -366,6 +369,10 @@ Compatibility evidence is deliberately split from protocol availability:
 
 - Status: `Experimental`; the GPS Remote path is capture-backed and replaces
   the earlier Mini emulation.
+- Exact-model hardware evidence: the operator confirms the GPS Remote path
+  works with Insta360 X3, X4, X4 Air, and X5. Only X5 currently has the
+  detailed capture and feature-by-feature evidence below; do not infer that
+  the other three models passed every X5 lifecycle check.
 - Transport: Ble(e)p's primary packet contains the operator-confirmed name
   `Insta360 Remote (Bleep)`; its scan response contains appearance `0x0180` and
   proprietary service `0xCE80`. Service `0xCE80` declares

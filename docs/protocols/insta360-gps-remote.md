@@ -2,8 +2,10 @@
 
 Status: **Research**, capture-backed on an Insta360 X5 with an Insta360 GPS
 Remote. Ble(e)p implements the captured GATT declaration order under the
-operator-confirmed custom identity. X5 control and physical wake are confirmed;
-the returning wake connection has one address-routing correction to recheck.
+operator-confirmed custom identity. The operator confirms this GPS Remote path
+works with Insta360 X3, X4, X4 Air, and X5. X5 control and physical wake have
+the detailed evidence below; the returning X5 wake connection has one
+address-routing correction to recheck.
 
 ## Evidence and confidence
 
@@ -205,8 +207,11 @@ reconnection, consistent with the independently observed missing ORBIT packet.
   this X5 path. Their purpose remains a separate research question.
 - Mode-change commands ending in `01 01 00` were observed but are not exposed.
 - Pairing, bond deletion, and reconnect timing are not fully characterized.
-- The capture proves X5 behavior only. X3, X4, RS, ONE, GO 3, and GO Ultra are
-  not covered by this evidence.
+- The packet capture proves X5 behavior only. The operator separately confirms
+  that Ble(e)p's GPS Remote path works with X3, X4, and X4 Air, but no
+  model-specific capture or feature-by-feature lifecycle matrix accompanies
+  those confirmations. RS, ONE, GO 3, and GO Ultra remain outside this
+  evidence.
 - The Mac test confirms idle state without a query, state-gated Start/Stop,
   and shutdown. The panel confirms initial state and physical ORBIT wake. A
   returning X5 could present an address that was routed away from the saved

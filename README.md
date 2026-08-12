@@ -163,6 +163,9 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Canon EOS R6 Mark II/III smartphone mode | Current, bounded scope | Bonded BLE pairing, explicit movie start/stop, and camera-reported recording state through `Canon (Smart)` are verified on both models; automatic wake and explicit power-down are included in the workflow. |
 | GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
 | Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
+| Insta360 X3 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
+| Insta360 X4 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
+| Insta360 X4 Air | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
 | Insta360 X5 | Experimental, verified bounded path | Pairing, immediate sequence Start, camera-reported recording state, Start/Stop, shutdown, and physical wake are operator-confirmed. The returning wake connection has a new address-routing fix awaiting confirmation. |
 | Insta360 GO 3 | Experimental candidate | GPS Remote compatibility has not been tested on this model. |
 | Insta360 GO Ultra | Experimental probe | Separate target with no established GPS Remote compatibility or hardware result. |
