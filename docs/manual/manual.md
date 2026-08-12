@@ -249,7 +249,7 @@ The generic **Aputure Light** entry adds compatible factory-reset Aputure and am
 
 All supported lights use the same control layout. Unsupported controls are hidden: the X100 is CCT-only, the X60RGB adds RGB, and a Home Assistant light has power only. Ble(e)p remembers each fixture's CCT look, RGB look, active mode, brightness, and power state. Reopening an Off light keeps it Off; changing tabs applies the stored look only while the light is On.
 
-Ble(e)p reads the fixture identity during setup when the model reports it, then saves the exact product name. The **amaran Ace 25c** and **Aputure MC Pro** are the current evidence fixtures. Per-node routing is implemented, but the full four-fixture physical isolation, reconnect/fallback, and soak gates remain open. The amaran Pano 60c and Pano 120c remain candidates until those exact models pass their hardware gates.
+Ble(e)p reads the fixture identity during setup when the model reports it, then saves the exact product name. The **amaran Ray 60c** is operator-confirmed working with Ble(e)p. The **amaran Ace 25c** and **Aputure MC Pro** remain the detailed provisioning and protocol-evidence fixtures. Per-node routing is implemented, but broader multi-fixture isolation, recovery, and soak gates remain open. The amaran Pano 60c and Pano 120c remain candidates until those exact models pass their hardware gates.
 
 ## Zhiyun Light: MOLUS X100 and X60RGB
 
@@ -264,7 +264,7 @@ Ble(e)p reads the fixture identity during setup when the model reports it, then 
 
 **MOLUS X60RGB:** adds hue and saturation. Host-originated color output has been observed, but the flashed shared path, panel control, reconnection, reset recovery, simultaneous X100/X60RGB use, and broader mixed-device use still need more testing.
 
-Importing a light network previously created in Sidus Link is not supported. Ble(e)p handles Aputure and Zhiyun lights through the same behind-the-scenes connection, but they remain separate choices with their own controls.
+Importing a light network previously created in Sidus Link is not supported. Ble(e)p handles Aputure and Zhiyun lights through the same behind-the-scenes connection, but they remain separate choices with their own controls. If a saved light changes its private radio address, Ble(e)p tries the saved address once and then searches for the same private light network. When a Zhiyun target is active, Ble(e)p uses a powered compatible Zhiyun fixture as the shared gateway so both light protocols remain available.
 
 # Control audio
 
@@ -418,7 +418,7 @@ Factory Reset removes saved devices and pairings, scenes, Wi-Fi details, Home As
 | Shark | Battery, A-H keypoints, manual/joystick move, speed, hold, direction, loop, run/progress | Supported. Movement needs physical observation. |
 | Cameras | Trigger, Start/Stop, toggle, power, status, or phone shutter | Available controls vary; see the compatibility matrix. |
 | Tascam | Record Start/Stop and restored confirmed recording state | Supported on the X8 + AK-BT1 path. |
-| Aputure Light | Independent On/Off, color temperature, tint, brightness, RGB color, remembered state, and Set look + On scene action | Experimental. Per-node routing is implemented; physical multi-fixture isolation and complete confirmation still need testing. |
+| Aputure Light | Independent On/Off, color temperature, tint, brightness, RGB color, remembered state, and Set look + On scene action | Experimental. The amaran Ray 60c path is operator-confirmed; broader multi-fixture isolation, recovery, and complete confirmation still need testing. |
 | Zhiyun X100 | On/Off, color temperature, brightness, remembered state, and CCT Set look + On | Experimental. Normal panel control has been tested; RGB is not offered. |
 | Zhiyun X60RGB | On/Off, color temperature, brightness, hue, saturation, remembered state, and CCT/RGB Set look + On | Experimental. More flashed-panel and reconnect testing is needed. |
 | Scenes | Create, rename, enable, disable, duplicate, and delete | Available on Ble(e)p and in Portal where shown. |
@@ -454,6 +454,7 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Sony cameras using RMT-P1BT remotes | Research | Listed for investigation | Pairing and control are not available. |
 | Tascam Portacapture X8 + AK-BT1 | Supported | Record Start/Stop and confirmed recording state | Battery, media status, and other recorder features are not included. |
 | Home Assistant local entities | Experimental | Control up to four lights, switches, input booleans, buttons, scenes, or scripts | Other entity types and cloud sign-in are not included. |
+| amaran Ray 60c | Experimental | Unified Aputure Light controls and per-node power/look routing | Exact-model operation is operator-confirmed; protocol capture, recovery, multi-fixture isolation, and soak gates remain open. |
 | amaran Ace 25c | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
 | Aputure MC Pro | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
 | amaran Pano 60c / Pano 120c | Candidate | Intended to use unified Aputure Light controls and per-node routing | These exact models have not passed their hardware gates. |
@@ -479,6 +480,7 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 - Use **Manage > Disconnect**, then reopen.
 - Use **Forget/re-pair** only when you intend to remove the existing pairing.
 - Ble(e)p can keep four equipment connections ready at once. Disconnect something you are not using, then try again.
+- For a saved Aputure or amaran light, one missed direct reconnect should fall back to the same private light network. Use Retry if no compatible member is powered and advertising.
 - For a saved X100, one missed direct reconnect should fall back to scanning for the same light. Use Retry if the fallback also fails; it keeps the saved identity.
 
 ## A command says Sent, Optimistic, or Unknown
@@ -490,6 +492,7 @@ This is expected when the integration cannot read physical state. Check the came
 - Open the failed target and resolve its pairing or connection problem.
 - Confirm every device used by the scene is enabled and available in the installed version.
 - Check the four-connection limit. Compatible Aputure and Zhiyun lights share one connection; Home Assistant does not use one of the four.
+- If the scene contains a Zhiyun light, keep a compatible saved Zhiyun fixture powered so it can provide the shared Aputure/Zhiyun gateway.
 - If a multi-light scene fails, open the failed fixture from its circular shortcut, retry it, and confirm the physical output. A shared mesh connection or an acknowledgement alone does not prove that the intended fixture changed.
 - Use the in-place Retry flow when shown. If preparation is still pending, opening scene Settings cancels it safely.
 

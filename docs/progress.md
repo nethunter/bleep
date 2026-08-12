@@ -63,6 +63,25 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: Ray 60c and shared-light reconnect manual refresh
+
+- Identified `48a04e7` as the previous manual-source/PDF update and audited all
+  later committed and uncommitted changes. Collected the shared-light
+  address-rotation/Zhiyun-gateway correction and Ray 60c compatibility evidence
+  on `docs/collect-manual-update-2026-08-12-ray60c`, verified 89/89 native
+  tests plus the full Montserrat `bleep` build, rebased it onto current `main`,
+  and merged it with `--no-ff` before editing the manual on `main`.
+- Updated the owner's guide with the operator-confirmed amaran Ray 60c path,
+  same-private-network reconnect fallback, the powered-Zhiyun shared-gateway
+  requirement for mixed light sessions, exact compatibility boundaries, and
+  corresponding troubleshooting guidance.
+- Rebuilt `output/pdf/bleep-instruction-manual.pdf` as a 27-page A4 PDF,
+  rendered all 27 pages at 120 dpi, checked every page through full contact
+  sheets, and inspected the changed light, function-reference, compatibility,
+  and troubleshooting pages at full resolution. PDF extraction confirmed the
+  new owner terms; no clipping, overlap, broken tables, or unexpected blank
+  pages were observed. The manual refresh did not flash firmware or alter NVS.
+
 ### 2026-08-12: amaran Ray 60c compatibility confirmation
 
 - The operator supplied a photo whose physical product label identifies an
