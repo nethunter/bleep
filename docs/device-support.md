@@ -96,6 +96,9 @@ of successful movement.
   authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
+- Exact-model evidence: the amaran Ray 60c is operator-confirmed working with
+  Ble(e)p. This verifies that model's bounded control path, but does not close
+  multi-fixture isolation, recovery, or soak gates for the generic driver.
 - Onboarding: choose `Aputure Light`. One compatible candidate is selected
   automatically after a 750 ms settling window; two to four nearby candidates
   use the explicit picker before PB-GATT begins. The selected factory-reset
@@ -103,8 +106,9 @@ of successful movement.
   authenticated Composition Data Status and selects MC Pro
   (`0x03F6:0x1000`) or the shared Ace/Pano model (`0x0211:0x0000`)
   automatically. Exact advertised product naming is kept independently of the
-  shared Amaran vendor tuple. These four
-  fixtures remain the initial validation set. Existing
+  shared Amaran vendor tuple. Those four fixtures remain the original
+  validation set; the separately verified Ray 60c extends the exact-model
+  compatibility evidence. Existing
   Sidus/amaran mesh import remains deferred.
   If a provisioned-but-unconfigured fixture returns an unsupported or malformed
   composition, onboarding stops instead of guessing and the recovery screen
@@ -113,13 +117,17 @@ of successful movement.
   After PB-GATT, the panel waits for either the selected address or this mesh's
   Network ID instead of treating the fixture's expected reboot as an immediate
   failure. Provisioning and post-provision configuration have bounded rollback
-  deadlines and cannot remain pending indefinitely.
+  deadlines and cannot remain pending indefinitely. Saved-mesh reconnect uses
+  the same Network ID after one failed direct-address attempt, so a rotating
+  proxy address does not make a powered fixture invisible to a sequence.
 
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is
-charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
-composition evidence, cross-node routing, proxy fallback, and group-addressed
-power experiments are confirmed. Standard Generic OnOff
+charged as one physical BLE slot. When any active target is a Zhiyun light, the
+shared bearer prefers a same-mesh, product-qualified Zhiyun proxy so its local
+`0xFEE9` service and standard Mesh Proxy service are both available. Ace 25c
+and MC Pro provisioning, composition evidence, cross-node routing, proxy
+fallback, and group-addressed power experiments are confirmed. Standard Generic OnOff
 is only a writable shadow/reachability model on both fixtures. Firmware sends
 ordinary power, CCT/tint/brightness, and RGB through each fixture's node
 unicast address, matching Studio Lighter. Common group `0xC000` is never

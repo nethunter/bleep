@@ -38,6 +38,7 @@
 #include "devices/insta360/state.h"
 #include "devices/dji_osmo/protocol.h"
 #include "devices/home_assistant/protocol.h"
+#include "devices/aputure_light/ble_match.h"
 #include "devices/aputure_light/crypto.h"
 #include "devices/aputure_light/protocol.h"
 #include "devices/aputure_light/state.h"
@@ -4955,9 +4956,14 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
   matchingMesh.payloadLength += sizeof(networkId);
   TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
       matchingMesh, selectedElsewhere, networkKey));
+  TEST_ASSERT_TRUE(
+      aputure_light::matchesMeshProxyNetwork(matchingMesh, networkKey));
   matchingMesh.payload[matchingMesh.payloadLength - 1] ^= 1;
   TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
       matchingMesh, selectedElsewhere, networkKey));
+  TEST_ASSERT_FALSE(
+      aputure_light::matchesMeshProxyNetwork(matchingMesh, networkKey));
+  TEST_ASSERT_FALSE(aputure_light::matchesMeshProxyNetwork(x100, networkKey));
   studio::ble::Advertisement manufacturerOnly =
       bleAdvertisement("44:55:66:77:88:99", "Other", 0x1827);
   const uint8_t manufacturer[] = {
