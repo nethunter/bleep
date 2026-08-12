@@ -6,6 +6,7 @@ class Insta360Driver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::Insta360; }
   bool activate(const DeviceRecord&) override; void deactivate(InstanceId) override;
+  bool retainWhileDisconnected(InstanceId) const override;
   void loop() override; CommandStatus dispatch(const DeviceCommand&) override;
   DeviceRuntimeState runtimeState(InstanceId) const override;
   const void* specializedState(InstanceId) const override;
@@ -17,10 +18,19 @@ class Insta360Driver : public DeviceDriver {
   struct Session {
     InstanceId instanceId = kInvalidInstanceId; insta360::State state;
     uint16_t connHandle = 0xffff; bool paired = false; bool pairingChanged = false;
-    bool triggerRequested = false; char address[kBleAddressCapacity] = ""; uint8_t addressType = 0;
+    enum class TriggerTarget : uint8_t { None, Start, Stop };
+    bool triggerRequested = false; TriggerTarget triggerTarget = TriggerTarget::None;
+    bool powerOffRequested = false; bool powerOnRequested = false;
+    uint32_t commandDeadlineMs = 0;
+    uint32_t connectedAtMs = 0; uint32_t syncDeadlineMs = 0;
+    uint8_t diagnosticWritesRemaining = 0; uint8_t diagnosticWritesSeen = 0;
+    bool syncConfirmed = false; bool subscriptionEnabled = false;
+    char address[kBleAddressCapacity] = ""; uint8_t addressType = 0;
   };
   Session* sessionFor(InstanceId); const Session* sessionFor(InstanceId) const;
   Session* sessionForAddress(const char*); Session* firstAwaiting();
+  Session* firstPoweringOn();
+  Session* sessionForHandle(uint16_t);
   void updateAdvertising();
   Session* sessions_[4] = {}; Runtime* runtime_ = nullptr;
 };

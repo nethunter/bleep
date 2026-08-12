@@ -55,21 +55,59 @@ bool activateAdvertiser(int8_t index, uint32_t nowMs,
                         bool allowDirected = true) {
   if (index < 0 || index >= CONFIG_MAX_ACTIVE_INSTANCES) return false;
   Advertiser& slot = gAdvertisers[index];
+  const bool hasGattIdentity = slot.advertisement.name != nullptr &&
+                               slot.advertisement.serviceUuid != nullptr;
+  const bool hasManufacturerData =
+      slot.advertisement.manufacturerData != nullptr &&
+      slot.advertisement.manufacturerDataLength != 0;
+  const bool hasRawAdvertisement =
+      slot.advertisement.rawAdvertisementData != nullptr &&
+      slot.advertisement.rawAdvertisementDataLength != 0;
   if (slot.owner == nullptr || !slot.wanted ||
-      slot.advertisement.name == nullptr ||
-      slot.advertisement.serviceUuid == nullptr) {
+      (!hasGattIdentity && !hasManufacturerData && !hasRawAdvertisement)) {
     return false;
   }
   NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
   if (advertising == nullptr) return false;
   if (advertising->isAdvertising()) advertising->stop();
   advertising->reset();
-  advertising->enableScanResponse(true);
-  advertising->setName(slot.advertisement.name);
-  if (slot.advertisement.appearance != 0) {
-    advertising->setAppearance(slot.advertisement.appearance);
+  if (hasRawAdvertisement) {
+    NimBLEAdvertisementData primary;
+    if (!primary.addData(slot.advertisement.rawAdvertisementData,
+                         slot.advertisement.rawAdvertisementDataLength) ||
+        !advertising->setAdvertisementData(primary)) {
+      return false;
+    }
+    const bool hasRawScanResponse =
+        slot.advertisement.rawScanResponseData != nullptr &&
+        slot.advertisement.rawScanResponseDataLength != 0;
+    advertising->enableScanResponse(hasRawScanResponse);
+    if (hasRawScanResponse) {
+      NimBLEAdvertisementData scanResponse;
+      if (!scanResponse.addData(slot.advertisement.rawScanResponseData,
+                                slot.advertisement.rawScanResponseDataLength) ||
+          !advertising->setScanResponseData(scanResponse)) {
+        return false;
+      }
+    }
+  } else {
+    advertising->enableScanResponse(hasGattIdentity);
+    if (slot.advertisement.name != nullptr) {
+      advertising->setName(slot.advertisement.name);
+    }
+    if (slot.advertisement.appearance != 0) {
+      advertising->setAppearance(slot.advertisement.appearance);
+    }
+    if (slot.advertisement.serviceUuid != nullptr) {
+      advertising->addServiceUUID(slot.advertisement.serviceUuid);
+    }
+    if (hasManufacturerData &&
+        !advertising->setManufacturerData(
+            slot.advertisement.manufacturerData,
+            slot.advertisement.manufacturerDataLength)) {
+      return false;
+    }
   }
-  advertising->addServiceUUID(slot.advertisement.serviceUuid);
   NimBLEAddress directedPeer;
   const NimBLEAddress* directedPeerPointer = nullptr;
   if (allowDirected && slot.advertisement.peerAddress != nullptr &&
@@ -108,8 +146,14 @@ bool activateAdvertiser(int8_t index, uint32_t nowMs,
 
 PeripheralListener* choose(NimBLEConnInfo& info) {
   const std::string address = info.getAddress().toString();
+  const std::string identityAddress = info.getIdAddress().toString();
   for (PeripheralListener* listener : gListeners)
-    if (listener != nullptr && listener->acceptsPeripheralPeer(address.c_str())) return listener;
+    if (listener != nullptr &&
+        (listener->acceptsPeripheralPeer(address.c_str()) ||
+         (identityAddress != address &&
+          listener->acceptsPeripheralPeer(identityAddress.c_str())))) {
+      return listener;
+    }
   for (PeripheralListener* listener : gListeners)
     if (listener != nullptr && listener->defaultPeripheralPeer()) return listener;
   return nullptr;

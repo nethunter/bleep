@@ -260,9 +260,10 @@ disconnected peripheral family or bonded phone a bounded reconnect window;
 connected sessions remain simultaneous and advertising continues for the next
 offline target. Phone Camera keeps the host alive through a private radio lease
 and routes each authenticated inbound connection by bonded identity. Insta360
-advertises its GPS-remote service, scans camera advertisements for peer
-classification, and routes an inbound camera connection to its saved or
-provisional instance. The
+scans camera advertisements for peer classification, advertises the
+operator-confirmed `Insta360 Remote (Bleep)` identity while hosting its
+proprietary `0xCE80` service, and
+routes an inbound camera connection to its saved or provisional instance. The
 inbound connection still has its own `BleSlotKey`, so it counts against the
 same four-link budget as outbound central connections. Server callbacks enqueue
 only bounded connection/authentication events; security requests, HID/shutter

@@ -838,14 +838,33 @@ the replacement.
   attempt, then a normal discoverable window because the phone OS remains the
   central and controls whether it reconnects without user interaction. Server
   callbacks only enqueue connection/auth events.
-- Insta360: emulate the community-documented GPS remote service `0xCE80` and
-  toggle shutter notification for X5 and GO 3 candidates. The camera initiates
-  the connection, so one shared peripheral callback dispatcher separates these
-  peers from Phone Camera. Notifications prove only that the remote sent the
-  command. Scenes expose this capability as an explicit `Shutter Toggle` that
-  repeats in generated Stop, without claiming distinct start/stop state. GO
-  Ultra is a distinct model and remains an experimental probe;
-  current vendor compatibility material does not establish GPS-remote support.
+- Insta360: emulate the captured GPS Remote protocol for X5 under the
+  operator-confirmed `Insta360 Remote (Bleep)` identity. Its complete name is
+  in the primary packet; appearance `0x0180` and proprietary service `0xCE80`
+  are in the scan response. The hosted GATT service declares `0xCE82` Notify,
+  `0xCE81` Write/Write Without Response, then `0xCE83` Read in capture order.
+  The camera initiates the connection, so one shared peripheral
+  callback dispatcher separates these peers from Phone Camera. X5 capture
+  establishes camera-originated GPS display frames for video idle/elapsed time
+  and photo idle/save state; callbacks enqueue raw bytes and main-loop parsing
+  is the only source of confirmed recording state. The GPS shutter toggle ends
+  in `01 02 00`; Scenes expose distinct Start/Stop operations only when camera
+  state makes the toggle idempotent. No raw Shutter action is exposed while
+  state is unknown. On a new connection, expose Start immediately from an
+  explicitly optimistic video-idle assumption; the first CE81 state replaces
+  it. Stop still requires confirmed recording. This accepts the toggle risk if
+  the camera was already recording before reconnect. Captured shutdown ends in `01 00 03`;
+  wake uses the captured Apple manufacturer `ORBIT` advertisement containing
+  the saved camera name's six-character serial for up to 60 seconds. Reconnect
+  confirms wake. A Mac CE80-only harness using the same characteristic order
+  received unsolicited initial state and completed Start, Stop, and shutdown.
+  X5 pairing, state, Start/Stop, shutdown, and physical wake are operator-
+  confirmed on the panel. During ORBIT wake, Insta360 owns the returning peer
+  even if its unresolved address differs from the saved address, then maps it
+  to the single `PoweringOn` session; this reconnect correction remains the
+  final hardware recheck. GO Ultra is a
+  distinct model and remains an experimental probe;
+  current evidence does not establish GPS Remote support.
 - Parallelism: synchronization is a core requirement. All compiled
   peripheral-camera services are registered together before the first peer
   connects. Advertising windows may be serialized by the ESP32-C3's one legacy

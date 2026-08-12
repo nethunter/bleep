@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 class NimBLEServer;
@@ -31,14 +32,18 @@ struct PeripheralAdvertisement {
                           const char* uuid, uint16_t advertisedAppearance,
                           uint8_t reconnectPriority = 0,
                           const char* directedPeerAddress = nullptr,
-                          uint8_t directedPeerAddressType = 0)
+                          uint8_t directedPeerAddressType = 0,
+                          const uint8_t* advertisedManufacturerData = nullptr,
+                          size_t advertisedManufacturerDataLength = 0)
       : diagnosticTag(tag),
         name(advertisedName),
         serviceUuid(uuid),
         appearance(advertisedAppearance),
         priority(reconnectPriority),
         peerAddress(directedPeerAddress),
-        peerAddressType(directedPeerAddressType) {}
+        peerAddressType(directedPeerAddressType),
+        manufacturerData(advertisedManufacturerData),
+        manufacturerDataLength(advertisedManufacturerDataLength) {}
   const char* diagnosticTag = nullptr;
   const char* name = nullptr;
   const char* serviceUuid = nullptr;
@@ -46,6 +51,12 @@ struct PeripheralAdvertisement {
   uint8_t priority = 0;
   const char* peerAddress = nullptr;
   uint8_t peerAddressType = 0;
+  const uint8_t* manufacturerData = nullptr;
+  size_t manufacturerDataLength = 0;
+  const uint8_t* rawAdvertisementData = nullptr;
+  size_t rawAdvertisementDataLength = 0;
+  const uint8_t* rawScanResponseData = nullptr;
+  size_t rawScanResponseDataLength = 0;
 };
 
 // The ESP32-C3 profile uses one legacy advertising instance. Peripheral

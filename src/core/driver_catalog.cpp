@@ -120,7 +120,9 @@ constexpr DriverDescriptor kDrivers[] = {
     {DriverId::Insta360, "insta360.gps_remote", "Insta360", "Insta360",
      DeviceType::Camera,
      capabilityBit(Capability::Link) |
-         capabilityBit(Capability::RecordTrigger),
+         capabilityBit(Capability::RecordStart) |
+         capabilityBit(Capability::RecordStop) |
+         capabilityBit(Capability::RecordingState),
      4},
 #endif
 #if CONFIG_DRIVER_DJI_OSMO

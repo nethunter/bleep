@@ -194,13 +194,20 @@ Verified exact model: **Google Pixel 9** for automatic reconnection and mixed-se
 
 ## Insta360
 
-Ble(e)p appears to the camera as a GPS Remote and sends the camera's shutter-toggle command.
+Ble(e)p speaks the X5's **GPS Remote** protocol and appears to the camera as
+**Insta360 GPS Remote**. It uses the camera's reported display state to offer safe
+Start and Stop actions over the GPS Remote's shutter-toggle command.
 
-1. Open the camera's **GPS Remote** pairing menu.
+1. Open the X5's **GPS Remote** pairing flow.
 2. Add **Insta360** on Ble(e)p and wait for the camera to connect to the panel.
-3. Use **Shutter Toggle**. Because Ble(e)p cannot tell whether the camera is recording, a generated Stop repeats the same toggle.
+3. Wait for the panel to show the camera's idle or recording state.
+4. Use **Start** or **Stop**. If no valid state has arrived yet, Ble(e)p exposes
+   only the raw **Shutter** fallback rather than guessing.
 
-Verified exact model: **Insta360 X5** for GPS Remote connection and mixed-sequence shutter operation. **Insta360 GO 3** is an unverified candidate. **GO Ultra** is listed for research; compatibility with the older GPS Remote method is unknown.
+Exact target: **Insta360 X5**. The capture-correct GPS Remote commands,
+recording status, Start/Stop, photo feedback, shutdown, wake path, and corrected
+GPS identity still need post-fix hardware verification. **Insta360 GO 3** and **GO Ultra** remain
+unverified.
 
 ## DJI Osmo
 
@@ -429,9 +436,9 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | GoPro models supported by Open GoPro | Candidate | Separate shutter Start and Stop | No GoPro has been tested; recording is not confirmed. |
 | Google Pixel 9 | Experimental | Wireless volume-up shutter and reconnection | Ble(e)p cannot see whether the camera app captured an image. |
 | Other iOS, Android, and HarmonyOS phones | Candidate | Wireless volume-up shutter | Phone model, camera app, and multi-phone testing remain open. |
-| Insta360 X5 | Experimental | GPS Remote pairing and shutter toggle in a mixed sequence | Ble(e)p cannot read the camera's recording state. |
-| Insta360 GO 3 | Candidate | Intended to use GPS Remote shutter control | This exact model has not been tested. |
-| Insta360 GO Ultra | Research | Listed for investigation | Compatibility with the older GPS Remote method is unknown. |
+| Insta360 X5 | Experimental | GPS Remote pairing as `Insta360 GPS Remote`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Corrected-identity hardware verification is pending. |
+| Insta360 GO 3 | Candidate | Intended GPS Remote shutter control | This exact model has not been tested. |
+| Insta360 GO Ultra | Research | Listed for investigation | GPS Remote compatibility is unknown. |
 | DJI Osmo Action 5 Pro | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
 | DJI Osmo 360 | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
 | Sony cameras using RMT-P1BT remotes | Research | Listed for investigation | Pairing and control are not available. |

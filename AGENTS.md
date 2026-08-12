@@ -63,6 +63,11 @@ Follow these rules while building:
   changing an accepted decision.
 - Label protocol assumptions as `Research`, `Hypothesis`, or `Blocked`.
   Captured ACKs are not proof of device state or physical success.
+- Always document every protocol being researched or implemented under
+  `docs/protocols/` in the same tranche. Keep the note synchronized with the
+  code as new services, characteristics, frames, state transitions, capture
+  provenance, confidence levels, or unresolved fields are discovered, and add
+  new protocol documents to `docs/protocols/README.md`.
 - For Android vendor-app reverse engineering, follow
   `docs/protocols/capture-workflow.md`; keep raw screen recordings, HCI logs,
   bugreports, identifiers, and key material outside the repository.
@@ -70,12 +75,11 @@ Follow these rules while building:
   exact build environment, results, measurements, hardware checks, blockers,
   and next safe task. Update `README.md` when current user-visible behavior
   changes.
-- For every major change to user-visible functionality, setup, supported
-  equipment, workflows, hardware assembly, or safety guidance, update
-  `docs/manual/manual.md` in the same tranche and rebuild
-  `output/pdf/bleep-instruction-manual.pdf`. Render and inspect the affected PDF
-  pages before handoff. Keep `hardware/README.md` aligned when hardware or
-  assembly guidance changes.
+- Do not update `docs/manual/manual.md` or rebuild
+  `output/pdf/bleep-instruction-manual.pdf` unless the user explicitly asks for
+  a manual update. When requested, render and inspect the affected PDF pages
+  before handoff. Keep `hardware/README.md` aligned when hardware or assembly
+  guidance changes.
 
 ## Conventions
 
