@@ -114,6 +114,17 @@ short, factual, and reproducible.
   an RGB editor for X100 while preserving X60RGB. Full Montserrat `bleep` built
   with 141,428 bytes static RAM (43.2%) and 1,930,924 bytes flash (61.4%), then
   uploaded successfully to `/dev/cu.usbserial-211240` without erasing NVS.
+- Added bounded Scene diagnostics for stored step values, per-target
+  acquisition/readiness, dispatch results, confirmation, and the exact failing
+  step. A live Sequence 3 trace with four lights reached shared readiness in
+  8.2 seconds after one recovered direct-connect miss, then completed two full
+  Start/Stop cycles without a software failure. Aputure targets 19 and 18 used
+  distinct unicasts `0x000B` and `0x000A`; both Zhiyun actions reported
+  correlated confirmation. Native tests passed 88/88. Full Montserrat `bleep`
+  built with 141,428 bytes static RAM (43.2%) and 1,932,130 bytes flash (61.4%)
+  and uploaded successfully without erasing NVS. Physical output confirmation
+  for all four fixtures is still required because dispatch/confirmation alone
+  is not proof of the requested optical state.
 
 ### 2026-08-11: Light/mesh review corrections
 
