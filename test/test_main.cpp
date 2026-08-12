@@ -409,6 +409,13 @@ class FakeDriver : public studio::DeviceDriver {
       studio::DriverId id = studio::DriverId::SharkNanoII)
       : id_(id) {}
   studio::DriverId driverId() const override { return id_; }
+  studio::InstanceProfile instanceProfile(
+      const studio::DeviceRecord&,
+      const studio::InstanceProfile& catalogProfile) const override {
+    studio::InstanceProfile profile = catalogProfile;
+    profile.capabilities &= ~capabilityClearMask;
+    return profile;
+  }
   studio::BleSlotKey bleSlotKey(
       const studio::DeviceRecord& record) const override {
     if (noBleSlot || id_ == studio::DriverId::HomeAssistant) return {};
@@ -577,6 +584,7 @@ class FakeDriver : public studio::DeviceDriver {
   bool pairingUpdatePending = false;
   bool pairingValue = true;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
+  uint32_t capabilityClearMask = 0;
   int32_t lastValue0 = 0;
   int32_t lastValue1 = 0;
   int32_t lastValue2 = 0;
@@ -1094,6 +1102,12 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_BITS_LOW(
       studio::capabilityBit(studio::Capability::SetLightTint),
       zhiyun->capabilities);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(zhiyun_x100::MolusModel::X100),
+      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X100")));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
+      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X60RGB")));
   const studio::DriverDescriptor* goPro =
       studio::DriverCatalog::find(studio::DriverId::GoPro);
   TEST_ASSERT_NOT_NULL(goPro);
@@ -2384,6 +2398,29 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
   TEST_ASSERT_TRUE(manager.popResult(result));
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Disabled),
                         static_cast<int>(result.status));
+}
+
+void test_manager_uses_per_instance_driver_capabilities() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
+  zhiyun.capabilityClearMask =
+      studio::capabilityBit(studio::Capability::SetLightRgb);
+  studio::DeviceDriver* drivers[] = {&zhiyun};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::ZhiyunLight,
+                                   "MOLUS X100", id)));
+  const studio::InstanceProfile profile = manager.profile(id);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::SetLightCct),
+      profile.capabilities);
+  TEST_ASSERT_BITS_LOW(
+      studio::capabilityBit(studio::Capability::SetLightRgb),
+      profile.capabilities);
 }
 
 void test_manager_keeps_latest_tracked_result_when_result_queue_is_full() {
@@ -4966,6 +5003,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
   RUN_TEST(test_manager_preserves_renamed_unpaired_shark);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
+  RUN_TEST(test_manager_uses_per_instance_driver_capabilities);
   RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);
   RUN_TEST(test_manager_cancels_only_the_matching_dispatched_request);
   RUN_TEST(test_manager_routes_to_canon_driver);

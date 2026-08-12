@@ -829,9 +829,12 @@ InstanceProfile DeviceManager::profile(InstanceId instanceId) const {
     return profile;
   }
   const DriverDescriptor* descriptor = DriverCatalog::find(record->driverId);
-  return descriptor != nullptr
-             ? InstanceProfile{descriptor->type, descriptor->capabilities}
-             : InstanceProfile{};
+  if (descriptor == nullptr) return {};
+  const InstanceProfile catalogProfile{descriptor->type,
+                                       descriptor->capabilities};
+  DeviceDriver* driver = driverFor(record->driverId);
+  return driver != nullptr ? driver->instanceProfile(*record, catalogProfile)
+                           : catalogProfile;
 }
 
 const void* DeviceManager::specializedState(InstanceId instanceId) const {

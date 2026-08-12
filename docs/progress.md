@@ -105,6 +105,15 @@ short, factual, and reproducible.
   141,428 bytes static RAM (43.2%) and 1,930,562 bytes flash (61.4%), then
   uploaded successfully without erasing NVS; physical confirmation on the
   Ace/Pano-class fixture remains required.
+- Scene light authoring now resolves capabilities from each saved Zhiyun
+  fixture instead of the shared driver's catalog-wide capability superset.
+  MOLUS X100 therefore retains the unified light editor but exposes only CCT
+  and brightness, while MOLUS X60RGB retains both CCT and RGB. Unknown Zhiyun
+  identities fail conservatively to CCT-only. Native tests passed 88/88 and the
+  complete `ui_sim` traversal passed with an interaction assertion that rejects
+  an RGB editor for X100 while preserving X60RGB. Full Montserrat `bleep` built
+  with 141,428 bytes static RAM (43.2%) and 1,930,924 bytes flash (61.4%), then
+  uploaded successfully to `/dev/cu.usbserial-211240` without erasing NVS.
 
 ### 2026-08-11: Light/mesh review corrections
 

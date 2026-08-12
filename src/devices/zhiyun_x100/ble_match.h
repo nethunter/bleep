@@ -68,8 +68,12 @@ inline MolusModel advertisementModel(
 
 inline MolusModel modelFromName(const char* name) {
   if (name == nullptr) return MolusModel::Unknown;
-  if (std::strstr(name, "PL105_") != nullptr) return MolusModel::X100;
-  if (std::strstr(name, "X104_") != nullptr) return MolusModel::X60Rgb;
+  if (std::strstr(name, "PL105_") != nullptr ||
+      std::strstr(name, "X100") != nullptr)
+    return MolusModel::X100;
+  if (std::strstr(name, "X104_") != nullptr ||
+      std::strstr(name, "X60RGB") != nullptr)
+    return MolusModel::X60Rgb;
   return MolusModel::Unknown;
 }
 

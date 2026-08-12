@@ -18,6 +18,7 @@
 #include "devices/action_camera_research/driver.h"
 #include "devices/home_assistant/driver.h"
 #include "devices/aputure_light/driver.h"
+#include "devices/zhiyun_x100/ble_match.h"
 #include "devices/zhiyun_x100/state.h"
 
 namespace studio {
@@ -396,6 +397,18 @@ class SimTascamDriver : public DeviceDriver {
 class SimZhiyunX100Driver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::ZhiyunLight; }
+  InstanceProfile instanceProfile(
+      const DeviceRecord& record,
+      const InstanceProfile& catalogProfile) const override {
+    InstanceProfile profile = catalogProfile;
+    zhiyun_x100::MolusModel model =
+        zhiyun_x100::modelFromName(record.bleName);
+    if (model == zhiyun_x100::MolusModel::Unknown)
+      model = zhiyun_x100::modelFromName(record.displayName);
+    if (!zhiyun_x100::supportsRgb(model))
+      profile.capabilities &= ~capabilityBit(Capability::SetLightRgb);
+    return profile;
+  }
   bool activate(const DeviceRecord& record) override {
     activeInstance_ = record.instanceId;
     state_.link = zhiyun_x100::X100State::Link::Connected;

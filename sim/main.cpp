@@ -901,12 +901,13 @@ int main() {
   if (!capture("20g_zhiyun_x100_confirmed")) {
     return 1;
   }
+  zhiyun_x100_ui::hide();
   studio::simZhiyunState().model = zhiyun_x100::MolusModel::X60Rgb;
   studio::simZhiyunState().mode = zhiyun_x100::X100State::Mode::Rgb;
   studio::simZhiyunState().rgb = 0x0066ff;
   studio::simZhiyunState().saturation = 100;
   studio::simZhiyunState().brightness = 42.0f;
-  studio::devices().rename(zhiyunId, "MOLUS X60RGB");
+  zhiyun_x100_ui::show(zhiyunId2);
   zhiyun_x100_ui::simShowRgb();
   pump(300);
   if (!capture("20h_zhiyun_x60rgb_confirmed")) {
@@ -1101,6 +1102,12 @@ int main() {
   scene_ui::simShowAddStepAction(sceneId, pano60Id);
   pump(200);
   if (!capture("22d_scenes_add_action")) {
+    return 1;
+  }
+  picker_shell::simShowLightColor(picker_shell::Mode::SceneStep, zhiyunId,
+                                  true);
+  if (picker_shell::simLightEditorRgb()) {
+    std::fprintf(stderr, "MOLUS X100 scene editor exposed RGB controls\n");
     return 1;
   }
   picker_shell::simShowLightColor(picker_shell::Mode::SceneStep, pano60Id,

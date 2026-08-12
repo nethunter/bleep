@@ -1123,6 +1123,7 @@ void simSetLightRgb(uint16_t hue, int32_t saturation, int32_t brightness) {
   schedulePreview(nullptr);
 }
 void simSaveCurrentLight() { onSaveLightParameters(nullptr); }
+bool simLightEditorRgb() { return lightEditorRgb; }
 #endif
 
 }  // namespace picker_shell

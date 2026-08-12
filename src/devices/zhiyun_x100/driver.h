@@ -11,6 +11,9 @@ class ZhiyunLightDriver : public DeviceDriver {
   BleSlotKey bleSlotKey(const DeviceRecord&) const override {
     return {DriverId::PanelOwnedMesh, 1};
   }
+  InstanceProfile instanceProfile(
+      const DeviceRecord& record,
+      const InstanceProfile& catalogProfile) const override;
   bool activate(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;

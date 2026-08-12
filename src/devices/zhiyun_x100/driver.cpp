@@ -7,8 +7,25 @@
 
 #include "core/mesh/mesh_repository.h"
 #include "devices/aputure_light/runtime.h"
+#include "devices/zhiyun_x100/ble_match.h"
 
 namespace studio {
+
+InstanceProfile ZhiyunLightDriver::instanceProfile(
+    const DeviceRecord& record,
+    const InstanceProfile& catalogProfile) const {
+  InstanceProfile profile = catalogProfile;
+  zhiyun_x100::MolusModel model = zhiyun_x100::MolusModel::Unknown;
+  if (const Session* session = find(record.instanceId))
+    model = session->client.state().model;
+  if (model == zhiyun_x100::MolusModel::Unknown)
+    model = zhiyun_x100::modelFromName(record.bleName);
+  if (model == zhiyun_x100::MolusModel::Unknown)
+    model = zhiyun_x100::modelFromName(record.displayName);
+  if (!zhiyun_x100::supportsRgb(model))
+    profile.capabilities &= ~capabilityBit(Capability::SetLightRgb);
+  return profile;
+}
 
 ZhiyunLightDriver::Session* ZhiyunLightDriver::find(InstanceId instanceId) {
   for (Session* session : sessions_) {

@@ -16,6 +16,10 @@ class DeviceDriver {
   virtual BleSlotKey bleSlotKey(const DeviceRecord& record) const {
     return {record.driverId, record.instanceId};
   }
+  virtual InstanceProfile instanceProfile(
+      const DeviceRecord&, const InstanceProfile& catalogProfile) const {
+    return catalogProfile;
+  }
   virtual bool activate(const DeviceRecord& record) = 0;
   // Called when an already-active retained instance gains another owner.
   // Drivers may resume device-specific work without rebuilding the session.

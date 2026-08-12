@@ -37,6 +37,7 @@ void simSaveWait(uint32_t waitMs);
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint);
 void simSetLightRgb(uint16_t hue, int32_t saturation, int32_t brightness);
 void simSaveCurrentLight();
+bool simLightEditorRgb();
 void simChooseDriver(studio::DriverId driverId);
 #endif
 
