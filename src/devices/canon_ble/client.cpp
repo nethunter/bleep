@@ -4,6 +4,7 @@
 #include <NimBLEDevice.h>
 
 #include <cstring>
+#include <string>
 
 #include "core/ble/ble_runtime.h"
 #include "core/ble/ble_timing.h"
@@ -941,6 +942,40 @@ void CanonBleClient::ignoreAddress(const char* address) {
                    static_cast<unsigned>(ignoredCount_));
 }
 
+bool CanonBleClient::isBondedAdvertisement(
+    const studio::ble::Advertisement& advertisement) const {
+  const studio::ble::Address& address = advertisement.address;
+  if (address.value[0] == '\0') return false;
+  const NimBLEAddress peer(
+      std::string(address.value),
+      studio::ble::identityAddressType(address.type));
+  return NimBLEDevice::isBonded(peer);
+}
+
+void CanonBleClient::adoptResolvedIdentity() {
+  if (client_ == nullptr || !client_->isConnected()) return;
+  const NimBLEAddress identity = client_->getConnInfo().getIdAddress();
+  if (identity.isNull()) return;
+  const std::string value = identity.toString();
+  const uint8_t type = studio::ble::identityAddressType(identity.getType());
+  if (value.empty() ||
+      (std::strcmp(targetAddr_, value.c_str()) == 0 &&
+       targetAddrType_ == type)) {
+    return;
+  }
+  std::strncpy(targetAddr_, value.c_str(), sizeof(targetAddr_) - 1);
+  targetAddr_[sizeof(targetAddr_) - 1] = '\0';
+  targetAddrType_ = type;
+  if (!newHandshake_) {
+    std::strncpy(lockedAddr_, targetAddr_, sizeof(lockedAddr_) - 1);
+    lockedAddr_[sizeof(lockedAddr_) - 1] = '\0';
+    pairingChanged_ = true;
+  }
+  CANON_LOG.printf("canon identity addr=%s type=%u new=%d\n", targetAddr_,
+                   static_cast<unsigned>(targetAddrType_),
+                   newHandshake_ ? 1 : 0);
+}
+
 int CanonBleClient::candidateScore(const char* name, bool hasService,
                                    bool hasMfg) const {
   int score = 0;
@@ -971,6 +1006,18 @@ void CanonBleClient::considerScanCandidate(
   CANON_LOG.printf("canon scan candidate addr=%s name=%s score=%d svc=%d mfg=%d\n",
                    address, name != nullptr ? name : "", score,
                    hasService ? 1 : 0, hasMfg ? 1 : 0);
+  if (scanCandidatePending_ &&
+      std::strcmp(scanCandidate_.address.value, address) == 0) {
+    if (name != nullptr && name[0] != '\0') {
+      std::strncpy(scanCandidateName_, name, sizeof(scanCandidateName_) - 1);
+      scanCandidateName_[sizeof(scanCandidateName_) - 1] = '\0';
+    }
+    scanCandidateHasService_ = scanCandidateHasService_ || hasService;
+    scanCandidateHasMfg_ = scanCandidateHasMfg_ || hasMfg;
+    scanCandidateScore_ = candidateScore(
+        scanCandidateName_, scanCandidateHasService_, scanCandidateHasMfg_);
+    return;
+  }
   if (!scanCandidatePending_ || score > scanCandidateScore_) {
     scanCandidate_ = advertisement;
     scanCandidate_.address.value[
@@ -999,7 +1046,8 @@ void CanonBleClient::onBleAdvertisement(
     return;
   }
   const char* address = advertisement.address.value;
-  if (isIgnoredAddress(address)) {
+  if (isIgnoredAddress(address) ||
+      (newHandshake_ && isBondedAdvertisement(advertisement))) {
     state_.claimedPeerVisible = newHandshake_;
     return;
   }
@@ -1087,6 +1135,7 @@ void CanonBleClient::onBleEvent(studio::ble::LinkHandle link,
       handleSecurityFailure();
     } else {
       securityFails_ = 0;
+      adoptResolvedIdentity();
       setupPending_ = true;
       setupAtMs_ = millis();
     }

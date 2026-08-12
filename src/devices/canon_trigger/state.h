@@ -16,6 +16,7 @@ struct CanonTriggerState {
   bool hasSavedDevice = false;
   bool triggerPending = false;
   bool lastTriggerSucceeded = false;
+  bool claimedPeerVisible = false;
   uint32_t triggerCount = 0;
   char deviceName[40] = "";
 };

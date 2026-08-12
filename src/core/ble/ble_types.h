@@ -95,6 +95,7 @@ struct ConnectPolicy {
 };
 
 bool addressEqual(const Address& left, const Address& right);
+uint8_t identityAddressType(uint8_t addressType);
 bool advertisementName(const Advertisement& advertisement, char* output,
                        size_t capacity);
 bool advertisementNameEquals(const Advertisement& advertisement,

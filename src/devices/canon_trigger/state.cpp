@@ -5,6 +5,7 @@ namespace canon_trigger {
 void resetTransientState(CanonTriggerState& state) {
   state.triggerPending = false;
   state.lastTriggerSucceeded = false;
+  state.claimedPeerVisible = false;
 }
 
 void markTriggerQueued(CanonTriggerState& state) {

@@ -590,6 +590,14 @@ int main() {
   if (!capture("18_canon_trigger_sent")) {
     return 1;
   }
+  studio::simCanonTriggerState().link =
+      canon_trigger::CanonTriggerState::Link::Scanning;
+  studio::simCanonTriggerState().lastTriggerSucceeded = false;
+  studio::simCanonTriggerState().claimedPeerVisible = true;
+  pump(20);
+  if (!capture("18b_canon_trigger_already_added")) {
+    return 1;
+  }
   canon_trigger_ui::hide();
 
   tascam_x8_ui::show(tascamId);

@@ -35,17 +35,25 @@ bool CanonTriggerClient::activate(const char* address, uint8_t addressType,
   if (!begin()) return false;
   connectRequested_ = true;
   haveTarget_ = paired && address != nullptr && address[0] != '\0';
+  newPairing_ = !haveTarget_;
   targetAddr_[0] = '\0';
   targetName_[0] = '\0';
+  lockedAddr_[0] = '\0';
   targetAddrType_ = addressType;
   if (haveTarget_) {
     std::strncpy(targetAddr_, address, sizeof(targetAddr_) - 1);
+    targetAddr_[sizeof(targetAddr_) - 1] = '\0';
+    std::strncpy(lockedAddr_, address, sizeof(lockedAddr_) - 1);
+    lockedAddr_[sizeof(lockedAddr_) - 1] = '\0';
   }
   if (name != nullptr) {
     std::strncpy(targetName_, name, sizeof(targetName_) - 1);
+    targetName_[sizeof(targetName_) - 1] = '\0';
   }
   state_.hasSavedDevice = haveTarget_;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
+  state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
+  clearIgnoredAddresses();
   if (haveTarget_) {
     beginConnect();
   } else {
@@ -100,11 +108,25 @@ void CanonTriggerClient::loop() {
   }
 }
 
+void CanonTriggerClient::retry() {
+  connectRequested_ = true;
+  resetTransientState(state_);
+  if (targetAddr_[0] != '\0') {
+    haveTarget_ = true;
+    state_.hasSavedDevice = true;
+    beginConnect();
+  } else {
+    beginScan();
+  }
+}
+
 void CanonTriggerClient::startScan() {
   begin();
   connectRequested_ = true;
   teardownConnection();
   haveTarget_ = false;
+  newPairing_ = true;
+  lockedAddr_[0] = '\0';
   state_.hasSavedDevice = false;
   beginScan();
 }
@@ -205,7 +227,11 @@ bool CanonTriggerClient::completeConnect() {
   state_.link = Link::Connected;
   state_.hasSavedDevice = true;
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
+  state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   haveTarget_ = true;
+  newPairing_ = false;
+  std::strncpy(lockedAddr_, targetAddr_, sizeof(lockedAddr_) - 1);
+  lockedAddr_[sizeof(lockedAddr_) - 1] = '\0';
   pairingChanged_ = true;
   studio::ble::bleCentral().markProtocolReady(linkHandle_);
   return true;
@@ -227,6 +253,65 @@ void CanonTriggerClient::handleDisconnect() {
   state_.link = Link::Disconnected;
 }
 
+void CanonTriggerClient::clearIgnoredAddresses() {
+  ignoredCount_ = 0;
+  for (size_t i = 0; i < kMaxIgnoredAddresses; ++i) {
+    ignoredAddrs_[i][0] = '\0';
+  }
+  state_.claimedPeerVisible = false;
+}
+
+bool CanonTriggerClient::isIgnoredAddress(const char* address) const {
+  if (address == nullptr || address[0] == '\0') return false;
+  for (uint8_t i = 0; i < ignoredCount_; ++i) {
+    if (std::strcmp(ignoredAddrs_[i], address) == 0) return true;
+  }
+  return false;
+}
+
+void CanonTriggerClient::ignoreAddress(const char* address) {
+  if (address == nullptr || address[0] == '\0' || isIgnoredAddress(address)) {
+    return;
+  }
+  if (ignoredCount_ >= kMaxIgnoredAddresses) {
+    for (size_t i = 1; i < kMaxIgnoredAddresses; ++i) {
+      std::strncpy(ignoredAddrs_[i - 1], ignoredAddrs_[i],
+                   sizeof(ignoredAddrs_[0]) - 1);
+      ignoredAddrs_[i - 1][sizeof(ignoredAddrs_[0]) - 1] = '\0';
+    }
+    ignoredCount_ = kMaxIgnoredAddresses - 1;
+  }
+  std::strncpy(ignoredAddrs_[ignoredCount_], address,
+               sizeof(ignoredAddrs_[0]) - 1);
+  ignoredAddrs_[ignoredCount_][sizeof(ignoredAddrs_[0]) - 1] = '\0';
+  ++ignoredCount_;
+}
+
+void CanonTriggerClient::ignorePeerAddress(const char* address) {
+  ignoreAddress(address);
+}
+
+bool CanonTriggerClient::isBondedAdvertisement(
+    const studio::ble::Advertisement& advertisement) const {
+  const studio::ble::Address& address = advertisement.address;
+  if (address.value[0] == '\0') return false;
+  const NimBLEAddress peer(
+      std::string(address.value),
+      studio::ble::identityAddressType(address.type));
+  return NimBLEDevice::isBonded(peer);
+}
+
+void CanonTriggerClient::adoptResolvedIdentity() {
+  if (client_ == nullptr || !client_->isConnected()) return;
+  const NimBLEAddress identity = client_->getConnInfo().getIdAddress();
+  if (identity.isNull()) return;
+  const std::string value = identity.toString();
+  if (value.empty()) return;
+  std::strncpy(targetAddr_, value.c_str(), sizeof(targetAddr_) - 1);
+  targetAddr_[sizeof(targetAddr_) - 1] = '\0';
+  targetAddrType_ = studio::ble::identityAddressType(identity.getType());
+}
+
 void CanonTriggerClient::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
@@ -234,6 +319,16 @@ void CanonTriggerClient::onBleAdvertisement(
       !matchesAdvertisement(advertisement)) {
     return;
   }
+  const char* address = advertisement.address.value;
+  if (isIgnoredAddress(address) ||
+      (newPairing_ && isBondedAdvertisement(advertisement))) {
+    state_.claimedPeerVisible = newPairing_;
+    return;
+  }
+  if (lockedAddr_[0] != '\0' && std::strcmp(address, lockedAddr_) != 0) {
+    return;
+  }
+  state_.claimedPeerVisible = false;
   std::strncpy(targetAddr_, advertisement.address.value,
                sizeof(targetAddr_) - 1);
   targetAddrType_ = advertisement.address.type;
@@ -253,6 +348,7 @@ void CanonTriggerClient::onBleEvent(studio::ble::LinkHandle link,
     client_ = static_cast<NimBLEClient*>(
         studio::ble::bleCentral().nativeClient(linkHandle_));
     if (client_ != nullptr && client_->getConnInfo().isEncrypted()) {
+      adoptResolvedIdentity();
       setupPending_ = true;
     } else if (!studio::ble::bleCentral().requestSecurity(linkHandle_)) {
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
@@ -261,6 +357,7 @@ void CanonTriggerClient::onBleEvent(studio::ble::LinkHandle link,
     if (!event.succeeded) {
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     } else {
+      adoptResolvedIdentity();
       setupPending_ = true;
     }
   } else if (event.type == studio::ble::EventType::ConnectFailed) {

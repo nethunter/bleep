@@ -74,6 +74,12 @@ bool addressEqual(const Address& left, const Address& right) {
          std::strncmp(left.value, right.value, sizeof(left.value)) == 0;
 }
 
+uint8_t identityAddressType(uint8_t addressType) {
+  return addressType == 2 || addressType == 3
+             ? static_cast<uint8_t>(addressType - 2)
+             : addressType;
+}
+
 bool advertisementName(const Advertisement& advertisement, char* output,
                        size_t capacity) {
   if (output == nullptr || capacity == 0) {
