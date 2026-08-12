@@ -32,9 +32,10 @@ pdftoppm -png ../../output/pdf/bleep-instruction-manual.pdf \
 ```
 
 Hardware views are line illustrations generated from the user-supplied reference
-photographs. UI figures are simulator captures from the same `e97d0b6` source
-snapshot. Regenerate hardware illustrations only when the enclosure changes,
-and replace UI captures whenever the illustrated screens materially change.
+photographs. UI figures are simulator captures from the source snapshot recorded
+with the corresponding manual update in `docs/progress.md`. Regenerate hardware
+illustrations only when the enclosure changes, and replace UI captures whenever
+the illustrated screens materially change.
 Keep normal ownership and creative workflows in the main guide. Consolidate
 electronics, printing, assembly, repair, and firmware work in the final
 advanced developer/builder section. Document-maintenance instructions belong

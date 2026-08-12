@@ -2,7 +2,7 @@
 title: "Ble(e)p Owner's Guide"
 subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
 edition: "0.2.0-dev"
-date: "11 August 2026"
+date: "12 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
 ---
@@ -126,7 +126,7 @@ Open **Devices**, select the device's management control, then choose an availab
 - **Forget/re-pair:** remove the saved pairing and set up the device again.
 - **Delete/remove:** permanently remove the device after confirmation. Remove it from any sequence first.
 
-The Devices list shows six devices at a time. Long names scroll so you can still read them. Devices not included in the installed version stay saved but cannot be opened.
+The Devices list shows six devices at a time. Enabled devices with a live physical connection move to the front, while connected and remaining devices each keep their saved order. Long names scroll so you can still read them. Devices not included in the installed version stay saved but cannot be opened.
 
 ## Connection and state labels
 
@@ -236,32 +236,33 @@ The Sony entry is for research only. It does not save a camera or provide contro
 
 ## Aputure Light
 
-The generic **Aputure Light** entry adds compatible factory-reset Aputure and amaran fixtures to a private light network created by Ble(e)p. Several compatible lights can share one maintained Bluetooth connection, while each light still has its own saved record and available color controls.
+The generic **Aputure Light** entry adds compatible factory-reset Aputure and amaran fixtures to a private light network created by Ble(e)p. Several compatible lights share one maintained Bluetooth connection, but normal power and look commands target each saved fixture independently.
 
-1. Factory-reset the light and place only that light nearby in pairing mode.
+1. Factory-reset the light and place it nearby in pairing mode.
 2. Choose **Devices > Add device > Lights > Aputure Light**.
-3. Wait while Ble(e)p adds the light and shows **Ready**.
-4. Use On/Off, color temperature (CCT), tint, brightness, or RGB color controls as shown.
-5. Watch the fixture. Ble(e)p can confirm power on the tested lights, but color settings are still shown as sent rather than confirmed.
+3. If one compatible unsaved fixture is found, Ble(e)p selects it automatically. If several are found, choose the intended advertised name and address suffix from the signal-strength list.
+4. Leave the light powered while Ble(e)p shows **Connecting**, **Provisioning**, or **Configuring mesh**. The fixture may restart during setup; wait for **Ready**.
+5. Use On/Off, color temperature (CCT), tint, brightness, or RGB color controls as shown.
+6. Watch the fixture. Ble(e)p confirms state only when the addressed light provides a correlated reply; otherwise the values are shown as sent.
 
 ![Aputure Light RGB controls. Color changes are sent quickly, but the displayed values are not read back from the light.](assets/ui-aputure-rgb.png){width=2.7}
 
-The **amaran Ace 25c** and **Aputure MC Pro** have been tested for first-time setup, shared On/Off, separate RGB color control, and power confirmation. Color-temperature confirmation, recovery from interrupted setup, and the amaran Pano 60c/120c still need testing.
+All supported lights use the same control layout. Unsupported controls are hidden: the X100 is CCT-only, the X60RGB adds RGB, and a Home Assistant light has power only. Ble(e)p remembers each fixture's CCT look, RGB look, active mode, brightness, and power state. Reopening an Off light keeps it Off; changing tabs applies the stored look only while the light is On.
 
-> On the tested Ace 25c/MC Pro pair, On/Off currently affects the shared light network. Do not rely on it as independent power control for one fixture. Separate color control is verified for each light.
+Ble(e)p reads the fixture identity during setup when the model reports it, then saves the exact product name. The **amaran Ace 25c** and **Aputure MC Pro** are the current evidence fixtures. Per-node routing is implemented, but the full four-fixture physical isolation, reconnect/fallback, and soak gates remain open. The amaran Pano 60c and Pano 120c remain candidates until those exact models pass their hardware gates.
 
 ## Zhiyun Light: MOLUS X100 and X60RGB
 
 1. Choose **Add device > Lights > Zhiyun Light** once for each fixture.
-2. Keep only the intended X100 or X60RGB nearby. Ble(e)p accepts a factory-reset light or one it previously added.
-3. Wait while Ble(e)p identifies the model, connects, and reads its current settings.
+2. Ble(e)p selects a sole compatible unsaved fixture automatically. If several are nearby, choose the intended advertised name and address suffix from the picker.
+3. Wait while Ble(e)p identifies the model, connects, and reads its current settings. A saved X100 that misses its first direct reconnect falls back to scanning for the same identity.
 4. Use power, color temperature, and brightness. The X60RGB also offers hue and saturation controls.
 
 ![X60RGB control. The X100 uses the same layout without the RGB tab.](assets/ui-zhiyun-rgb.png){width=2.7}
 
-**MOLUS X100:** provides power plus 2700-6500 K color temperature and brightness. Normal control has been tested on the panel; extreme values, power cycling, multiple lights, recovery, and use alongside every other supported device still need more testing.
+**MOLUS X100:** provides power plus 2700-6500 K color temperature and brightness. It never shows RGB controls. Normal control has been tested on the panel; extreme values, power cycling, multiple lights, cold first-opening reconnect, and use alongside every other supported device still need more testing.
 
-**MOLUS X60RGB:** adds hue and saturation. Color output has been observed, but panel control, reconnection, reset recovery, simultaneous X100/X60RGB use, and broader mixed-device use still need more testing.
+**MOLUS X60RGB:** adds hue and saturation. Host-originated color output has been observed, but the flashed shared path, panel control, reconnection, reset recovery, simultaneous X100/X60RGB use, and broader mixed-device use still need more testing.
 
 Importing a light network previously created in Sidus Link is not supported. Ble(e)p handles Aputure and Zhiyun lights through the same behind-the-scenes connection, but they remain separate choices with their own controls.
 
@@ -346,13 +347,15 @@ Ble(e)p calls a saved multi-device workflow a **scene** or **sequence**. Use one
 ## Create a scene on the panel
 
 1. Open **Scenes** and select **Add sequence**.
-2. Build the **Start** list with **Add step**. Choose a target, action, and any parameters.
+2. Build the **Start** list with **Add step**. Choose a target, action, and any parameters. For a light, **Set look + On** combines its color, brightness, and power-on in one step.
 3. Add Wait steps in milliseconds where equipment needs time between actions.
 4. Select the header arrow to review the generated **Stop** list. It reverses Start order and adds the matching Stop action where one is known.
 5. Optional: choose **Customize Stop** to copy the generated list into an independently editable Stop list.
 6. Use the checkmark, enter a name, and save.
 
-Editing Start updates the generated Stop preview. **Use generated Stop** replaces a custom Stop list only after confirmation. You can edit and reorder existing steps. If a saved device is no longer available, you can still delete its step from a custom Stop list.
+Editing Start updates the generated Stop preview. A new light look starts at 5600 K, 50% brightness, neutral tint, and 100% RGB saturation. Switching CCT/RGB tabs previews that mode on the fixture, and changing the controls previews the selected look. Reopening a step restores its stored mode and values. Each **Set look + On** produces one **Turn Off** in the generated Stop list, which runs in reverse Start order.
+
+**Use generated Stop** replaces a custom Stop list only after confirmation. You can edit and reorder existing steps. If a saved device is no longer available, you can still delete its step from a custom Stop list.
 
 ## Run a scene
 
@@ -375,7 +378,7 @@ Opening scene Settings cancels preparation so you can edit safely. It does not i
 | Canon Smart, DJI, Tascam, GoPro | Separate Start and Stop actions. Confirmation varies by device. |
 | Insta360 | Separate state-aware Start and Stop actions. Start can run from the fresh connection's provisional video-idle state; Stop still requires camera-confirmed recording. |
 | Phone Camera | Sends a volume-up command; Ble(e)p cannot see what the camera app did. |
-| Lights and Home Assistant switches | Separate On/Off. Aputure Set color includes color temperature or RGB settings. |
+| Lights and Home Assistant switches | Separate On/Off. A light's Set look + On applies its stored CCT or RGB look and turns on that fixture; generated Stop adds one Turn Off. |
 | Home Assistant button | Press. |
 | Home Assistant scene/script | Activate. |
 | Wait | Pause for the chosen number of milliseconds. |
@@ -415,9 +418,9 @@ Factory Reset removes saved devices and pairings, scenes, Wi-Fi details, Home As
 | Shark | Battery, A-H keypoints, manual/joystick move, speed, hold, direction, loop, run/progress | Supported. Movement needs physical observation. |
 | Cameras | Trigger, Start/Stop, toggle, power, status, or phone shutter | Available controls vary; see the compatibility matrix. |
 | Tascam | Record Start/Stop and restored confirmed recording state | Supported on the X8 + AK-BT1 path. |
-| Aputure Light | On/Off, color temperature, tint, brightness, RGB color, and Set color scene action | Experimental. Power confirmation is more reliable than confirmation of color settings. |
-| Zhiyun X100 | On/Off, color temperature, and brightness | Experimental. Normal panel control has been tested. |
-| Zhiyun X60RGB | On/Off, color temperature, brightness, hue, and saturation | Experimental. More panel and reconnect testing is needed. |
+| Aputure Light | Independent On/Off, color temperature, tint, brightness, RGB color, remembered state, and Set look + On scene action | Experimental. Per-node routing is implemented; physical multi-fixture isolation and complete confirmation still need testing. |
+| Zhiyun X100 | On/Off, color temperature, brightness, remembered state, and CCT Set look + On | Experimental. Normal panel control has been tested; RGB is not offered. |
+| Zhiyun X60RGB | On/Off, color temperature, brightness, hue, saturation, remembered state, and CCT/RGB Set look + On | Experimental. More flashed-panel and reconnect testing is needed. |
 | Scenes | Create, rename, enable, disable, duplicate, and delete | Available on Ble(e)p and in Portal where shown. |
 | Scene editing | Ordered actions and waits, editing, reordering, generated Stop, and Custom Stop | Parallel steps, groups, import/export, and automatic undo are not available. |
 | Scene running | Prepare equipment, Start/Stop, cleanup after a partial failure, and target shortcuts | Available within the connection limits. |
@@ -451,11 +454,11 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Sony cameras using RMT-P1BT remotes | Research | Listed for investigation | Pairing and control are not available. |
 | Tascam Portacapture X8 + AK-BT1 | Supported | Record Start/Stop and confirmed recording state | Battery, media status, and other recorder features are not included. |
 | Home Assistant local entities | Experimental | Control up to four lights, switches, input booleans, buttons, scenes, or scripts | Other entity types and cloud sign-in are not included. |
-| amaran Ace 25c | Experimental | First-time setup, shared power, separate RGB color, and power confirmation | Independent power and confirmation of color settings need more testing. |
-| Aputure MC Pro | Experimental | First-time setup, shared power, separate RGB color, and power confirmation | Independent power and wider model testing remain open. |
-| amaran Pano 60c / Pano 120c | Candidate | Intended to use Aputure Light controls | These exact models have not been tested. |
-| Zhiyun MOLUS X100 | Experimental | Power, color temperature, brightness, and current-setting display | Power cycling, multiple lights, and recovery need more testing. |
-| Zhiyun MOLUS X60RGB | Experimental | Power, color temperature, brightness, hue, and saturation | Panel use, reconnection, reset recovery, and mixed-light use need more testing. |
+| amaran Ace 25c | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
+| Aputure MC Pro | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
+| amaran Pano 60c / Pano 120c | Candidate | Intended to use unified Aputure Light controls and per-node routing | These exact models have not passed their hardware gates. |
+| Zhiyun MOLUS X100 | Experimental | Power, CCT-only color, brightness, remembered state, and current-setting display | Cold first-opening reconnect, power cycling, multiple lights, and recovery need more testing. |
+| Zhiyun MOLUS X60RGB | Experimental | Power, color temperature, brightness, hue, saturation, and remembered state | Host optical control is verified; the flashed shared path, panel use, reconnection, reset recovery, and mixed-light use need more testing. |
 | Deity PR4 | Later | None | Support has not been developed. |
 | iFootage Shark Nano II slider | Supported | Pair/reconnect, battery, A-H keypoints, manual movement, timing, loop/direction, run/progress | Secure the payload and observe every move. |
 
@@ -464,7 +467,7 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 ## A device does not appear
 
 - Confirm the target is in the correct pairing menu, not merely powered on.
-- Keep only the intended first-time light or camera nearby when discovery could match multiple devices.
+- For a first-time light, select the intended advertised name and address suffix when several candidates appear. A sole compatible candidate is selected automatically.
 - Return with Back, re-enter the target's pairing mode, and retry. Failed first-time attempts do not create a saved record.
 - If the device was paired to another phone or remote, remove the old registration or use Forget/re-pair as appropriate.
 - For Canon, do not interchange BR-E1 and smartphone pairings.
@@ -476,6 +479,7 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 - Use **Manage > Disconnect**, then reopen.
 - Use **Forget/re-pair** only when you intend to remove the existing pairing.
 - Ble(e)p can keep four equipment connections ready at once. Disconnect something you are not using, then try again.
+- For a saved X100, one missed direct reconnect should fall back to scanning for the same light. Use Retry if the fallback also fails; it keeps the saved identity.
 
 ## A command says Sent, Optimistic, or Unknown
 
@@ -486,6 +490,7 @@ This is expected when the integration cannot read physical state. Check the came
 - Open the failed target and resolve its pairing or connection problem.
 - Confirm every device used by the scene is enabled and available in the installed version.
 - Check the four-connection limit. Compatible Aputure and Zhiyun lights share one connection; Home Assistant does not use one of the four.
+- If a multi-light scene fails, open the failed fixture from its circular shortcut, retry it, and confirm the physical output. A shared mesh connection or an acknowledgement alone does not prove that the intended fixture changed.
 - Use the in-place Retry flow when shown. If preparation is still pending, opening scene Settings cancels it safely.
 
 ## Portal does not open

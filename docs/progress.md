@@ -63,6 +63,31 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: Owner's guide audit and rebuild
+
+- Audited all implementation and supporting-documentation changes since the
+  previous manual/PDF commit `62c03e3`, including the unified light-control
+  tranche and connected-first Devices ordering. The prerequisite changes were
+  collected on `docs/collect-manual-update-2026-08-12`, rebased, and merged to
+  `main` before the manual source was edited.
+- Updated the owner's guide for bounded light selection, automatic model
+  identity, per-fixture Aputure routing, one capability-driven light shell,
+  remembered power/CCT/RGB state, X100 CCT-only behavior, X100 reconnect
+  fallback, and `Set look + On` scene preview/defaults/generated Off behavior.
+  Compatibility wording continues to leave Pano 60c/Pano 120c exact-model
+  gates, four-fixture isolation/fallback/soak, cold X100 reconnect, and the
+  flashed X60RGB shared path explicitly unverified.
+- Replaced the Aputure and Zhiyun light figures with captures from the complete
+  2026-08-12 `ui_sim` traversal. Rebuilt
+  `output/pdf/bleep-instruction-manual.pdf` as a 26-page A4 PDF, rendered all 26
+  pages at 120 dpi, visually inspected them, and confirmed the updated owner
+  terms through PDF text extraction. No clipping, overlap, or unexpected blank
+  pages were observed.
+- The prerequisite merged code passed 89/89 native tests, the complete
+  `ui_sim` traversal, and the full Montserrat `bleep` build at 141,428 /
+  327,680 bytes static RAM (43.2%) and 1,931,822 / 3,145,728 bytes flash
+  (61.4%). The manual-only rebuild did not flash or alter NVS.
+
 ### 2026-08-12: Connected-first Devices list
 
 - The Devices list now places enabled devices with a physically connected link
