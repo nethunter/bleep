@@ -300,7 +300,9 @@ research-confirmed for Ace 25c/MC Pro. Firmware ordinary controls instead use
 the captured per-node unicast path, and the unsafe command-as-poll behavior is
 removed. Deterministic per-member vendor groups remain configuration metadata
 from the optically verified MC-red/Ace-green test. Decoded
-configuration-status gating and the remaining real-panel checks stay open.
+configuration-status gating now includes segmented Composition Data Status and
+automatic vendor-model selection. The newly integrated panel path and the
+remaining real-fixture checks stay open.
 
 Completion gate:
 

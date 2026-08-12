@@ -1286,7 +1286,9 @@ void showEditView(studio::SceneId sceneId, bool startList) {
 void init() {}
 
 void tick() {
-  if (!visible || view != View::Run) return;
+  if (!visible) return;
+  if (picker_shell::active()) picker_shell::tick();
+  if (view != View::Run) return;
   const uint32_t now = millis();
   if (now - lastRefreshMs < 200) {
     return;

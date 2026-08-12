@@ -31,7 +31,7 @@ struct AputureLightState {
   uint16_t kelvin = 5600;
   int16_t tintPermille = 0;
   uint8_t cctBrightness = 50;
-  uint32_t rgb = 0xffffff;
+  uint32_t rgb = 0xff0000;
   uint8_t rgbBrightness = 50;
   char error[48] = "";
 };

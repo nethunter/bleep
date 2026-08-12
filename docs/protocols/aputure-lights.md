@@ -40,6 +40,15 @@ and encrypted Bluetooth Mesh provisioning traffic.
 - Configuration sends Composition Data Get, AppKey Add, Generic OnOff Server
   bind, and group subscription. The 2026-08-07 MC Pro and Ace 25c runs decoded
   successful AppKey, model-bind, and subscription statuses.
+- Firmware configuration now starts with Composition Data Get and reassembles
+  the authenticated segmented device-key response before publishing the vendor
+  tuple. MC Pro selects `0x03F6:0x1000`; Ace/Pano select `0x0211:0x0000`.
+  Persist failure rolls the tuple back, and unsupported composition remains a
+  recovery condition rather than being inferred from a generic GAP name. This
+  integrated path is software-tested but awaits another fixture onboarding run.
+  Because Ace 25c, Pano 60c, and Pano 120c share the same known vendor tuple,
+  firmware never relabels that tuple as Ace; an exact name requires a recognized
+  advertised product label or explicit recovery.
 
 ## Panel-owned Ace 25c and MC Pro evidence
 
@@ -349,6 +358,10 @@ However, the working Studio Lighter controller's ordinary state path selects
 node. Its captures repeatedly encode source `0x0001` to destination `0x0002`.
 Ble(e)p therefore uses node unicast for ordinary power, CCT, RGB, and brightness
 under ADR-041. The earlier private-group result does not disprove that path.
+For compound **Set look + On**, it sends the captured unicast power-on payload
+first and the selected look payload last, matching Studio Lighter's
+`_packet_states_for_state()` ordering. This is especially important for RGB:
+a trailing power packet can otherwise restore the fixture's previous CCT mode.
 State remains optimistic until replies are source-correlated or physical output
 is observed. Standard model transactions remain useful for reachability but
 cannot automatically be treated as emitter state.

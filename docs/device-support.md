@@ -99,16 +99,16 @@ of successful movement.
 - Onboarding: choose `Aputure Light`. One compatible candidate is selected
   automatically after a 750 ms settling window; two to four nearby candidates
   use the explicit picker before PB-GATT begins. The selected factory-reset
-  fixture is provisioned into the panel-owned mesh. If advertisement identity
-  is insufficient, recovery asks for the exact
-  fixture: amaran Ace 25c, Pano 60c, Pano 120c, or Aputure MC Pro. Exact product
-  naming is kept independently of the shared Amaran vendor tuple. These four
+  fixture is provisioned into the panel-owned mesh. The runtime then reads the
+  authenticated Composition Data Status and selects MC Pro
+  (`0x03F6:0x1000`) or the shared Ace/Pano model (`0x0211:0x0000`)
+  automatically. Exact advertised product naming is kept independently of the
+  shared Amaran vendor tuple. These four
   fixtures remain the initial validation set. Existing
   Sidus/amaran mesh import remains deferred.
-  If a provisioned-but-unconfigured fixture cannot be identified from its BLE
-  name, onboarding stops instead of guessing. The recovery screen offers exact
-  all four choices; Ace/Pano use the known Amaran tuple (`0x0211:0x0000`) and
-  MC Pro uses (`0x03F6:0x1000`). Model-specific support remains blocked until
+  If a provisioned-but-unconfigured fixture returns an unsupported or malformed
+  composition, onboarding stops instead of guessing and the recovery screen
+  offers all four exact choices. Model-specific support remains blocked until
   each fixture passes its physical gate.
   After PB-GATT, the panel waits for either the selected address or this mesh's
   Network ID instead of treating the fixture's expected reboot as an immediate

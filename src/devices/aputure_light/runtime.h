@@ -70,6 +70,12 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
     uint32_t receiveSequence = 0;
     bool followupPowerPending = false;
     bool followupPowerOn = false;
+    bool followupLookPending = false;
+    AccessPayload followupLook = {};
+    studio::CommandType followupLookType = studio::CommandType::Refresh;
+    int32_t followupValue0 = 0;
+    int32_t followupValue1 = 0;
+    int32_t followupValue2 = 0;
     uint32_t followupPowerAt = 0;
     char productName[studio::kBleNameCapacity] = "";
   };
@@ -112,6 +118,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   uint8_t configRetryCount_ = 0;
   bool configAwaitingStatus_ = false;
   NetworkPduBatch configBatch_ = {};
+  DeviceMessageReassembly configReassembly_ = {};
   uint8_t configBatchIndex_ = 0;
   uint32_t configStatusDeadlineMs_ = 0;
   uint32_t provisioningStartedAt_ = 0;

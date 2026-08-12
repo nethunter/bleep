@@ -781,11 +781,11 @@ int main() {
   const aputure_light::AputureLightState* lightState =
       aputure_light::runtime()->state(pano60Id);
   if (lightState == nullptr ||
-      lightState->mode != aputure_light::AputureLightState::Mode::Cct ||
-      lightState->kelvin != 5600 || lightState->tintPermille != 0 ||
-      lightState->cctBrightness != 50 || lightState->on) {
+      lightState->mode != aputure_light::AputureLightState::Mode::Rgb ||
+      lightState->rgb != 0x00ff00 || lightState->rgbBrightness != 25 ||
+      lightState->on) {
     std::fprintf(stderr,
-                 "Aputure entry look did not preserve the off state\n");
+                 "Aputure entry did not recall the RGB look and preserve Off\n");
     return 1;
   }
   aputure_light_ui::simShowRgb();
@@ -841,6 +841,30 @@ int main() {
       lightState->rgbBrightness != 38 ||
       lightState->mode != aputure_light::AputureLightState::Mode::Rgb) {
     std::fprintf(stderr, "Aputure Light RGB look was not recalled\n");
+    return 1;
+  }
+  const uint32_t rememberedRgb = lightState->rgb;
+  aputure_light_ui::hide();
+  aputure_light_ui::show(pano60Id);
+  pump(800);
+  lightState = aputure_light::runtime()->state(pano60Id);
+  if (lightState == nullptr ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Rgb ||
+      lightState->rgb != rememberedRgb || lightState->rgbBrightness != 38 ||
+      lightState->cctBrightness != 72 || lightState->kelvin != 4300 ||
+      lightState->tintPermille != 120 || lightState->on) {
+    std::fprintf(stderr,
+                 "Aputure reopen did not restore both remembered looks and Off "
+                 "state=%p mode=%d rgb=%06x rgb_bri=%u cct_bri=%u K=%u "
+                 "tint=%d on=%d\n",
+                 static_cast<const void*>(lightState),
+                 lightState != nullptr ? static_cast<int>(lightState->mode) : -1,
+                 lightState != nullptr ? static_cast<unsigned>(lightState->rgb) : 0,
+                 lightState != nullptr ? lightState->rgbBrightness : 0,
+                 lightState != nullptr ? lightState->cctBrightness : 0,
+                 lightState != nullptr ? lightState->kelvin : 0,
+                 lightState != nullptr ? lightState->tintPermille : 0,
+                 lightState != nullptr && lightState->on ? 1 : 0);
     return 1;
   }
   const aputure_light::AputureLightState* secondLightState =
@@ -999,6 +1023,43 @@ int main() {
     return 1;
   }
   colorEditScene = *colorEditedScene;
+  colorEditScene.startSteps[1] = studio::makeActionStep(
+      pano60Id, studio::CommandType::SetLightRgbAndOn, 0x0000ff, 42, 0);
+  if (studio::scenes().replace(colorEditScene) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to prepare RGB-step preview regression\n");
+    return 1;
+  }
+  scene_ui::simEditStep(sceneId, true, 1);
+  picker_shell::simSetLightRgb(240, 100, 42);
+  pump(500);
+  lightState = aputure_light::runtime()->state(pano60Id);
+  if (lightState == nullptr || !lightState->on ||
+      lightState->mode != aputure_light::AputureLightState::Mode::Rgb ||
+      (lightState->rgb & 0xff) < 0xf0 ||
+      (lightState->rgb & 0xff0000) != 0 || lightState->rgbBrightness != 42) {
+    std::fprintf(stderr,
+                 "RGB sequence editor did not preview on the light state=%p on=%d mode=%d rgb=%06x brightness=%u\n",
+                 static_cast<const void*>(lightState),
+                 lightState != nullptr && lightState->on ? 1 : 0,
+                 lightState != nullptr ? static_cast<int>(lightState->mode) : -1,
+                 lightState != nullptr ? static_cast<unsigned>(lightState->rgb) : 0,
+                 lightState != nullptr ? lightState->rgbBrightness : 0);
+    return 1;
+  }
+  const uint32_t previewedBlue = lightState->rgb;
+  picker_shell::simSaveCurrentLight();
+  const studio::SceneRecord* rgbEditedScene = studio::scenes().find(sceneId);
+  if (rgbEditedScene == nullptr ||
+      rgbEditedScene->startSteps[1].command !=
+          studio::CommandType::SetLightRgbAndOn ||
+      static_cast<uint32_t>(rgbEditedScene->startSteps[1].value0) !=
+          previewedBlue ||
+      rgbEditedScene->startSteps[1].value1 != 42) {
+    std::fprintf(stderr, "RGB sequence editor saved the look as CCT\n");
+    return 1;
+  }
+  colorEditScene = *rgbEditedScene;
   colorEditScene.startSteps[1] = studio::makeWaitStep(750);
   if (studio::scenes().replace(colorEditScene) !=
       studio::SceneRegistryStatus::Ok) {

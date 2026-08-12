@@ -175,7 +175,9 @@ struct LightControlState {
   uint16_t kelvin = 5600;
   int16_t tintPermille = 0;
   uint8_t brightness = 50;
-  uint32_t rgb = 0xffffff;
+  uint8_t cctBrightness = 50;
+  uint8_t rgbBrightness = 50;
+  uint32_t rgb = 0xff0000;
   bool rgbMode = false;
   char status[48] = "Unavailable";
 };

@@ -961,6 +961,10 @@ the replacement.
   to 5600 K, 50% brightness, and neutral tint; generated Stop materializes one
   Turn Off. A compound driver transaction remains pending across look and
   power stages and reports any sub-step failure for Stop and Retry recovery.
+  The editor previews the currently selected mode and values after a bounded
+  debounce while retaining foreground ownership. Aputure compound execution
+  sends power first and the requested look last, matching the working Studio
+  Lighter transaction and preventing a trailing On packet from restoring CCT.
 - Compatibility: the selected clean-storage `0.2.0-dev` baseline does not
   migrate or normalize older two-step light scenes. Factory Reset is the
   documented test baseline.
@@ -1015,8 +1019,12 @@ the replacement.
   a no-write operation until a verified read-only query exists. Proxy/GATT
   connectivity remains bearer evidence, not fixture-state confirmation.
 - Identity: The recovery UI offers Ace 25c, Pano 60c, Pano 120c, and MC Pro.
-  Ace/Pano models share the known Amaran tuple, so the exact selected product
-  name is persisted separately and automatic naming must preserve it.
+  New nodes first receive Config Composition Data Get. Authenticated,
+  device-key-encrypted segmented Composition Data Status selects MC Pro
+  `0x03F6:0x1000` or the Ace/Pano `0x0211:0x0000` command model without asking
+  the operator. Ace/Pano models share that tuple, so an exact advertised
+  product name is persisted separately when available; manual recovery remains
+  only for an unsupported or malformed composition response.
 - Supersession: This ADR supersedes ADR-040's protocol conclusion and the
   private-group routing sentence in ADR-039. ADR-040 remains the record of the
   safety response to the misleading group experiment.

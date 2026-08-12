@@ -296,6 +296,8 @@ bool ZhiyunLightDriver::lightControlState(InstanceId instanceId,
   out.maxKelvin = zhiyun_x100::kMaxKelvin;
   out.kelvin = state.kelvin;
   out.brightness = static_cast<uint8_t>(state.brightness + 0.5f);
+  out.cctBrightness = out.brightness;
+  out.rgbBrightness = out.brightness;
   out.rgb = state.rgb;
   out.rgbMode = out.supportsRgb && state.mode == zhiyun_x100::X100State::Mode::Rgb;
   std::strncpy(out.status, state.error[0] != '\0' ? state.error

@@ -139,7 +139,9 @@ const char* knownProductName(const char* label) {
 
 const char* knownVendorModelName(uint16_t companyId, uint16_t modelId) {
   if (companyId == 0x03f6 && modelId == 0x1000) return "Aputure MC Pro";
-  if (companyId == 0x0211 && modelId == 0x0000) return "amaran Ace 25c";
+  // Ace and both Pano fixtures share this tuple. An exact name must come from
+  // the fixture's advertisement or explicit recovery, never from the tuple.
+  if (companyId == 0x0211 && modelId == 0x0000) return nullptr;
   return nullptr;
 }
 
@@ -167,6 +169,42 @@ bool parseVendorPowerStatus(const uint8_t* access, size_t length,
   output.storedIntensity = access[9];
   output.profile = access[10];
   return true;
+}
+
+bool parseCompositionVendorModel(const uint8_t* access, size_t length,
+                                 CompositionVendorModel& output) {
+  // Config Composition Data Status: opcode 0x02, page 0, fixed 10-byte
+  // composition header, followed by one or more element records.
+  if (access == nullptr || length < 16 || access[0] != 0x02 ||
+      access[1] != 0x00) {
+    return false;
+  }
+  size_t offset = 12;
+  while (offset < length) {
+    if (length - offset < 4) return false;
+    const uint8_t sigCount = access[offset + 2];
+    const uint8_t vendorCount = access[offset + 3];
+    offset += 4;
+    const size_t sigBytes = static_cast<size_t>(sigCount) * 2;
+    const size_t vendorBytes = static_cast<size_t>(vendorCount) * 4;
+    if (sigBytes > length - offset) return false;
+    offset += sigBytes;
+    if (vendorBytes > length - offset) return false;
+    for (uint8_t i = 0; i < vendorCount; ++i) {
+      const uint16_t company = static_cast<uint16_t>(access[offset]) |
+                               static_cast<uint16_t>(access[offset + 1]) << 8;
+      const uint16_t model = static_cast<uint16_t>(access[offset + 2]) |
+                             static_cast<uint16_t>(access[offset + 3]) << 8;
+      if ((company == 0x0211 && model == 0x0000) ||
+          (company == 0x03f6 && model == 0x1000)) {
+        output.companyId = company;
+        output.modelId = model;
+        return true;
+      }
+      offset += 4;
+    }
+  }
+  return false;
 }
 
 bool matchConfigurationStatus(const uint8_t* access, size_t length,
@@ -613,6 +651,139 @@ bool decodeProxyDeviceMessage(const uint8_t networkKey[16],
                        encryptedUpper, output.accessLength,
                        encryptedUpper + output.accessLength, 4,
                        output.access);
+}
+
+DeviceDecodeResult decodeProxySegmentedDeviceMessage(
+    const uint8_t networkKey[16], const uint8_t deviceKey[16],
+    const uint8_t* proxyPdu, size_t proxyLength, uint32_t ivIndex,
+    DeviceMessageReassembly& reassembly, DecodedAccessMessage& output) {
+  output = DecodedAccessMessage{};
+  if (networkKey == nullptr || deviceKey == nullptr || proxyPdu == nullptr ||
+      proxyLength < 16 || proxyPdu[0] != 0x00) {
+    return DeviceDecodeResult::Invalid;
+  }
+  const uint8_t* network = proxyPdu + 1;
+  const size_t networkLength = proxyLength - 1;
+  NetworkKeys keys;
+  meshK2(networkKey, keys);
+  if ((network[0] & 0x7f) != keys.nid || networkLength < 14)
+    return DeviceDecodeResult::Invalid;
+
+  const uint8_t* encryptedNetwork = network + 7;
+  const size_t encryptedNetworkLength = networkLength - 7;
+  if (encryptedNetworkLength < 11) return DeviceDecodeResult::Invalid;
+  uint8_t privacyInput[16] = {};
+  privacyInput[5] = static_cast<uint8_t>(ivIndex >> 24);
+  privacyInput[6] = static_cast<uint8_t>(ivIndex >> 16);
+  privacyInput[7] = static_cast<uint8_t>(ivIndex >> 8);
+  privacyInput[8] = static_cast<uint8_t>(ivIndex);
+  std::memcpy(privacyInput + 9, encryptedNetwork, 7);
+  uint8_t pecb[16];
+  aes128EncryptBlock(keys.privacy, privacyInput, pecb);
+  uint8_t clearHeader[6];
+  for (size_t i = 0; i < sizeof(clearHeader); ++i)
+    clearHeader[i] = static_cast<uint8_t>(network[i + 1] ^ pecb[i]);
+  if ((clearHeader[0] & 0x80) != 0) return DeviceDecodeResult::Invalid;
+  const uint32_t sequence = static_cast<uint32_t>(clearHeader[1]) << 16 |
+                            static_cast<uint32_t>(clearHeader[2]) << 8 |
+                            clearHeader[3];
+  const uint16_t source = getBe16(clearHeader + 4);
+
+  uint8_t networkNonce[13] = {0x00};
+  std::memcpy(networkNonce + 1, clearHeader, sizeof(clearHeader));
+  networkNonce[7] = networkNonce[8] = 0;
+  networkNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  networkNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  networkNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  networkNonce[12] = static_cast<uint8_t>(ivIndex);
+  const size_t networkPlainLength = encryptedNetworkLength - 4;
+  uint8_t networkPlain[64] = {};
+  if (networkPlainLength > sizeof(networkPlain) ||
+      !aesCcmDecrypt(keys.encryption, networkNonce, sizeof(networkNonce),
+                     encryptedNetwork, networkPlainLength,
+                     encryptedNetwork + networkPlainLength, 4, networkPlain) ||
+      networkPlainLength < 9) {
+    return DeviceDecodeResult::Invalid;
+  }
+  const uint16_t destination = getBe16(networkPlain);
+  const uint8_t* lower = networkPlain + 2;
+  const size_t lowerLength = networkPlainLength - 2;
+  if (lowerLength < 5 || (lower[0] & 0xc0) != 0x80)
+    return DeviceDecodeResult::Invalid;
+
+  const bool longMic = (lower[1] & 0x80) != 0;
+  const uint16_t sequenceZero =
+      static_cast<uint16_t>((lower[1] & 0x7f) << 6) |
+      static_cast<uint16_t>(lower[2] >> 2);
+  const uint8_t segmentOffset =
+      static_cast<uint8_t>((lower[2] & 0x03) << 3) |
+      static_cast<uint8_t>(lower[3] >> 5);
+  const uint8_t lastSegment = lower[3] & 0x1f;
+  if (segmentOffset > lastSegment || lastSegment >= 32)
+    return DeviceDecodeResult::Invalid;
+  const uint8_t* segment = lower + 4;
+  const size_t segmentLength = lowerLength - 4;
+  const size_t upperOffset = static_cast<size_t>(segmentOffset) * 12;
+  if (segmentLength == 0 || segmentLength > 12 ||
+      upperOffset + segmentLength > sizeof(reassembly.upper)) {
+    return DeviceDecodeResult::Invalid;
+  }
+  const uint32_t sequenceAuth =
+      sequence - static_cast<uint32_t>((sequence - sequenceZero) & 0x1fff);
+  if (reassembly.received == 0 || reassembly.source != source ||
+      reassembly.destination != destination ||
+      reassembly.sequenceZero != sequenceZero ||
+      reassembly.lastSegment != lastSegment ||
+      reassembly.longMic != longMic) {
+    reassembly.reset();
+    reassembly.sequenceAuth = sequenceAuth;
+    reassembly.source = source;
+    reassembly.destination = destination;
+    reassembly.sequenceZero = sequenceZero;
+    reassembly.lastSegment = lastSegment;
+    reassembly.longMic = longMic;
+  }
+  std::memcpy(reassembly.upper + upperOffset, segment, segmentLength);
+  reassembly.received |= static_cast<uint32_t>(1) << segmentOffset;
+  if (segmentOffset == lastSegment)
+    reassembly.lastLength = static_cast<uint8_t>(segmentLength);
+  const uint32_t completeMask =
+      lastSegment == 31 ? 0xffffffffu
+                        : (static_cast<uint32_t>(1) << (lastSegment + 1)) - 1;
+  if ((reassembly.received & completeMask) != completeMask ||
+      reassembly.lastLength == 0) {
+    return DeviceDecodeResult::Pending;
+  }
+
+  const size_t upperLength =
+      static_cast<size_t>(lastSegment) * 12 + reassembly.lastLength;
+  const size_t micLength = longMic ? 8 : 4;
+  if (upperLength <= micLength ||
+      upperLength - micLength > sizeof(output.access)) {
+    reassembly.reset();
+    return DeviceDecodeResult::Invalid;
+  }
+  output.sequence = reassembly.sequenceAuth;
+  output.source = source;
+  output.destination = destination;
+  output.accessLength = upperLength - micLength;
+  uint8_t deviceNonce[13] = {0x02,
+                             static_cast<uint8_t>(longMic ? 0x80 : 0x00)};
+  deviceNonce[2] = static_cast<uint8_t>(output.sequence >> 16);
+  deviceNonce[3] = static_cast<uint8_t>(output.sequence >> 8);
+  deviceNonce[4] = static_cast<uint8_t>(output.sequence);
+  putBe16(deviceNonce + 5, source);
+  putBe16(deviceNonce + 7, destination);
+  deviceNonce[9] = static_cast<uint8_t>(ivIndex >> 24);
+  deviceNonce[10] = static_cast<uint8_t>(ivIndex >> 16);
+  deviceNonce[11] = static_cast<uint8_t>(ivIndex >> 8);
+  deviceNonce[12] = static_cast<uint8_t>(ivIndex);
+  const bool ok = aesCcmDecrypt(
+      deviceKey, deviceNonce, sizeof(deviceNonce), reassembly.upper,
+      output.accessLength, reassembly.upper + output.accessLength, micLength,
+      output.access);
+  reassembly.reset();
+  return ok ? DeviceDecodeResult::Complete : DeviceDecodeResult::Invalid;
 }
 
 }  // namespace aputure_light

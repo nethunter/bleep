@@ -31,13 +31,34 @@ struct VendorPowerStatus {
   uint8_t profile = 0;
 };
 
+struct CompositionVendorModel {
+  uint16_t companyId = 0;
+  uint16_t modelId = 0;
+};
+
 struct DecodedAccessMessage {
   uint32_t sequence = 0;
   uint16_t source = 0;
   uint16_t destination = 0;
-  uint8_t access[15] = {};
+  uint8_t access[48] = {};
   size_t accessLength = 0;
 };
+
+struct DeviceMessageReassembly {
+  uint32_t sequenceAuth = 0;
+  uint16_t source = 0;
+  uint16_t destination = 0;
+  uint16_t sequenceZero = 0;
+  uint32_t received = 0;
+  uint8_t lastSegment = 0;
+  uint8_t lastLength = 0;
+  bool longMic = false;
+  uint8_t upper[52] = {};
+
+  void reset() { *this = DeviceMessageReassembly{}; }
+};
+
+enum class DeviceDecodeResult : uint8_t { Invalid, Pending, Complete };
 
 enum class ConfigurationStatusType : uint8_t {
   AppKey,
@@ -62,6 +83,8 @@ bool buildRgbAccess(uint32_t rgb, uint8_t brightness,
 bool buildNodeResetAccess(AccessPayload& output);
 bool parseVendorPowerStatus(const uint8_t* access, size_t length,
                             VendorPowerStatus& output);
+bool parseCompositionVendorModel(const uint8_t* access, size_t length,
+                                 CompositionVendorModel& output);
 bool matchConfigurationStatus(const uint8_t* access, size_t length,
                               const ConfigurationStatusExpectation& expected,
                               uint8_t& status);
@@ -73,6 +96,10 @@ bool decodeProxyDeviceMessage(const uint8_t networkKey[16],
                               const uint8_t deviceKey[16],
                               const uint8_t* proxyPdu, size_t proxyLength,
                               uint32_t ivIndex, DecodedAccessMessage& output);
+DeviceDecodeResult decodeProxySegmentedDeviceMessage(
+    const uint8_t networkKey[16], const uint8_t deviceKey[16],
+    const uint8_t* proxyPdu, size_t proxyLength, uint32_t ivIndex,
+    DeviceMessageReassembly& reassembly, DecodedAccessMessage& output);
 
 bool encodeAccessMessage(const uint8_t networkKey[16],
                          const uint8_t applicationKey[16],

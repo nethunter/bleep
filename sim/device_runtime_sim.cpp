@@ -464,6 +464,8 @@ class SimZhiyunX100Driver : public DeviceDriver {
     out.maxKelvin = zhiyun_x100::kMaxKelvin;
     out.kelvin = state_.kelvin;
     out.brightness = static_cast<uint8_t>(state_.brightness + 0.5f);
+    out.cctBrightness = out.brightness;
+    out.rgbBrightness = out.brightness;
     out.rgb = state_.rgb;
     out.rgbMode = out.supportsRgb &&
                   state_.mode == zhiyun_x100::X100State::Mode::Rgb;

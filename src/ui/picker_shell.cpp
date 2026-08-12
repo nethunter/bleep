@@ -1,5 +1,6 @@
 #include "ui/picker_shell.h"
 
+#include <Arduino.h>
 #include <lvgl.h>
 
 #include <cstdio>
@@ -50,6 +51,25 @@ int32_t draftCctTint = 0;
 uint16_t draftRgbHue = 0;
 int32_t draftRgbSaturation = 100;
 int32_t draftRgbBrightness = 50;
+bool previewOwned = false;
+bool previewDirty = false;
+uint32_t previewAt = 0;
+
+void releasePreview() {
+  if (previewOwned && selectedDevice != studio::kInvalidInstanceId) {
+    studio::devices().release(selectedDevice,
+                              studio::ConnectionOwner::Foreground);
+  }
+  previewOwned = false;
+  previewDirty = false;
+}
+
+void acquirePreview() {
+  if (!previewOwned && selectedDevice != studio::kInvalidInstanceId) {
+    previewOwned = studio::devices().acquire(
+        selectedDevice, studio::ConnectionOwner::Foreground);
+  }
+}
 
 lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_event_cb_t callback,
                      uint32_t color = kColPanel) {
@@ -195,6 +215,8 @@ bool categoryVisible(studio::DeviceType type) {
 void refresh();
 void onClose(lv_event_t*);
 void onBack(lv_event_t*);
+void captureLightEditorDraft();
+void schedulePreview(lv_event_t*);
 
 void setChrome() {
   const bool atRoot = level == Level::Category;
@@ -275,7 +297,9 @@ void onChooseAction(lv_event_t* event) {
       draftRgbSaturation = 100;
       draftRgbBrightness = 50;
     }
+    acquirePreview();
     refresh();
+    schedulePreview(nullptr);
     return;
   }
   if (callbacks.onSceneAction != nullptr) {
@@ -288,26 +312,22 @@ void onSaveLightParameters(lv_event_t*) {
   if (callbacks.onSceneAction == nullptr) {
     return;
   }
+  captureLightEditorDraft();
   if (!lightEditorRgb) {
     callbacks.onSceneAction(selectedDevice,
                             lightEditorTurnsOn
                                 ? studio::CommandType::SetLightCctAndOn
                                 : studio::CommandType::SetLightCct,
-                            lv_slider_get_value(parameter0),
-                            lv_slider_get_value(parameter1),
-                            parameter2 != nullptr
-                                ? lv_slider_get_value(parameter2)
-                                : 0);
+                            draftCctKelvin, draftCctBrightness, draftCctTint);
   } else {
-    const lv_color_hsv_t hsv = lv_colorwheel_get_hsv(colorWheel);
     const uint32_t rgb = lv_color_to32(lv_color_hsv_to_rgb(
-        hsv.h, lv_slider_get_value(parameter0), 100)) & 0xffffff;
+        draftRgbHue, draftRgbSaturation, 100)) & 0xffffff;
     callbacks.onSceneAction(selectedDevice,
                             lightEditorTurnsOn
                                 ? studio::CommandType::SetLightRgbAndOn
                                 : studio::CommandType::SetLightRgb,
                             static_cast<int32_t>(rgb),
-                            lv_slider_get_value(parameter1), 0);
+                            draftRgbBrightness, 0);
   }
   hide();
 }
@@ -331,6 +351,7 @@ void onBack(lv_event_t*) {
     return;
   }
   if (level == Level::LightColor) {
+    releasePreview();
     level = Level::Action;
     refresh();
     return;
@@ -422,10 +443,17 @@ void captureLightEditorDraft() {
   }
 }
 
+void schedulePreview(lv_event_t*) {
+  captureLightEditorDraft();
+  previewDirty = true;
+  previewAt = millis() + 350;
+}
+
 void onLightMode(lv_event_t* event) {
   captureLightEditorDraft();
   lightEditorRgb = reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)) != 0;
   refresh();
+  schedulePreview(nullptr);
 }
 
 lv_obj_t* labeledParameter(lv_obj_t* parent, const char* label, int minimum,
@@ -445,6 +473,8 @@ lv_obj_t* labeledParameter(lv_obj_t* parent, const char* label, int minimum,
   lv_obj_align(slider, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_slider_set_range(slider, minimum, maximum);
   lv_slider_set_value(slider, value, LV_ANIM_OFF);
+  lv_obj_add_event_cb(slider, schedulePreview, LV_EVENT_VALUE_CHANGED,
+                      nullptr);
   return row;
 }
 
@@ -496,6 +526,8 @@ void refreshLightParameters() {
     lv_obj_align(colorWheel, LV_ALIGN_LEFT_MID, 2, 0);
     lv_colorwheel_set_hsv(colorWheel,
                           lv_color_hsv_t{draftRgbHue, 100, 100});
+    lv_obj_add_event_cb(colorWheel, schedulePreview, LV_EVENT_VALUE_CHANGED,
+                        nullptr);
     lv_obj_t* controls = lv_obj_create(row);
     lv_obj_set_size(controls, 88, 67);
     lv_obj_align(controls, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -511,6 +543,8 @@ void refreshLightParameters() {
     lv_obj_align(parameter0, LV_ALIGN_TOP_RIGHT, -1, 7);
     lv_slider_set_range(parameter0, 0, 100);
     lv_slider_set_value(parameter0, draftRgbSaturation, LV_ANIM_OFF);
+    lv_obj_add_event_cb(parameter0, schedulePreview, LV_EVENT_VALUE_CHANGED,
+                        nullptr);
     lv_obj_t* bri = lv_label_create(controls);
     lv_label_set_text(bri, "Bri");
     lv_obj_set_style_text_font(bri, UI_FONT_14, 0);
@@ -520,6 +554,8 @@ void refreshLightParameters() {
     lv_obj_align(parameter1, LV_ALIGN_BOTTOM_RIGHT, -1, -9);
     lv_slider_set_range(parameter1, 0, 100);
     lv_slider_set_value(parameter1, draftRgbBrightness, LV_ANIM_OFF);
+    lv_obj_add_event_cb(parameter1, schedulePreview, LV_EVENT_VALUE_CHANGED,
+                        nullptr);
   } else {
     const bool x100 = selected != nullptr &&
                       selected->driverId == studio::DriverId::ZhiyunLight;
@@ -931,6 +967,9 @@ void showSceneStep(const studio::SceneStep& step,
         draftRgbSaturation = hsv.s;
         draftRgbBrightness = step.value1;
       }
+      acquirePreview();
+      previewDirty = true;
+      previewAt = millis() + 350;
     } else {
       level = Level::Action;
     }
@@ -940,6 +979,7 @@ void showSceneStep(const studio::SceneStep& step,
 }
 
 void hide() {
+  releasePreview();
   if (overlay == nullptr) {
     return;
   }
@@ -962,6 +1002,31 @@ void hide() {
 
 bool active() {
   return overlay != nullptr && !lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+void tick() {
+  if (!active() || level != Level::LightColor || !previewDirty) return;
+  acquirePreview();
+  const uint32_t now = millis();
+  if (!previewOwned || static_cast<int32_t>(now - previewAt) < 0) return;
+  const studio::DeviceRuntimeState runtime =
+      studio::devices().runtimeState(selectedDevice);
+  if (!runtime.protocolReady || runtime.commandPending) return;
+  studio::DeviceCommand command;
+  command.instanceId = selectedDevice;
+  if (lightEditorRgb) {
+    const uint32_t rgb = lv_color_to32(lv_color_hsv_to_rgb(
+        draftRgbHue, draftRgbSaturation, 100)) & 0xffffff;
+    command.type = studio::CommandType::SetLightRgbAndOn;
+    command.value0 = static_cast<int32_t>(rgb);
+    command.value1 = draftRgbBrightness;
+  } else {
+    command.type = studio::CommandType::SetLightCctAndOn;
+    command.value0 = draftCctKelvin;
+    command.value1 = draftCctBrightness;
+    command.value2 = draftCctTint;
+  }
+  if (studio::devices().enqueue(command)) previewDirty = false;
 }
 
 bool handleBack() {
@@ -1026,8 +1091,9 @@ void simShowLightColor(Mode showMode, studio::InstanceId instanceId, bool rgb) {
   draftCctBrightness = 50;
   draftCctTint = 0;
   draftRgbHue = 220;
-  draftRgbSaturation = 80;
+  draftRgbSaturation = 100;
   draftRgbBrightness = 50;
+  acquirePreview();
   refresh();
 }
 
@@ -1048,6 +1114,15 @@ void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint) {
   if (parameter2 != nullptr) lv_slider_set_value(parameter2, tint, LV_ANIM_OFF);
   onSaveLightParameters(nullptr);
 }
+void simSetLightRgb(uint16_t hue, int32_t saturation, int32_t brightness) {
+  if (colorWheel == nullptr || parameter0 == nullptr || parameter1 == nullptr)
+    return;
+  lv_colorwheel_set_hsv(colorWheel, lv_color_hsv_t{hue, 100, 100});
+  lv_slider_set_value(parameter0, saturation, LV_ANIM_OFF);
+  lv_slider_set_value(parameter1, brightness, LV_ANIM_OFF);
+  schedulePreview(nullptr);
+}
+void simSaveCurrentLight() { onSaveLightParameters(nullptr); }
 #endif
 
 }  // namespace picker_shell

@@ -24,6 +24,7 @@ bool visible = false;
 bool rgbMode = false;
 bool syncing = false;
 bool dirty = false;
+bool applyOnOpen = false;
 bool initialized = false;
 uint32_t applyAt = 0;
 uint32_t lastRefresh = 0;
@@ -31,7 +32,7 @@ uint16_t draftKelvin = 5600;
 int16_t draftTint = 0;
 uint8_t draftCctBrightness = 50;
 uint8_t draftRgbBrightness = 50;
-uint32_t draftRgb = 0xffffff;
+uint32_t draftRgb = 0xff0000;
 uint8_t draftSaturation = 100;
 
 lv_obj_t* screen = nullptr;
@@ -159,6 +160,7 @@ void renderMode(const studio::LightControlState& state) {
 void markDirty(lv_event_t*) {
   if (syncing) return;
   capture();
+  applyOnOpen = false;
   dirty = true;
   applyAt = millis() + 350;
 }
@@ -168,6 +170,7 @@ void setMode(bool rgb) {
   if (!studio::devices().lightControlState(instanceId, state) ||
       (rgb && !state.supportsRgb)) return;
   capture();
+  applyOnOpen = false;
   rgbMode = rgb;
   renderMode(state);
   restore();
@@ -275,8 +278,8 @@ void refresh() {
   if (!initialized) {
     draftKelvin = state.kelvin;
     draftTint = state.tintPermille;
-    draftCctBrightness = state.brightness;
-    draftRgbBrightness = state.brightness;
+    draftCctBrightness = state.cctBrightness;
+    draftRgbBrightness = state.rgbBrightness;
     draftRgb = state.rgb;
     const lv_color_hsv_t hsv = lv_color_rgb_to_hsv(
         static_cast<uint8_t>(draftRgb >> 16),
@@ -307,7 +310,6 @@ void apply() {
   const studio::DeviceRuntimeState runtime = studio::devices().runtimeState(instanceId);
   if (!studio::devices().lightControlState(instanceId, state) ||
       !runtime.protocolReady || runtime.commandPending) return;
-  capture();
   const bool queued = rgbMode
       ? enqueue(studio::CommandType::SetLightRgb, draftRgb, draftRgbBrightness)
       : enqueue(studio::CommandType::SetLightCct, draftKelvin, draftCctBrightness,
@@ -323,19 +325,10 @@ void show(studio::InstanceId id, BackFn onBack, bool applyDisplayedLook) {
   backFn = onBack;
   visible = true;
   dirty = false;
-  initialized = applyDisplayedLook;
-  if (applyDisplayedLook) {
-    rgbMode = false;
-    draftKelvin = 5600;
-    draftTint = 0;
-    draftCctBrightness = 50;
-    draftRgbBrightness = 50;
-    draftRgb = 0xffffff;
-    draftSaturation = 100;
-  }
+  applyOnOpen = applyDisplayedLook;
+  initialized = false;
   refresh();
   if (applyDisplayedLook) {
-    restore();
     dirty = true;
     applyAt = millis() + 350;
   }
@@ -354,7 +347,26 @@ bool active() { return visible; }
 void tick() {
   if (!visible) return;
   const uint32_t now = millis();
-  if (dirty && static_cast<int32_t>(now - applyAt) >= 0) apply();
+  if (dirty && static_cast<int32_t>(now - applyAt) >= 0) {
+    if (applyOnOpen) {
+      studio::LightControlState state;
+      const studio::DeviceRuntimeState runtime =
+          studio::devices().runtimeState(instanceId);
+      if (studio::devices().lightControlState(instanceId, state) &&
+          runtime.protocolReady && !runtime.commandPending) {
+        applyOnOpen = false;
+        if (state.on) {
+          apply();
+        } else if (enqueue(studio::CommandType::TurnOff)) {
+          // A look packet wakes Aputure/amaran fixtures. When the remembered
+          // state is Off, enforce that state without transmitting the look.
+          dirty = false;
+        }
+      }
+    } else {
+      apply();
+    }
+  }
   if (now - lastRefresh >= 250) { lastRefresh = now; refresh(); }
 }
 void handleShortPress() { onPower(nullptr); }

@@ -347,7 +347,7 @@ bool AputureLightRuntime::activate(const studio::DeviceRecord& record) {
   } else if (!provisioningLink_) {
     if (connected_ && !node->configured) {
       linkInstance_ = record.instanceId;
-      configStep_ = 1;
+      configStep_ = 0;
       configRetryCount_ = 0;
       configAwaitingStatus_ = false;
       configBatch_ = NetworkPduBatch{};
@@ -825,7 +825,7 @@ bool AputureLightRuntime::setupProxy() {
   }
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node != nullptr && !node->configured) {
-    configStep_ = 1;
+    configStep_ = 0;
     configRetryCount_ = 0;
     configAwaitingStatus_ = false;
     configBatch_ = NetworkPduBatch{};
@@ -885,7 +885,27 @@ void AputureLightRuntime::loop() {
             kNodeFreshnessMs) {
       session.state.nodeReachable = false;
     }
-    if (session.followupPowerPending &&
+    if (session.followupLookPending &&
+        static_cast<int32_t>(now - session.followupPowerAt) >= 0) {
+      const bool sent = sendAccess(session.instanceId, session.followupLook.bytes,
+                                   session.followupLook.length);
+      session.followupLookPending = false;
+      session.state.commandPending = false;
+      session.state.lastCommandFailed = !sent;
+      if (sent &&
+          session.followupLookType == studio::CommandType::SetLightCctAndOn) {
+        session.state.mode = AputureLightState::Mode::Cct;
+        session.state.kelvin = session.followupValue0;
+        session.state.cctBrightness = session.followupValue1;
+        session.state.tintPermille = session.followupValue2;
+        session.state.optimistic = true;
+      } else if (sent) {
+        session.state.mode = AputureLightState::Mode::Rgb;
+        session.state.rgb = session.followupValue0;
+        session.state.rgbBrightness = session.followupValue1;
+        session.state.optimistic = true;
+      }
+    } else if (session.followupPowerPending &&
         static_cast<int32_t>(now - session.followupPowerAt) >= 0) {
       AccessPayload power;
       const bool sent = buildPowerAccess(session.followupPowerOn, power) &&
@@ -947,13 +967,23 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
     APUTURE_LIGHT_LOG.println();
   }
   DecodedAccessMessage configuration;
-  if (configuringNode != nullptr && configAwaitingStatus_ &&
-      decodeProxyDeviceMessage(meshData.network.networkKey,
-                               configuringNode->deviceKey,
-                               notification.bytes, notification.length,
-                               meshData.network.ivIndex, configuration) &&
-      handleConfigurationStatus(configuration)) {
-    return;
+  if (configuringNode != nullptr && configAwaitingStatus_) {
+    if (decodeProxyDeviceMessage(meshData.network.networkKey,
+                                 configuringNode->deviceKey,
+                                 notification.bytes, notification.length,
+                                 meshData.network.ivIndex, configuration) &&
+        handleConfigurationStatus(configuration)) {
+      return;
+    }
+    const DeviceDecodeResult result = decodeProxySegmentedDeviceMessage(
+        meshData.network.networkKey, configuringNode->deviceKey,
+        notification.bytes, notification.length, meshData.network.ivIndex,
+        configReassembly_, configuration);
+    if (result == DeviceDecodeResult::Pending) return;
+    if (result == DeviceDecodeResult::Complete &&
+        handleConfigurationStatus(configuration)) {
+      return;
+    }
   }
   DecodedAccessMessage decoded;
   if (!decodeProxyAccessMessage(meshData.network.networkKey,
@@ -1000,14 +1030,63 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
 
 bool AputureLightRuntime::handleConfigurationStatus(
     const DecodedAccessMessage& decoded) {
-  const MeshNodeRecord* node =
+  MeshNodeRecord* node =
       findNode(studio::mesh::repository().data(), linkInstance_);
   if (node == nullptr || decoded.source != node->unicastAddress ||
       decoded.destination !=
           studio::mesh::repository().data().network.provisionerAddress ||
-      decoded.accessLength < 3) {
+      decoded.accessLength < 2) {
     return false;
   }
+  if (configStep_ == 0) {
+    CompositionVendorModel composition;
+    if (!parseCompositionVendorModel(decoded.access, decoded.accessLength,
+                                     composition)) {
+      if (decoded.access[0] == 0x02 && decoded.access[1] == 0x00) {
+        configAwaitingStatus_ = false;
+        configReassembly_.reset();
+        if (Session* session = sessionFor(node->instanceId)) {
+          fail(*session, "Unknown vendor model");
+        }
+        APUTURE_LIGHT_LOG.println(
+            "aputure_light event=composition_identity result=unsupported");
+        return true;
+      }
+      return false;
+    }
+    const MeshNodeRecord previous = *node;
+    if (!assignVendorModel(studio::mesh::repository().data(), node->instanceId,
+                           composition.companyId, composition.modelId) ||
+        !studio::mesh::repository().save()) {
+      *node = previous;
+      returnToOnboardingPicker("Could not save light identity");
+      return true;
+    }
+    if (Session* session = sessionFor(node->instanceId)) {
+      const char* productName = knownProductName(provisioningName_);
+      if (productName == nullptr && composition.companyId == 0x03f6 &&
+          composition.modelId == 0x1000) {
+        productName = knownVendorModelName(composition.companyId,
+                                           composition.modelId);
+      }
+      if (productName != nullptr) {
+        std::strncpy(session->productName, productName,
+                     sizeof(session->productName) - 1);
+        session->productName[sizeof(session->productName) - 1] = '\0';
+        session->pairingDirty = true;
+      }
+    }
+    configAwaitingStatus_ = false;
+    configReassembly_.reset();
+    configStep_ = 1;
+    configRetryCount_ = 0;
+    nextConfigAt_ = millis() + 100;
+    APUTURE_LIGHT_LOG.printf(
+        "aputure_light event=composition_identity company=0x%04x model=0x%04x result=ok\n",
+        composition.companyId, composition.modelId);
+    return true;
+  }
+  if (decoded.accessLength < 3) return false;
   ConfigurationStatusExpectation expected;
   expected.elementAddress = node->unicastAddress;
   expected.companyId = node->vendorCompanyId;
@@ -1150,6 +1229,7 @@ bool AputureLightRuntime::configureNext() {
       configBatch_ = NetworkPduBatch{};
       configBatchIndex_ = 0;
       configAwaitingStatus_ = true;
+      configReassembly_.reset();
       configStatusDeadlineMs_ = millis() + 2500;
       nextConfigAt_ = configStatusDeadlineMs_;
       APUTURE_LIGHT_LOG.printf("aputure_light event=config_sent step=%u pdus=%u\n",
@@ -1357,7 +1437,7 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
         node != nullptr && !node->configured) {
       linkInstance_ = command.instanceId;
       session->state.phase = AputureLightState::Phase::PendingConfig;
-      configStep_ = 1;
+      configStep_ = 0;
       configRetryCount_ = 0;
       configAwaitingStatus_ = false;
       configBatch_ = NetworkPduBatch{};
@@ -1372,9 +1452,15 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
   }
   else return studio::CommandStatus::Unsupported;
   if (!valid) return studio::CommandStatus::InvalidArgument;
+  AccessPayload initialPayload = payload;
+  if (compoundCct || compoundRgb) {
+    if (!buildPowerAccess(true, initialPayload)) {
+      return studio::CommandStatus::InvalidArgument;
+    }
+  }
   session->state.commandPending = true;
-  const bool sent = sendAccess(command.instanceId, payload.bytes,
-                               payload.length);
+  const bool sent = sendAccess(command.instanceId, initialPayload.bytes,
+                               initialPayload.length);
   session->state.commandPending = false; session->state.lastCommandFailed = !sent;
   if (!sent) return studio::CommandStatus::Unavailable;
   session->state.optimistic = true;
@@ -1384,12 +1470,12 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
   if (command.type == studio::CommandType::TurnOn ||
       command.type == studio::CommandType::TurnOff) {
     session->state.on = command.type == studio::CommandType::TurnOn;
-  } else if (command.type == studio::CommandType::SetLightCct || compoundCct) {
+  } else if (command.type == studio::CommandType::SetLightCct) {
     session->state.mode = AputureLightState::Mode::Cct;
     session->state.kelvin = command.value0;
     session->state.cctBrightness = command.value1;
     session->state.tintPermille = command.value2;
-  } else {
+  } else if (command.type == studio::CommandType::SetLightRgb) {
     session->state.mode = AputureLightState::Mode::Rgb;
     session->state.rgb = command.value0;
     session->state.rgbBrightness = command.value1;
@@ -1400,9 +1486,20 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
       compoundRgb;
   const bool preserveOff = lookCommand && !compoundCct && !compoundRgb &&
                            !session->state.on;
-  if (compoundCct || compoundRgb || preserveOff) {
+  if (compoundCct || compoundRgb) {
+    session->state.on = true;
+    session->state.powerOptimistic = true;
+    session->followupLookPending = true;
+    session->followupLook = payload;
+    session->followupLookType = command.type;
+    session->followupValue0 = command.value0;
+    session->followupValue1 = command.value1;
+    session->followupValue2 = command.value2;
+    session->followupPowerAt = millis() + 100;
+    session->state.commandPending = true;
+  } else if (preserveOff) {
     session->followupPowerPending = true;
-    session->followupPowerOn = !preserveOff;
+    session->followupPowerOn = false;
     session->followupPowerAt = millis() + 100;
     session->state.commandPending = true;
   }
@@ -1503,9 +1600,9 @@ bool AputureLightRuntime::identifyVendorModel(studio::InstanceId id,
                  sizeof(session->productName) - 1);
     session->productName[sizeof(session->productName) - 1] = '\0';
   }
-  // The unknown-model gate is reached only after AppKey Add has already been
-  // confirmed. Resume at the vendor bind instead of replaying that stage.
-  configStep_ = 2;
+  // Composition is authoritative for new fixtures. Manual selection remains a
+  // fallback only when a fixture returns an unsupported composition tuple.
+  configStep_ = configStep_ == 0 ? 1 : 2;
   configRetryCount_ = 0;
   configAwaitingStatus_ = false;
   configBatch_ = NetworkPduBatch{};
@@ -1538,6 +1635,7 @@ void AputureLightRuntime::cancelPendingCommand(studio::InstanceId id) {
   Session* session = sessionFor(id);
   if (session == nullptr) return;
   session->followupPowerPending = false;
+  session->followupLookPending = false;
   session->followupPowerAt = 0;
   session->state.commandPending = false;
   session->state.lastCommandFailed = false;

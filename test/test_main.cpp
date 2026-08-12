@@ -467,6 +467,9 @@ class FakeDriver : public studio::DeviceDriver {
   void loop() override { ++loopCount; }
   studio::CommandStatus dispatch(const studio::DeviceCommand& command) override {
     lastCommand = command.type;
+    lastValue0 = command.value0;
+    lastValue1 = command.value1;
+    lastValue2 = command.value2;
     ++dispatchCount;
     if (failCommandCount > 0 && command.type == failCommand) {
       --failCommandCount;
@@ -574,6 +577,9 @@ class FakeDriver : public studio::DeviceDriver {
   bool pairingUpdatePending = false;
   bool pairingValue = true;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
+  int32_t lastValue0 = 0;
+  int32_t lastValue1 = 0;
+  int32_t lastValue2 = 0;
 
  private:
   studio::DriverId id_;
@@ -3074,12 +3080,14 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(source.add("Press Record", id)));
   studio::SceneRecord* record = source.find(id);
   TEST_ASSERT_NOT_NULL(record);
-  record->startCount = 3;
+  record->startCount = 4;
   record->startSteps[0] =
       studio::makeActionStep(2, studio::CommandType::SetLightCctAndOn, 5600, 72, -125);
   record->startSteps[1] = studio::makeWaitStep(500);
   record->startSteps[2] =
       studio::makeActionStep(3, studio::CommandType::RecordStart);
+  record->startSteps[3] = studio::makeActionStep(
+      4, studio::CommandType::SetLightRgbAndOn, 0x0000ff, 42, 0);
   record->stopMode = studio::SceneStopMode::Custom;
   record->stopCount = 2;
   record->stopSteps[0] =
@@ -3094,7 +3102,7 @@ void test_scene_store_round_trip_and_corruption() {
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_EQUAL_UINT32(1, restored.count());
   TEST_ASSERT_EQUAL_STRING("Press Record", restored.at(0)->name);
-  TEST_ASSERT_EQUAL_UINT8(3, restored.at(0)->startCount);
+  TEST_ASSERT_EQUAL_UINT8(4, restored.at(0)->startCount);
   TEST_ASSERT_EQUAL_UINT8(2, restored.at(0)->stopCount);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Custom),
                         static_cast<int>(restored.at(0)->stopMode));
@@ -3105,6 +3113,11 @@ void test_scene_store_round_trip_and_corruption() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::CommandType::SetLightCctAndOn),
       static_cast<int>(restored.at(0)->startSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightRgbAndOn),
+      static_cast<int>(restored.at(0)->startSteps[3].command));
+  TEST_ASSERT_EQUAL_INT32(0x0000ff, restored.at(0)->startSteps[3].value0);
+  TEST_ASSERT_EQUAL_INT32(42, restored.at(0)->startSteps[3].value1);
 
   backend.corruptLastByte();
   studio::SceneRegistry rejected;
@@ -3425,6 +3438,48 @@ void test_partial_start_failure_can_stop_and_restart() {
   }
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::IdleArmed),
                         static_cast<int>(scenes.progress().phase));
+}
+
+void test_scene_dispatches_persisted_rgb_look_without_cct_fallback() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  LegacyBackend legacy;
+  FakeDriver lightDriver(studio::DriverId::AputureLight);
+  studio::DeviceDriver* drivers[] = {&lightDriver};
+  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId lightId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::AputureLight,
+                                   "Aputure MC Pro", lightId)));
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Blue", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 1;
+  record.startSteps[0] = studio::makeActionStep(
+      lightId, studio::CommandType::SetLightRgbAndOn, 0x0000ff, 42, 0);
+  studio::generateStopSteps(record);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.start(sceneId)));
+  for (uint32_t now = 0; now < 20; ++now) {
+    devices.loop();
+    scenes.loop(now);
+  }
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::CommandType::SetLightRgbAndOn),
+      static_cast<int>(lightDriver.lastCommand));
+  TEST_ASSERT_EQUAL_INT32(0x0000ff, lightDriver.lastValue0);
+  TEST_ASSERT_EQUAL_INT32(42, lightDriver.lastValue1);
 }
 
 void test_stop_cancels_inflight_compound_light_action() {
@@ -4117,9 +4172,60 @@ void test_aputure_light_crypto_and_network_vectors() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(appKeyStatus), decoded.accessLength);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(
       appKeyStatus, decoded.access, decoded.accessLength);
+
+  const uint8_t mcComposition[] = {
+      0x02,0x00, 0xf6,0x03, 0x00,0x00, 0x00,0x00, 0x14,0x00, 0x0f,0x00,
+      0x00,0x00, 0x03,0x01, 0x00,0x00, 0x02,0x00, 0x00,0x10,
+      0xf6,0x03, 0x00,0x10};
+  aputure_light::CompositionVendorModel composition;
+  TEST_ASSERT_TRUE(aputure_light::parseCompositionVendorModel(
+      mcComposition, sizeof(mcComposition), composition));
+  TEST_ASSERT_EQUAL_HEX16(0x03f6, composition.companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x1000, composition.modelId);
+
+  const uint8_t aceComposition[] = {
+      0x02,0x00, 0x11,0x02, 0x00,0x00, 0x33,0x33, 0x69,0x00, 0x07,0x00,
+      0x00,0x00, 0x0a,0x01,
+      0x00,0x00, 0x02,0x00, 0x03,0x00, 0x00,0x10, 0x02,0x10,
+      0x04,0x10, 0x06,0x10, 0x07,0x10, 0x00,0x13, 0x01,0x13,
+      0x11,0x02, 0x00,0x00};
+  TEST_ASSERT_TRUE(aputure_light::parseCompositionVendorModel(
+      aceComposition, sizeof(aceComposition), composition));
+  TEST_ASSERT_EQUAL_HEX16(0x0211, composition.companyId);
+  TEST_ASSERT_EQUAL_HEX16(0x0000, composition.modelId);
+  TEST_ASSERT_FALSE(aputure_light::parseCompositionVendorModel(
+      aceComposition, sizeof(aceComposition) - 1, composition));
+
+  const uint32_t compositionSequences[] = {0x3450, 0x3451, 0x3452};
+  aputure_light::NetworkPduBatch compositionBatch;
+  TEST_ASSERT_TRUE(aputure_light::encodeSegmentedDeviceMessage(
+      networkKey, deviceKey, mcComposition, sizeof(mcComposition),
+      compositionSequences, 3, 2, 1, 0, compositionBatch));
+  TEST_ASSERT_EQUAL_UINT8(3, compositionBatch.count);
+  aputure_light::DeviceMessageReassembly reassembly;
+  const uint8_t order[] = {1, 0, 2};
+  for (uint8_t i = 0; i < 3; ++i) {
+    const uint8_t segment = order[i];
+    TEST_ASSERT_TRUE(aputure_light::wrapProxyPdu(
+        compositionBatch.pdus[segment], proxy, sizeof(proxy), proxyLength));
+    const aputure_light::DeviceDecodeResult result =
+        aputure_light::decodeProxySegmentedDeviceMessage(
+            networkKey, deviceKey, proxy, proxyLength, 0, reassembly, decoded);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(i == 2
+                             ? aputure_light::DeviceDecodeResult::Complete
+                             : aputure_light::DeviceDecodeResult::Pending),
+        static_cast<int>(result));
+  }
+  TEST_ASSERT_EQUAL_UINT32(sizeof(mcComposition), decoded.accessLength);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(mcComposition, decoded.access,
+                                decoded.accessLength);
 }
 
 void test_aputure_light_access_payloads_and_validation() {
+  const aputure_light::AputureLightState defaultState;
+  TEST_ASSERT_EQUAL_HEX32(0xff0000, defaultState.rgb);
+
   uint16_t companyId = 0;
   uint16_t modelId = 0;
   TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
@@ -4133,9 +4239,7 @@ void test_aputure_light_access_payloads_and_validation() {
       "Studio light", "SLCK_BLE", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
   TEST_ASSERT_EQUAL_HEX16(0x0000, modelId);
-  TEST_ASSERT_EQUAL_STRING(
-      "amaran Ace 25c",
-      aputure_light::knownVendorModelName(companyId, modelId));
+  TEST_ASSERT_NULL(aputure_light::knownVendorModelName(companyId, modelId));
   TEST_ASSERT_TRUE(aputure_light::inferKnownVendorModel(
       "amaran Pano 60c", "", companyId, modelId));
   TEST_ASSERT_EQUAL_HEX16(0x0211, companyId);
@@ -4883,6 +4987,7 @@ int main(int, char**) {
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_generated_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
+  RUN_TEST(test_scene_dispatches_persisted_rgb_look_without_cct_fallback);
   RUN_TEST(test_stop_cancels_inflight_compound_light_action);
   RUN_TEST(test_prepare_ready_then_start_from_held_links);
   RUN_TEST(test_ble_central_lazy_lifetime_and_slot_exhaustion);

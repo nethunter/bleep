@@ -52,14 +52,59 @@ short, factual, and reproducible.
   command-as-poll behavior. Four-fixture isolation is awaiting physical
   validation. Per-member color integration is complete; decoded
   configuration-status enforcement is implemented and live-confirmed on MC
-  Pro; composition-driven configuration and safe reset gates remain open.
+  Pro. Segmented Composition Data Status now drives automatic vendor-model
+  selection in firmware; its new panel onboarding run and safe reset gate
+  remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
   and X60RGB profiles. Both share panel-owned PB-GATT onboarding and confirmed
   routed CCT/power control; X60RGB adds captured hue/saturation control. Saved
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-11.
+- Last updated: 2026-08-12.
+
+### 2026-08-12: Sequence look preview, RGB final-state ordering, and automatic composition identity
+
+- The shared sequence look editor now retains foreground ownership and sends a
+  debounced live `Set look + On` preview for CCT/tint/brightness or RGB while
+  the controls move. Saving uses the same captured draft, so the previewed RGB
+  mode and value are the values persisted into the scene.
+- Added a scene-store RGB round trip and a runner regression proving a stored
+  blue `SetLightRgbAndOn` reaches the driver without falling back to CCT. The
+  Aputure compound transaction now follows the working Studio Lighter order:
+  unicast power On first, requested look last. Pending remains asserted between
+  stages; a failed look reports action failure while preserving the honest
+  optimistic On state.
+- Aputure configuration now starts at Composition Data Get instead of skipping
+  directly to AppKey Add. The runtime reassembles authenticated segmented
+  device-key replies, parses the reported vendor model, persists it before use,
+  and automatically selects MC Pro `0x03F6:0x1000` or Ace/Pano
+  `0x0211:0x0000`. Exact Ace/Pano names still come from a recognized advertised
+  product label because those fixtures share one composition tuple. Manual
+  identity remains only an unsupported/malformed-composition recovery path.
+- Native tests passed 87/87. The complete `ui_sim` traversal passed, including
+  interactive RGB preview and save under normal refresh ticks. Full Montserrat
+  `bleep` compiled at 141,428 bytes static RAM (43.2%) and 1,930,326 bytes flash
+  (61.4%). The final identity-corrected image was uploaded to the configured
+  `/dev/cu.usbserial-211240` and reset the panel without erasing NVS. The
+  integrated composition path, MC Pro RGB final output, and sequence preview
+  still require physical observation.
+- Corrected the untouched RGB default from white/zero saturation to red at
+  100% saturation across normalized light state, Aputure, Zhiyun X60RGB, the
+  shared control shell, and the sequence picker. Previously saved RGB values
+  still derive and restore their actual saturation. Native tests remain 87/87,
+  the complete `ui_sim` traversal passed, and `bleep` compiled at 141,428 bytes
+  static RAM (43.2%) and 1,930,324 bytes flash (61.4%). The image uploaded
+  successfully to `/dev/cu.usbserial-211240` without erasing NVS.
+- Corrected Aputure/amaran control-screen entry when the remembered state is
+  Off. The screen still restores the remembered sliders, but now sends only an
+  explicit per-node Off after the proxy becomes ready; it no longer transmits
+  a look packet that wakes the fixture while the button continues to display
+  **Turn On**. If the remembered state is On, entry still reapplies its look.
+  Native 87/87 and the complete `ui_sim` traversal pass. `bleep` compiled at
+  141,428 bytes static RAM (43.2%) and 1,930,562 bytes flash (61.4%), then
+  uploaded successfully without erasing NVS; physical confirmation on the
+  Ace/Pano-class fixture remains required.
 
 ### 2026-08-11: Light/mesh review corrections
 

@@ -116,8 +116,9 @@ principles:
   Automatic group polling is disabled because the previously labeled status
   payload is actually a group power-on command. `0xC000` is never written by
   ordinary device controls and is reserved for future explicit group actions.
-  Initial AppKey/model/group
-  configuration advances only after authenticated success statuses.
+  Initial Composition Data, AppKey, model, and group configuration advances
+  only after authenticated success statuses; the reported vendor model chooses
+  MC Pro versus the shared Ace/Pano command model automatically.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
   fixture when needed, persists its mesh-routing selector, and uses confirmed
@@ -354,7 +355,10 @@ only when every target has both a physical link and completed protocol setup.
 In Start or Custom Stop, tap an existing step to change its action or settings;
 waits open a millisecond duration editor and **Set look + On** steps reopen with
 their saved CCT/RGB parameters. New looks default to 5600 K, 50% brightness,
-and neutral tint. Step rows place their reorder/delete controls below
+and neutral tint. While that editor is open, settled slider or color-wheel
+changes preview the look on the selected light after a short debounce. Preview
+uses **Set look + On**, so the fixture turns on to make the result visible.
+Step rows place their reorder/delete controls below
 the action name, and the scrollable list ends with **Add step**. Back from an
 existing step's settings returns directly to that Start/Stop list. The Devices
 list similarly places **Add device** after the configured devices.

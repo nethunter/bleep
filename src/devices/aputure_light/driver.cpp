@@ -66,6 +66,8 @@ bool AputureLightDriver::lightControlState(InstanceId instanceId,
   out.brightness = state->mode == aputure_light::AputureLightState::Mode::Rgb
                        ? state->rgbBrightness
                        : state->cctBrightness;
+  out.cctBrightness = state->cctBrightness;
+  out.rgbBrightness = state->rgbBrightness;
   out.rgb = state->rgb;
   out.rgbMode = state->mode == aputure_light::AputureLightState::Mode::Rgb;
   std::strncpy(out.status, state->error[0] != '\0' ? state->error

@@ -29,9 +29,9 @@ struct X100State {
   uint8_t maxBrightness = 100;
   uint16_t kelvin = 5600;
   Mode mode = Mode::Cct;
-  uint32_t rgb = 0xffffff;
+  uint32_t rgb = 0xff0000;
   uint16_t hue = 0;
-  uint8_t saturation = 0;
+  uint8_t saturation = 100;
   float requestedBrightness = 0.0f;
   float readbackBrightness = 0.0f;
   uint16_t requestedKelvin = 0;
