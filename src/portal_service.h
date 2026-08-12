@@ -21,6 +21,7 @@ const char* ssid();
 const char* password();
 const char* url();
 const char* qrPayload();
+const char* unitId();
 SavedWifiSummary savedWifiSummary();
 
 #ifdef UI_SIMULATOR

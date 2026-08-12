@@ -26,12 +26,13 @@ bool active() { return running; }
 Status status() { return running ? simulatedStatus : Status::Inactive; }
 const char* statusText() { return running ? simulatedMessage : "Portal off"; }
 const char* ssid() { return lan ? "Studio-WiFi" : "Bleep-Setup-SIM"; }
-const char* password() { return lan ? "" : "12345678"; }
+const char* password() { return ""; }
 const char* url() { return lan ? "http://192.168.1.84" : "http://192.168.4.1"; }
 const char* qrPayload() {
   return lan ? "http://192.168.1.84"
-             : "WIFI:T:WPA;S:Bleep-Setup-SIM;P:12345678;;";
+             : "WIFI:T:nopass;S:Bleep-Setup-SIM;;";
 }
+const char* unitId() { return "BLP-0123456789AB"; }
 SavedWifiSummary savedWifiSummary() {
   SavedWifiSummary summary;
   summary.configured = simulatedSavedSsid[0] != '\0';
@@ -71,11 +72,13 @@ void simSetSavedWifi(const char* ssid) {
 #include "core/device_manager.h"
 #include "core/command_traits.h"
 #include "core/home_assistant_config.h"
+#include "core/panel_identity.h"
 #include "core/preferences_store.h"
 #include "core/scene_service.h"
 #include "devices/home_assistant/protocol.h"
 #include "assets/portal_logo.h"
 #include "portal_assets.h"
+#include "portal_scene_parser.h"
 
 namespace portal {
 namespace {
@@ -85,9 +88,13 @@ constexpr size_t kDiscoveryLimit = 24;
 constexpr size_t kWifiScanLimit = 16;
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr uint32_t kLanHandoffDelayMs = 8000;
-constexpr const char* kSetupPassword = "12345678";
-
 enum class WifiJoinState : uint8_t { Idle, Connecting, Connected, Failed };
+
+struct WifiScanResult {
+  char ssid[studio::kWifiSsidCapacity] = "";
+  int32_t rssi = 0;
+  bool secure = false;
+};
 
 WebServer* server = nullptr;
 DNSServer* dnsServer = nullptr;
@@ -96,10 +103,12 @@ uint32_t lastActivity = 0;
 bool lanMode = false;
 bool switchToLanPending = false;
 bool exitPending = false;
+bool setupScanPending = false;
 WifiJoinState wifiJoinState = WifiJoinState::Idle;
 uint32_t wifiJoinStarted = 0;
 uint32_t switchToLanAt = 0;
-char apSsid[24] = "";
+char apSsid[studio::kPanelSetupSsidCapacity] = "";
+char panelIdentity[studio::kPanelIdentityCapacity] = "";
 char activeSsid[studio::kWifiSsidCapacity] = "";
 char pendingWifiSsid[studio::kWifiSsidCapacity] = "";
 char pendingWifiPassword[studio::kWifiPasswordCapacity] = "";
@@ -108,22 +117,13 @@ char statusMessage[48] = "Portal off";
 char portalUrl[32] = "http://192.168.4.1";
 char qrPayloadValue[96] = "";
 char portalNonce[17] = "";
+WifiScanResult wifiScanResults[kWifiScanLimit] = {};
+size_t wifiScanCount = 0;
 
 const char kStyle[] PROGMEM = R"HTML(<style>
 :root{color-scheme:dark;--bg:#05070a;--panel:#12161d;--ink:#f3f4f6;--muted:#8a94a6;--cyan:#35c7f2}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#12303b 0,transparent 38%),var(--bg);color:var(--ink);font:15px ui-monospace,SFMono-Regular,Menlo,monospace}main{max-width:760px;margin:auto;padding:32px 18px 80px}header{border-left:4px solid var(--cyan);padding-left:16px;margin-bottom:24px}h1{font-size:28px;letter-spacing:.08em;margin:0}header p,.hint{color:var(--muted)}section{background:var(--panel);border:1px solid #27313d;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 20px 50px #0008}h2{font-size:14px;color:var(--cyan);letter-spacing:.14em;text-transform:uppercase;margin:0 0 14px}label{display:block;color:var(--muted);font-size:12px;margin:12px 0 5px}input{width:100%;background:#080b10;border:1px solid #35404e;border-radius:8px;color:var(--ink);padding:11px;font:inherit}input:focus{outline:2px solid var(--cyan);border-color:transparent}.entity{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 0;border-top:1px solid #252d38}.entity:first-of-type{border-top:0}button{background:var(--cyan);color:#021016;border:0;border-radius:9px;padding:12px 18px;font:700 14px inherit;cursor:pointer}.secondary{background:#27313d;color:var(--ink)}button:disabled{opacity:.5;cursor:wait}#results,#networks{display:grid;gap:6px;margin-top:10px}.result{background:#090d12;border:1px solid #27313d;border-radius:8px;padding:10px;text-align:left;color:var(--ink)}#feedback{margin-top:16px;padding:12px;border:1px solid #35404e;border-radius:8px;white-space:pre-wrap}.ok{border-color:#36d399!important;color:#75e8b7}.bad{border-color:#fb7185!important;color:#fda4af}small{color:var(--muted)}@media(max-width:520px){.entity{grid-template-columns:1fr}}
 </style>)HTML";
-
-const char kWifiPage[] PROGMEM = R"HTML(<!doctype html><html><head>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>Ble(e)p Wi-Fi</title>)HTML";
-const char kWifiBody[] PROGMEM = R"HTML(</head><body><main><header><h1>BLE(E)P / WIFI</h1><p>First-time network setup</p></header>
-<form id=wifi><section><h2>Studio network</h2><p class=hint>Choose a nearby network or enter a hidden SSID. After Ble(e)p joins, reconnect this device to that Wi-Fi and use the numeric address shown here and on the panel.</p><button id=scan class=secondary type=button>Scan nearby Wi-Fi</button><div id=networks></div><label>Wi-Fi SSID</label><input name=ssid required maxlength=32 autocomplete=off><label>Wi-Fi password</label><input name=password type=password maxlength=64 autocomplete=current-password></section><button id=connect>Connect Wi-Fi</button><div id=feedback role=status aria-live=polite>Ready to scan or connect.</div></form>
-<script>const form=document.querySelector('#wifi'),scan=document.querySelector('#scan'),connect=document.querySelector('#connect'),networks=document.querySelector('#networks'),feedback=document.querySelector('#feedback'),ssid=document.querySelector('[name=ssid]');let timer;
-function message(text,kind=''){feedback.textContent=text;feedback.className=kind}
-async function scanWifi(){scan.disabled=true;networks.textContent='Scanning nearby networks…';message('Scanning…');try{await fetch('/api/wifi/scan',{method:'POST'});pollScan()}catch(e){networks.textContent='Scan request failed. You can enter the SSID manually.';message('Could not start Wi-Fi scan.','bad');scan.disabled=false}}
-async function pollScan(){try{let r=await fetch('/api/wifi/scan'),d=await r.json();if(d.state==='scanning'){setTimeout(pollScan,500);return}networks.textContent='';(d.networks||[]).forEach(n=>{let b=document.createElement('button');b.type='button';b.className='result';let name=document.createElement('div');name.textContent=n.ssid;let meta=document.createElement('small');meta.textContent=n.rssi+' dBm · '+(n.secure?'secured':'open');b.append(name,meta);b.onclick=()=>{ssid.value=n.ssid;ssid.focus();message('Selected '+n.ssid+'. Enter its password, then connect.')};networks.append(b)});if(!networks.children.length)networks.textContent=d.error||'No networks found. Enter the SSID manually.';message('Scan complete.');scan.disabled=false}catch(e){networks.textContent='Scan interrupted. Enter the SSID manually.';message('Could not read scan results.','bad');scan.disabled=false}}
-async function pollJoin(){try{let r=await fetch('/api/wifi/status'),d=await r.json();message(d.message,d.state==='connected'?'ok':d.state==='failed'?'bad':'');if(d.state==='connecting'){timer=setTimeout(pollJoin,500);return}connect.disabled=false;scan.disabled=false;if(d.state==='connected'){let link=document.createElement('a');link.href=d.url;link.textContent=d.url;feedback.append(document.createElement('br'),'Reconnect this device to '+d.ssid+', then open ',link,'.');if(d.alias)feedback.append(document.createElement('br'),'Optional alias: '+d.alias)}}catch(e){message('The setup network closed. Reconnect to your normal Wi-Fi and use the numeric address shown on the Ble(e)p panel.','ok')}}
-form.onsubmit=async e=>{e.preventDefault();clearTimeout(timer);connect.disabled=true;scan.disabled=true;networks.textContent='';message('Starting Wi-Fi connection…');try{let r=await fetch('/wifi',{method:'POST',body:new URLSearchParams(new FormData(form))});let d=await r.json();if(!r.ok)throw new Error(d.error||'Could not start connection');message(d.message);pollJoin()}catch(e){message(e.message,'bad');connect.disabled=false;scan.disabled=false}};scan.onclick=scanWifi;scanWifi();</script></main></body></html>)HTML";
 
 void setStatus(Status value, const char* message) {
   currentStatus = value;
@@ -175,7 +175,7 @@ void sendError(int status, const char* code, const char* message) {
 }
 
 bool requireMutation() {
-  if (!requireStage(true)) return false;
+  touch();
   if (server->header("X-Portal-Nonce") == portalNonce) return true;
   sendError(403, "invalid_session", "Reload the Portal and try again");
   return false;
@@ -299,29 +299,6 @@ const char* commandLabel(studio::CommandType command) {
   }
 }
 
-bool parseCommand(const char* value, studio::CommandType& out) {
-  if (value == nullptr) return false;
-  struct Entry { const char* id; studio::CommandType command; };
-  const Entry entries[] = {
-      {"record_trigger", studio::CommandType::RecordTrigger},
-      {"record_start", studio::CommandType::RecordStart},
-      {"record_stop", studio::CommandType::RecordStop},
-      {"turn_on", studio::CommandType::TurnOn},
-      {"turn_off", studio::CommandType::TurnOff},
-      {"press", studio::CommandType::Press},
-      {"activate", studio::CommandType::Activate},
-      {"set_light_cct", studio::CommandType::SetLightCct},
-      {"set_light_rgb", studio::CommandType::SetLightRgb},
-  };
-  for (const Entry& entry : entries) {
-    if (std::strcmp(value, entry.id) == 0) {
-      out = entry.command;
-      return true;
-    }
-  }
-  return false;
-}
-
 void serializeStep(JsonObject out, const studio::SceneStep& step) {
   if (step.type == studio::SceneStepType::Wait) {
     out["kind"] = "wait";
@@ -425,17 +402,9 @@ int validateApi(const String& baseUrl, const char* token) {
   return status;
 }
 
-bool matches(const char* value, const char* query) {
-  if (query == nullptr || query[0] == '\0') return true;
-  String left(value != nullptr ? value : "");
-  String right(query);
-  left.toLowerCase();
-  right.toLowerCase();
-  return left.indexOf(right) >= 0;
-}
-
 void handleWifiSave() {
   if (!requireStage(false)) return;
+  if (!requireMutation()) return;
   const String ssid = server->arg("ssid");
   const String password = server->arg("password");
   if (ssid.length() == 0 || ssid.length() >= sizeof(pendingWifiSsid) ||
@@ -511,65 +480,46 @@ void sendWifiStatus() {
 
 void startWifiScan() {
   if (!requireStage(false)) return;
+  if (!requireMutation()) return;
   if (wifiJoinState == WifiJoinState::Connecting) {
     server->send(409, "application/json",
                  "{\"error\":\"Wait for the Wi-Fi connection attempt to finish\"}");
     return;
   }
-  WiFi.scanDelete();
-  const int result = WiFi.scanNetworks(true, false);
-  if (result == WIFI_SCAN_FAILED) {
-    server->send(500, "application/json",
-                 "{\"error\":\"Could not start Wi-Fi scan\"}");
-    return;
-  }
-  setStatus(Status::Testing, "Scanning nearby Wi-Fi");
-  server->send(202, "application/json", "{\"state\":\"scanning\"}");
+  server->send(202, "application/json", "{\"state\":\"complete\"}");
 }
 
 void sendWifiScan() {
   if (!requireStage(false)) return;
-  const int found = WiFi.scanComplete();
   JsonDocument doc;
   JsonArray networks = doc["networks"].to<JsonArray>();
-  if (found == WIFI_SCAN_RUNNING) {
-    doc["state"] = "scanning";
-  } else if (found < 0) {
-    doc["state"] = "failed";
-    doc["error"] = "Wi-Fi scan failed. Enter the SSID manually.";
-    setStatus(Status::Ready, "Wi-Fi scan failed");
-  } else {
-    doc["state"] = "complete";
-    for (int i = 0; i < found && networks.size() < kWifiScanLimit; ++i) {
-      const String candidate = WiFi.SSID(i);
-      if (candidate.length() == 0) continue;
-      bool duplicate = false;
-      for (JsonObject existing : networks) {
-        if (candidate == existing["ssid"].as<const char*>()) {
-          duplicate = true;
-          break;
-        }
-      }
-      if (duplicate) continue;
-      JsonObject item = networks.add<JsonObject>();
-      item["ssid"] = candidate;
-      item["rssi"] = WiFi.RSSI(i);
-      item["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
-    }
-    WiFi.scanDelete();
-    setStatus(Status::Ready, networks.size() == 0 ? "No Wi-Fi found" : "Choose studio Wi-Fi");
+  doc["state"] = "complete";
+  for (size_t i = 0; i < wifiScanCount; ++i) {
+    JsonObject item = networks.add<JsonObject>();
+    item["ssid"] = wifiScanResults[i].ssid;
+    item["rssi"] = wifiScanResults[i].rssi;
+    item["secure"] = wifiScanResults[i].secure;
   }
+  if (wifiScanCount == 0) doc["error"] = "No networks found. Enter the SSID manually.";
   String body;
   serializeJson(doc, body);
   server->send(200, "application/json", body);
 }
 
 void handleEntities() {
+  if (!requireStage(true)) return;
   if (!requireMutation()) return;
   setStatus(Status::Testing, "Querying Home Assistant");
   const String baseUrl = server->arg("url");
-  const String token = server->arg("token");
+  String token = server->arg("token");
   const String query = server->arg("q");
+  if (token.length() == 0) {
+    studio::PreferencesHomeAssistantBackend backend;
+    studio::HomeAssistantConfigStore store(backend);
+    studio::HomeAssistantConfig config;
+    store.load(config);
+    token = config.token;
+  }
   JsonDocument response;
   JsonArray results = response["entities"].to<JsonArray>();
   if (WiFi.status() != WL_CONNECTED ||
@@ -600,7 +550,8 @@ void handleEntities() {
           const char* entityId = entity["entity_id"] | "";
           const char* friendly = entity["attributes"]["friendly_name"] | entityId;
           if (!home_assistant::supportedEntityId(entityId) ||
-              (!matches(entityId, query.c_str()) && !matches(friendly, query.c_str()))) {
+              !home_assistant::matchesEntitySearch(entityId, friendly,
+                                                   query.c_str())) {
             continue;
           }
           JsonObject item = results.add<JsonObject>();
@@ -620,13 +571,15 @@ void handleEntities() {
 }
 
 void handleConfig() {
-  if (!requireStage(true)) return;
+  touch();
   studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
   studio::HomeAssistantConfig config;
   store.load(config);
   JsonDocument doc;
-  doc["url"] = config.baseUrl;
+  doc["url"] = config.baseUrl[0] != '\0'
+      ? config.baseUrl : "http://homeassistant.local:8123";
+  doc["token_stored"] = config.token[0] != '\0';
   JsonArray entities = doc["entities"].to<JsonArray>();
   for (size_t i = 0; i < studio::devices().count(); ++i) {
     const studio::DeviceRecord* record = studio::devices().at(i);
@@ -642,6 +595,7 @@ void handleConfig() {
 }
 
 void handleSave() {
+  if (!requireStage(true)) return;
   if (!requireMutation()) return;
   studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
@@ -723,18 +677,21 @@ void handleSave() {
 }
 
 void handleSummary() {
-  if (!requireStage(true)) return;
+  touch();
   JsonDocument doc;
   doc["devices"] = studio::devices().count();
   doc["device_capacity"] = CONFIG_MAX_DEVICE_INSTANCES;
   doc["sequences"] = studio::scenes().count();
+  doc["panel_id"] = panelIdentity;
+  doc["lan"] = lanMode;
+  doc["network"] = activeSsid;
   doc["timeout_seconds"] =
       lastActivity > millis() ? 0 : (kTimeoutMs - (millis() - lastActivity)) / 1000;
   sendJson(200, doc);
 }
 
 void handleDevices() {
-  if (!requireStage(true)) return;
+  touch();
   JsonDocument doc;
   JsonArray devices = doc["devices"].to<JsonArray>();
   for (size_t i = 0; i < studio::devices().count(); ++i) {
@@ -815,7 +772,7 @@ void handleDeviceMutation(studio::InstanceId instanceId) {
 }
 
 void handleSequences() {
-  if (!requireStage(true)) return;
+  touch();
   JsonDocument doc;
   JsonArray sequences = doc["sequences"].to<JsonArray>();
   for (size_t i = 0; i < studio::scenes().count(); ++i) {
@@ -849,40 +806,17 @@ void handleCreateSequence() {
   sendJson(201, response);
 }
 
-bool parseSteps(JsonDocument& request, const char* key,
-                studio::SceneStep* destination, uint8_t& count) {
-  JsonArray steps = request[key].as<JsonArray>();
-  if (steps.isNull()) {
-    count = 0;
-    return true;
-  }
-  if (steps.size() > CONFIG_MAX_SCENE_STEPS) return false;
-  count = 0;
-  for (JsonObject step : steps) {
-    const char* kind = step["kind"] | "";
-    if (std::strcmp(kind, "wait") == 0) {
-      const int64_t wait = step["wait_ms"] | -1;
-      if (wait < CONFIG_SCENE_MIN_WAIT_MS || wait > CONFIG_SCENE_MAX_WAIT_MS) {
-        return false;
-      }
-      destination[count++] = studio::makeWaitStep(static_cast<uint32_t>(wait));
-      continue;
-    }
-    if (std::strcmp(kind, "action") != 0) return false;
-    studio::CommandType command;
-    if (!parseCommand(step["command"] | nullptr, command)) return false;
-    const studio::InstanceId target = step["target_id"] | studio::kInvalidInstanceId;
-    if (target == studio::kInvalidInstanceId) return false;
-    destination[count++] = studio::makeActionStep(
-        target, command, step["value0"] | 0, step["value1"] | 0,
-        step["value2"] | 0);
-  }
-  return true;
+void sendStepError(const char* list, const StepParseResult& result) {
+  char message[96];
+  std::snprintf(message, sizeof(message), "%s step %u %s", list,
+                static_cast<unsigned>(result.index + 1),
+                stepParseMessage(result.status));
+  sendError(422, "invalid_step", message);
 }
 
 void handleSequenceMutation(studio::SceneId sceneId) {
   if (server->method() == HTTP_GET) {
-    if (!requireStage(true)) return;
+    touch();
     const studio::SceneRecord* record = studio::scenes().find(sceneId);
     if (record == nullptr) {
       sendError(404, "sequence_not_found", "Sequence no longer exists");
@@ -928,8 +862,10 @@ void handleSequenceMutation(studio::SceneId sceneId) {
   std::strncpy(updated.name, name, sizeof(updated.name) - 1);
   updated.name[sizeof(updated.name) - 1] = '\0';
   updated.enabled = request["enabled"] | updated.enabled;
-  if (!parseSteps(request, "start", updated.startSteps, updated.startCount)) {
-    sendError(422, "invalid_step", "A sequence step is invalid or out of range");
+  const StepParseResult startResult = parseSceneSteps(
+      request["start"], updated.startSteps, updated.startCount);
+  if (startResult.status != StepParseStatus::Ok) {
+    sendStepError("Start", startResult);
     return;
   }
   const char* stopMode = request["stop_mode"] | "generated";
@@ -938,8 +874,10 @@ void handleSequenceMutation(studio::SceneId sceneId) {
     studio::generateStopSteps(updated);
   } else if (std::strcmp(stopMode, "custom") == 0) {
     updated.stopMode = studio::SceneStopMode::Custom;
-    if (!parseSteps(request, "stop", updated.stopSteps, updated.stopCount)) {
-      sendError(422, "invalid_step", "A sequence step is invalid or out of range");
+    const StepParseResult stopResult = parseSceneSteps(
+        request["stop"], updated.stopSteps, updated.stopCount);
+    if (stopResult.status != StepParseStatus::Ok) {
+      sendStepError("Stop", stopResult);
       return;
     }
   } else {
@@ -971,8 +909,7 @@ void handleExit() {
 void installHandlers() {
   server->on("/", HTTP_GET, [] {
     touch();
-    if (lanMode) sendPortalPage();
-    else sendPage(kWifiPage, kWifiBody);
+    sendPortalPage();
   });
   server->on("/wifi", HTTP_POST, handleWifiSave);
   server->on("/api/wifi/status", HTTP_GET, sendWifiStatus);
@@ -987,7 +924,7 @@ void installHandlers() {
   server->on("/api/sequences", HTTP_POST, handleCreateSequence);
   server->on("/api/exit", HTTP_POST, handleExit);
   server->on("/assets/bleep-logo.webp", HTTP_GET, [] {
-    if (!requireStage(true)) return;
+    touch();
     server->sendHeader("Cache-Control", "private, max-age=600");
     server->send_P(200, PSTR("image/webp"),
                    reinterpret_cast<PGM_P>(assets::kPortalLogoWebp),
@@ -1048,7 +985,7 @@ bool startSetupAp() {
   wifiJoinState = WifiJoinState::Idle;
   std::strncpy(wifiJoinMessage, "Ready to connect", sizeof(wifiJoinMessage) - 1);
   WiFi.mode(WIFI_AP_STA);
-  if (!WiFi.softAP(apSsid, kSetupPassword)) return false;
+  if (!WiFi.softAP(apSsid)) return false;
   std::strncpy(activeSsid, apSsid, sizeof(activeSsid) - 1);
   std::strncpy(portalUrl, "http://192.168.4.1", sizeof(portalUrl) - 1);
   const IPAddress setupAddress = WiFi.softAPIP();
@@ -1057,8 +994,47 @@ bool startSetupAp() {
     WiFi.softAPdisconnect(true);
     return false;
   }
-  setStatus(Status::Ready, "Set up studio Wi-Fi");
+  setStatus(Status::Ready, "AP Portal ready");
   return true;
+}
+
+bool beginSetupScan() {
+  setupScanPending = false;
+  wifiScanCount = 0;
+  WiFi.mode(WIFI_STA);
+  WiFi.scanDelete();
+  const int result = WiFi.scanNetworks(true, true, false, 120);
+  if (result == WIFI_SCAN_FAILED) return false;
+  setupScanPending = true;
+  setStatus(Status::Starting, "Scanning studio Wi-Fi");
+  return true;
+}
+
+void finishSetupScan() {
+  const int found = WiFi.scanComplete();
+  if (found == WIFI_SCAN_RUNNING) return;
+  wifiScanCount = 0;
+  if (found > 0) {
+    for (int i = 0; i < found && wifiScanCount < kWifiScanLimit; ++i) {
+      const String candidate = WiFi.SSID(i);
+      if (candidate.length() == 0) continue;
+      bool duplicate = false;
+      for (size_t existing = 0; existing < wifiScanCount; ++existing) {
+        duplicate |= candidate == wifiScanResults[existing].ssid;
+      }
+      if (duplicate) continue;
+      WifiScanResult& result = wifiScanResults[wifiScanCount++];
+      std::strncpy(result.ssid, candidate.c_str(), sizeof(result.ssid) - 1);
+      result.rssi = WiFi.RSSI(i);
+      result.secure = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    }
+  }
+  WiFi.scanDelete();
+  setupScanPending = false;
+  if (!startSetupAp()) {
+    WiFi.mode(WIFI_OFF);
+    setStatus(Status::Error, "Could not start Portal");
+  }
 }
 
 bool startLanPortal() {
@@ -1093,8 +1069,8 @@ bool begin() {
                 static_cast<unsigned long>(esp_random()),
                 static_cast<unsigned long>(esp_random()));
   const uint64_t chip = ESP.getEfuseMac();
-  std::snprintf(apSsid, sizeof(apSsid), "Bleep-Setup-%04X",
-                static_cast<unsigned>(chip & 0xffff));
+  unitId();
+  studio::formatPanelSetupSsid(chip, apSsid);
 
   studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
@@ -1112,7 +1088,7 @@ bool begin() {
   }
 
   WiFi.disconnect(true, false);
-  if (!startSetupAp()) {
+  if (!beginSetupScan() && !startSetupAp()) {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
     setStatus(Status::Error, "Could not start Portal");
@@ -1124,6 +1100,10 @@ bool begin() {
 
 void loop() {
   if (currentStatus == Status::Inactive || currentStatus == Status::Error) return;
+  if (setupScanPending) {
+    finishSetupScan();
+    return;
+  }
   if (dnsServer != nullptr) dnsServer->processNextRequest();
   if (server != nullptr) server->handleClient();
   if (exitPending) {
@@ -1193,6 +1173,7 @@ void stop() {
   WiFi.mode(WIFI_OFF);
   lanMode = false;
   switchToLanPending = false;
+  setupScanPending = false;
   exitPending = false;
   portalNonce[0] = '\0';
   setStatus(Status::Inactive, "Portal off");
@@ -1203,14 +1184,21 @@ Status status() { return currentStatus; }
 const char* statusText() { return statusMessage; }
 const char* ssid() { return activeSsid; }
 const char* password() {
-  return (lanMode || wifiJoinState == WifiJoinState::Connected) ? "" : kSetupPassword;
+  return "";
 }
 const char* url() { return portalUrl; }
 const char* qrPayload() {
   if (lanMode) return portalUrl;
   std::snprintf(qrPayloadValue, sizeof(qrPayloadValue),
-                "WIFI:T:WPA;S:%s;P:%s;;", apSsid, kSetupPassword);
+                "WIFI:T:nopass;S:%s;;", apSsid);
   return qrPayloadValue;
+}
+
+const char* unitId() {
+  if (panelIdentity[0] == '\0') {
+    studio::formatPanelIdentity(ESP.getEfuseMac(), panelIdentity);
+  }
+  return panelIdentity;
 }
 
 SavedWifiSummary savedWifiSummary() {

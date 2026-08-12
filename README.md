@@ -289,25 +289,24 @@ does not leave an unpaired record behind. Pairing mode matters:
   provisions `0x1827` when needed, then rediscovers `0x1828` and opens the
   direct control service. Repeat Add light for every fixture.
 
-For first-time Home Assistant setup, open **Portal** from Home. Join the
-temporary `Bleep-Setup-…` WPA2 network by scanning the on-panel QR code, or join
-it manually using password `12345678`, then browse to the
-setup address shown on the panel, scan for or manually enter the studio Wi-Fi,
-and supply its password. Phones normally open this setup page as a captive
-network sign-on screen after joining; the numeric address remains the fallback.
-The browser and panel show scanning, joining, and
-failure feedback. After Ble(e)p joins, note the numeric LAN address, let the
-setup AP close, and rejoin the normal local Wi-Fi. Open that numeric address
-while the Portal screen remains active; `http://bleep.local` is also advertised
-as a convenience but may not resolve on every client or network.
+Open **Portal** from Home and join the open temporary `Bleep-Setup-XXXXX`
+network by scanning the on-panel QR code or selecting the SSID whose
+five-character suffix matches that panel. Browse to the setup address shown on
+the panel; phones may open it automatically as a captive sign-on page. The
+setup Portal provides **Overview**, **Devices**, **Sequences**, and **Wi-Fi**
+without requiring studio Wi-Fi. Devices can be renamed, enabled/disabled, or
+removed; removal is blocked while a sequence references the device. Add
+physical devices on the panel so their pairing flow stays local.
 
-The LAN Portal opens on **Overview** and provides dedicated **Devices**,
-**Sequences**, and **Home Assistant** views. Devices can be renamed,
-enabled/disabled, or removed; removal is blocked while a sequence references
-the device. Add physical devices on the panel so their pairing flow stays local
-to the controller. Home Assistant entities remain the exception and can be
-added in the Portal by entering the local `http://` Home Assistant URL and
-long-lived access token, then selecting at most four supported entities.
+Home Assistant is the only Portal function that requires studio Wi-Fi. The
+nearby-network scan completes before the setup AP opens, avoiding unreliable
+in-AP channel hopping. Choose a result or enter a hidden SSID manually. After
+Ble(e)p joins, note the numeric LAN address, let the setup AP close, and rejoin
+the normal local Wi-Fi. Open that address while Portal remains active;
+`http://bleep.local` is a best-effort convenience. The Home Assistant URL starts
+as `http://homeassistant.local:8123`. A saved token is reported only as stored
+and is never returned to the browser; choose **Change stored token** to replace
+it. Select at most four supported entities.
 
 Sequences can be created, renamed, enabled/disabled, duplicated, and deleted.
 **Add Sequence** guides creation through Start actions, generated Stop review,
@@ -320,10 +319,10 @@ rows remain deletable if their target device
 was removed, so an invalid sequence can be repaired one step at a time. The
 Portal changes configuration only: it does not connect to
 devices or run sequences. Choose **Finish & Exit** in the Portal, or Exit on the
-panel, after saving; this stops the LAN server and turns Wi-Fi off. Later Portal
+panel, after saving; this stops the server and turns Wi-Fi off. Later Portal
 sessions join saved Wi-Fi directly and show their current numeric LAN address;
 normal Home boot remains network-free.
-In LAN mode, the on-panel QR code changes from the temporary Wi-Fi credentials
+In LAN mode, the on-panel QR code changes from the temporary open-network join
 to the current numeric Portal URL.
 
 Lights and switches expose explicit On/Off controls. Home Assistant
@@ -331,8 +330,9 @@ Lights and switches expose explicit On/Off controls. Home Assistant
 while the helper is off and OFF while it is on. Buttons use Press and HA
 scenes/scripts use Activate.
 
-This v1 path sends Portal and HA credentials over local plaintext HTTP. Use it
-only on a trusted studio network; TLS,
+This v1 path uses an open setup AP and sends Portal and HA credentials over
+local plaintext HTTP. Open Portal only in a controlled location and use the
+LAN handoff only on a trusted studio network; TLS,
 Home Assistant Cloud, OAuth, and exposing Ble(e)p-controlled hardware back to
 Home Assistant are not implemented.
 

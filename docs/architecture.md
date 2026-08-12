@@ -294,9 +294,11 @@ network runtime and do not consume the four physical BLE link slots.
 ### Home Assistant Portal and runtime
 
 Portal suspends scenes and physical links. If studio Wi-Fi is not configured or
-cannot be joined, it starts a temporary WPA2 SoftAP and a SoftAP-bound page that
-offers a bounded asynchronous Wi-Fi scan and manual SSID/password entry. The
-panel's QR code contains the temporary WPA2 network credentials. While the AP
+cannot be joined, it performs a bounded asynchronous station scan before
+starting a temporary open SoftAP. The SoftAP-bound administration console offers
+the cached results plus manual SSID/password entry and all local device and
+sequence configuration. The panel's QR code identifies the open setup network.
+While the AP
 is active, wildcard DNS and unknown-path redirects provide best-effort captive
 portal discovery so phones can present the setup page as a sign-on screen.
 The join is a main-loop state machine, leaving HTTP and LVGL responsive while the
@@ -304,12 +306,15 @@ browser and panel report scanning, connecting, success, timeout, missing SSID,
 or rejected credentials. A successful join saves those credentials, exposes
 the assigned numeric LAN address during a bounded handoff, destroys the AP,
 binds a new listener to the station address, and advertises a best-effort
-`http://bleep.local` mDNS alias. The responsive LAN console serves overview,
-committed-device administration, current authored Start/Stop sequence editing,
-and HA setup. Physical pairing, device commands, and sequence execution are
+`http://bleep.local` mDNS alias. The same responsive console serves overview,
+committed-device administration, and current authored Start/Stop sequence
+editing on either AP or LAN. HA setup, discovery, and testing are enabled only
+after station handoff. Physical pairing, device commands, and sequence execution are
 deliberately absent. Discovery incrementally parses `/api/states`; the browser
-receives at most 24 bounded summaries and may select four. Secrets are password
-fields and never appear in `/api/config`. Exit or ten minutes of inactivity
+receives at most 24 bounded summaries and may select four. The default URL is
+`http://homeassistant.local:8123`. Secrets are password fields and never appear
+in `/api/config`; it returns only whether a token is already stored, and a blank
+submission preserves that stored value. Exit or ten minutes of inactivity
 stops HTTP/mDNS, disconnects STA, and returns Wi-Fi to off.
 
 Opening an HA screen or preparing an HA scene target allocates and acquires the
@@ -464,16 +469,18 @@ Entering Portal mode:
 
 1. refuses entry or requests confirmation if a scene is active;
 2. suspends device connections;
-3. joins saved studio Wi-Fi, or starts a temporary WPA2 SoftAP whose page
-   collects only Wi-Fi credentials, with an on-panel Wi-Fi QR code and
-   AP-scoped captive-portal discovery;
+3. joins saved studio Wi-Fi, or scans before starting a temporary open SoftAP
+   whose administration console supports local device/sequence changes and
+   optional Wi-Fi credentials, with an on-panel Wi-Fi QR code and AP-scoped
+   captive-portal discovery;
 4. after joining, shows the numeric station address, closes the AP, and binds
    the bounded HTTP server there with `bleep.local` as best-effort discovery,
    and changes the QR code to the numeric Portal URL;
 5. displays the active network, URL, timeout, and Exit on the panel.
 
-The LAN listener exposes bounded JSON APIs for summary, device records,
-sequences, and HA configuration. Each session has a fresh mutation nonce;
+Both listeners expose bounded JSON APIs for summary, device records, sequences,
+and non-secret HA configuration. HA discovery/testing and secret writes require
+LAN mode. Each session has a fresh mutation nonce;
 state-changing requests without it are rejected, CORS is not enabled, and the
 page is served with no-store and frame-denial headers. Device and sequence
 changes pass through their normal registries, validation, and checked NVS

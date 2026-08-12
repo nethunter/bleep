@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <ArduinoJson.h>
 
 #include <cmath>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include "core/driver_catalog.h"
 #include "core/home_assistant_config.h"
 #include "core/panel_settings.h"
+#include "core/panel_identity.h"
 #include "core/scene_service.h"
 #include "core/scene_store.h"
 #include "devices/canon_ble/ble_match.h"
@@ -39,6 +41,7 @@
 #include "devices/zhiyun_x100/ble_match.h"
 #include "devices/zhiyun_x100/protocol.h"
 #include "devices/zhiyun_x100/state.h"
+#include "portal_scene_parser.h"
 #include "core/mesh/provisioning_policy.h"
 
 using namespace shark;
@@ -1629,6 +1632,58 @@ void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   TEST_ASSERT_TRUE(studio::validLocalHomeAssistantUrl("http://10.0.0.5:8123"));
 }
 
+void test_panel_identity_uses_full_hardware_id_and_short_setup_suffix() {
+  char identity[studio::kPanelIdentityCapacity] = "";
+  char setupSsid[studio::kPanelSetupSsidCapacity] = "";
+  char otherSetupSsid[studio::kPanelSetupSsidCapacity] = "";
+  studio::formatPanelIdentity(0x0010A1B2C3D4E5F6ULL, identity);
+  studio::formatPanelSetupSsid(0x0010A1B2C3D4E5F6ULL, setupSsid);
+  TEST_ASSERT_EQUAL_STRING("BLP-A1B2C3D4E5F6", identity);
+  TEST_ASSERT_EQUAL_STRING("Bleep-Setup-4E5F6", setupSsid);
+  studio::formatPanelSetupSsid(0x0010A1B2C3D5E6F7ULL, otherSetupSsid);
+  TEST_ASSERT_EQUAL_STRING("Bleep-Setup-5E6F7", otherSetupSsid);
+  TEST_ASSERT_NOT_EQUAL(0, std::strcmp(setupSsid, otherSetupSsid));
+
+  studio::formatPanelIdentity(0, identity);
+  studio::formatPanelSetupSsid(0, setupSsid);
+  TEST_ASSERT_EQUAL_STRING("BLP-000000000000", identity);
+  TEST_ASSERT_EQUAL_STRING("Bleep-Setup-00000", setupSsid);
+}
+
+void test_portal_parses_sequence_action_commands_from_json() {
+  const char* payload = R"JSON({"start":[{"kind":"action","target_id":11,"command":"turn_on","value0":0,"value1":0,"value2":0,"label":"Turn on"},{"kind":"wait","wait_ms":200},{"kind":"action","target_id":12,"command":"record_start","value0":0,"value1":0,"value2":0,"label":"Record start"},{"kind":"action","target_id":10,"command":"record_start","value0":0,"value1":0,"value2":0,"label":"Record start"},{"kind":"wait","wait_ms":200},{"kind":"action","target_id":13,"command":"record_start","value0":0,"value1":0,"value2":0,"label":"Record start"}]})JSON";
+  JsonDocument request;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(DeserializationError::Ok),
+      static_cast<int>(deserializeJson(request, payload).code()));
+  studio::SceneStep steps[CONFIG_MAX_SCENE_STEPS] = {};
+  uint8_t count = 0;
+  const portal::StepParseResult result =
+      portal::parseSceneSteps(request["start"], steps, count);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(portal::StepParseStatus::Ok),
+                        static_cast<int>(result.status));
+  TEST_ASSERT_EQUAL_UINT8(6, count);
+  TEST_ASSERT_EQUAL_UINT32(11, steps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOn),
+                        static_cast<int>(steps[0].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStepType::Wait),
+                        static_cast<int>(steps[1].type));
+  TEST_ASSERT_EQUAL_UINT32(200, steps[1].waitMs);
+  TEST_ASSERT_EQUAL_UINT32(12, steps[2].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStart),
+                        static_cast<int>(steps[2].command));
+  TEST_ASSERT_EQUAL_UINT32(10, steps[3].targetId);
+  TEST_ASSERT_EQUAL_UINT32(13, steps[5].targetId);
+
+  request["start"][2]["command"] = "wrong_params";
+  const portal::StepParseResult invalid =
+      portal::parseSceneSteps(request["start"], steps, count);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(portal::StepParseStatus::InvalidCommand),
+      static_cast<int>(invalid.status));
+  TEST_ASSERT_EQUAL_UINT8(2, invalid.index);
+}
+
 void test_panel_settings_default_round_trip_corruption_and_rollback() {
   MemoryBackend backend;
   studio::PanelSettingsStore store(backend);
@@ -1737,6 +1792,16 @@ void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
 
   TEST_ASSERT_TRUE(home_assistant::supportedEntityId("input_boolean.live"));
   TEST_ASSERT_FALSE(home_assistant::supportedEntityId("sensor.temperature"));
+  TEST_ASSERT_TRUE(home_assistant::matchesEntitySearch(
+      "light.key_light", "Key Light", "KEY LIGHT"));
+  TEST_ASSERT_TRUE(home_assistant::matchesEntitySearch(
+      "light.key_light", "Key Light", "LIGHT.KEY"));
+  TEST_ASSERT_TRUE(home_assistant::matchesEntitySearch(
+      "light.key_light", "KEY LIGHT", "key light"));
+  TEST_ASSERT_TRUE(home_assistant::matchesEntitySearch(
+      "light.key_light", nullptr, ""));
+  TEST_ASSERT_FALSE(home_assistant::matchesEntitySearch(
+      "light.key_light", "Key Light", "camera"));
   TEST_ASSERT_TRUE(home_assistant::commandSupported(
       studio::HomeAssistantDomain::Scene, studio::CommandType::Activate));
   TEST_ASSERT_FALSE(home_assistant::commandSupported(
@@ -4233,6 +4298,8 @@ int main(int, char**) {
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_config_round_trip_at_twenty_four_record_capacity);
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
+  RUN_TEST(test_panel_identity_uses_full_hardware_id_and_short_setup_suffix);
+  RUN_TEST(test_portal_parses_sequence_action_commands_from_json);
   RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
   RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);

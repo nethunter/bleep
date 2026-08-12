@@ -878,8 +878,9 @@ void buildAbout() {
   lv_obj_set_style_text_color(description, lv_color_hex(kColMuted), 0);
   lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 64);
   char identity[96];
-  std::snprintf(identity, sizeof(identity), "v%s\n%s  |  %s",
-                build_info::kFirmwareVersion, build_info::kGitCommit,
+  std::snprintf(identity, sizeof(identity), "v%s\n%s\n%s  |  %s",
+                build_info::kFirmwareVersion, portal::unitId(),
+                build_info::kGitCommit,
                 build_info::kGitDate);
   lv_obj_t* version = lv_label_create(content);
   lv_label_set_text(version, identity);
@@ -896,7 +897,7 @@ void buildAbout() {
   lv_obj_set_style_text_align(hardware, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(hardware, UI_FONT_14, 0);
   lv_obj_set_style_text_color(hardware, lv_color_hex(kColMuted), 0);
-  lv_obj_align(hardware, LV_ALIGN_TOP_MID, 0, 150);
+  lv_obj_align(hardware, LV_ALIGN_TOP_MID, 0, 168);
 }
 
 void refreshSystemInfo() {
@@ -1106,7 +1107,10 @@ void refreshPortal() {
   lv_label_set_text(portalSsid, text);
   std::snprintf(text, sizeof(text), "PASS\n%s", portal::password());
   if (portal::password()[0] == '\0') {
-    std::strncpy(text, "SAME LOCAL\nWI-FI", sizeof(text) - 1);
+    std::strncpy(text,
+                 std::strncmp(portal::qrPayload(), "WIFI:", 5) == 0
+                     ? "OPEN\nNETWORK" : "SAME LOCAL\nWI-FI",
+                 sizeof(text) - 1);
     text[sizeof(text) - 1] = '\0';
   }
   lv_label_set_text(portalPassword, text);
