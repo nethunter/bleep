@@ -35,6 +35,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   bool setRgb(uint32_t rgb, uint8_t brightness);
   bool refresh();
   void cancelPendingCommand();
+  bool resumeConnection();
   void startScan();
   void forgetDevice();
   bool cancelOnboarding();

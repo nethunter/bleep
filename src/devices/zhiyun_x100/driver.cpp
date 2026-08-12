@@ -127,6 +127,16 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
   return true;
 }
 
+bool ZhiyunLightDriver::resume(const DeviceRecord& record) {
+  Session* session = find(record.instanceId);
+  if (session == nullptr) return false;
+  if (session->sharedGateway) {
+    aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
+    return gateway != nullptr && gateway->acquireGateway(record);
+  }
+  return session->client.resumeConnection();
+}
+
 void ZhiyunLightDriver::deactivate(InstanceId instanceId) {
   Session* session = find(instanceId);
   if (session == nullptr) return;
@@ -214,8 +224,8 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
                    ? CommandStatus::Succeeded
                    : CommandStatus::Unavailable;
       }
-      client.startScan();
-      return CommandStatus::Succeeded;
+      return client.resumeConnection() ? CommandStatus::Succeeded
+                                       : CommandStatus::Unavailable;
     case CommandType::ForgetPairing:
       client.forgetDevice();
       return CommandStatus::Succeeded;

@@ -125,6 +125,16 @@ short, factual, and reproducible.
   and uploaded successfully without erasing NVS. Physical output confirmation
   for all four fixtures is still required because dispatch/confirmation alone
   is not proof of the requested optical state.
+- Corrected the retained/direct Zhiyun reconnect path after the operator
+  observed X100 fail its first opening and connect on the second while X60RGB
+  remained available through the shared proxy. Saved-target Resume and Retry
+  now preserve the persisted peer instead of entering the onboarding scan path,
+  and a failed blind direct attempt falls back to advertisement scanning after
+  one miss instead of three. Native tests passed 89/89, including the new
+  one-miss scan-fallback regression. Full Montserrat `bleep` built with 141,428
+  bytes static RAM (43.2%) and 1,932,346 bytes flash (61.4%) and uploaded to
+  `/dev/cu.usbserial-211240` without erasing NVS. A cold first-opening X100
+  reconnect remains to be confirmed physically.
 
 ### 2026-08-11: Light/mesh review corrections
 

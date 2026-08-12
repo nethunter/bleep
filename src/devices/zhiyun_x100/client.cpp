@@ -57,6 +57,7 @@ bool X100Client::begin() {
   studio::ble::ConnectPolicy policy;
   policy.connectTimeoutMs = 4000;
   policy.connectWatchdogMs = 7000;
+  policy.directAttemptsBeforeScan = kDirectAttemptsBeforeScan;
   policy.security = studio::ble::SecurityPolicy::None;
   policy.diagnosticTag = "zhiyun_light";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
@@ -183,6 +184,26 @@ void X100Client::cancelPendingCommand() {
   state_.lastCommandFailed = false;
   state_.verificationField = 0;
   state_.error[0] = '\0';
+}
+
+bool X100Client::resumeConnection() {
+  if (!initialized_ || sharedTransport_) return false;
+  connectRequested_ = true;
+  state_.error[0] = '\0';
+  state_.lastCommandFailed = false;
+  const studio::ble::LinkPhase phase =
+      studio::ble::bleCentral().phase(linkHandle_);
+  if (protocolReady()) return true;
+  if (state_.hasSavedDevice && haveTarget_) {
+    if (state_.link != X100State::Link::Connected)
+      state_.link = X100State::Link::Connecting;
+    if (state_.phase == X100State::Phase::Failed)
+      state_.phase = X100State::Phase::Idle;
+    if (phase == studio::ble::LinkPhase::Idle) beginConnect();
+    return true;
+  }
+  startScan();
+  return true;
 }
 
 void X100Client::deactivate() {

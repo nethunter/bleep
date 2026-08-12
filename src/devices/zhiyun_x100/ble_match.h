@@ -8,6 +8,8 @@
 
 namespace zhiyun_x100 {
 
+constexpr uint8_t kDirectAttemptsBeforeScan = 1;
+
 inline bool hasManufacturerMarker(
     const studio::ble::Advertisement& advertisement, const char* marker) {
   if (marker == nullptr || marker[0] == '\0') return false;

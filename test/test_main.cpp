@@ -4024,6 +4024,31 @@ void test_tascam_reconnect_scans_after_one_direct_failure() {
   central.release(link);
 }
 
+void test_zhiyun_reconnect_scans_after_one_direct_failure() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  studio::ble::ConnectPolicy policy;
+  policy.directAttemptsBeforeScan = zhiyun_x100::kDirectAttemptsBeforeScan;
+  const studio::ble::LinkHandle link = central.acquire(delegate, policy);
+
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = link;
+  backend.emit(failed);
+  central.loop(1);
+  central.loop(1500);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(1501);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.release(link);
+}
+
 void test_ble_central_protocol_failure_can_stop_retry() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -5036,6 +5061,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
   RUN_TEST(test_tascam_reconnect_scans_after_one_direct_failure);
+  RUN_TEST(test_zhiyun_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);

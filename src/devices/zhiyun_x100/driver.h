@@ -15,6 +15,7 @@ class ZhiyunLightDriver : public DeviceDriver {
       const DeviceRecord& record,
       const InstanceProfile& catalogProfile) const override;
   bool activate(const DeviceRecord& record) override;
+  bool resume(const DeviceRecord& record) override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
