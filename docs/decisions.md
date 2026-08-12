@@ -89,7 +89,7 @@ the replacement.
 
 - Status: Accepted
 - Decision: The administration HTTP server runs only in an explicit Portal
-  mode on a temporary WPA2 SoftAP.
+  mode on a temporary open SoftAP or its bounded station handoff.
 - Consequence: Entering Portal mode suspends scenes, device links, and studio
   Wi-Fi. Exit, inactivity timeout, or reboot destroys the HTTP server and AP.
   No administration listener consumes resources during normal operation.
@@ -376,10 +376,11 @@ the replacement.
   Assistant. Lights are power-only. Local plaintext `http://` and `ws://`
   endpoints plus a pasted long-lived access token are allowed; TLS, cloud
   access, OAuth, devices/areas, and other domains remain deferred.
-- Provisioning boundary: First-time Portal setup creates a WPA2 SoftAP with
-  password `12345678`, performs a bounded nearby-network scan, and collects only
-  studio Wi-Fi credentials. The panel exposes the setup AP credentials as a
-  standard Wi-Fi QR code. Wildcard DNS and HTTP redirects trigger the phone's
+- Provisioning boundary: First-time Portal setup performs a bounded nearby-network
+  scan before creating an open SoftAP. The AP console administers local device
+  records and sequences without studio Wi-Fi and may collect studio Wi-Fi
+  credentials for Home Assistant. The panel exposes the setup AP as a standard
+  open-network Wi-Fi QR code. Wildcard DNS and HTTP redirects trigger the phone's
   captive-network sign-on UI on a best-effort basis while that AP is active;
   both are destroyed before LAN Portal startup. Manual SSID entry remains
   available for hidden networks. During the non-blocking join it uses AP+STA while the listener
@@ -388,7 +389,7 @@ the replacement.
   After a successful join, it destroys the AP listener and AP, then binds a new
   listener to the station address. The assigned numeric address is authoritative
   and shown during handoff; `http://bleep.local` is a best-effort mDNS alias.
-  The LAN Portal contains Home Assistant URL/token/entity setup and is reachable
+  The LAN Portal enables Home Assistant URL/token/entity setup and is reachable
   only while Portal remains open on the panel. Entering Portal cancels scenes
   and physical links; explicit Exit or ten minutes of inactivity destroys the
   listener and disconnects Wi-Fi. Normal Home boot remains network-free.
@@ -580,7 +581,7 @@ the replacement.
 ## ADR-027: Portal administration is configuration-only and physically entered
 
 - Status: Accepted
-- Scope: The station-bound Portal is a responsive phone/desktop console for
+- Scope: The AP- or station-bound Portal is a responsive phone/desktop console for
   committed device records, current authored Start/Stop sequences, and Home
   Assistant provisioning. It exposes overview, device, sequence, and HA views.
 - Physical boundary: Portal entry remains a physical action on the panel. The
@@ -750,12 +751,13 @@ the replacement.
 
 ## ADR-033: Each panel owns a stable identity and independent setup domain
 
-- Status: Accepted; implementation planned in
-  `docs/multi-bleep-manufacturing.md`.
+- Status: Accepted; identity/setup-AP software implemented, two-panel hardware
+  gate open; remaining work is tracked in `docs/multi-bleep-manufacturing.md`.
 - Identity: Derive canonical unit ID `BLP-XXXXXXXXXXXX` from all 48 bits of the
   factory eFuse MAC. It survives NVS erasure and is never allocated by a shared
   counter or compiled into a per-unit firmware image.
-- Setup AP: Use `Bleep-Setup-XXXXXXXXXXXX` and an open initial SoftAP. The QR
+- Setup AP: Use `Bleep-Setup-XXXXX`, where the suffix is the final five
+  hexadecimal characters of the canonical unit ID, and an open initial SoftAP. The QR
   payload declares `nopass`; the panel clearly labels the AP open. Physical
   Portal entry, bounded lifetime, session mutation nonce, and teardown remain,
   but proximity access is an accepted consequence of removing WPA2.

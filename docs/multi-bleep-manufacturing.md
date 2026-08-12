@@ -11,8 +11,9 @@ records, mesh keys, scenes, or Home Assistant state.
   it is not a counter compiled into firmware and is not stored in erasable NVS.
 - The canonical display form is `BLP-XXXXXXXXXXXX`, using all 48 factory-MAC
   bits. Shortened suffixes are presentation aids only and never database keys.
-- The setup SSID is `Bleep-Setup-XXXXXXXXXXXX`. The full identity avoids the
-  16-bit collision risk in the current `Bleep-Setup-%04X` name.
+- The setup SSID is `Bleep-Setup-XXXXX`, using the final five hexadecimal
+  characters of the canonical ID. The 20-bit suffix is a presentation aid;
+  the full canonical identity remains authoritative.
 - The temporary setup AP is open. Its Wi-Fi QR payload uses `T:nopass` and the
   panel does not show a password.
 - Every panel generates its own random Bluetooth Mesh Network Key and AppKey
@@ -52,8 +53,8 @@ Acceptance:
 
 ## Tranche 2: Open, uniquely named setup AP
 
-Replace the fixed password path with an open SoftAP and enlarge the SSID buffer
-for `Bleep-Setup-XXXXXXXXXXXX`. Keep the existing physical Portal entry,
+Replace the fixed password path with an open SoftAP and use the requested short
+`Bleep-Setup-XXXXX` suffix. Keep the existing physical Portal entry,
 ten-minute teardown, AP-scoped HTTP server, captive DNS, per-session mutation
 nonce, no CORS, no-store responses, and frame denial. Limit the AP to one client
 when the Arduino API permits it, and show `OPEN NETWORK` on the panel so the
@@ -63,7 +64,7 @@ Update both embedded and simulator behavior:
 
 - call the open-network `WiFi.softAP` form;
 - return an empty password;
-- emit `WIFI:T:nopass;S:Bleep-Setup-XXXXXXXXXXXX;;`;
+- emit `WIFI:T:nopass;S:Bleep-Setup-XXXXX;;`;
 - remove password instructions from the UI and documentation;
 - retain the numeric `192.168.4.1` setup URL and LAN handoff flow.
 

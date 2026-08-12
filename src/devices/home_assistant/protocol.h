@@ -10,6 +10,8 @@ namespace home_assistant {
 studio::HomeAssistantDomain domainFromEntityId(const char* entityId);
 const char* domainName(studio::HomeAssistantDomain domain);
 bool supportedEntityId(const char* entityId);
+bool matchesEntitySearch(const char* entityId, const char* friendlyName,
+                         const char* query);
 const char* serviceFor(studio::HomeAssistantDomain domain,
                        studio::CommandType command);
 bool commandSupported(studio::HomeAssistantDomain domain,

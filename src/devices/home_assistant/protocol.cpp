@@ -11,6 +11,27 @@ bool begins(const char* value, const char* prefix) {
          std::strncmp(value, prefix, std::strlen(prefix)) == 0;
 }
 
+char lowerAscii(char value) {
+  if (value >= 'A' && value <= 'Z') return value + ('a' - 'A');
+  return value;
+}
+
+bool containsIgnoringCase(const char* value, const char* query) {
+  if (query == nullptr || query[0] == '\0') return true;
+  if (value == nullptr) return false;
+  for (const char* candidate = value; *candidate != '\0'; ++candidate) {
+    const char* left = candidate;
+    const char* right = query;
+    while (*left != '\0' && *right != '\0' &&
+           lowerAscii(*left) == lowerAscii(*right)) {
+      ++left;
+      ++right;
+    }
+    if (*right == '\0') return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 studio::HomeAssistantDomain domainFromEntityId(const char* entityId) {
@@ -43,6 +64,12 @@ bool supportedEntityId(const char* entityId) {
   if (domain == studio::HomeAssistantDomain::None) return false;
   const char* dot = std::strchr(entityId, '.');
   return dot != nullptr && dot[1] != '\0' && std::strchr(dot + 1, '.') == nullptr;
+}
+
+bool matchesEntitySearch(const char* entityId, const char* friendlyName,
+                         const char* query) {
+  return containsIgnoringCase(entityId, query) ||
+         containsIgnoringCase(friendlyName, query);
 }
 
 const char* serviceFor(studio::HomeAssistantDomain domain,

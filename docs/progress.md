@@ -241,7 +241,39 @@ short, factual, and reproducible.
   Upload to `/dev/cu.usbserial-211240` completed, every written region passed
   hash verification, and the panel hard-reset. One wake/reconnect recheck
   remains. The owner's manual and generated PDF were not changed.
+### 2026-08-11: Offline Portal administration and stable panel identity
 
+- Fixed Portal sequence saves under ArduinoJson 7: action command fields now
+  use explicit string extraction instead of the null-default conversion that
+  rejected every action as `invalid_step`. Parser errors now identify the
+  Start/Stop list, one-based step number, and reason.
+- The open setup AP now serves the full Portal Overview, Devices, Sequences,
+  and Wi-Fi views, so local configuration no longer depends on studio Wi-Fi.
+  Home Assistant discovery, validation, and secret writes remain LAN-only.
+- Nearby networks are scanned asynchronously before the SoftAP starts and the
+  bounded cached results are served after the browser connects, avoiding the
+  unreliable AP-client/channel-hopping path. Hidden SSIDs remain manually
+  enterable.
+- Added the immutable eFuse-derived `BLP-XXXXXXXXXXXX` identity to About and
+  Portal overview. Setup SSIDs use the requested final-five-character form
+  `Bleep-Setup-XXXXX`; the open-network QR no longer advertises a password.
+- The Home Assistant URL defaults to `http://homeassistant.local:8123`.
+  `/api/config` returns only a `token_stored` boolean; a stored token remains
+  write-only and is preserved unless the operator explicitly changes it.
+  Entity discovery matches both entity IDs and friendly names without regard
+  to ASCII letter case, with mixed-case host regression coverage.
+- Native tests passed 78/78, including the reported six-step Portal payload,
+  identity formatting, and entity-search matching. The complete UI simulator
+  traversal passed, and the full
+  Montserrat `bleep` profile built
+  successfully with 141,084 / 327,680 bytes static RAM and 1,905,974 /
+  3,145,728 bytes flash. The worktree uploaded successfully to the configured
+  ESP32-C3 on `/dev/cu.usbserial-211240`; every image hash verified and the
+  board hard-reset. A post-reset request to the prior Portal address timed out,
+  so reopening Portal and saving the sequence from a browser remain pending.
+- Rebuilt the 26-page A4 owner's PDF. Expected-content and all-page nonblank
+  extraction checks passed; every rendered page was visually inspected, with
+  the changed Portal and troubleshooting pages checked at full resolution.
 ### 2026-08-11: Owner-focused manual editorial pass
 
 - Reframed the illustrated manual as an owner's guide for a creative operator:

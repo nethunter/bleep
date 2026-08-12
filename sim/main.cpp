@@ -1232,7 +1232,7 @@ int main() {
   home_assistant_ui::hide();
   ui::showPortal();
   if (std::strcmp(portal::qrPayload(),
-                  "WIFI:T:WPA;S:Bleep-Setup-SIM;P:12345678;;") != 0) {
+                  "WIFI:T:nopass;S:Bleep-Setup-SIM;;") != 0) {
     std::fprintf(stderr, "Portal setup QR does not contain Wi-Fi credentials\n");
     return 1;
   }

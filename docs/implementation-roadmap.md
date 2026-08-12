@@ -70,7 +70,8 @@ Status: `Software implemented; hardware gate open`.
 
 Required target evidence:
 
-- the setup AP accepts only Wi-Fi provisioning, hands off cleanly to the LAN
+- the setup AP supports device and sequence administration plus Wi-Fi provisioning,
+  hands off cleanly to the LAN
   listener, reports scan/join/failure state without blocking LVGL, and the
   displayed numeric address remains reachable only while Portal is open;
 - REST `/api/`, bounded `/api/states` discovery, WebSocket authentication,
@@ -141,10 +142,10 @@ events, free heap, and repeated connect/disconnect stability.
 
 Prove:
 
-- Wi-Fi-only bootstrap through a temporary WPA2 SoftAP;
+- offline-capable administration and Wi-Fi bootstrap through a temporary open SoftAP;
 - clean handoff to a station-bound HTTP page at the displayed DHCP address,
   with `bleep.local` as a best-effort alias;
-- the fixed initial setup password and active URL displayed on the panel;
+- the open setup network and active URL displayed on the panel;
 - LAN reachability only while the Portal screen remains active;
 - explicit Exit and inactivity-timeout teardown;
 - return to Home and later device reconnection;
@@ -246,9 +247,10 @@ Completion gate:
 - repeated mode transitions recover their memory and normal device control;
 - corrupted or old records fail safely or migrate predictably.
 
-Implemented deviation (ADR-027): the LAN Portal now administers committed
+Implemented deviation (ADR-027): the AP and LAN Portal now administer committed
 device settings and the current authored Start/Stop scene model from responsive
-phone/desktop views. Physical-device pairing, groups, backup, restore, reset,
+phone/desktop views; only Home Assistant needs the LAN handoff. Physical-device
+pairing, groups, backup, restore, reset,
 and the remaining Phase 3 completion gates are not advanced by this tranche.
 
 Implemented local tranche (ADR-031): the panel now provides radio-free Wi-Fi

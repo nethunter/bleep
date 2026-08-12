@@ -312,20 +312,21 @@ Portal is a temporary browser-based setup mode. Normal device control pauses whi
 ## First-time Portal setup
 
 1. From Home open **Portal**.
-2. Scan the QR code or manually join the temporary `Bleep-Setup-...` network with password `12345678`.
+2. Scan the QR code or manually join the open temporary `Bleep-Setup-XXXXX` network. Match the five-character suffix shown on your panel.
 3. Open the phone's sign-on page, or browse to the numeric setup address on the panel.
-4. Scan for or manually enter the trusted studio Wi-Fi and password.
-5. After Ble(e)p joins, note the web address shown on its screen. Rejoin the normal studio Wi-Fi on your phone or computer.
-6. Open the displayed address while Ble(e)p remains on the Portal screen. You can also try `http://bleep.local`, although it may not work on every network.
+4. Rename, enable, or remove devices and create or edit sequences directly. These settings do not require studio Wi-Fi.
+5. To use Home Assistant, open **Wi-Fi**, choose a network found during Portal entry or enter a hidden SSID, and supply its password.
+6. After Ble(e)p joins, note the web address shown on its screen. Rejoin the normal studio Wi-Fi on your phone or computer.
+7. Open the displayed address while Ble(e)p remains on the Portal screen. You can also try `http://bleep.local`, although it may not work on every network.
 
 ![Portal after LAN handoff. The address exists only while the Portal screen is active.](assets/ui-portal-lan.png){width=2.7}
 
-The browser Portal provides **Overview**, **Devices**, **Sequences**, and **Home Assistant**. You can rename, enable, disable, or remove saved devices and create, duplicate, reorder, and edit sequences. Pair new physical equipment on Ble(e)p itself. Choose **Finish & Exit** in the browser or Exit on the panel when finished.
+The browser Portal provides **Overview**, **Devices**, **Sequences**, **Wi-Fi**, and **Home Assistant**. You can rename, enable, disable, or remove saved devices and create, duplicate, reorder, and edit sequences even while connected only to the setup AP. Pair new physical equipment on Ble(e)p itself. Choose **Finish & Exit** in the browser or Exit on the panel when finished.
 
 ## Link Home Assistant entities
 
 1. In Portal open **Home Assistant**.
-2. Enter a local `http://` Home Assistant URL and long-lived access token.
+2. Use the pre-filled `http://homeassistant.local:8123` URL or replace it with your server's local address, then enter a long-lived access token. If a token is already stored, Ble(e)p reports that fact without sending the token to the browser; choose **Change stored token** only when replacing it.
 3. Select up to four supported Home Assistant entities.
 4. Save and exit Portal.
 5. Open the saved entity under Devices or add it to a sequence.
@@ -334,9 +335,7 @@ Supported: lights, switches, input booleans, buttons, scenes, and scripts. Ble(e
 
 Home Assistant can be Ready while an entity still shows **Unknown**. A successful command means Home Assistant accepted it; check the target if you need to confirm that something physically changed.
 
-> Portal traffic is not encrypted in this development version. Use it only on a trusted studio network. Your saved Wi-Fi details and Home Assistant token remain on Ble(e)p until you unlink them or perform Factory Reset.
-
-<!-- pagebreak -->
+> The setup AP is open and Portal traffic is not encrypted in this development version. Open Portal only in a controlled location, and use its LAN handoff only on a trusted studio network. Your saved Wi-Fi details and Home Assistant token remain on Ble(e)p until you unlink them or perform Factory Reset.
 
 # Build repeatable workflows
 
@@ -490,16 +489,16 @@ This is expected when the integration cannot read physical state. Check the came
 ## Portal does not open
 
 - Keep Ble(e)p on the Portal screen. Leaving it closes Portal.
-- During first setup, join `Bleep-Setup-...` and try the numeric setup address if the phone sign-on page does not appear.
+- During first setup, join the open `Bleep-Setup-XXXXX` network that matches the suffix on your panel and try the numeric setup address if the phone sign-on page does not appear.
 - After Ble(e)p joins the studio network, reconnect your phone or computer to that network and use the address shown on the panel.
 - If `bleep.local` does not work, use the numeric address shown on Ble(e)p.
-- Portal is not encrypted. Use it only on a trusted local network.
+- Portal is not encrypted. Open the setup AP only in a controlled location and use the LAN handoff only on a trusted local network.
 
 # Work safely
 
 - Secure cameras, sliders, lights, cables, and recorders before sending commands.
 - Observe real hardware for movement, recording, power, and light-output confirmation whenever state is optimistic or unknown.
-- Use Portal and Home Assistant only on a trusted local network; Portal traffic is not encrypted in this version.
+- Open the temporary Portal only in a controlled location; its setup AP is open. Use the Home Assistant LAN handoff only on a trusted local network because Portal traffic is not encrypted in this version.
 - Treat saved Wi-Fi details, Home Assistant tokens, pairing information, and device identities as private. Factory Reset removes them from Ble(e)p.
 - Do not rely on Groups, additional Canon wireless controls, importing a Sidus Link setup, parallel scene steps, import/export, automatic scene undo, Sony control, or Deity control; they are not available.
 - Ble(e)p can keep four equipment connections ready at once. Disconnect something you are not using if another device cannot connect.
