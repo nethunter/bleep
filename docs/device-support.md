@@ -91,42 +91,42 @@ of successful movement.
 - Transport: PB-GATT provisioning and Mesh Proxy GATT over the shared NimBLE
   central, with one proxy link shared by logical lights across the three tested
   brands.
-- Initial capabilities: power, independently remembered 2300-10000 K
-  CCT/tint/brightness and RGB/saturation/brightness looks. Sequence authoring
-  exposes one `Set look + On` action with CCT and RGB modes; generated Stop is
-  one Turn Off.
+- Initial capabilities: independently remembered 2300-10000 K
+  power, CCT/tint/brightness, and RGB/saturation/brightness controls. Sequence
+  authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
 - Onboarding: choose `Aputure Light`; the first nearby factory-reset fixture
   advertising Mesh Provisioning is provisioned into the panel-owned mesh. The
-  fixture model is not selected because onboarding and the supported Telink
-  command family are mesh/protocol concerns rather than catalog concerns.
-  amaran Pano 60c, amaran Pano 120c, and amaran Ace 25c remain the initial
-  validation set. Existing
+  If advertisement identity is insufficient, recovery asks for the exact
+  fixture: amaran Ace 25c, Pano 60c, Pano 120c, or Aputure MC Pro. Exact product
+  naming is kept independently of the shared Amaran vendor tuple. These four
+  fixtures remain the initial validation set. Existing
   Sidus/amaran mesh import remains deferred.
   If a provisioned-but-unconfigured fixture cannot be identified from its BLE
   name, onboarding stops instead of guessing. The recovery screen offers exact
-  **Ace 25c** (`0x0211:0x0000`) and **MC Pro** (`0x03F6:0x1000`) choices using
-  their physically confirmed composition tuples. Pano models remain blocked
-  until their own composition is captured.
+  all four choices; Ace/Pano use the known Amaran tuple (`0x0211:0x0000`) and
+  MC Pro uses (`0x03F6:0x1000`). Model-specific support remains blocked until
+  each fixture passes its physical gate.
 
 The first release maintains one active studio mesh. Keys live in a separate
 checksummed NVS record and are not logged or exported. The complete mesh is
 charged as one physical BLE slot. Ace 25c and MC Pro provisioning,
 composition evidence, cross-node routing, proxy fallback, and group-addressed
-physical power Set/Get are confirmed. Standard Generic OnOff
-is only a writable shadow/reachability model on both fixtures. Firmware now
-sends power, refresh, CCT/tint/brightness, and RGB through each fixture's
-deterministic per-member vendor group; common group `0xC000` is not used by
-ordinary device control. MC red and Ace green were previously optically
+power experiments are confirmed. Standard Generic OnOff
+is only a writable shadow/reachability model on both fixtures. Firmware sends
+ordinary power, CCT/tint/brightness, and RGB through each fixture's node
+unicast address, matching Studio Lighter. Common group `0xC000` is never
+written by ordinary device control. Automatic polling is disabled because
+`26 0E` is a captured group power-on command, not a read query. MC red and
+Ace green were previously optically
 observed at 5% after separate group writes, followed by the now-superseded
-common-group On/Off test. Per-member power isolation, CCT, property
+common-group On/Off test. Four-member power isolation, CCT, property
 readback, decoded configuration-status enforcement, reboot/interruption
 recovery, Pano fixtures, and safe node reset remain open before this becomes
-Current. Firmware implements authenticated vendor power readback: targeted
-member polls update only the source-address-matched session and mark a member
-stale after three missed intervals while
-leaving the shared proxy bearer connected.
+Current. Source-addressed replies update only the matching session; absent a
+verified read-only query, optimistic control state is kept distinct from the
+shared proxy bearer state.
 
 Reference research:
 

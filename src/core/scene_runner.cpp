@@ -510,7 +510,16 @@ SceneRunStatus SceneRunner::stop() {
     return SceneRunStatus::Ok;
   }
 
-  // Abort an in-flight Start action and move to Stop while holding links.
+  // Abort an in-flight Start action and move to Stop while holding links. The
+  // request/result and driver transaction must be superseded together so a
+  // delayed compound stage cannot undo the first generated Stop action.
+  if (progress_.phase == ScenePhase::RunningStart) {
+    const SceneStep* interrupted = currentStep();
+    if (interrupted != nullptr && interrupted->type == SceneStepType::Action &&
+        pendingRequestId_ != 0) {
+      devices_.cancelCommand(pendingRequestId_, interrupted->targetId);
+    }
+  }
   waitingForResult_ = false;
   pendingRequestId_ = 0;
   direction_ = Direction::Stop;
@@ -577,14 +586,12 @@ void SceneRunner::dispatchCurrentAction() {
   command.value0 = step->value0;
   command.value1 = step->value1;
   command.value2 = step->value2;
-  if (!devices_.enqueue(command)) {
+  if (!devices_.enqueue(command, &pendingRequestId_)) {
     fail(SceneRunStatus::ActionFailed, "Queue full");
     return;
   }
-  // requestId assigned in enqueue; recover from next result match by instance.
   waitingForResult_ = true;
   waitingForConfirmation_ = false;
-  pendingRequestId_ = 0;
   progress_.stepResult = SceneStepResult::Running;
   char detail[48];
   std::snprintf(detail, sizeof(detail), "Step %u",
@@ -745,10 +752,7 @@ void SceneRunner::tick(uint32_t nowMs) {
 
   if (waitingForResult_) {
     CommandResult result;
-    while (devices_.popResult(result)) {
-      if (result.instanceId != step->targetId) {
-        continue;
-      }
+    if (devices_.takeResult(pendingRequestId_, result)) {
       waitingForResult_ = false;
       if (result.status != CommandStatus::Succeeded) {
         fail(SceneRunStatus::ActionFailed, "Action failed");

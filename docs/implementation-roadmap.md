@@ -272,24 +272,26 @@ passed this phase's completion gate.
 Work:
 
 - implement Telink opcode `0x26` commands;
-- support power, brightness, CCT/tint, and RGB with validated 2300-10000 K
-  model limits;
+- support independently routed brightness, CCT/tint, and RGB with validated
+  2300-10000 K model limits, plus per-node power using the Studio Lighter
+  unicast route under ADR-041;
 - provision factory-reset lights into a panel-owned mesh;
 - persist pending configuration and reserve replay-safe sequence blocks;
 - implement best-available state readback and mark optimistic state explicitly.
-- route every ordinary power, refresh, and look command to the selected
-  member's persisted control group; reserve `0xC000` for a future explicit
+- route every ordinary look and power command to the selected member's
+  persisted unicast address; do not emit an automatic refresh write until a
+  read-only query is captured; reserve `0xC000` for a future explicit
   mesh/group action;
-- use the capability-driven shared light shell and the compound **Set look +
-  On** scene action defined by ADR-039.
+- use the capability-driven shared light shell. Aputure and power-capable
+  Zhiyun fixtures expose **Set look + On** under ADR-039/ADR-041.
 
 Deferred from this tranche: existing Sidus mesh import, user-authored native
 groups, HSIC, interpolation, and confirmed color-property readback. The
-panel-owned vendor-model group and physically correlated power status are now
-research-confirmed for Ace 25c/MC Pro. Firmware now performs authenticated
-group status polling with per-source freshness; enabling the correlated group
-power Set path is integrated. Deterministic per-member vendor groups are also
-integrated from the optically verified MC-red/Ace-green test. Decoded
+panel-owned vendor-model group experiments and group-wide power are
+research-confirmed for Ace 25c/MC Pro. Firmware ordinary controls instead use
+the captured per-node unicast path, and the unsafe command-as-poll behavior is
+removed. Deterministic per-member vendor groups remain configuration metadata
+from the optically verified MC-red/Ace-green test. Decoded
 configuration-status gating and the remaining real-panel checks stay open.
 
 Completion gate:

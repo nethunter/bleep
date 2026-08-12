@@ -696,11 +696,6 @@ int main() {
     std::fprintf(stderr, "Aputure CCT tab did not apply its recalled look\n");
     return 1;
   }
-  studio::DeviceCommand lightOn;
-  lightOn.instanceId = pano60Id;
-  lightOn.type = studio::CommandType::TurnOn;
-  studio::devices().enqueue(lightOn);
-  pump(20);
   aputure_light_ui::simSetCctLook(4300, 120, 72);
   pump(400);
   lightState = aputure_light::runtime()->state(pano60Id);
@@ -742,6 +737,23 @@ int main() {
       secondLightState->cctBrightness != 17 ||
       secondLightState->mode != aputure_light::AputureLightState::Mode::Cct) {
     std::fprintf(stderr, "Aputure command leaked into the non-target session\n");
+    return 1;
+  }
+  studio::DeviceCommand secondPower;
+  secondPower.instanceId = pano120Id;
+  secondPower.type = studio::CommandType::TurnOn;
+  studio::devices().enqueue(secondPower);
+  pump(20);
+  studio::DeviceCommand firstPower;
+  firstPower.instanceId = pano60Id;
+  firstPower.type = studio::CommandType::TurnOff;
+  studio::devices().enqueue(firstPower);
+  pump(20);
+  lightState = aputure_light::runtime()->state(pano60Id);
+  secondLightState = aputure_light::runtime()->state(pano120Id);
+  if (lightState == nullptr || secondLightState == nullptr || lightState->on ||
+      !secondLightState->on) {
+    std::fprintf(stderr, "Aputure power command leaked between sessions\n");
     return 1;
   }
   if (!capture("20f_aputure_light_rgb")) return 1;
@@ -1155,7 +1167,14 @@ int main() {
     pump(20);
   }
   if (studio::scenes().progress().phase != studio::ScenePhase::IdleArmed) {
-    std::fprintf(stderr, "Sequence did not reach armed/recording hold\n");
+    const auto& progress = studio::scenes().progress();
+    std::fprintf(stderr,
+                 "Sequence did not reach armed/recording hold: phase=%u "
+                 "status=%u step=%u/%u detail=%s\n",
+                 static_cast<unsigned>(progress.phase),
+                 static_cast<unsigned>(progress.lastStatus),
+                 static_cast<unsigned>(progress.stepIndex),
+                 static_cast<unsigned>(progress.stepCount), progress.detail);
     return 1;
   }
   if (!capture("26_scenes_armed")) {

@@ -26,7 +26,10 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool consumePairingUpdate(studio::InstanceId instanceId,
                             studio::DeviceRecord& record);
   bool identifyVendorModel(studio::InstanceId instanceId, uint16_t companyId,
-                           uint16_t modelId);
+                           uint16_t modelId,
+                           const char* productName = nullptr);
+  bool canIdentifyVendorModel(studio::InstanceId instanceId) const;
+  void cancelPendingCommand(studio::InstanceId instanceId);
   void forgetLocal(studio::InstanceId instanceId);
   // Saved mesh members from other protocol families attach to this one
   // physical proxy bearer. PB-GATT onboarding remains an exclusive temporary
@@ -59,6 +62,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
     uint32_t receiveSequence = 0;
     bool compoundPending = false;
     uint32_t compoundPowerAt = 0;
+    char productName[studio::kBleNameCapacity] = "";
   };
   struct Notification {
     uint8_t bytes[80] = {};
@@ -81,12 +85,11 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool sendAccessTo(uint16_t destination, const uint8_t* access,
                     size_t length);
   uint16_t controlGroupFor(studio::InstanceId instanceId) const;
-  bool refreshPower(studio::InstanceId instanceId);
   void fail(Session& session, const char* error);
   void updateSharedReady();
   studio::InstanceId preferredGatewayInstance() const;
   bool hasActiveUsers() const;
-  bool isPreferredGatewayAddress(const char* address) const;
+  bool isKnownGatewayAddress(const char* address) const;
 
   Session sessions_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   studio::InstanceId gatewayUsers_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
@@ -101,8 +104,6 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   uint8_t configBatchIndex_ = 0;
   uint32_t configStatusDeadlineMs_ = 0;
   uint32_t nextConfigAt_ = 0;
-  uint32_t lastPowerPollMs_ = 0;
-  uint8_t powerPollCursor_ = 0;
   uint32_t lastLoopMs_ = 0xffffffffu;
   uint32_t gatewayGeneration_ = 0;
   NimBLERemoteCharacteristic* dataIn_ = nullptr;

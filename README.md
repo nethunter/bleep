@@ -110,14 +110,13 @@ principles:
   physical pairing and runtime control remain on the panel.
 - Experimental native `Aputure Light` support with panel-owned PB-GATT
   provisioning, one cross-brand shared Mesh Proxy connection, per-member
-  vendor control groups, optimistic color-property controls, and the common
-  capability-driven light screen. The parameterized `Set look + On` sequence
-  action applies a look and powers only that fixture; generated Stop adds one
-  Turn Off. The firmware periodically polls each member's physical-power path,
-  authenticates each Ace 25c/MC Pro response, and keeps member reachability
-  separate from the proxy link. The tested Ace 25c/MC Pro mesh now uses
-  per-member paths for ordinary power and color commands; `0xC000` is reserved
-  for future explicit group actions. Initial AppKey/model/group
+  unicast controls, optimistic state, and the common capability-driven light
+  screen. Aputure exposes per-member power and `Set look + On`; ordinary power,
+  CCT/tint/brightness, and RGB use the selected fixture's unicast address.
+  Automatic group polling is disabled because the previously labeled status
+  payload is actually a group power-on command. `0xC000` is never written by
+  ordinary device controls and is reserved for future explicit group actions.
+  Initial AppKey/model/group
   configuration advances only after authenticated success statuses.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
@@ -170,7 +169,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
-| Aputure Light | Experimental | Adds factory-reset Aputure and amaran fixtures to the panel-owned mesh. amaran Ace 25c/Aputure MC Pro per-member RGB routing and source-correlated power status have physical evidence; the new per-member power path and two-light isolation gate remain unverified. Reset/recovery and amaran Pano validation remain open. |
+| Aputure Light | Experimental | Adds factory-reset Aputure and amaran fixtures to the panel-owned mesh. Per-node power/look routing follows the working Studio Lighter unicast path. Ace 25c, Pano 60c, Pano 120c, and MC Pro identification is implemented; the four-fixture isolation, recovery, and soak gates remain open. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Adds each fixture as a logical member of the same one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 

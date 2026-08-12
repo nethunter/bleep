@@ -171,6 +171,18 @@ void X100Client::detachShared() {
   linkHandle_ = studio::ble::kInvalidLinkHandle;
 }
 
+void X100Client::cancelPendingCommand() {
+  awaitingResponse_ = false;
+  operation_ = Operation::None;
+  verifyAtMs_ = 0;
+  responseDeadlineMs_ = 0;
+  verificationAttempts_ = 0;
+  state_.commandPending = false;
+  state_.lastCommandFailed = false;
+  state_.verificationField = 0;
+  state_.error[0] = '\0';
+}
+
 void X100Client::deactivate() {
   connectRequested_ = false;
   if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle)

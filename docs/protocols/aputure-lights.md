@@ -246,8 +246,10 @@ Off command restored both fixtures to Off. These results were operator-watched;
 the final Off state was also confirmed independently by authenticated vendor
 status from both node addresses.
 
-The physical-power Get is group access payload
-`26 0E 00 00 00 00 00 00 00 00 0E`. Each fixture returns opcode `0x26` with
+The payload once misclassified as a physical-power Get is
+`26 0E 00 00 00 00 00 00 00 00 0E`. The working reference identifies it as a
+group power-on command, so the replies below are command/status observations,
+not evidence of a safe read-only query. Each fixture returned opcode `0x26` with
 a checksum byte followed by nine status bytes. In the four correlated replies,
 the first status byte was physical emitter power (`00` Off, `01` On), the
 eighth of the nine status bytes was stored intensity `FA` (250, corresponding
@@ -265,7 +267,7 @@ On readback was:
 
 For each reply, the leading byte equals the additive checksum of the following
 nine bytes. The `FA` value remaining unchanged while Off proves stored
-intensity and emitter power are separate fields. The separate `0x0A` poll also
+intensity and emitter power are separate fields. The separate `0x0A` command also
 returned valid checksummed, source-specific but dynamically changing payloads;
 its fields remain unresolved.
 
@@ -314,19 +316,11 @@ group and must not infer individual power support from the color subscriptions.
 CCT and arbitrary RGB/brightness combinations remain `Optimistic` outside the
 captured vectors until broader optical checks land.
 
-The production runtime implements both the confirmed common-group power path
-and its authenticated readback. It sends
-the vendor Get to the panel-owned group every five seconds, authenticates and
-decrypts complete unsegmented Proxy Network PDUs with the stored network and
-application keys, maps each response source to its provisioned node, validates
-the vendor checksum/profile, and records physical power plus `lastSeen`.
-Per-source replayed sequence numbers are ignored. Color/CCT writes target each
-node's deterministic vendor-model group and remain optimistic because no
-property-status decoder exists. A node becomes stale after a
-fifteen-second gap (three poll intervals); the shared Proxy connection remains
-a separate bearer state. One missed group response therefore does not
-immediately mark a fixture offline. Segmented Proxy SAR receive and IV Update
-handling remain outside this bounded decoder.
+This group experiment is not the production per-fixture route. A later source
+audit found that `26 0E ... 0E` is the captured group power-on command, not a
+read-only vendor Get. It must never be scheduled as polling. The runtime keeps
+the shared Proxy bearer separate from fixture state and performs no automatic
+vendor refresh write until a verified read-only query is captured.
 
 ## Captured vendor access payloads
 
@@ -340,27 +334,27 @@ additive checksum and nine command bytes, for:
 - captured node-reset payload.
 
 These vectors are not generically interchangeable across addressing modes or
-models. Unicast power-off and brightness-50 writes to the Ace produced no
-vendor response;
-authenticated Generic OnOff and Light Lightness readback remained On and
-`0xFFFF`. The same Amaran power-off vector produced no response or state change
-on the MC Pro. However, the power vector sent to the subscribed vendor-model
-group physically controlled both fixtures, and the `0x0E` group poll returned
-correlated physical state. Ble(e)p may use only this confirmed group power
-subset for the tested pair; CCT, RGB, brightness, and unicast equivalence remain
-`Optimistic`. Standard model transactions remain useful for reachability but
-cannot be treated as emitter state.
+models. An earlier ad-hoc unicast/private-group probe reported no response.
+However, the working Studio Lighter controller's ordinary state path selects
+`light.mesh_address` and sends `26 8D ... 01 8C` / `26 8C ... 00 8C` to that
+node. Its captures repeatedly encode source `0x0001` to destination `0x0002`.
+Ble(e)p therefore uses node unicast for ordinary power, CCT, RGB, and brightness
+under ADR-041. The earlier private-group result does not disprove that path.
+State remains optimistic until replies are source-correlated or physical output
+is observed. Standard model transactions remain useful for reachability but
+cannot automatically be treated as emitter state.
 
-Native golden tests lock AES, CMAC, a known encrypted network packet, vendor power,
+Native golden tests lock AES, CMAC, a known encrypted unicast power packet,
+vendor power,
 CCT, RGB, validation bounds, segmented configuration shape, checksummed store,
-and durable sequence reservation. The group-addressed vendor power subset and
-the exact per-member 5% red/green vectors are physically confirmed for Ace 25c
-and MC Pro; other vendor writes remain `Optimistic`. Decoded standard status responses can confirm the corresponding
+and durable sequence reservation. The group-addressed power experiment and the
+exact private-group 5% red/green vectors are physically confirmed for Ace 25c
+and MC Pro; the production unicast four-fixture isolation gate is open. Decoded standard status responses can confirm the corresponding
 model field and node reachability, not automatically physical output.
 
 ## Hardware gate
 
-For each Pano 60c, Pano 120c, and Ace 25c, verify provisioning, composition,
+For Pano 60c, Pano 120c, Ace 25c, and MC Pro, verify provisioning, composition,
 configuration statuses, several CCT/tint/RGB/brightness combinations, reboot
 recovery, proxy fallback, interrupted configuration, sequence-number
 continuity, mixed-device sequences, and reset followed by the return of

@@ -241,7 +241,11 @@ void DeviceManager::loop() {
   result.requestId = command.requestId;
   result.instanceId = command.instanceId;
   result.status = dispatch(command);
-  results_.push(result);
+  if (!results_.push(result)) {
+    CommandResult discarded;
+    results_.pop(discarded);
+    results_.push(result);
+  }
 }
 
 RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
@@ -698,11 +702,39 @@ void DeviceManager::deactivateAll() {
   }
 }
 
-bool DeviceManager::enqueue(DeviceCommand command) {
+bool DeviceManager::enqueue(DeviceCommand command, uint32_t* assignedRequestId) {
   if (command.requestId == 0) {
     command.requestId = nextRequestId_++;
   }
-  return commands_.push(command);
+  if (!commands_.push(command)) return false;
+  if (assignedRequestId != nullptr) *assignedRequestId = command.requestId;
+  return true;
+}
+
+bool DeviceManager::cancelCommand(uint32_t requestId, InstanceId instanceId) {
+  if (requestId == 0 || instanceId == kInvalidInstanceId) return false;
+  const bool queued = commands_.removeFirst(
+      [requestId](const DeviceCommand& command) {
+        return command.requestId == requestId;
+      });
+  results_.removeFirst([requestId](const CommandResult& result) {
+    return result.requestId == requestId;
+  });
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  if (driver != nullptr && isActive(instanceId)) {
+    driver->cancelPendingCommand(instanceId);
+  }
+  return queued || driver != nullptr;
+}
+
+bool DeviceManager::takeResult(uint32_t requestId, CommandResult& result) {
+  if (requestId == 0) return false;
+  return results_.takeFirst(
+      [requestId](const CommandResult& candidate) {
+        return candidate.requestId == requestId;
+      },
+      result);
 }
 
 DeviceRuntimeState DeviceManager::runtimeState(InstanceId instanceId) const {

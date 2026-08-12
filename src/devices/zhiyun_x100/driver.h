@@ -15,6 +15,7 @@ class ZhiyunLightDriver : public DeviceDriver {
   void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;
+  void cancelPendingCommand(InstanceId instanceId) override;
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
   bool lightControlState(InstanceId instanceId,

@@ -43,6 +43,7 @@ lv_obj_t* waitSpinbox = nullptr;
 studio::SceneStep initialSceneStep{};
 bool editingSceneStep = false;
 bool lightEditorRgb = false;
+bool lightEditorTurnsOn = true;
 int32_t draftCctKelvin = 5600;
 int32_t draftCctBrightness = 50;
 int32_t draftCctTint = 0;
@@ -251,6 +252,8 @@ void onChooseAction(lv_event_t* event) {
                        initialSceneStep.command == command;
     lightEditorRgb = command == studio::CommandType::SetLightRgb ||
                      command == studio::CommandType::SetLightRgbAndOn;
+    lightEditorTurnsOn = command == studio::CommandType::SetLightCctAndOn ||
+                         command == studio::CommandType::SetLightRgbAndOn;
     if (reuse && !lightEditorRgb) {
       draftCctKelvin = initialSceneStep.value0;
       draftCctBrightness = initialSceneStep.value1;
@@ -286,7 +289,10 @@ void onSaveLightParameters(lv_event_t*) {
     return;
   }
   if (!lightEditorRgb) {
-    callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightCctAndOn,
+    callbacks.onSceneAction(selectedDevice,
+                            lightEditorTurnsOn
+                                ? studio::CommandType::SetLightCctAndOn
+                                : studio::CommandType::SetLightCct,
                             lv_slider_get_value(parameter0),
                             lv_slider_get_value(parameter1),
                             parameter2 != nullptr
@@ -296,7 +302,10 @@ void onSaveLightParameters(lv_event_t*) {
     const lv_color_hsv_t hsv = lv_colorwheel_get_hsv(colorWheel);
     const uint32_t rgb = lv_color_to32(lv_color_hsv_to_rgb(
         hsv.h, lv_slider_get_value(parameter0), 100)) & 0xffffff;
-    callbacks.onSceneAction(selectedDevice, studio::CommandType::SetLightRgbAndOn,
+    callbacks.onSceneAction(selectedDevice,
+                            lightEditorTurnsOn
+                                ? studio::CommandType::SetLightRgbAndOn
+                                : studio::CommandType::SetLightRgb,
                             static_cast<int32_t>(rgb),
                             lv_slider_get_value(parameter1), 0);
   }
@@ -451,7 +460,7 @@ void refreshLightParameters() {
       (profile.capabilities &
        studio::capabilityBit(studio::Capability::SetLightTint)) != 0;
   if (!supportsRgb) lightEditorRgb = false;
-  lv_label_set_text(titleLabel, "Set look + On");
+  lv_label_set_text(titleLabel, lightEditorTurnsOn ? "Set look + On" : "Set look");
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(body, 3, 0);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
@@ -521,7 +530,8 @@ void refreshLightParameters() {
       labeledParameter(body, "Tint", -1000, 1000, draftCctTint, parameter2);
   }
   lv_obj_t* save = makeButton(
-      body, editingSceneStep ? "Save look" : "Add look + On",
+      body, editingSceneStep ? "Save look"
+                             : (lightEditorTurnsOn ? "Add look + On" : "Add look"),
       onSaveLightParameters, kColAccent);
   lv_obj_set_size(save, 110, 28);
 }
@@ -767,6 +777,9 @@ void refreshActions() {
       studio::capabilityBit(studio::Capability::SetLightCct) |
       studio::capabilityBit(studio::Capability::SetLightRgb);
   const bool hasColor = (profile.capabilities & colorCaps) != 0;
+  const bool canTurnOn =
+      (profile.capabilities &
+       studio::capabilityBit(studio::Capability::TurnOn)) != 0;
   for (const ActionChoice& choice : choices) {
     if ((profile.capabilities & studio::capabilityBit(choice.capability)) == 0) {
       continue;
@@ -780,8 +793,11 @@ void refreshActions() {
   }
   if (hasColor) {
     void* userData = reinterpret_cast<void*>(
-        static_cast<uintptr_t>(studio::CommandType::SetLightCctAndOn));
-    lv_obj_t* button = makeButton(body, "Set look + On", onChooseAction, kColAccent);
+        static_cast<uintptr_t>(canTurnOn
+                                   ? studio::CommandType::SetLightCctAndOn
+                                   : studio::CommandType::SetLightCct));
+    lv_obj_t* button = makeButton(body, canTurnOn ? "Set look + On" : "Set look",
+                                  onChooseAction, kColAccent);
     lv_obj_set_size(button, lv_pct(100), 36);
     lv_obj_remove_event_cb(button, onChooseAction);
     lv_obj_add_event_cb(button, onChooseAction, LV_EVENT_CLICKED, userData);
@@ -892,6 +908,9 @@ void showSceneStep(const studio::SceneStep& step,
       level = Level::LightColor;
       lightEditorRgb = step.command == studio::CommandType::SetLightRgb ||
                        step.command == studio::CommandType::SetLightRgbAndOn;
+      lightEditorTurnsOn =
+          step.command == studio::CommandType::SetLightCctAndOn ||
+          step.command == studio::CommandType::SetLightRgbAndOn;
       draftCctKelvin = 5600;
       draftCctBrightness = 50;
       draftCctTint = 0;
@@ -999,6 +1018,10 @@ void simShowLightColor(Mode showMode, studio::InstanceId instanceId, bool rgb) {
   simShowActions(showMode, instanceId);
   level = Level::LightColor;
   lightEditorRgb = rgb;
+  const studio::InstanceProfile profile = studio::devices().profile(instanceId);
+  lightEditorTurnsOn =
+      (profile.capabilities &
+       studio::capabilityBit(studio::Capability::TurnOn)) != 0;
   draftCctKelvin = 5600;
   draftCctBrightness = 50;
   draftCctTint = 0;

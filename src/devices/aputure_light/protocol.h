@@ -39,8 +39,22 @@ struct DecodedAccessMessage {
   size_t accessLength = 0;
 };
 
+enum class ConfigurationStatusType : uint8_t {
+  AppKey,
+  ModelApp,
+  ModelSubscription,
+};
+
+struct ConfigurationStatusExpectation {
+  ConfigurationStatusType type = ConfigurationStatusType::AppKey;
+  uint16_t elementAddress = 0;
+  uint16_t groupAddress = 0;
+  uint16_t companyId = 0;
+  uint16_t modelId = 0;
+  bool vendorModel = false;
+};
+
 bool buildPowerAccess(bool on, AccessPayload& output);
-bool buildPowerStatusGetAccess(AccessPayload& output);
 bool buildCctAccess(uint16_t kelvin, int16_t tintPermille,
                     uint8_t brightness, AccessPayload& output);
 bool buildRgbAccess(uint32_t rgb, uint8_t brightness,
@@ -48,6 +62,9 @@ bool buildRgbAccess(uint32_t rgb, uint8_t brightness,
 bool buildNodeResetAccess(AccessPayload& output);
 bool parseVendorPowerStatus(const uint8_t* access, size_t length,
                             VendorPowerStatus& output);
+bool matchConfigurationStatus(const uint8_t* access, size_t length,
+                              const ConfigurationStatusExpectation& expected,
+                              uint8_t& status);
 bool decodeProxyAccessMessage(const uint8_t networkKey[16],
                               const uint8_t applicationKey[16],
                               const uint8_t* proxyPdu, size_t proxyLength,
@@ -83,6 +100,10 @@ bool wrapProxyPdu(const NetworkPdu& network, uint8_t* output,
 // model whose vendor tuple has been physically confirmed.
 bool inferKnownVendorModel(const char* displayName, const char* bleName,
                            uint16_t& companyId, uint16_t& modelId);
+
+// Returns a canonical exact fixture name when the supplied label identifies a
+// supported product. "Pavo" is accepted as an alias used by the desktop lab.
+const char* knownProductName(const char* label);
 
 // Returns the user-facing fixture name for a physically confirmed vendor
 // model tuple. Unknown tuples remain unnamed rather than being guessed.

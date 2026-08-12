@@ -29,6 +29,12 @@ CommandStatus AputureLightDriver::dispatch(const DeviceCommand& command) {
   return runtime != nullptr ? runtime->dispatch(command)
                             : CommandStatus::Unavailable;
 }
+void AputureLightDriver::cancelPendingCommand(InstanceId instanceId) {
+  if (aputure_light::AputureLightRuntime* runtime =
+          aputure_light::runtimeIfActive()) {
+    runtime->cancelPendingCommand(instanceId);
+  }
+}
 DeviceRuntimeState AputureLightDriver::runtimeState(InstanceId instanceId) const {
   aputure_light::AputureLightRuntime* runtime = aputure_light::runtimeIfActive();
   return runtime != nullptr ? runtime->runtimeState(instanceId)
@@ -46,7 +52,8 @@ bool AputureLightDriver::lightControlState(InstanceId instanceId,
   if (state == nullptr) return false;
   const DeviceRuntimeState runtimeState = runtime->runtimeState(instanceId);
   out.available = state->phase == aputure_light::AputureLightState::Phase::Ready;
-  out.supportsPower = out.supportsCct = out.supportsRgb = out.supportsTint = true;
+  out.supportsPower = true;
+  out.supportsCct = out.supportsRgb = out.supportsTint = true;
   out.on = state->on;
   out.stateKnown = state->powerConfirmed && state->nodeReachable;
   out.commandPending = state->commandPending;

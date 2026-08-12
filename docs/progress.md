@@ -47,9 +47,10 @@ short, factual, and reproducible.
   scenes, and UI are implemented. Panel-owned Ace 25c/MC Pro provisioning,
   composition, configuration status, standard OnOff model transactions, Ace
   Light Lightness model transactions, cross-proxy routing, and group messaging
-  are host-proven. Group-addressed vendor power Set/Get is physically correlated
-  on the Ace 25c/MC Pro pair;
-  firmware common-power/per-member-color integration is complete; decoded
+  are host-proven. ADR-041 restores the working Studio Lighter per-node unicast
+  route for ordinary power and looks and removes the unsafe `26 0E`
+  command-as-poll behavior. Four-fixture isolation is awaiting physical
+  validation. Per-member color integration is complete; decoded
   configuration-status enforcement is implemented and live-confirmed on MC
   Pro; composition-driven configuration and safe reset gates remain open.
 - One discoverable, multi-instance `Zhiyun Light` entry now detects MOLUS X100
@@ -59,6 +60,65 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-11.
+
+### 2026-08-10: Mesh isolation safety and recovery corrections
+
+- Follow-up correction (ADR-041): comparison with the working Studio Lighter
+  source showed ordinary `26 8D`/`26 8C` power is addressed to each light's
+  persisted unicast node. The earlier failed private-group experiment did not
+  disprove this route. Aputure Turn On/Off and compound **Set look + On** are
+  restored, and ordinary power/CCT/RGB now share the target unicast address.
+  `26 0E` is a captured group power-on command, not a read-only status query;
+  the five-second automatic write and setup/config refresh writes were removed.
+  Refresh is now a safe no-write operation pending a verified query.
+- Recovery identification now offers and persists exact Ace 25c, Pano 60c,
+  Pano 120c, and MC Pro names. Pano aliases share the known Amaran tuple without
+  collapsing their display name to Ace. Native verification passes 78/78,
+  including the exact encrypted source-1 to destination-2 power packet vector
+  derived from the desktop reference. The complete `ui_sim` capture traversal
+  passes with 42,848 bytes free after maximum-device initialization, 23,584
+  bytes after sequence Stop/settings, and 26,472 after remove refresh. The full
+  Montserrat `bleep` profile builds with 140,468 / 327,680 bytes static RAM and
+  1,918,196 / 3,145,728 bytes flash. Flash and four-fixture hardware results
+  are recorded below when completed. The approved upload attempt found
+  `/dev/cu.usbserial-211240` initially, but the port disappeared before esptool
+  could open it and did not re-enumerate during the following 30 seconds; the
+  two remaining USB modem ports belong to NocFree peripherals and were not
+  guessed as targets.
+
+- Historical firmware, the desktop reference, and the retained hardware record
+  confirm that Aputure vendor power is physically effective only at common group
+  `0xC000`; unicast and private-group writes were inert on Ace 25c and MC Pro.
+  Ordinary Aputure Turn On/Off and compound look-and-On capabilities are now
+  hidden rather than presenting mesh-wide power as independent control. The
+  shared shell hides its power button and sequence authoring exposes per-member
+  **Set look**; Zhiyun retains confirmed **Set look + On** and generated Off.
+- Scene commands now retain their assigned request ID. Stopping an in-flight
+  Start removes that exact queued/result request and cancels the driver's
+  asynchronous transaction before generated Stop begins. Zhiyun clears its
+  selector-correlated pending operation and compound stage so a late look reply
+  cannot schedule power-on after Stop. Result lookup now preserves unrelated
+  replies, and a full fire-and-forget result queue evicts its oldest entry so a
+  newly dispatched scene result cannot be silently lost.
+- Shared-mesh scan fallback now accepts the BLE address of any persisted member,
+  after the preferred direct gateway attempts fail. A powered-off Zhiyun member
+  therefore cannot prevent fallback through a live Ace/MC proxy. Exact-address
+  matching still excludes unrelated Mesh Proxy advertisers.
+- A failed unconfigured Aputure node keeps exact Ace 25c/MC Pro identification
+  available after configuration rejection. Correcting the tuple also corrects
+  an automatically managed model name while preserving custom user names.
+  Temporary global `CORE_DEBUG_LEVEL=4` was removed from normal firmware builds.
+- Native verification passed 78/78, including in-flight compound Stop
+  cancellation, exact result lookup under a full queue, Aputure capability
+  boundaries, repeatable model assignment, and known-member gateway address
+  matching. The `ui_sim` profile built and its complete capture traversal
+  passed; LVGL reported 42,848 bytes free after maximum-device initialization
+  and 23,544 bytes free after sequence Stop/settings. The full Montserrat
+  `bleep` profile built with 140,460 / 327,680 bytes static RAM and 1,917,454 /
+  3,145,728 bytes flash. After the panel was reconnected, the approved upload to
+  the explicitly selected `/dev/cu.usbserial-211240` port succeeded; every
+  written region passed hash verification and the board hard-reset through RTS.
+  Hardware gateway/model recovery checks remain pending.
 
 ### 2026-08-11: Main-only owner's guide refresh
 
@@ -500,6 +560,67 @@ short, factual, and reproducible.
   1,954,734 / 3,145,728 bytes flash, then uploaded successfully to
   `/dev/cu.usbserial-211240`; every written region passed hash verification and
   the panel hard-reset. Live Ace bind/configuration remains to be confirmed.
+- The operator then reported a panel crash during the Ace recovery attempt.
+  Opening the monitor rebooted the panel before the original panic could be
+  captured; the post-reboot trace showed only an Aputure proxy scan and no
+  `identify_requested` event or new panic. Because pending device-add state is
+  volatile while the provisioned mesh node is durable, that reboot left the
+  current reproduction unable to return to the model chooser without a
+  deliberate recovery/reset step. Do not mark the Ace recovery safe until the
+  exact tap-to-panic interval is captured and decoded.
+- A later live control capture did not reproduce the crash: persisted instance
+  3 connected to the shared proxy and reached protocol-ready, while the MC Pro
+  continued to respond physically and the Ace did not. Framework logs showed
+  GATT writes but not their mesh destination or access payload. Debug output
+  now inventories each persisted Aputure node and logs every application
+  access transmit (destination/sequence/payload/result) plus every decrypted
+  access reply (source/destination/sequence/payload) for exact correlation.
+- Correlated hardware evidence then showed MC Pro instance 2 at unicast
+  `0x0004` / private group `0xC003` and Ace instance 3 at unicast `0x0006` /
+  private group `0xC005`. Ace control and polling writes were sent only to
+  `0xC005` and completed at GATT, but produced no decrypted access reply or
+  physical response; the MC Pro remained functional. This rules out accidental
+  fan-out for that reproduction and isolates the failure to the Ace's private
+  subscription or command handling.
+- Configuration ACK handling previously matched only source, destination, and
+  opcode. Repeated Mesh Model Subscription Status messages can share opcode
+  `0x801F`, so a retransmitted common-group ACK could incorrectly satisfy the
+  following private-group step. Status correlation now also requires the exact
+  element, AppKey/group, SIG/vendor model, company, and model fields. The mesh
+  configuration revision is 3 so persisted nodes re-run the corrected bind and
+  subscription transaction without an NVS reset or re-provisioning.
+- Native passed 76/76, including duplicated-group and wrong-element rejection.
+  The full Montserrat `bleep` profile built with 140,468 / 327,680 bytes static
+  RAM (42.9%) and 1,955,840 / 3,145,728 bytes flash (62.2%), then uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and hard reset. Exact Ace
+  subscription ACKs and physical power/color behavior remain the active
+  hardware gate; do not claim Ace 25c support until they pass.
+- The revision-3 Ace refresh then completed on hardware with exact success
+  correlation for segmented AppKey Add, vendor bind, common vendor
+  subscription, private `0xC005` vendor subscription, Generic OnOff bind, and
+  Generic OnOff subscription. Subsequent vendor power Get/On/Off writes to
+  `0xC005` still produced no authenticated access reply or physical response.
+  This reproduces the existing protocol record that dedicated-group look
+  writes work but this fixture's captured `0x26` power path responds only on
+  the common group. Therefore correct subscription routing does not satisfy
+  ADR-039's independent physical-power requirement; the protocol/behavior gate
+  remains blocked rather than inferred from configuration ACKs.
+- Source-history comparison identified the regression in `48b358c`: the
+  unified-light tranche changed vendor power Set/Get and the power stage of
+  compound look+On from the physically verified common group to each fixture's
+  private look group. The desktop mesh probe and immediately preceding
+  firmware both use private groups for CCT/RGB/look and `0xC000` for physical
+  power/status. That proven split is restored while retaining the unified UI,
+  shared proxy, exact model naming, and strict configuration-status matching.
+- The restored firmware produced authenticated common-group power replies from
+  both current nodes (`0x0004` and `0x0006`) while look writes remained isolated
+  to `0xC003` or `0xC005`. Native passed 76/76; full `bleep` used 140,468 bytes
+  static RAM and 1,955,854 bytes flash and uploaded with hash verification.
+  The operator confirmed both the Ace and MC Pro physically turned Off and On.
+  This restores the known-good baseline and proves the Ace is healthy, but the
+  simultaneous output change also confirms it does not itself satisfy
+  independent physical power; that remains a separate hardware-backed design
+  requirement.
 
 ### 2026-08-09: Aputure Light control-state synchronization
 

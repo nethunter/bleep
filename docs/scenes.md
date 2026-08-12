@@ -41,10 +41,11 @@ engine-level recording delay.
 Add Sequence uses a bounded three-stage authoring flow on both panel and Portal:
 add and order Start steps, advance to the generated Stop preview, optionally
 customize that materialized list, then name and Finish the sequence. The panel
-reuses the standard Rename keypad for the final Name. The compound light action
-applies one stored CCT or RGB look and then powers on the same fixture without
-releasing pending state between stages. Its generated inverse is one Turn Off,
-so a Start containing light looks produces a reverse-order light shutdown.
+reuses the standard Rename keypad for the final Name. For power-capable lights,
+the compound light action applies one stored CCT or RGB look and then powers on
+the same fixture without releasing pending state between stages. Its generated
+inverse is one Turn Off. Aputure and Zhiyun lights expose this compound action;
+Home Assistant lights retain their capability-safe power action.
 Existing sequences retain direct Start and Stop editors. Older development
 two-step light sequences are unsupported on the selected clean-storage
 baseline.
@@ -53,7 +54,8 @@ Each existing Start or Custom Stop row opens a prefilled step editor. Generated
 Stop is read-only until **Customize Stop** copies it into Custom mode. **Use
 generated Stop** confirms before discarding the override and relinking Stop to
 Start. Wait rows expose a
-bounded millisecond duration control, parameterized **Set look + On** rows
+bounded millisecond duration control, parameterized **Set look** or
+**Set look + On** rows
 preserve and edit their saved CCT/RGB values, and ordinary action rows reopen the target's
 capability-safe action picker. Saving replaces that row in place rather than
 appending another step. Back from this existing-step editor returns directly to

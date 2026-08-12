@@ -27,6 +27,9 @@ class DeviceDriver {
   virtual void deactivate(InstanceId instanceId) = 0;
   virtual void loop() = 0;
   virtual CommandStatus dispatch(const DeviceCommand& command) = 0;
+  // Supersedes an asynchronous command before a safety/recovery action such
+  // as generated Stop is dispatched. Late replies must be ignored.
+  virtual void cancelPendingCommand(InstanceId) {}
   virtual DeviceRuntimeState runtimeState(InstanceId instanceId) const = 0;
   virtual const void* specializedState(InstanceId instanceId) const = 0;
   virtual bool lightControlState(InstanceId, LightControlState&) const {

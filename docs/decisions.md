@@ -943,9 +943,10 @@ the replacement.
 
 - Status: Experimental; implementation and host gates passed, full fixture
   isolation/coexistence/soak matrix open.
-- Routing: Every ordinary Aputure Light On, Off, refresh, CCT, tint,
-  brightness, and RGB operation targets the fixture's persisted vendor-model
-  control group. `0xC000` remains provisioned for transport compatibility but
+- Routing: Every ordinary Aputure Light On, Off, CCT, tint, brightness, and RGB
+  operation targets the fixture's persisted node unicast address. Refresh does
+  not transmit until a read-only query is captured. `0xC000` remains
+  provisioned for transport compatibility but
   is reserved for a future explicit mesh/group action. Source-addressed status
   updates only the matching logical session. Zhiyun retains its per-member
   selector and selector/sequence-correlated confirmation while sharing the
@@ -966,6 +967,59 @@ the replacement.
 - Gate: physical output, response attribution, gateway fallback, mixed-device
   operation, reboot cycles, and the two-hour soak must pass per exact fixture
   model before its support claim is promoted.
+
+## ADR-040: Ordinary Aputure controls must never expose mesh-wide power
+
+- Status: Accepted safety correction; independent emitter-power protocol
+  remains Blocked.
+- Evidence: On the tested Ace 25c and MC Pro, vendor opcode `0x26` changes
+  physical emitter power only at common group `0xC000`, where both fixtures
+  change together. The same captured command was physically inert at node
+  unicast and at each deterministic private group. Generic OnOff is only a
+  writable shadow model and does not control either emitter.
+- Decision: Aputure device screens and ordinary sequence actions expose only
+  independently routed CCT/tint/RGB/brightness looks. They do not advertise
+  Turn On, Turn Off, or compound look-and-On commands. The shared shell hides
+  power and the scene picker labels the action **Set look**. `0xC000` remains
+  read-only for authenticated physical-status polling and reserved for a future
+  explicit group action; no ordinary device command writes to it.
+- Zhiyun boundary: X100/X60RGB retain confirmed per-selector power and therefore
+  keep **Set look + On** with generated Turn Off. Aborting Start cancels the
+  exact queued/result request and the driver's pending compound transaction
+  before Stop begins, so a late look reply cannot re-arm power-on.
+- Recovery: a failed, unconfigured Aputure node may be re-identified as Ace 25c
+  or MC Pro after any configuration rejection. Exact device naming follows the
+  corrected tuple without overwriting user-authored names.
+- Supersession: This ADR supersedes ADR-039 only for Aputure power capability
+  and compound actions. The normalized shared shell, per-member look routing,
+  and Zhiyun transaction design remain in force.
+
+## ADR-041: Restore captured Aputure per-node power and prohibit command-as-poll
+
+- Status: Experimental correction; host gates passed, four-fixture hardware
+  isolation gate open.
+- Evidence correction: The working Studio Lighter implementation sends vendor
+  power payloads `26 8D ... 01 8C` and `26 8C ... 00 8C` to each light's
+  persisted mesh unicast address. Its ordinary state builder selects
+  `light.mesh_address` before the network group. Captures likewise show source
+  `0x0001` to target `0x0002`. The prior private-group probe did not test this
+  production unicast path consistently and therefore cannot establish that
+  unicast power is unsupported.
+- Decision: Restore Aputure Turn On, Turn Off, and compound **Set look + On**.
+  Send every ordinary power and look payload to the selected node's unicast
+  address while retaining per-session optimistic/pending state and
+  source-correlated replies. Keep the private vendor groups as configuration
+  metadata only; reserve `0xC000` for a future explicit user group action.
+- Polling safety: Payload `26 0E ... 0E` is a captured group power-on command,
+  not a read-only status query. Remove automatic group polling and make Refresh
+  a no-write operation until a verified read-only query exists. Proxy/GATT
+  connectivity remains bearer evidence, not fixture-state confirmation.
+- Identity: The recovery UI offers Ace 25c, Pano 60c, Pano 120c, and MC Pro.
+  Ace/Pano models share the known Amaran tuple, so the exact selected product
+  name is persisted separately and automatic naming must preserve it.
+- Supersession: This ADR supersedes ADR-040's protocol conclusion and the
+  private-group routing sentence in ADR-039. ADR-040 remains the record of the
+  safety response to the misleading group experiment.
 
 ## Open decisions
 

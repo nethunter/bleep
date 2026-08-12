@@ -33,6 +33,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   bool setCct(uint16_t kelvin, uint8_t brightness);
   bool setRgb(uint32_t rgb, uint8_t brightness);
   bool refresh();
+  void cancelPendingCommand();
   void startScan();
   void forgetDevice();
   void ignorePeerAddress(const char* address);

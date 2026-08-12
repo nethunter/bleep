@@ -24,7 +24,8 @@ studio::InstanceId instanceId=studio::kInvalidInstanceId;
 lv_obj_t *screen=nullptr,*title=nullptr,*status=nullptr,*cctBody=nullptr,*rgbBody=nullptr,
          *kelvinSlider=nullptr,*tintSlider=nullptr,*cctBrightness=nullptr,
          *wheel=nullptr,*rgbSaturation=nullptr,*rgbBrightness=nullptr,*modeCct=nullptr,*modeRgb=nullptr,*power=nullptr,
-         *identifyAce=nullptr,*identifyMcPro=nullptr;
+         *identifyAce=nullptr,*identifyPano60=nullptr,*identifyPano120=nullptr,
+         *identifyMcPro=nullptr;
 bool visible=false, rgbMode=false, dirty=false, lookAppliedForView=false;
 bool draftInitialized=false, syncingControls=false;
 uint16_t draftKelvin=5600;
@@ -64,8 +65,11 @@ void onPower(lv_event_t*){const auto* s=static_cast<const aputure_light::Aputure
 bool needsVendorIdentity() {
   const auto* state = static_cast<const aputure_light::AputureLightState*>(
       studio::devices().specializedState(instanceId));
+  const aputure_light::AputureLightRuntime* runtime =
+      aputure_light::runtimeIfActive();
   return state != nullptr &&
-         std::strcmp(state->error, "Unknown vendor model") == 0;
+         state->phase == aputure_light::AputureLightState::Phase::Failed &&
+         runtime != nullptr && runtime->canIdentifyVendorModel(instanceId);
 }
 void onRetry(lv_event_t*) {
   if (studio::devices().pendingAddCommitFailed(instanceId))
@@ -73,29 +77,52 @@ void onRetry(lv_event_t*) {
   else
     queue(studio::CommandType::Connect);
 }
-void identify(uint16_t companyId, uint16_t modelId) {
+void identify(uint16_t companyId, uint16_t modelId, const char* productName) {
   aputure_light::AputureLightRuntime* runtime =
       aputure_light::runtimeIfActive();
   if (runtime != nullptr)
-    runtime->identifyVendorModel(instanceId, companyId, modelId);
+    runtime->identifyVendorModel(instanceId, companyId, modelId, productName);
 }
-void onIdentifyAce(lv_event_t*) { identify(0x0211, 0x0000); }
-void onIdentifyMcPro(lv_event_t*) { identify(0x03f6, 0x1000); }
+void onIdentifyAce(lv_event_t*) {
+  identify(0x0211, 0x0000, "amaran Ace 25c");
+}
+void onIdentifyPano60(lv_event_t*) {
+  identify(0x0211, 0x0000, "amaran Pano 60c");
+}
+void onIdentifyPano120(lv_event_t*) {
+  identify(0x0211, 0x0000, "amaran Pano 120c");
+}
+void onIdentifyMcPro(lv_event_t*) {
+  identify(0x03f6, 0x1000, "Aputure MC Pro");
+}
 void showIdentificationButtons(bool show) {
   if (show && identifyAce == nullptr) {
     identifyAce = button(pairingScreen.screen(), "Ace 25c", onIdentifyAce);
-    lv_obj_set_size(identifyAce, 82, 34);
-    lv_obj_align(identifyAce, LV_ALIGN_BOTTOM_MID, -44, -16);
+    lv_obj_set_size(identifyAce, 82, 30);
+    lv_obj_align(identifyAce, LV_ALIGN_BOTTOM_MID, -44, -50);
+    identifyPano60 =
+        button(pairingScreen.screen(), "Pano 60c", onIdentifyPano60);
+    lv_obj_set_size(identifyPano60, 82, 30);
+    lv_obj_align(identifyPano60, LV_ALIGN_BOTTOM_MID, 44, -50);
+    identifyPano120 =
+        button(pairingScreen.screen(), "Pano 120c", onIdentifyPano120);
+    lv_obj_set_size(identifyPano120, 82, 30);
+    lv_obj_align(identifyPano120, LV_ALIGN_BOTTOM_MID, -44, -14);
     identifyMcPro = button(pairingScreen.screen(), "MC Pro", onIdentifyMcPro);
-    lv_obj_set_size(identifyMcPro, 82, 34);
-    lv_obj_align(identifyMcPro, LV_ALIGN_BOTTOM_MID, 44, -16);
+    lv_obj_set_size(identifyMcPro, 82, 30);
+    lv_obj_align(identifyMcPro, LV_ALIGN_BOTTOM_MID, 44, -14);
   }
-  if (identifyAce == nullptr || identifyMcPro == nullptr) return;
+  if (identifyAce == nullptr || identifyPano60 == nullptr ||
+      identifyPano120 == nullptr || identifyMcPro == nullptr) return;
   if (show) {
     lv_obj_clear_flag(identifyAce, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(identifyPano60, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(identifyPano120, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(identifyMcPro, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(identifyAce, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(identifyPano60, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(identifyPano120, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(identifyMcPro, LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -133,7 +160,7 @@ void showForState(const aputure_light::AputureLightState* s){
   const bool unknownVendor = needsVendorIdentity();
   showIdentificationButtons(unknownVendor);
   const char* detail = scanning ? "Factory-reset light nearby"
-                       : unknownVendor ? "Choose exact light model"
+                       : unknownVendor ? ""
                        : failed ? "Check light and try again"
                                 : "Keep the light powered on";
   pairingScreen.setStatus(unknownVendor ? "Identify fixture" : phase(s),
@@ -151,7 +178,7 @@ void apply(){studio::DeviceRuntimeState rt=studio::devices().runtimeState(instan
 }
 void show(studio::InstanceId id){ensure();instanceId=id;visible=studio::devices().acquire(id,studio::ConnectionOwner::Foreground);dirty=false;draftInitialized=false;lookAppliedForView=false;refresh();showForState(static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(id)));}
 void hide(){light_control_ui::hide();if(visible)studio::devices().release(instanceId,studio::ConnectionOwner::Foreground);visible=false;instanceId=studio::kInvalidInstanceId;}
-void release(){if(visible)return;light_control_ui::release();if(screen){lv_obj_del(screen);screen=title=status=cctBody=rgbBody=kelvinSlider=tintSlider=cctBrightness=wheel=rgbSaturation=rgbBrightness=modeCct=modeRgb=power=nullptr;}pairingScreen.destroy();identifyAce=identifyMcPro=nullptr;}
+void release(){if(visible)return;light_control_ui::release();if(screen){lv_obj_del(screen);screen=title=status=cctBody=rgbBody=kelvinSlider=tintSlider=cctBrightness=wheel=rgbSaturation=rgbBrightness=modeCct=modeRgb=power=nullptr;}pairingScreen.destroy();identifyAce=identifyPano60=identifyPano120=identifyMcPro=nullptr;}
 bool active(){return visible;}
 void tick(){if(!visible)return;if(light_control_ui::active()){light_control_ui::tick();return;}uint32_t now=millis();if(dirty&&static_cast<int32_t>(now-applyAt)>=0)apply();if(now-lastRefresh>=250){lastRefresh=now;const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));refresh();showForState(s);}}
 void handleShortPress(){if(light_control_ui::active())light_control_ui::handleShortPress();else onPower(nullptr);}void handleLongPress(){if(light_control_ui::active())light_control_ui::handleLongPress();else onBack(nullptr);}

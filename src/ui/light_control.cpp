@@ -287,6 +287,8 @@ void refresh() {
     restore();
   }
   renderMode(state);
+  if (state.supportsPower) lv_obj_clear_flag(powerButton, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(powerButton, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_style_bg_color(powerButton,
                             lv_color_hex(state.on ? kDanger : kAccent), 0);
   lv_label_set_text(powerLabel, state.on ? "TURN OFF" : "TURN ON");

@@ -238,6 +238,17 @@ bool assignVendorModel(MeshStoreData& data, studio::InstanceId instanceId,
   return true;
 }
 
+bool isKnownMeshProxyAddress(const MeshStoreData& data, const char* address) {
+  if (address == nullptr || address[0] == '\0') return false;
+  for (uint8_t i = 0; i < data.nodeCount; ++i) {
+    if (data.nodes[i].bleAddress[0] != '\0' &&
+        std::strcmp(data.nodes[i].bleAddress, address) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 uint8_t nextZhiyunRoutingSelector(const MeshStoreData& data) {
   bool used[0xff] = {};
   for (uint8_t i = 0; i < data.nodeCount; ++i) {

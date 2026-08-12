@@ -11,7 +11,6 @@ namespace {
 
 constexpr uint8_t kPowerOn[] = {0x26,0x8d,0,0,0,0,0,0,0,1,0x8c};
 constexpr uint8_t kPowerOff[] = {0x26,0x8c,0,0,0,0,0,0,0,0,0x8c};
-constexpr uint8_t kPowerStatusGet[] = {0x26,0x0e,0,0,0,0,0,0,0,0,0x0e};
 constexpr uint8_t kNodeReset[] = {0x26,0x9d,0,0,0,0,0,0,0,0,0x9d};
 
 bool containsIgnoreCase(const char* text, const char* token) {
@@ -54,6 +53,11 @@ void putBe16(uint8_t* out, uint16_t value) {
 
 uint16_t getBe16(const uint8_t* input) {
   return static_cast<uint16_t>(input[0]) << 8 | input[1];
+}
+
+uint16_t getLe16(const uint8_t* input) {
+  return static_cast<uint16_t>(input[0]) |
+         static_cast<uint16_t>(input[1]) << 8;
 }
 
 bool encodeNetworkTransport(const uint8_t networkKey[16], const uint8_t* lower,
@@ -103,21 +107,34 @@ bool encodeNetworkTransport(const uint8_t networkKey[16], const uint8_t* lower,
 
 bool inferKnownVendorModel(const char* displayName, const char* bleName,
                            uint16_t& companyId, uint16_t& modelId) {
-  if (containsIgnoreCase(displayName, "MC Pro") ||
-      containsIgnoreCase(bleName, "MC Pro") ||
+  const char* product = knownProductName(displayName);
+  if (product == nullptr) product = knownProductName(bleName);
+  if ((product != nullptr && containsIgnoreCase(product, "MC Pro")) ||
       containsIgnoreCase(bleName, "Mesh Device")) {
     companyId = 0x03f6;
     modelId = 0x1000;
     return true;
   }
-  if (containsIgnoreCase(displayName, "Ace 25c") ||
-      containsIgnoreCase(bleName, "Ace 25c") ||
-      containsIgnoreCase(bleName, "SLCK")) {
+  if (product != nullptr || containsIgnoreCase(bleName, "SLCK")) {
     companyId = 0x0211;
     modelId = 0x0000;
     return true;
   }
   return false;
+}
+
+const char* knownProductName(const char* label) {
+  if (containsIgnoreCase(label, "MC Pro")) return "Aputure MC Pro";
+  if (containsIgnoreCase(label, "Pano 120") ||
+      containsIgnoreCase(label, "Pavo 120")) {
+    return "amaran Pano 120c";
+  }
+  if (containsIgnoreCase(label, "Pano 60") ||
+      containsIgnoreCase(label, "Pavo 60")) {
+    return "amaran Pano 60c";
+  }
+  if (containsIgnoreCase(label, "Ace 25")) return "amaran Ace 25c";
+  return nullptr;
 }
 
 const char* knownVendorModelName(uint16_t companyId, uint16_t modelId) {
@@ -138,12 +155,6 @@ bool buildPowerAccess(bool on, AccessPayload& output) {
   return true;
 }
 
-bool buildPowerStatusGetAccess(AccessPayload& output) {
-  std::memcpy(output.bytes, kPowerStatusGet, kAccessPayloadSize);
-  output.length = kAccessPayloadSize;
-  return true;
-}
-
 bool parseVendorPowerStatus(const uint8_t* access, size_t length,
                             VendorPowerStatus& output) {
   if (access == nullptr || length != kAccessPayloadSize || access[0] != 0x26 ||
@@ -155,6 +166,54 @@ bool parseVendorPowerStatus(const uint8_t* access, size_t length,
   output.on = access[2] != 0;
   output.storedIntensity = access[9];
   output.profile = access[10];
+  return true;
+}
+
+bool matchConfigurationStatus(const uint8_t* access, size_t length,
+                              const ConfigurationStatusExpectation& expected,
+                              uint8_t& status) {
+  if (access == nullptr) return false;
+  uint16_t opcode = 0;
+  size_t expectedLength = 0;
+  switch (expected.type) {
+    case ConfigurationStatusType::AppKey:
+      opcode = 0x8003;
+      expectedLength = 6;
+      break;
+    case ConfigurationStatusType::ModelApp:
+      opcode = 0x803e;
+      expectedLength = expected.vendorModel ? 11 : 9;
+      break;
+    case ConfigurationStatusType::ModelSubscription:
+      opcode = 0x801f;
+      expectedLength = expected.vendorModel ? 11 : 9;
+      break;
+  }
+  if (length != expectedLength ||
+      (static_cast<uint16_t>(access[0]) << 8 | access[1]) != opcode) {
+    return false;
+  }
+  if (expected.type == ConfigurationStatusType::AppKey) {
+    // NetKey index 0 and AppKey index 0 are packed into these three bytes.
+    if (access[3] != 0 || access[4] != 0 || access[5] != 0) return false;
+  } else {
+    if (getLe16(access + 3) != expected.elementAddress) return false;
+    const uint16_t addressOrAppKey = getLe16(access + 5);
+    if (expected.type == ConfigurationStatusType::ModelSubscription) {
+      if (addressOrAppKey != expected.groupAddress) return false;
+    } else if (addressOrAppKey != 0) {
+      return false;
+    }
+    if (expected.vendorModel) {
+      if (getLe16(access + 7) != expected.companyId ||
+          getLe16(access + 9) != expected.modelId) {
+        return false;
+      }
+    } else if (getLe16(access + 7) != expected.modelId) {
+      return false;
+    }
+  }
+  status = access[2];
   return true;
 }
 

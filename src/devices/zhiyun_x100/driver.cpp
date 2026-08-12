@@ -237,6 +237,14 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   }
 }
 
+void ZhiyunLightDriver::cancelPendingCommand(InstanceId instanceId) {
+  Session* session = find(instanceId);
+  if (session == nullptr) return;
+  session->client.cancelPendingCommand();
+  session->compoundStage = Session::CompoundStage::None;
+  session->compoundFailed = false;
+}
+
 DeviceRuntimeState ZhiyunLightDriver::runtimeState(InstanceId instanceId) const {
   DeviceRuntimeState runtime;
   const Session* session = find(instanceId);
