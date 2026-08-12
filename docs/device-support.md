@@ -161,16 +161,19 @@ product-qualified advertisement and identity response.
   by correlated reads of power, brightness, and CCT was live-confirmed. A
   driver can therefore remain non-optimistic by publishing the value only
   after matching device-originated readback.
-- Implemented tranche: Add light selects either a factory-reset `pl105` on
-  `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
+- Implemented tranche: Add light lists compatible advertisements and requires
+  an explicit stable-token selection before connecting to a factory-reset
+  `pl105` on `0x1827` or a provisioned one on `0x1828`. A reset light receives the shared
   panel-owned network and a durable Device Key/unicast allocation, then is
   rediscovered and validated on `0xFEE9`. The normal device record commits only
-  after confirmed Ready. Power and CCT/
+  after confirmed Ready; failed or canceled onboarding restores the provisional
+  mesh allocation without rewinding reserved sequence high-water. Power and CCT/
   brightness commands remain pending until matching correlated replies arrive;
   scenes therefore wait for confirmation instead of treating the write as
   success. X100 exposes no tint or RGB capability at runtime.
-- Missing before production: reconciliation when a light accepts Provisioning
-  Data but completion/persistence is interrupted, verified reset/retry,
+- Missing before production: power-loss reconciliation after a light accepts
+  Provisioning Data, physical picker selection and competing-panel recovery,
+  verified reset/retry,
   boundary and power-cycle checks, rotating-address recovery, firmware
   compatibility policy, multiple live fixtures, retained/session and mixed-device
   coexistence measurements, plus independently observed optical output.
@@ -194,8 +197,8 @@ product-qualified advertisement and identity response.
   command. Ble(e)p confirms RGB hue, saturation, and brightness in the
   capture-backed order;
   shared power/CCT control keeps the conservative read-after-write path.
-- Implemented tranche: the same Add light entry detects X60RGB and opens CCT
-  and RGB tabs. RGB UI values remain responsive and debounced, while command
+- Implemented tranche: the same bounded Add-light picker detects X60RGB only
+  after operator selection and then opens CCT and RGB tabs. RGB UI values remain responsive and debounced, while command
   completion waits for matching device-originated replies.
 - Missing before production: physical panel verification, mode/effect command
   research, reset and interrupted-provisioning recovery, firmware compatibility,

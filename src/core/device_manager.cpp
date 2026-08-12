@@ -307,6 +307,30 @@ bool DeviceManager::retryPendingAdd(InstanceId instanceId) {
   return commitPendingAdd();
 }
 
+size_t DeviceManager::onboardingCandidateCount(InstanceId instanceId) const {
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr ? driver->onboardingCandidateCount(instanceId) : 0;
+}
+
+bool DeviceManager::onboardingCandidate(
+    InstanceId instanceId, size_t index,
+    OnboardingCandidate& candidate) const {
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr &&
+         driver->onboardingCandidate(instanceId, index, candidate);
+}
+
+bool DeviceManager::selectOnboardingCandidate(InstanceId instanceId,
+                                              uint32_t token) {
+  if (!isPendingAdd(instanceId) || token == 0) return false;
+  const DeviceRecord* record = find(instanceId);
+  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  return driver != nullptr &&
+         driver->selectOnboardingCandidate(instanceId, token);
+}
+
 RegistryStatus DeviceManager::cancelPendingAdd(InstanceId instanceId) {
   if (!isPendingAdd(instanceId)) {
     return RegistryStatus::NotFound;

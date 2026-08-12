@@ -5,6 +5,12 @@ initialization, CCT, power, brightness, hue, and saturation were decoded from
 one Android host-HCI session. Firmware use of the captured vectors is built and
 host-tested; panel-originated control remains a hardware gate.
 
+The X60RGB shares the X100 controller-side onboarding transaction: a bounded
+address-plus-type picker precedes PB-GATT, post-provision rediscovery remains
+automatic for the selected model, and failure/cancel restores provisional mesh
+ownership before returning to the picker. No X60RGB wire frame changed in this
+tranche.
+
 ## Evidence boundary
 
 The source was an Android Bluetooth HCI snoop log captured while ZY Vega added

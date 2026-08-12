@@ -1021,6 +1021,36 @@ the replacement.
   private-group routing sentence in ADR-039. ADR-040 remains the record of the
   safety response to the misleading group experiment.
 
+## ADR-042: Mesh creation and light selection are transactional
+
+- Status: Accepted software boundary; two-panel and physical-selection gates
+  remain open.
+- Mesh creation: A missing panel-owned mesh is assembled in temporary state.
+  An injectable entropy source must successfully fill both the Network Key and
+  AppKey, and the complete existing-schema blob must persist, before the live
+  repository publishes it. RNG or save failure leaves caller state unchanged.
+  Keys are never derived from panel identity, MAC, Portal identity, or setup
+  SSID. Existing sequence high-water and node schema semantics are unchanged.
+- Selection: A fresh Aputure Light or Zhiyun add scans without claiming a BLE
+  peer. The shared round picker exposes at most four compatible advertisements
+  with advertised name/model, address suffix, and RSSI. Identity is address
+  plus address type and selection uses an opaque stable token. Duplicate
+  observations update in place; when full, only a stronger advertisement may
+  replace the weakest entry.
+- Transaction boundary: PB-GATT connect/provisioning starts only after an
+  explicit selection. Immediate claim failure rolls back to Scanning. A failed
+  onboarding/configuration transaction restores the pre-provision mesh node
+  set and next unicast address while never decreasing a reserved sequence
+  high-water mark. The normal device record still commits only after
+  protocol-ready confirmation. Back/cancel removes the draft and provisional
+  mesh allocation.
+- Compatibility: Saved targets continue automatic reconnect and Aputure and
+  Zhiyun retain ADR-041/039 shared-mesh routing. This decision does not alter
+  `panel_identity`, `Bleep-Setup-XXXXX`, Portal storage/security, mesh schema
+  bytes, or ordinary per-fixture command destinations.
+- Gate: native and interactive simulator evidence does not prove physical
+  selection, cross-mesh rejection, fallback, or multi-panel coexistence.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

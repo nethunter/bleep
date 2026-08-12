@@ -35,6 +35,15 @@ the fixture retains those values.
 
 ## Advertising and onboarding
 
+The panel now presents a bounded compatible-advertisement picker before the
+first PB-GATT connection. Selection is keyed by address plus address type, not
+by a mutable row index. A failed claim, connection, provisioning, or direct
+identity initialization returns to the picker and restores the provisional
+node/unicast allocation; the normal device record is not committed before
+confirmed Ready. The already-selected fixture is automatically rediscovered
+after Provisioning Data so the same transaction can complete on `0xFEE9`.
+Saved fixtures retain automatic reconnect.
+
 - The captured local name was `PL105_XXXX`; the suffix is device-specific.
 - Manufacturer data used company ID `0x0905` and began with ASCII `pl105\0`.
   Treat the product marker plus an expected service as stronger identity than

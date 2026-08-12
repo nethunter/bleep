@@ -20,9 +20,12 @@ class AputureLightDriver : public DeviceDriver {
   bool lightControlState(InstanceId instanceId,
                          LightControlState& state) const override;
   void forgetPairing(const DeviceRecord& record) override;
-  void cancelOnboarding(const DeviceRecord& record) override {
-    forgetPairing(record);
-  }
+  void cancelOnboarding(const DeviceRecord& record) override;
+  size_t onboardingCandidateCount(InstanceId instanceId) const override;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const override;
+  bool selectOnboardingCandidate(InstanceId instanceId,
+                                 uint32_t token) override;
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 
 };

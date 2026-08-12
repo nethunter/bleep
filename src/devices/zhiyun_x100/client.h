@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "core/ble/ble_central.h"
+#include "core/ble/onboarding_candidates.h"
 #include "core/device_types.h"
 #include "core/mesh/pb_gatt_provisioner.h"
 #include "core/mesh/mesh_store.h"
@@ -36,6 +37,11 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void cancelPendingCommand();
   void startScan();
   void forgetDevice();
+  void cancelOnboarding();
+  size_t onboardingCandidateCount() const { return candidates_.count(); }
+  bool onboardingCandidate(size_t index,
+                           studio::OnboardingCandidate& candidate) const;
+  bool selectOnboardingCandidate(uint32_t token);
   void ignorePeerAddress(const char* address);
   bool consumePairingUpdate(char* address, size_t addressCapacity,
                             uint8_t& addressType, char* name,
@@ -73,6 +79,8 @@ class X100Client : public studio::ble::BleCentralDelegate,
   bool finishProvisioning();
   void handleProvisioningBytes(const uint8_t* data, size_t length);
   void handleDisconnect();
+  void returnToOnboardingPicker(const char* error = nullptr);
+  void rollbackPendingProvision();
   void drainNotifications();
   bool writeFrame(const FrameBytes& frame);
   bool sendQuery(uint16_t command, const uint8_t* payload = nullptr,
@@ -113,6 +121,9 @@ class X100Client : public studio::ble::BleCentralDelegate,
   char targetName_[40] = "";
   char ignoredAddresses_[CONFIG_BLE_MAX_SKIP_ADDRESSES][20] = {};
   uint8_t ignoredAddressCount_ = 0;
+  studio::ble::OnboardingCandidates candidates_;
+  studio::mesh::StoreData* provisioningSnapshot_ = nullptr;
+  bool onboardingSelectionActive_ = false;
   uint8_t routingSelector_ = 0;
   uint16_t sequence_ = 2;
   uint16_t expectedSequence_ = 0;

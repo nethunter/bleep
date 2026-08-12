@@ -50,6 +50,18 @@ class DeviceDriver {
   virtual void preferSkipPeer(InstanceId /*instanceId*/,
                               const char* /*bleAddress*/) {}
 
+  // New-device scans expose compatible peers without claiming a BLE link.
+  // The opaque token remains stable while that address stays in the bounded
+  // candidate set, even when other entries are updated or replaced.
+  virtual size_t onboardingCandidateCount(InstanceId) const { return 0; }
+  virtual bool onboardingCandidate(InstanceId, size_t,
+                                   OnboardingCandidate&) const {
+    return false;
+  }
+  virtual bool selectOnboardingCandidate(InstanceId, uint32_t) {
+    return false;
+  }
+
   // Returns true when pairing identity changed and should be persisted.
   virtual bool consumePairingUpdate(InstanceId instanceId,
                                     DeviceRecord& record) = 0;

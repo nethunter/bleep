@@ -103,6 +103,21 @@ bool verifyHapticPatterns() {
   return expectHapticStates(errorExpected, 8);
 }
 
+studio::ble::Advertisement simulatedLightAdvertisement(
+    const char* address, const char* name, int8_t rssi, uint8_t addressType) {
+  studio::ble::Advertisement advertisement;
+  std::strncpy(advertisement.address.value, address,
+               sizeof(advertisement.address.value) - 1);
+  advertisement.address.type = addressType;
+  advertisement.rssi = rssi;
+  const size_t nameLength = std::strlen(name);
+  advertisement.payload[0] = static_cast<uint8_t>(nameLength + 1);
+  advertisement.payload[1] = 0x09;
+  std::memcpy(advertisement.payload + 2, name, nameLength);
+  advertisement.payloadLength = static_cast<uint8_t>(nameLength + 2);
+  return advertisement;
+}
+
 void flushCb(lv_disp_drv_t* disp, const lv_area_t*, lv_color_t*) {
   lv_disp_flush_ready(disp);
 }
@@ -646,6 +661,74 @@ int main() {
   secondLook.value1 = 17;
   studio::devices().enqueue(secondLook);
   pump(20);
+
+  studio::InstanceId candidateAddId = studio::kInvalidInstanceId;
+  if (studio::devices().remove(aputureFourthId) != studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to free simulator Aputure picker slot\n");
+    return 1;
+  }
+  if (studio::devices().beginAdd(studio::DriverId::AputureLight,
+                                 "Aputure Light", candidateAddId) !=
+      studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to begin candidate picker add\n");
+    return 1;
+  }
+  aputure_light_ui::show(candidateAddId);
+  const studio::ble::Advertisement candidateAdvertisements[] = {
+      simulatedLightAdvertisement("aa:bb:cc:00:00:01", "Ace25_C101", -51, 0),
+      simulatedLightAdvertisement("aa:bb:cc:00:00:02", "Pano60_1202", -62, 1),
+      simulatedLightAdvertisement("aa:bb:cc:00:00:03", "Pano120_3303", -73, 0),
+      simulatedLightAdvertisement("aa:bb:cc:00:00:04", "MCPro_4404", -44, 1),
+  };
+  for (const auto& advertisement : candidateAdvertisements) {
+    aputure_light::runtime()->simObserveCandidate(advertisement);
+  }
+  pump(300);
+  if (aputure_light_ui::simCandidateRowCount() != 4) {
+    std::fprintf(stderr, "Candidate picker did not display four rows\n");
+    return 1;
+  }
+  lv_obj_t* stableRows[4] = {};
+  for (size_t i = 0; i < 4; ++i) {
+    stableRows[i] = aputure_light_ui::simCandidateRow(i);
+  }
+  pump(750);
+  for (size_t i = 0; i < 4; ++i) {
+    if (stableRows[i] == nullptr ||
+        stableRows[i] != aputure_light_ui::simCandidateRow(i)) {
+      std::fprintf(stderr, "Candidate rows were recreated during refresh\n");
+      return 1;
+    }
+  }
+  aputure_light_ui::simScrollCandidates(-70);
+  pump(20);
+  if (aputure_light_ui::simCandidateScrollY() == 0) {
+    std::fprintf(stderr, "Candidate picker did not scroll\n");
+    return 1;
+  }
+  if (!capture("20d_aputure_candidate_picker_scrolled")) return 1;
+  aputure_light_ui::simClickCandidate(3);
+  pump(20);
+  const auto* candidateState = aputure_light::runtime()->state(candidateAddId);
+  if (candidateState == nullptr ||
+      candidateState->phase !=
+          aputure_light::AputureLightState::Phase::Provisioning) {
+    std::fprintf(stderr, "Candidate row tap did not select stable token\n");
+    return 1;
+  }
+  aputure_light_ui::handleLongPress();
+  pump(20);
+  if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {
+    std::fprintf(stderr, "Candidate picker back did not cancel pending add\n");
+    return 1;
+  }
+  if (studio::devices().add(studio::DriverId::AputureLight,
+                            "Aputure Background", aputureFourthId) !=
+      studio::RegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to restore simulator Aputure slot\n");
+    return 1;
+  }
+
   aputure_light_ui::show(pano60Id);
   pump(300);
   if (!capture("20d_aputure_light_pairing")) return 1;

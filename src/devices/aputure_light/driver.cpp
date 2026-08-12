@@ -80,6 +80,33 @@ void AputureLightDriver::forgetPairing(const DeviceRecord& record) {
   runtime->forgetLocal(record.instanceId);
   aputure_light::releaseRuntimeIfIdle();
 }
+void AputureLightDriver::cancelOnboarding(const DeviceRecord& record) {
+  if (aputure_light::AputureLightRuntime* runtime =
+          aputure_light::runtimeIfActive()) {
+    runtime->cancelOnboarding(record.instanceId);
+  }
+}
+size_t AputureLightDriver::onboardingCandidateCount(
+    InstanceId instanceId) const {
+  aputure_light::AputureLightRuntime* runtime =
+      aputure_light::runtimeIfActive();
+  return runtime != nullptr ? runtime->onboardingCandidateCount(instanceId) : 0;
+}
+bool AputureLightDriver::onboardingCandidate(
+    InstanceId instanceId, size_t index,
+    OnboardingCandidate& candidate) const {
+  aputure_light::AputureLightRuntime* runtime =
+      aputure_light::runtimeIfActive();
+  return runtime != nullptr &&
+         runtime->onboardingCandidate(instanceId, index, candidate);
+}
+bool AputureLightDriver::selectOnboardingCandidate(InstanceId instanceId,
+                                                   uint32_t token) {
+  aputure_light::AputureLightRuntime* runtime =
+      aputure_light::runtimeIfActive();
+  return runtime != nullptr &&
+         runtime->selectOnboardingCandidate(instanceId, token);
+}
 bool AputureLightDriver::consumePairingUpdate(InstanceId instanceId,
                                              DeviceRecord& record) {
   aputure_light::AputureLightRuntime* runtime = aputure_light::runtimeIfActive();

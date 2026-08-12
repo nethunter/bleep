@@ -4,6 +4,15 @@ Status: `Research` with host-tested encoders, Sidus Link multi-fixture HCI
 evidence, and one Ble(e)p-owned mesh verified on an amaran Ace 25c and Aputure
 MC Pro. Vendor control and broader target-fixture gates remain open.
 
+Onboarding ownership note (2026-08-11): fresh adds collect at most four
+compatible PB-GATT advertisements and do not claim or connect to a peer until
+the operator selects its stable address-plus-address-type token. Duplicate
+advertisements update in place and a stronger candidate may replace the weakest
+full-list entry. Connect, provisioning, configuration, or cancellation failure
+restores the provisional node/unicast allocation while preserving any reserved
+sequence high-water. Saved proxy targets still reconnect automatically. This is
+a controller transaction policy and does not change the captured mesh PDUs.
+
 ## Reference boundary
 
 The implementation was ported from the working

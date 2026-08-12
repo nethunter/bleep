@@ -173,6 +173,13 @@ Completion gate:
 - the factory process flashes one common image and never clones configured NVS;
 - build and simulator results remain labeled separately from two-panel proof.
 
+Current software tranche (ADR-042): mesh key creation is transactional and
+identity-independent, and fresh Aputure/Zhiyun adds require explicit selection
+from a bounded stable picker before PB-GATT. Native and interactive simulator
+gates pass. Simultaneous physical panels, phone/captive Portal behavior,
+fixture selection, cross-mesh rejection, reboot/fallback, and coexistence soak
+remain open completion gates.
+
 ## Phase 2: Kconfig and core driver framework
 
 Work:

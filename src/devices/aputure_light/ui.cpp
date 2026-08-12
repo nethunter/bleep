@@ -126,7 +126,23 @@ void showIdentificationButtons(bool show) {
     lv_obj_add_flag(identifyMcPro, LV_OBJ_FLAG_HIDDEN);
   }
 }
-void onBack(lv_event_t*){haptic_feedback::request(haptic_feedback::Pattern::Back);hide();ui::showDeviceParent();}
+void onCandidate(uint32_t token) {
+  studio::devices().selectOnboardingCandidate(instanceId, token);
+}
+void updateCandidates(bool show) {
+  studio::OnboardingCandidate candidates[4];
+  size_t count = 0;
+  if (show) {
+    const size_t available = studio::devices().onboardingCandidateCount(instanceId);
+    while (count < available && count < 4 &&
+           studio::devices().onboardingCandidate(instanceId, count,
+                                                 candidates[count])) {
+      ++count;
+    }
+  }
+  pairingScreen.setCandidates(candidates, count, onCandidate);
+}
+void onBack(lv_event_t*){haptic_feedback::request(haptic_feedback::Pattern::Back);if(studio::devices().isPendingAdd(instanceId))studio::devices().cancelPendingAdd(instanceId);hide();ui::showDeviceParent();}
 void onSharedBack(){onBack(nullptr);}
 lv_obj_t* labeledSlider(lv_obj_t* parent,const char* text,int min,int max,lv_obj_t*& slider){
   lv_obj_t* row=lv_obj_create(parent);lv_obj_set_size(row,166,28);lv_obj_set_style_bg_opa(row,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(row,0,0);lv_obj_set_style_pad_all(row,0,0);
@@ -167,6 +183,7 @@ void showForState(const aputure_light::AputureLightState* s){
                           detail, !failed,
                           unknownVendor ? false : (scanning || failed),
                           "Retry");
+  updateCandidates(scanning && !unknownVendor);
   if(lv_scr_act()!=pairingScreen.screen())lv_scr_load(pairingScreen.screen());
 }
 void refresh(){const auto* r=studio::devices().find(instanceId);const auto* s=static_cast<const aputure_light::AputureLightState*>(studio::devices().specializedState(instanceId));lv_label_set_text(title,r?r->displayName:"Aputure Light");lv_label_set_text(status,phase(s));if(!s)return;
@@ -188,5 +205,10 @@ void simSetRgbLook(uint32_t rgb,int brightness){light_control_ui::simSetRgbLook(
 void simShowCct(){light_control_ui::simShowCct();}
 void simShowRgb(){light_control_ui::simShowRgb();}
 int simRgbSaturation(){return light_control_ui::simRgbSaturation();}
+size_t simCandidateRowCount(){return pairingScreen.simCandidateRowCount();}
+lv_obj_t* simCandidateRow(size_t index){return pairingScreen.simCandidateRow(index);}
+void simScrollCandidates(int16_t delta){pairingScreen.simScrollCandidates(delta);}
+int32_t simCandidateScrollY(){return pairingScreen.simCandidateScrollY();}
+void simClickCandidate(size_t index){pairingScreen.simClickCandidate(index);}
 #endif
 }  // namespace aputure_light_ui

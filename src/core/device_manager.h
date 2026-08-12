@@ -50,6 +50,10 @@ class DeviceManager {
     return isPendingAdd(instanceId) && pendingCommitFailed_;
   }
   bool retryPendingAdd(InstanceId instanceId);
+  size_t onboardingCandidateCount(InstanceId instanceId) const;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const;
+  bool selectOnboardingCandidate(InstanceId instanceId, uint32_t token);
   RegistryStatus cancelPendingAdd(InstanceId instanceId);
   RegistryStatus remove(InstanceId instanceId);
   RegistryStatus update(InstanceId instanceId, const char* displayName,

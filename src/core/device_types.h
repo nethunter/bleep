@@ -192,6 +192,14 @@ constexpr size_t kBleAddressCapacity = 20;
 constexpr size_t kBleNameCapacity = 40;
 constexpr size_t kHomeAssistantEntityIdCapacity = 72;
 
+struct OnboardingCandidate {
+  uint32_t token = 0;
+  char name[kBleNameCapacity] = "";
+  char address[kBleAddressCapacity] = "";
+  uint8_t addressType = 0;
+  int8_t rssi = 0;
+};
+
 struct DeviceRecord {
   InstanceId instanceId = kInvalidInstanceId;
   DriverId driverId = DriverId::Unknown;

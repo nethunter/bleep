@@ -7,6 +7,7 @@
 
 #include "core/ble/ble_central.h"
 #include "core/ble/fake_ble_backend.h"
+#include "core/ble/onboarding_candidates.h"
 #include "core/config_store.h"
 #include "core/command_traits.h"
 #include "core/device_driver.h"
@@ -45,6 +46,7 @@
 #include "devices/zhiyun_x100/state.h"
 #include "portal_scene_parser.h"
 #include "core/mesh/provisioning_policy.h"
+#include "core/mesh/mesh_initializer.h"
 
 using namespace shark;
 
@@ -496,6 +498,30 @@ class FakeDriver : public studio::DeviceDriver {
   }
   void cancelOnboarding(const studio::DeviceRecord&) override {
     ++cancelOnboardingCount;
+    onboardingScanning = false;
+  }
+  size_t onboardingCandidateCount(studio::InstanceId) const override {
+    return onboardingCandidateAvailable ? 1 : 0;
+  }
+  bool onboardingCandidate(studio::InstanceId, size_t index,
+                           studio::OnboardingCandidate& candidate) const override {
+    if (!onboardingCandidateAvailable || index != 0) return false;
+    candidate = studio::OnboardingCandidate{};
+    candidate.token = 73;
+    std::strcpy(candidate.name, "Test Light");
+    std::strcpy(candidate.address, "11:22:33:44:55:66");
+    candidate.rssi = -48;
+    return true;
+  }
+  bool selectOnboardingCandidate(studio::InstanceId, uint32_t token) override {
+    if (token != 73 || !onboardingCandidateAvailable) return false;
+    if (onboardingSelectionFails) {
+      onboardingScanning = true;
+      return false;
+    }
+    onboardingScanning = false;
+    onboardingSelected = true;
+    return true;
   }
   bool consumePairingUpdate(studio::InstanceId,
                             studio::DeviceRecord& record) override {
@@ -538,6 +564,10 @@ class FakeDriver : public studio::DeviceDriver {
   int failCommandCount = 0;
   int forgetPairingCount = 0;
   int cancelOnboardingCount = 0;
+  bool onboardingCandidateAvailable = false;
+  bool onboardingSelectionFails = false;
+  bool onboardingScanning = true;
+  bool onboardingSelected = false;
   bool pairingUpdatePending = false;
   bool pairingValue = true;
   studio::CommandType lastCommand = studio::CommandType::Refresh;
@@ -4301,6 +4331,173 @@ void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   TEST_ASSERT_EQUAL_UINT32(aputure_light::kSequenceBlockSize, sequence);
 }
 
+struct RandomFillContext {
+  uint8_t next = 1;
+  int calls = 0;
+  int failOnCall = 0;
+};
+
+bool deterministicRandomFill(uint8_t* output, size_t length, void* context) {
+  auto* state = static_cast<RandomFillContext*>(context);
+  ++state->calls;
+  if (state->failOnCall == state->calls) return false;
+  for (size_t i = 0; i < length; ++i) output[i] = state->next++;
+  return true;
+}
+
+void test_mesh_initialization_is_identity_independent_and_transactional() {
+  MemoryBackend backend;
+  studio::mesh::Store store(backend);
+  studio::mesh::StoreData data;
+  data.network.ivIndex = 0x11223344;
+  data.network.sequenceHighWater = 0x556677;
+  data.nodeCount = 1;
+  data.nodes[0].instanceId = 99;
+  const studio::mesh::StoreData original = data;
+
+  RandomFillContext rngFailure;
+  rngFailure.failOnCall = 2;
+  TEST_ASSERT_FALSE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &rngFailure));
+  TEST_ASSERT_EQUAL_MEMORY(&original, &data, sizeof(data));
+  studio::mesh::StoreData absent;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Missing),
+      static_cast<int>(store.load(absent)));
+
+  backend.failWrites = true;
+  RandomFillContext saveFailure;
+  TEST_ASSERT_FALSE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &saveFailure));
+  TEST_ASSERT_EQUAL_MEMORY(&original, &data, sizeof(data));
+
+  backend.failWrites = false;
+  RandomFillContext success;
+  TEST_ASSERT_TRUE(studio::mesh::initializeNewMesh(
+      store, data, deterministicRandomFill, &success));
+  TEST_ASSERT_TRUE(data.network.initialized);
+  TEST_ASSERT_EQUAL_UINT16(2, data.network.nextUnicastAddress);
+  TEST_ASSERT_EQUAL_UINT32(0, data.network.sequenceHighWater);
+  TEST_ASSERT_EQUAL_UINT8(0, data.nodeCount);
+  for (uint8_t i = 0; i < 16; ++i) {
+    TEST_ASSERT_EQUAL_UINT8(i + 1, data.network.networkKey[i]);
+    TEST_ASSERT_EQUAL_UINT8(i + 17, data.network.applicationKey[i]);
+  }
+  studio::mesh::StoreData loaded;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(store.load(loaded)));
+  TEST_ASSERT_TRUE(loaded.network.initialized);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(data.network.networkKey,
+                                loaded.network.networkKey, 16);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(data.network.applicationKey,
+                                loaded.network.applicationKey, 16);
+  TEST_ASSERT_EQUAL_UINT16(data.network.nextUnicastAddress,
+                           loaded.network.nextUnicastAddress);
+  TEST_ASSERT_EQUAL_UINT32(data.network.sequenceHighWater,
+                           loaded.network.sequenceHighWater);
+  TEST_ASSERT_EQUAL_UINT8(0, loaded.nodeCount);
+
+  MemoryBackend secondBackend;
+  studio::mesh::Store secondStore(secondBackend);
+  studio::mesh::StoreData secondPanel;
+  RandomFillContext secondEntropy;
+  secondEntropy.next = 91;
+  TEST_ASSERT_TRUE(studio::mesh::initializeNewMesh(
+      secondStore, secondPanel, deterministicRandomFill, &secondEntropy));
+  TEST_ASSERT_NOT_EQUAL(0, std::memcmp(data.network.networkKey,
+                                      secondPanel.network.networkKey, 16));
+  TEST_ASSERT_NOT_EQUAL(0, std::memcmp(data.network.applicationKey,
+                                      secondPanel.network.applicationKey, 16));
+}
+
+studio::ble::Advertisement onboardingAdvertisement(const char* address,
+                                                   uint8_t addressType,
+                                                   int8_t rssi,
+                                                   uint8_t marker) {
+  studio::ble::Advertisement advertisement;
+  std::strncpy(advertisement.address.value, address,
+               sizeof(advertisement.address.value) - 1);
+  advertisement.address.type = addressType;
+  advertisement.rssi = rssi;
+  advertisement.payload[0] = 2;
+  advertisement.payload[1] = 0xff;
+  advertisement.payload[2] = marker;
+  advertisement.payloadLength = 3;
+  return advertisement;
+}
+
+void test_onboarding_candidates_are_bounded_deduplicated_and_stable() {
+  studio::ble::OnboardingCandidates candidates;
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -60, 1)));
+  const uint32_t firstToken = candidates.at(0)->token;
+  TEST_ASSERT_FALSE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -60, 1)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 0, -42, 1)));
+  TEST_ASSERT_EQUAL_UINT32(firstToken, candidates.at(0)->token);
+
+  // Address type is part of identity, so a public/random pair is not merged.
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:01", 1, -50, 2)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:02", 0, -70, 3)));
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:03", 0, -65, 4)));
+  TEST_ASSERT_EQUAL_UINT32(4, candidates.count());
+
+  TEST_ASSERT_FALSE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:04", 0, -90, 5)));
+  TEST_ASSERT_NOT_NULL(candidates.find(firstToken));
+  const uint32_t weakestToken = candidates.at(2)->token;
+  TEST_ASSERT_TRUE(candidates.observe(
+      onboardingAdvertisement("aa:00:00:00:00:04", 0, -30, 5)));
+  TEST_ASSERT_EQUAL_UINT32(4, candidates.count());
+  TEST_ASSERT_NULL(candidates.find(weakestToken));
+  TEST_ASSERT_NOT_NULL(candidates.find(firstToken));
+}
+
+void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  driver.onboardingCandidateAvailable = true;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.beginAdd(studio::DriverId::CanonBle,
+                                        "Candidate Light", id)));
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+  studio::OnboardingCandidate candidate;
+  TEST_ASSERT_EQUAL_UINT32(1, devices.onboardingCandidateCount(id));
+  TEST_ASSERT_TRUE(devices.onboardingCandidate(id, 0, candidate));
+
+  driver.onboardingSelectionFails = true;
+  TEST_ASSERT_FALSE(devices.selectOnboardingCandidate(id, candidate.token));
+  TEST_ASSERT_TRUE(driver.onboardingScanning);
+  TEST_ASSERT_FALSE(driver.onboardingSelected);
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+
+  driver.onboardingSelectionFails = false;
+  TEST_ASSERT_TRUE(devices.selectOnboardingCandidate(id, candidate.token));
+  driver.ready = false;
+  driver.pairingUpdatePending = true;
+  devices.loop();
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
+
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.cancelPendingAdd(id)));
+  TEST_ASSERT_FALSE(driver.onboardingScanning);
+  TEST_ASSERT_EQUAL_UINT32(0, devices.count());
+  TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
+}
+
 void test_mesh_store_round_trip_at_device_capacity() {
   MemoryBackend backend;
   aputure_light::MeshStore store(backend);
@@ -4593,6 +4790,9 @@ int main(int, char**) {
   RUN_TEST(test_aputure_light_crypto_and_network_vectors);
   RUN_TEST(test_aputure_light_access_payloads_and_validation);
   RUN_TEST(test_aputure_light_store_and_sequence_reservation_survive_restart);
+  RUN_TEST(test_mesh_initialization_is_identity_independent_and_transactional);
+  RUN_TEST(test_onboarding_candidates_are_bounded_deduplicated_and_stable);
+  RUN_TEST(test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
   RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);

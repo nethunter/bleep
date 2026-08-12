@@ -116,6 +116,48 @@ void AputureLightRuntime::cancelPendingCommand(studio::InstanceId id) {
   if (Session* session = sessionFor(id)) session->state.commandPending = false;
 }
 void AputureLightRuntime::forgetLocal(studio::InstanceId id) { if (auto* s = sessionFor(id)) s->state = AputureLightState{}; }
+void AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
+  candidates_.clear();
+  provisioningAddress_[0] = '\0';
+  provisioningName_[0] = '\0';
+  if (auto* s = sessionFor(id)) s->state = AputureLightState{};
+}
+size_t AputureLightRuntime::onboardingCandidateCount(studio::InstanceId id) const {
+  return sessionFor(id) != nullptr ? candidates_.count() : 0;
+}
+bool AputureLightRuntime::onboardingCandidate(
+    studio::InstanceId id, size_t index,
+    studio::OnboardingCandidate& candidate) const {
+  if (sessionFor(id) == nullptr) return false;
+  const auto* entry = candidates_.at(index);
+  if (entry == nullptr) return false;
+  candidate = studio::OnboardingCandidate{};
+  candidate.token = entry->token;
+  candidate.addressType = entry->advertisement.address.type;
+  candidate.rssi = entry->advertisement.rssi;
+  std::strncpy(candidate.address, entry->advertisement.address.value,
+               sizeof(candidate.address) - 1);
+  studio::ble::advertisementName(entry->advertisement, candidate.name,
+                                 sizeof(candidate.name));
+  if (candidate.name[0] == '\0') std::strncpy(candidate.name, "Aputure Light", sizeof(candidate.name) - 1);
+  return true;
+}
+bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
+                                                    uint32_t token) {
+  Session* session = sessionFor(id);
+  const auto* entry = candidates_.find(token);
+  if (session == nullptr || entry == nullptr) return false;
+  provisioningAddress_[0] = '\0';
+  provisioningName_[0] = '\0';
+  std::strncpy(provisioningAddress_, entry->advertisement.address.value,
+               sizeof(provisioningAddress_) - 1);
+  provisioningAddressType_ = entry->advertisement.address.type;
+  studio::ble::advertisementName(entry->advertisement, provisioningName_,
+                                 sizeof(provisioningName_));
+  session->state.phase = AputureLightState::Phase::Provisioning;
+  return true;
+}
+bool AputureLightRuntime::simObserveCandidate(const studio::ble::Advertisement& advertisement) { return candidates_.observe(advertisement); }
 bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord&) { return true; }
 void AputureLightRuntime::releaseGateway(studio::InstanceId) {}
 void* AputureLightRuntime::gatewayClient() const { return nullptr; }
@@ -143,9 +185,18 @@ bool AputureLightRuntime::sendAccessTo(uint16_t, const uint8_t*, size_t) { retur
 uint16_t AputureLightRuntime::controlGroupFor(studio::InstanceId) const { return 0; }
 void AputureLightRuntime::fail(Session& s, const char* error) { s.state.phase = AputureLightState::Phase::Failed; std::strncpy(s.state.error, error, sizeof(s.state.error)-1); }
 void AputureLightRuntime::updateSharedReady() {}
-studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const { return studio::kInvalidInstanceId; }
-bool AputureLightRuntime::hasActiveUsers() const { return false; }
+studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const {
+  for (const auto& session : sessions_) {
+    if (session.instanceId != studio::kInvalidInstanceId)
+      return session.instanceId;
+  }
+  return studio::kInvalidInstanceId;
+}
+bool AputureLightRuntime::hasActiveUsers() const {
+  return preferredGatewayInstance() != studio::kInvalidInstanceId;
+}
 bool AputureLightRuntime::isKnownGatewayAddress(const char*) const { return true; }
+void AputureLightRuntime::returnToOnboardingPicker(const char*) {}
 }  // namespace aputure_light
 
 #else
@@ -403,6 +454,7 @@ void* AputureLightRuntime::gatewayClient() const {
 }
 
 void AputureLightRuntime::deactivate(studio::InstanceId id) {
+  if (id == linkInstance_) rollbackPendingProvision();
   if (Session* session = sessionFor(id)) *session = Session{};
   if (!hasActiveUsers() && link_ != studio::ble::kInvalidLinkHandle) {
     provisioner_.cancel();
@@ -433,6 +485,7 @@ bool AputureLightRuntime::beginLink(studio::InstanceId id, bool provisioning) {
   }
   linkInstance_ = id;
   provisioningLink_ = provisioning;
+  if (provisioning) candidates_.clear();
   activeRuntime = this;
   const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (!provisioning && node != nullptr && node->bleAddress[0] != '\0') {
@@ -461,12 +514,8 @@ void AputureLightRuntime::onBleAdvertisement(
         static_cast<unsigned>(advertisement.address.type),
         observedName[0] != '\0' ? observedName : "<empty>");
     if (provisioningLink_) {
-      std::strncpy(provisioningAddress_, advertisement.address.value,
-                   sizeof(provisioningAddress_) - 1);
-      provisioningAddressType_ = advertisement.address.type;
-      std::strncpy(provisioningName_, observedName,
-                   sizeof(provisioningName_) - 1);
-      provisioningName_[sizeof(provisioningName_) - 1] = '\0';
+      candidates_.observe(advertisement);
+      return;
     }
     if (Session* session = sessionFor(linkInstance_)) {
       session->state.phase = provisioningLink_
@@ -474,6 +523,104 @@ void AputureLightRuntime::onBleAdvertisement(
           : AputureLightState::Phase::ConnectingProxy;
     }
     studio::ble::bleCentral().selectAdvertisement(link_, advertisement);
+  }
+}
+
+size_t AputureLightRuntime::onboardingCandidateCount(
+    studio::InstanceId id) const {
+  return provisioningLink_ && sessionFor(id) != nullptr ? candidates_.count()
+                                                         : 0;
+}
+
+bool AputureLightRuntime::onboardingCandidate(
+    studio::InstanceId id, size_t index,
+    studio::OnboardingCandidate& candidate) const {
+  if (!provisioningLink_ || sessionFor(id) == nullptr) return false;
+  const auto* entry = candidates_.at(index);
+  if (entry == nullptr) return false;
+  candidate = studio::OnboardingCandidate{};
+  candidate.token = entry->token;
+  candidate.addressType = entry->advertisement.address.type;
+  candidate.rssi = entry->advertisement.rssi;
+  std::strncpy(candidate.address, entry->advertisement.address.value,
+               sizeof(candidate.address) - 1);
+  studio::ble::advertisementName(entry->advertisement, candidate.name,
+                                 sizeof(candidate.name));
+  if (candidate.name[0] == '\0') {
+    std::strncpy(candidate.name, "Aputure Light", sizeof(candidate.name) - 1);
+  }
+  return true;
+}
+
+bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
+                                                    uint32_t token) {
+  Session* session = sessionFor(id);
+  const auto* entry = candidates_.find(token);
+  if (!provisioningLink_ || session == nullptr || entry == nullptr) return false;
+  if (!studio::ble::bleCentral().selectAdvertisement(link_,
+                                                      entry->advertisement)) {
+    session->state.phase = AputureLightState::Phase::Scanning;
+    studio::ble::bleCentral().requestScan(link_, true);
+    return false;
+  }
+  std::strncpy(provisioningAddress_, entry->advertisement.address.value,
+               sizeof(provisioningAddress_) - 1);
+  provisioningAddress_[sizeof(provisioningAddress_) - 1] = '\0';
+  provisioningAddressType_ = entry->advertisement.address.type;
+  studio::ble::advertisementName(entry->advertisement, provisioningName_,
+                                 sizeof(provisioningName_));
+  session->state.phase = AputureLightState::Phase::Provisioning;
+  return true;
+}
+
+void AputureLightRuntime::returnToOnboardingPicker(const char* error) {
+  rollbackPendingProvision();
+  provisioner_.cancel();
+  provisioningLink_ = true;
+  provisioningAddress_[0] = '\0';
+  provisioningName_[0] = '\0';
+  connected_ = false;
+  dataIn_ = nullptr;
+  if (Session* session = sessionFor(linkInstance_)) {
+    session->state.phase = AputureLightState::Phase::Scanning;
+    session->state.lastCommandFailed = error != nullptr;
+    if (error != nullptr) {
+      std::strncpy(session->state.error, error,
+                   sizeof(session->state.error) - 1);
+      session->state.error[sizeof(session->state.error) - 1] = '\0';
+    }
+  }
+  if (link_ != studio::ble::kInvalidLinkHandle) {
+    studio::ble::bleCentral().disconnect(link_, false);
+    studio::ble::bleCentral().requestScan(link_, true);
+  }
+}
+
+void AputureLightRuntime::rollbackPendingProvision() {
+  if (provisioningSnapshot_ == nullptr) return;
+  const uint32_t sequenceHighWater =
+      studio::mesh::repository().data().network.sequenceHighWater;
+  studio::mesh::repository().data() = *provisioningSnapshot_;
+  if (sequenceHighWater >
+      studio::mesh::repository().data().network.sequenceHighWater) {
+    studio::mesh::repository().data().network.sequenceHighWater =
+        sequenceHighWater;
+  }
+  studio::mesh::repository().save();
+  delete provisioningSnapshot_;
+  provisioningSnapshot_ = nullptr;
+  if (Session* session = sessionFor(linkInstance_)) session->pairingDirty = false;
+}
+
+void AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
+  if (id != linkInstance_) return;
+  rollbackPendingProvision();
+  provisioner_.cancel();
+  candidates_.clear();
+  provisioningAddress_[0] = '\0';
+  provisioningName_[0] = '\0';
+  if (link_ != studio::ble::kInvalidLinkHandle) {
+    studio::ble::bleCentral().disconnect(link_, false);
   }
 }
 
@@ -494,7 +641,12 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
     connected_ = true;
     const bool ok = provisioningLink_ ? setupProvisioning() : setupProxy();
     if (!ok) {
-      if (Session* session = sessionFor(linkInstance_)) fail(*session, "GATT setup failed");
+      if (provisioningLink_ || provisioningSnapshot_ != nullptr) {
+        returnToOnboardingPicker("GATT setup failed");
+        return;
+      }
+      if (Session* session = sessionFor(linkInstance_))
+        fail(*session, "GATT setup failed");
       studio::ble::bleCentral().markProtocolFailed(link_);
     }
   } else if (event.type == studio::ble::EventType::Disconnected) {
@@ -504,6 +656,14 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
     configBatch_ = NetworkPduBatch{};
     configBatchIndex_ = 0;
     ++gatewayGeneration_;
+    if (provisioningLink_) {
+      provisioningAddress_[0] = '\0';
+      provisioningName_[0] = '\0';
+      provisioner_.cancel();
+      if (Session* session = sessionFor(linkInstance_)) {
+        session->state.phase = AputureLightState::Phase::Scanning;
+      }
+    }
     for (auto& session : sessions_) {
       if (session.instanceId == studio::kInvalidInstanceId) continue;
       session.state.proxyConnected = false;
@@ -528,6 +688,10 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
       }
     }
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
+    if (provisioningLink_ || provisioningSnapshot_ != nullptr) {
+      returnToOnboardingPicker("Connect failed");
+      return;
+    }
     if (Session* session = sessionFor(linkInstance_)) {
       session->state.phase = AputureLightState::Phase::Scanning;
     }
@@ -676,9 +840,7 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
     bool ok = provisioner_.handle(pdu, length);
     if (ok && provisioner_.complete()) ok = completeProvisioning();
     if (!ok) {
-      if (Session* session = sessionFor(linkInstance_)) {
-        fail(*session, "Provisioning failed");
-      }
+      returnToOnboardingPicker("Provisioning failed");
     }
     return;
   }
@@ -785,9 +947,7 @@ bool AputureLightRuntime::handleConfigurationStatus(
                           decoded.access[1];
   configAwaitingStatus_ = false;
   if (status != 0) {
-    if (Session* session = sessionFor(linkInstance_)) {
-      fail(*session, "Mesh config rejected");
-    }
+    returnToOnboardingPicker("Mesh config rejected");
     APUTURE_LIGHT_LOG.printf(
         "aputure_light event=config_status step=%u opcode=0x%04x status=%u result=failed\n",
         configStep_, opcode, status);
@@ -807,6 +967,8 @@ bool AputureLightRuntime::completeProvisioning() {
   if (session == nullptr || !provisioner_.complete()) return false;
   MeshStoreData& meshData = studio::mesh::repository().data();
   const MeshStoreData previous = meshData;
+  MeshStoreData* snapshot = new (std::nothrow) MeshStoreData(previous);
+  if (snapshot == nullptr) return false;
   MeshNodeRecord node; node.instanceId = session->instanceId; node.model = session->model;
   node.unicastAddress = meshData.network.nextUnicastAddress;
   node.elementCount = provisioner_.elementCount();
@@ -833,16 +995,20 @@ bool AputureLightRuntime::completeProvisioning() {
                  sizeof(session->productName) - 1);
   }
   if (node.unicastAddress > 0x7fff - node.elementCount ||
-      !upsertNode(meshData, node))
+      !upsertNode(meshData, node)) {
+    delete snapshot;
     return false;
+  }
   meshData.network.nextUnicastAddress =
       static_cast<uint16_t>(node.unicastAddress + node.elementCount);
   if (!studio::mesh::repository().save()) {
     meshData = previous;
+    delete snapshot;
     return false;
   }
+  delete provisioningSnapshot_;
+  provisioningSnapshot_ = snapshot;
   session->state.phase = AputureLightState::Phase::PendingConfig;
-  session->pairingDirty = true;
   provisioningLink_ = false;
   connected_ = false;
   dataIn_ = nullptr;
@@ -901,9 +1067,7 @@ bool AputureLightRuntime::configureNext() {
     }
     configAwaitingStatus_ = false;
     if (configRetryCount_ >= 2) {
-      if (Session* session = sessionFor(linkInstance_)) {
-        fail(*session, "Mesh config timeout");
-      }
+      returnToOnboardingPicker("Mesh config timeout");
       APUTURE_LIGHT_LOG.printf(
           "aputure_light event=config_failed step=%u reason=status_timeout\n",
           configStep_);
@@ -980,6 +1144,8 @@ bool AputureLightRuntime::configureNext() {
             "aputure_light event=config_failed step=%u reason=save\n", configStep_);
         return false;
       }
+      delete provisioningSnapshot_;
+      provisioningSnapshot_ = nullptr;
       APUTURE_LIGHT_LOG.printf("aputure_light event=config_complete step=%u\n", configStep_);
       studio::ble::bleCentral().markProtocolReady(link_);
       updateSharedReady();

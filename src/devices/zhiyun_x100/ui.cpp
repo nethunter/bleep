@@ -168,6 +168,8 @@ void onRgb(lv_event_t*) { setMode(true); }
 
 void onBack() {
   haptic_feedback::request(haptic_feedback::Pattern::Back);
+  if (studio::devices().isPendingAdd(instanceId))
+    studio::devices().cancelPendingAdd(instanceId);
   hide();
   ui::showDeviceParent();
 }
@@ -180,6 +182,25 @@ void onRetryEvent(lv_event_t*) {
     studio::devices().retryPendingAdd(instanceId);
   else
     enqueue(studio::CommandType::Connect);
+}
+
+void onCandidate(uint32_t token) {
+  studio::devices().selectOnboardingCandidate(instanceId, token);
+}
+
+void updateCandidates(bool show) {
+  studio::OnboardingCandidate candidates[4];
+  size_t count = 0;
+  if (show) {
+    const size_t available =
+        studio::devices().onboardingCandidateCount(instanceId);
+    while (count < available && count < 4 &&
+           studio::devices().onboardingCandidate(instanceId, count,
+                                                 candidates[count])) {
+      ++count;
+    }
+  }
+  pairingScreen.setCandidates(candidates, count, onCandidate);
 }
 
 void onPower(lv_event_t*) {
@@ -311,6 +332,9 @@ void showForState(const zhiyun_x100::X100State* state) {
                           failed ? "Check the light and retry"
                                  : "Reset or provisioned light nearby",
                           !failed, failed, "Retry");
+  const bool scanning = state == nullptr ||
+                        state->link == zhiyun_x100::X100State::Link::Scanning;
+  updateCandidates(scanning && !failed);
   if (lv_scr_act() != pairingScreen.screen())
     lv_scr_load(pairingScreen.screen());
 }

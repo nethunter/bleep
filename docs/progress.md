@@ -4280,3 +4280,37 @@ Record values with the exact build environment and commit/worktree state.
   full `bleep` profile built with 140,364 bytes static RAM (42.8%) and 1,901,478
   bytes flash (60.4%), then uploaded to `/dev/cu.usbserial-211240`; all written
   regions passed hash verification and the board hard-reset.
+### 2026-08-11: Transactional mesh creation and explicit light selection
+
+- Ported only the still-relevant transaction/selection concepts from historical
+  commit `8532ef3`; no wholesale cherry-pick was used. Current `panel_identity`,
+  `Bleep-Setup-XXXXX`, offline Portal/security repairs, Aputure Light paths,
+  shared Aputure/Zhiyun mesh transport, per-fixture unicast control, and compound
+  scene behavior remain intact. `bdc9aaa` and the old identity/Portal code were
+  not ported. The pre-existing `stash@{0}` safety stash remains untouched.
+- Missing mesh initialization now fills Network Key and AppKey in temporary
+  state through an injectable random seam, persists the existing schema before
+  publishing it, and leaves live caller state unchanged on entropy or save
+  failure. No panel identity participates in key generation.
+- Fresh Aputure Light and Zhiyun adds now expose a four-entry scrollable picker
+  with advertised name/model, address suffix, and RSSI. Address plus address
+  type owns a stable selection token; duplicate updates stay in place and a
+  stronger candidate replaces only the weakest full-list entry. Saved targets
+  continue automatic reconnect. Immediate selection failure, connect/
+  provisioning/configuration failure, competing loss, and Back/cancel return to
+  Scanning without a normal registry commit. Provisional node/unicast state is
+  restored without decreasing reserved sequence high-water.
+- Native passed 84/84. The complete `ui_sim` traversal passed, including a real
+  four-row candidate interaction that retained identical LVGL row objects over
+  750 ms of normal refresh ticks, scrolled the list, tapped a stable-token row,
+  and canceled the pending add. The full Montserrat `bleep` profile built with
+  141,524 / 327,680 bytes static RAM (43.2%) and 1,931,720 / 3,145,728 bytes
+  flash (61.4%). Per repository policy, alternate profiles remain CI-owned.
+- The configured `/dev/cu.usbserial-211240` target was present. The validated
+  `bleep` image uploaded successfully, every written-region hash verified, and
+  the ESP32-C3 hard-reset. NVS at `0x9000` was not erased or factory-reset.
+- Still unverified: two physical panels/two fixtures, phone and captive-Portal
+  behavior, physical fixture selection and competing provisioning, cross-mesh
+  rejection, reboot/fallback proxy ownership, all four Aputure fixtures,
+  Aputure/Zhiyun coexistence, and the two-hour soak. Build, simulator, ACK, and
+  proxy evidence do not satisfy these gates.

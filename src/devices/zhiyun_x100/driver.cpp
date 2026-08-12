@@ -307,7 +307,28 @@ bool ZhiyunLightDriver::lightControlState(InstanceId instanceId,
 
 void ZhiyunLightDriver::cancelOnboarding(const DeviceRecord& record) {
   Session* session = find(record.instanceId);
-  if (session != nullptr) session->client.forgetDevice();
+  if (session != nullptr) session->client.cancelOnboarding();
+}
+
+size_t ZhiyunLightDriver::onboardingCandidateCount(
+    InstanceId instanceId) const {
+  const Session* session = find(instanceId);
+  return session != nullptr ? session->client.onboardingCandidateCount() : 0;
+}
+
+bool ZhiyunLightDriver::onboardingCandidate(
+    InstanceId instanceId, size_t index,
+    OnboardingCandidate& candidate) const {
+  const Session* session = find(instanceId);
+  return session != nullptr &&
+         session->client.onboardingCandidate(index, candidate);
+}
+
+bool ZhiyunLightDriver::selectOnboardingCandidate(InstanceId instanceId,
+                                                  uint32_t token) {
+  Session* session = find(instanceId);
+  return session != nullptr &&
+         session->client.selectOnboardingCandidate(token);
 }
 
 void ZhiyunLightDriver::preferSkipPeer(InstanceId instanceId,

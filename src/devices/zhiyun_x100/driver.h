@@ -21,6 +21,11 @@ class ZhiyunLightDriver : public DeviceDriver {
   bool lightControlState(InstanceId instanceId,
                          LightControlState& state) const override;
   void cancelOnboarding(const DeviceRecord& record) override;
+  size_t onboardingCandidateCount(InstanceId instanceId) const override;
+  bool onboardingCandidate(InstanceId instanceId, size_t index,
+                           OnboardingCandidate& candidate) const override;
+  bool selectOnboardingCandidate(InstanceId instanceId,
+                                 uint32_t token) override;
   void preferSkipPeer(InstanceId instanceId,
                       const char* bleAddress) override;
   bool consumePairingUpdate(InstanceId instanceId,
