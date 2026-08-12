@@ -20,7 +20,7 @@ class ZhiyunLightDriver : public DeviceDriver {
   const void* specializedState(InstanceId instanceId) const override;
   bool lightControlState(InstanceId instanceId,
                          LightControlState& state) const override;
-  void cancelOnboarding(const DeviceRecord& record) override;
+  bool cancelOnboarding(const DeviceRecord& record) override;
   size_t onboardingCandidateCount(InstanceId instanceId) const override;
   bool onboardingCandidate(InstanceId instanceId, size_t index,
                            OnboardingCandidate& candidate) const override;

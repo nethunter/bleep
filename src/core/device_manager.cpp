@@ -212,6 +212,7 @@ void DeviceManager::loop() {
     }
     const DeviceRuntimeState runtime =
         activeDriver->runtimeState(activeRecord->instanceId);
+    if (!runtime.commandPending) slot.pendingRequestId = 0;
     if (runtime.protocolReady) {
       slot.retained = true;
     }
@@ -241,6 +242,12 @@ void DeviceManager::loop() {
   result.requestId = command.requestId;
   result.instanceId = command.instanceId;
   result.status = dispatch(command);
+  if (result.status == CommandStatus::Succeeded) {
+    ActiveSlot* slot = slotFor(command.instanceId);
+    if (slot != nullptr && runtimeState(command.instanceId).commandPending) {
+      slot->pendingRequestId = command.requestId;
+    }
+  }
   if (!results_.push(result)) {
     CommandResult discarded;
     results_.pop(discarded);
@@ -336,8 +343,8 @@ RegistryStatus DeviceManager::cancelPendingAdd(InstanceId instanceId) {
     return RegistryStatus::NotFound;
   }
   DeviceDriver* driver = driverFor(pendingRecord_.driverId);
-  if (driver != nullptr) {
-    driver->cancelOnboarding(pendingRecord_);
+  if (driver != nullptr && !driver->cancelOnboarding(pendingRecord_)) {
+    return RegistryStatus::Invalid;
   }
   if (isActive(instanceId)) {
     deactivate(instanceId);
@@ -744,12 +751,15 @@ bool DeviceManager::cancelCommand(uint32_t requestId, InstanceId instanceId) {
   results_.removeFirst([requestId](const CommandResult& result) {
     return result.requestId == requestId;
   });
+  ActiveSlot* slot = slotFor(instanceId);
+  const bool dispatched = slot != nullptr && slot->pendingRequestId == requestId;
   const DeviceRecord* record = find(instanceId);
   DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
-  if (driver != nullptr && isActive(instanceId)) {
+  if (driver != nullptr && dispatched) {
     driver->cancelPendingCommand(instanceId);
+    slot->pendingRequestId = 0;
   }
-  return queued || driver != nullptr;
+  return queued || dispatched;
 }
 
 bool DeviceManager::takeResult(uint32_t requestId, CommandResult& result) {

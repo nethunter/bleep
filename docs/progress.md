@@ -61,6 +61,37 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-11.
 
+### 2026-08-11: Light/mesh review corrections
+
+- Fixed request ownership for sequence cancellation. `DeviceManager` now
+  records the request ID that actually created each driver's asynchronous
+  pending transaction. Removing a command that is still queued no longer
+  cancels an unrelated manual transaction on the same fixture.
+- Mesh onboarding rollback now persists a complete replacement blob before
+  publishing it live. A failed rollback save retains the snapshot and pending
+  add for retry instead of discarding recovery state and allowing a phantom
+  node or consumed unicast address to return after reboot. Early Zhiyun PB-GATT
+  disconnects return to the picker rather than remaining at Idle.
+- Zhiyun post-provision scanning now accepts the exact selected address/type or
+  a standards Mesh Proxy Network ID matching `k3(Network Key)`. Arbitrary
+  same-model proxies are ignored. Physical rotating-address, cross-mesh, and
+  competing-panel behavior remains unverified.
+- Removed the superseded Aputure and Zhiyun control widget trees. Their UI
+  modules now own onboarding only; Ready uses the single capability-driven
+  light shell. Home Assistant lights also skip construction of the generic
+  entity screen, while non-light HA domains keep it.
+- Native passed 85/85. The complete `ui_sim` traversal and screenshots passed,
+  including candidate scrolling/tapping during refresh and Aputure CCT/RGB,
+  X100, X60RGB, and HA power-only shared-shell views. Simulator LVGL reported
+  42,848 bytes free after maximum-device initialization, 23,576 after sequence
+  Stop/settings, and 26,480 after remove refresh. The full Montserrat `bleep`
+  profile built with 141,404 / 327,680 bytes static RAM and 1,926,232 /
+  3,145,728 bytes flash. No firmware upload or NVS reset was attempted.
+- Still unverified: physical fixture selection, early-disconnect recovery,
+  rollback under real NVS failure, cross-mesh rejection, reboot/fallback,
+  two-panel/two-fixture behavior, all four Aputure fixtures together,
+  Aputure/Zhiyun coexistence, phone/captive Portal behavior, and soak testing.
+
 ### 2026-08-10: Mesh isolation safety and recovery corrections
 
 - Follow-up correction (ADR-041): comparison with the working Studio Lighter

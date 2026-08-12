@@ -814,6 +814,10 @@ void X100Client::finishCommand(bool success, const char* error) {
 }
 
 void X100Client::startScan() {
+  if (provisioningSnapshot_ != nullptr) {
+    returnToOnboardingPicker();
+    if (provisioningSnapshot_ != nullptr) return;
+  }
   begin();
   connectRequested_ = initialized_;
   haveTarget_ = false;
@@ -833,8 +837,15 @@ void X100Client::forgetDevice() {
   if (connectRequested_) startScan();
 }
 
-void X100Client::cancelOnboarding() {
-  rollbackPendingProvision();
+bool X100Client::cancelOnboarding() {
+  if (!rollbackPendingProvision()) {
+    state_.phase = X100State::Phase::Failed;
+    state_.lastCommandFailed = true;
+    std::strncpy(state_.error, "Mesh rollback save failed",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    return false;
+  }
   provisioner_.cancel();
   candidates_.clear();
   haveTarget_ = false;
@@ -847,6 +858,7 @@ void X100Client::cancelOnboarding() {
   if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle) {
     studio::ble::bleCentral().disconnect(linkHandle_, false);
   }
+  return true;
 }
 
 bool X100Client::onboardingCandidate(
@@ -912,7 +924,14 @@ void X100Client::beginScan() {
 }
 
 void X100Client::returnToOnboardingPicker(const char* error) {
-  rollbackPendingProvision();
+  if (!rollbackPendingProvision()) {
+    state_.phase = X100State::Phase::Failed;
+    state_.lastCommandFailed = true;
+    std::strncpy(state_.error, "Mesh rollback save failed",
+                 sizeof(state_.error) - 1);
+    state_.error[sizeof(state_.error) - 1] = '\0';
+    return;
+  }
   provisioner_.cancel();
   haveTarget_ = false;
   targetAddress_[0] = '\0';
@@ -935,19 +954,19 @@ void X100Client::returnToOnboardingPicker(const char* error) {
   }
 }
 
-void X100Client::rollbackPendingProvision() {
-  if (provisioningSnapshot_ == nullptr) return;
+bool X100Client::rollbackPendingProvision() {
+  if (provisioningSnapshot_ == nullptr) return true;
   const uint32_t sequenceHighWater =
       studio::mesh::repository().data().network.sequenceHighWater;
-  studio::mesh::repository().data() = *provisioningSnapshot_;
+  studio::mesh::StoreData restored = *provisioningSnapshot_;
   if (sequenceHighWater >
-      studio::mesh::repository().data().network.sequenceHighWater) {
-    studio::mesh::repository().data().network.sequenceHighWater =
-        sequenceHighWater;
+      restored.network.sequenceHighWater) {
+    restored.network.sequenceHighWater = sequenceHighWater;
   }
-  studio::mesh::repository().save();
+  if (!studio::mesh::repository().replace(restored)) return false;
   delete provisioningSnapshot_;
   provisioningSnapshot_ = nullptr;
+  return true;
 }
 
 void X100Client::beginConnect() {
@@ -1017,6 +1036,15 @@ void X100Client::onBleAdvertisement(
   if (!provisioned && !unprovisioned) return;
   if (onboardingSelectionActive_ && provisioningSnapshot_ != nullptr &&
       provisioned && !haveTarget_) {
+    studio::ble::Address selectedAddress;
+    std::strncpy(selectedAddress.value, targetAddress_,
+                 sizeof(selectedAddress.value) - 1);
+    selectedAddress.type = targetAddressType_;
+    if (!matchesSelectedProvisionedAdvertisement(
+            advertisement, selectedAddress,
+            studio::mesh::repository().data().network.networkKey)) {
+      return;
+    }
     if (!studio::ble::bleCentral().selectAdvertisement(linkHandle_,
                                                         advertisement)) {
       returnToOnboardingPicker("Provisioned light unavailable");
@@ -1052,7 +1080,12 @@ void X100Client::onBleEvent(studio::ble::LinkHandle link,
     if (!state_.hasSavedDevice) returnToOnboardingPicker("Connect failed");
     else state_.link = X100State::Link::Disconnected;
   } else if (event.type == studio::ble::EventType::Disconnected) {
-    handleDisconnect();
+    if (onboardingSelectionActive_ && provisioningLink_ &&
+        provisioningSnapshot_ == nullptr) {
+      returnToOnboardingPicker("Provisioning disconnected");
+    } else {
+      handleDisconnect();
+    }
   }
 }
 

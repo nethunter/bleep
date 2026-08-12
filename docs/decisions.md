@@ -1041,9 +1041,15 @@ the replacement.
   explicit selection. Immediate claim failure rolls back to Scanning. A failed
   onboarding/configuration transaction restores the pre-provision mesh node
   set and next unicast address while never decreasing a reserved sequence
-  high-water mark. The normal device record still commits only after
-  protocol-ready confirmation. Back/cancel removes the draft and provisional
-  mesh allocation.
+  high-water mark. Rollback itself is publish-after-save: if the replacement
+  blob cannot persist, the snapshot and pending add remain retryable rather
+  than presenting a successful cancel with stale NVS. The normal device record
+  still commits only after protocol-ready confirmation. Back/cancel removes
+  the draft and provisional mesh allocation.
+- Post-provision correlation: Zhiyun rediscovery accepts the exact selected
+  address/type or a standard Mesh Proxy Network ID derived from this panel's
+  Network Key. A same-model proxy with neither proof is ignored. Physical
+  cross-mesh rejection remains part of the open hardware gate.
 - Compatibility: Saved targets continue automatic reconnect and Aputure and
   Zhiyun retain ADR-041/039 shared-mesh routing. This decision does not alter
   `panel_identity`, `Bleep-Setup-XXXXX`, Portal storage/security, mesh schema

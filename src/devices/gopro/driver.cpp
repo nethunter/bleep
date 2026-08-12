@@ -103,10 +103,11 @@ void GoProDriver::forgetPairing(const DeviceRecord& record) {
   }
 }
 
-void GoProDriver::cancelOnboarding(const DeviceRecord& record) {
+bool GoProDriver::cancelOnboarding(const DeviceRecord& record) {
   Session* session = sessionFor(record.instanceId);
   if (session != nullptr) session->client.forgetDevice();
   else forgetPairing(record);
+  return true;
 }
 
 bool GoProDriver::consumePairingUpdate(InstanceId id, DeviceRecord& record) {

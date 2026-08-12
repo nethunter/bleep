@@ -41,8 +41,9 @@ class DeviceDriver {
 
   // Abandons an uncommitted Add-device attempt. Drivers should clear any
   // selected peer, controller bond, or provisional device-local data.
-  virtual void cancelOnboarding(const DeviceRecord& record) {
+  virtual bool cancelOnboarding(const DeviceRecord& record) {
     forgetPairing(record);
+    return true;
   }
 
   // Hint used while pairing a new instance: skip peers already claimed by

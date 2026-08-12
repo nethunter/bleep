@@ -264,6 +264,14 @@ subscribes to `...9601`, queries power, brightness, and CCT, then writes only
 the three captured setters. It does not decode or originate Bluetooth Mesh
 Network PDUs for direct controls.
 
+Post-provision rediscovery no longer accepts an arbitrary same-model proxy.
+The exact selected address/type remains valid; when a compliant rotating proxy
+advertises Network ID service data (`0x1828`, proxy type `0x00`), the runtime
+derives the expected 64-bit Network ID with Bluetooth Mesh `k3` from the
+panel-owned Network Key and requires an exact match. Node Identity advertising
+without the original address is not yet resolved and remains part of the
+reboot/fallback hardware gate.
+
 Saved Zhiyun fixtures now persist their member selector in mesh-store schema 2
 and attach to the panel-owned mesh runtime's one retained gateway client.
 `0xFEE9` notifications fan out to each logical session, whose unique sequence,

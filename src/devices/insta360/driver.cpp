@@ -836,7 +836,7 @@ const void* Insta360Driver::specializedState(InstanceId id) const {
 }
 
 void Insta360Driver::forgetPairing(const DeviceRecord&) {}
-void Insta360Driver::cancelOnboarding(const DeviceRecord&) {}
+bool Insta360Driver::cancelOnboarding(const DeviceRecord&) { return true; }
 
 bool Insta360Driver::consumePairingUpdate(InstanceId id, DeviceRecord& record) {
   Session* session = sessionFor(id);

@@ -80,11 +80,12 @@ void AputureLightDriver::forgetPairing(const DeviceRecord& record) {
   runtime->forgetLocal(record.instanceId);
   aputure_light::releaseRuntimeIfIdle();
 }
-void AputureLightDriver::cancelOnboarding(const DeviceRecord& record) {
+bool AputureLightDriver::cancelOnboarding(const DeviceRecord& record) {
   if (aputure_light::AputureLightRuntime* runtime =
           aputure_light::runtimeIfActive()) {
-    runtime->cancelOnboarding(record.instanceId);
+    return runtime->cancelOnboarding(record.instanceId);
   }
+  return true;
 }
 size_t AputureLightDriver::onboardingCandidateCount(
     InstanceId instanceId) const {

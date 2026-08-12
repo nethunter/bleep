@@ -15,7 +15,7 @@ class CanonTriggerDriver : public DeviceDriver {
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override;
   const void* specializedState(InstanceId instanceId) const override;
   void forgetPairing(const DeviceRecord& record) override;
-  void cancelOnboarding(const DeviceRecord& record) override;
+  bool cancelOnboarding(const DeviceRecord& record) override;
   void preferSkipPeer(InstanceId instanceId, const char* bleAddress) override;
   bool consumePairingUpdate(InstanceId instanceId, DeviceRecord& record) override;
 

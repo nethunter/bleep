@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "core/ble/ble_types.h"
+#include "devices/aputure_light/crypto.h"
 #include "devices/zhiyun_x100/protocol.h"
 
 namespace zhiyun_x100 {
@@ -77,6 +78,25 @@ inline bool matchesMolusAdvertisement(
   if (advertisementModel(advertisement) == MolusModel::Unknown) return false;
   return studio::ble::advertisesService(
       advertisement, provisioned ? kProxyAdvertisedService : "1827");
+}
+
+inline bool matchesSelectedProvisionedAdvertisement(
+    const studio::ble::Advertisement& advertisement,
+    const studio::ble::Address& selectedAddress,
+    const uint8_t networkKey[16]) {
+  if (!matchesMolusAdvertisement(advertisement, true) || networkKey == nullptr)
+    return false;
+  if (studio::ble::addressEqual(advertisement.address, selectedAddress))
+    return true;
+  uint8_t advertisedNetworkId[8];
+  if (!studio::ble::meshProxyNetworkId(advertisement,
+                                       advertisedNetworkId)) {
+    return false;
+  }
+  uint8_t expectedNetworkId[8];
+  aputure_light::meshK3(networkKey, expectedNetworkId);
+  return std::memcmp(advertisedNetworkId, expectedNetworkId,
+                     sizeof(expectedNetworkId)) == 0;
 }
 
 inline bool matchesAdvertisement(

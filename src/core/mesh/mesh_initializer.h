@@ -15,4 +15,9 @@ using RandomFill = bool (*)(uint8_t* output, size_t length, void* context);
 bool initializeNewMesh(Store& store, StoreData& data, RandomFill randomFill,
                        void* context = nullptr);
 
+// Persists a complete replacement before publishing it to live repository
+// state. A failed save leaves the caller's state byte-for-byte unchanged.
+bool persistReplacement(Store& store, StoreData& data,
+                        const StoreData& replacement);
+
 }  // namespace studio::mesh

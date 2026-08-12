@@ -127,10 +127,11 @@ const void* SharkDriver::specializedState(InstanceId instanceId) const {
              : nullptr;
 }
 
-void SharkDriver::cancelOnboarding(const DeviceRecord& record) {
+bool SharkDriver::cancelOnboarding(const DeviceRecord& record) {
   if (session_ != nullptr && session_->instanceId == record.instanceId) {
     session_->client.forgetDevice();
   }
+  return true;
 }
 
 bool SharkDriver::consumePairingUpdate(InstanceId instanceId,

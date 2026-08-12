@@ -93,6 +93,7 @@ class DeviceManager {
     uint8_t owners = 0;
     bool retained = false;
     uint32_t lastUsed = 0;
+    uint32_t pendingRequestId = 0;
   };
 
   ActiveSlot* slotFor(InstanceId instanceId);

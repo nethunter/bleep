@@ -116,11 +116,12 @@ void AputureLightRuntime::cancelPendingCommand(studio::InstanceId id) {
   if (Session* session = sessionFor(id)) session->state.commandPending = false;
 }
 void AputureLightRuntime::forgetLocal(studio::InstanceId id) { if (auto* s = sessionFor(id)) s->state = AputureLightState{}; }
-void AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
+bool AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
   candidates_.clear();
   provisioningAddress_[0] = '\0';
   provisioningName_[0] = '\0';
   if (auto* s = sessionFor(id)) s->state = AputureLightState{};
+  return true;
 }
 size_t AputureLightRuntime::onboardingCandidateCount(studio::InstanceId id) const {
   return sessionFor(id) != nullptr ? candidates_.count() : 0;
@@ -574,7 +575,16 @@ bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
 }
 
 void AputureLightRuntime::returnToOnboardingPicker(const char* error) {
-  rollbackPendingProvision();
+  if (!rollbackPendingProvision()) {
+    if (Session* session = sessionFor(linkInstance_)) {
+      session->state.phase = AputureLightState::Phase::Failed;
+      session->state.lastCommandFailed = true;
+      std::strncpy(session->state.error, "Mesh rollback save failed",
+                   sizeof(session->state.error) - 1);
+      session->state.error[sizeof(session->state.error) - 1] = '\0';
+    }
+    return;
+  }
   provisioner_.cancel();
   provisioningLink_ = true;
   provisioningAddress_[0] = '\0';
@@ -596,25 +606,34 @@ void AputureLightRuntime::returnToOnboardingPicker(const char* error) {
   }
 }
 
-void AputureLightRuntime::rollbackPendingProvision() {
-  if (provisioningSnapshot_ == nullptr) return;
+bool AputureLightRuntime::rollbackPendingProvision() {
+  if (provisioningSnapshot_ == nullptr) return true;
   const uint32_t sequenceHighWater =
       studio::mesh::repository().data().network.sequenceHighWater;
-  studio::mesh::repository().data() = *provisioningSnapshot_;
+  MeshStoreData restored = *provisioningSnapshot_;
   if (sequenceHighWater >
-      studio::mesh::repository().data().network.sequenceHighWater) {
-    studio::mesh::repository().data().network.sequenceHighWater =
-        sequenceHighWater;
+      restored.network.sequenceHighWater) {
+    restored.network.sequenceHighWater = sequenceHighWater;
   }
-  studio::mesh::repository().save();
+  if (!studio::mesh::repository().replace(restored)) return false;
   delete provisioningSnapshot_;
   provisioningSnapshot_ = nullptr;
   if (Session* session = sessionFor(linkInstance_)) session->pairingDirty = false;
+  return true;
 }
 
-void AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
-  if (id != linkInstance_) return;
-  rollbackPendingProvision();
+bool AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
+  if (id != linkInstance_) return true;
+  if (!rollbackPendingProvision()) {
+    if (Session* session = sessionFor(id)) {
+      session->state.phase = AputureLightState::Phase::Failed;
+      session->state.lastCommandFailed = true;
+      std::strncpy(session->state.error, "Mesh rollback save failed",
+                   sizeof(session->state.error) - 1);
+      session->state.error[sizeof(session->state.error) - 1] = '\0';
+    }
+    return false;
+  }
   provisioner_.cancel();
   candidates_.clear();
   provisioningAddress_[0] = '\0';
@@ -622,6 +641,7 @@ void AputureLightRuntime::cancelOnboarding(studio::InstanceId id) {
   if (link_ != studio::ble::kInvalidLinkHandle) {
     studio::ble::bleCentral().disconnect(link_, false);
   }
+  return true;
 }
 
 void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
@@ -1245,6 +1265,12 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
     valid = buildRgbAccess(command.value0, command.value1, payload);
   }
   else if (command.type == studio::CommandType::Connect) {
+    if (provisioningSnapshot_ != nullptr) {
+      returnToOnboardingPicker();
+      return provisioningSnapshot_ == nullptr
+                 ? studio::CommandStatus::Succeeded
+                 : studio::CommandStatus::Unavailable;
+    }
     MeshNodeRecord* node =
         findNode(studio::mesh::repository().data(), command.instanceId);
     session->state.error[0] = '\0';

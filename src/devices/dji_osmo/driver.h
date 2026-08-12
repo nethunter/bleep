@@ -15,7 +15,7 @@ class DjiOsmoDriver : public DeviceDriver {
   DeviceRuntimeState runtimeState(InstanceId) const override;
   const void* specializedState(InstanceId) const override;
   void forgetPairing(const DeviceRecord&) override;
-  void cancelOnboarding(const DeviceRecord&) override;
+  bool cancelOnboarding(const DeviceRecord&) override;
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override;
 
  private:

@@ -134,13 +134,14 @@ void CanonTriggerDriver::forgetPairing(const DeviceRecord& record) {
   transient.forgetBond(record.bleAddress, record.bleAddressType);
 }
 
-void CanonTriggerDriver::cancelOnboarding(const DeviceRecord& record) {
+bool CanonTriggerDriver::cancelOnboarding(const DeviceRecord& record) {
   Session* session = sessionFor(record.instanceId);
   if (session != nullptr) {
     session->client.forgetDevice();
   } else {
     forgetPairing(record);
   }
+  return true;
 }
 
 void CanonTriggerDriver::preferSkipPeer(InstanceId instanceId,

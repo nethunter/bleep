@@ -289,7 +289,10 @@ Light drivers additionally publish a normalized `LightControlState` containing
 supported modes and limits, current or optimistic values, power, pending/error
 state, and confirmation quality. A single round-panel shell consumes that
 state for Aputure Light, Zhiyun Light, and Home Assistant light instances and
-hides unsupported rows without changing navigation or command debounce.
+hides unsupported rows without changing navigation or command debounce. The
+brand modules retain onboarding only; they do not construct dormant legacy
+control screens behind the shared shell. Home Assistant constructs its generic
+entity screen only for non-light domains.
 
 Home Assistant is the first dynamic-profile driver: each persistent instance
 derives its device type and capabilities from its stored entity domain rather

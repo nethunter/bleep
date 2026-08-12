@@ -196,7 +196,6 @@ void refresh() {
 }  // namespace
 
 void show(studio::InstanceId id) {
-  build();
   instanceId = id;
   visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
   if (!visible) { instanceId = studio::kInvalidInstanceId; return; }
@@ -207,6 +206,7 @@ void show(studio::InstanceId id) {
     ui::releaseInactiveScreens();
     return;
   }
+  build();
   refresh();
   lv_scr_load(screen);
   ui::releaseInactiveScreens();

@@ -21,6 +21,7 @@ struct NetworkKeys {
 };
 
 void meshK2(const uint8_t networkKey[16], NetworkKeys& output);
+void meshK3(const uint8_t networkKey[16], uint8_t output[8]);
 uint8_t meshK4(const uint8_t applicationKey[16]);
 
 bool aesCcmEncrypt(const uint8_t key[16], const uint8_t* nonce,

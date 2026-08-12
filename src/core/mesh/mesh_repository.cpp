@@ -57,4 +57,8 @@ bool Repository::begin() {
 
 bool Repository::save() { return loaded_ && store.save(data_); }
 
+bool Repository::replace(const StoreData& replacement) {
+  return loaded_ && persistReplacement(store, data_, replacement);
+}
+
 }  // namespace studio::mesh

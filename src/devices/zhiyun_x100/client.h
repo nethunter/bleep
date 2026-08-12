@@ -37,7 +37,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void cancelPendingCommand();
   void startScan();
   void forgetDevice();
-  void cancelOnboarding();
+  bool cancelOnboarding();
   size_t onboardingCandidateCount() const { return candidates_.count(); }
   bool onboardingCandidate(size_t index,
                            studio::OnboardingCandidate& candidate) const;
@@ -80,7 +80,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void handleProvisioningBytes(const uint8_t* data, size_t length);
   void handleDisconnect();
   void returnToOnboardingPicker(const char* error = nullptr);
-  void rollbackPendingProvision();
+  bool rollbackPendingProvision();
   void drainNotifications();
   bool writeFrame(const FrameBytes& frame);
   bool sendQuery(uint16_t command, const uint8_t* payload = nullptr,

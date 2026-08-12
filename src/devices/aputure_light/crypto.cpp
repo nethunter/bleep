@@ -172,6 +172,15 @@ void meshK2(const uint8_t networkKey[16], NetworkKeys& output) {
   std::memcpy(output.privacy, t3, 16);
 }
 
+void meshK3(const uint8_t networkKey[16], uint8_t output[8]) {
+  uint8_t salt[16], t[16], result[16];
+  meshS1(reinterpret_cast<const uint8_t*>("smk3"), 4, salt);
+  aesCmac(salt, networkKey, 16, t);
+  const uint8_t id64[] = {'i', 'd', '6', '4', 0x01};
+  aesCmac(t, id64, sizeof(id64), result);
+  std::memcpy(output, result + 8, 8);
+}
+
 uint8_t meshK4(const uint8_t applicationKey[16]) {
   uint8_t salt[16], t[16], result[16];
   meshS1(reinterpret_cast<const uint8_t*>("smk4"), 4, salt);

@@ -123,8 +123,8 @@ principles:
   fixture when needed, persists its mesh-routing selector, and uses confirmed
   proprietary controls through the mesh's retained gateway; X60RGB also
   exposes RGB hue/saturation. Aputure, X100, X60RGB, and Home Assistant lights
-  share one control layout; unsupported controls are hidden and HA is
-  power-only.
+  use the same control screen; the old brand-specific light controls are not
+  constructed. Unsupported controls are hidden and HA is power-only.
 - Separate Camera-family entries for GoPro, Insta360, DJI Osmo, Sony Camera,
   and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
   Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360

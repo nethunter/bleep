@@ -305,9 +305,9 @@ bool ZhiyunLightDriver::lightControlState(InstanceId instanceId,
   return true;
 }
 
-void ZhiyunLightDriver::cancelOnboarding(const DeviceRecord& record) {
+bool ZhiyunLightDriver::cancelOnboarding(const DeviceRecord& record) {
   Session* session = find(record.instanceId);
-  if (session != nullptr) session->client.cancelOnboarding();
+  return session == nullptr || session->client.cancelOnboarding();
 }
 
 size_t ZhiyunLightDriver::onboardingCandidateCount(

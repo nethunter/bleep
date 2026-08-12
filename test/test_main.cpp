@@ -496,9 +496,10 @@ class FakeDriver : public studio::DeviceDriver {
   void forgetPairing(const studio::DeviceRecord&) override {
     ++forgetPairingCount;
   }
-  void cancelOnboarding(const studio::DeviceRecord&) override {
+  bool cancelOnboarding(const studio::DeviceRecord&) override {
     ++cancelOnboardingCount;
     onboardingScanning = false;
+    return cancelOnboardingSucceeds;
   }
   size_t onboardingCandidateCount(studio::InstanceId) const override {
     return onboardingCandidateAvailable ? 1 : 0;
@@ -564,6 +565,7 @@ class FakeDriver : public studio::DeviceDriver {
   int failCommandCount = 0;
   int forgetPairingCount = 0;
   int cancelOnboardingCount = 0;
+  bool cancelOnboardingSucceeds = true;
   bool onboardingCandidateAvailable = false;
   bool onboardingSelectionFails = false;
   bool onboardingScanning = true;
@@ -2408,6 +2410,41 @@ void test_manager_keeps_latest_tracked_result_when_result_queue_is_full() {
   TEST_ASSERT_EQUAL_UINT32(trackedRequestId, result.requestId);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandStatus::Succeeded),
                         static_cast<int>(result.status));
+}
+
+void test_manager_cancels_only_the_matching_dispatched_request() {
+  MemoryBackend backend;
+  LegacyBackend legacy;
+  FakeDriver driver;
+  driver.pendingCommand = studio::CommandType::Refresh;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  TEST_ASSERT_TRUE(manager.begin());
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.add(studio::DriverId::SharkNanoII,
+                                   "Main Slider", instanceId)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
+
+  studio::DeviceCommand command;
+  command.instanceId = instanceId;
+  command.type = studio::CommandType::Refresh;
+  uint32_t dispatchedRequest = 0;
+  TEST_ASSERT_TRUE(manager.enqueue(command, &dispatchedRequest));
+  manager.loop();
+  TEST_ASSERT_TRUE(driver.commandPending);
+
+  uint32_t queuedRequest = 0;
+  TEST_ASSERT_TRUE(manager.enqueue(command, &queuedRequest));
+  TEST_ASSERT_TRUE(manager.cancelCommand(queuedRequest, instanceId));
+  TEST_ASSERT_EQUAL_INT(0, driver.cancelPendingCount);
+  TEST_ASSERT_TRUE(driver.commandPending);
+
+  TEST_ASSERT_TRUE(manager.cancelCommand(dispatchedRequest, instanceId));
+  TEST_ASSERT_EQUAL_INT(1, driver.cancelPendingCount);
+  TEST_ASSERT_FALSE(driver.commandPending);
 }
 
 void test_manager_routes_to_canon_driver() {
@@ -4408,6 +4445,19 @@ void test_mesh_initialization_is_identity_independent_and_transactional() {
                                       secondPanel.network.networkKey, 16));
   TEST_ASSERT_NOT_EQUAL(0, std::memcmp(data.network.applicationKey,
                                       secondPanel.network.applicationKey, 16));
+
+  studio::mesh::StoreData replacement = data;
+  replacement.nodeCount = 1;
+  replacement.nodes[0].instanceId = 73;
+  const studio::mesh::StoreData beforeReplacement = data;
+  backend.failWrites = true;
+  TEST_ASSERT_FALSE(
+      studio::mesh::persistReplacement(store, data, replacement));
+  TEST_ASSERT_EQUAL_MEMORY(&beforeReplacement, &data, sizeof(data));
+  backend.failWrites = false;
+  TEST_ASSERT_TRUE(studio::mesh::persistReplacement(store, data, replacement));
+  TEST_ASSERT_EQUAL_UINT8(1, data.nodeCount);
+  TEST_ASSERT_EQUAL_UINT32(73, data.nodes[0].instanceId);
 }
 
 studio::ble::Advertisement onboardingAdvertisement(const char* address,
@@ -4490,6 +4540,14 @@ void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
   TEST_ASSERT_EQUAL_UINT32(0, devices.count());
   TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
 
+  driver.cancelOnboardingSucceeds = false;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(devices.cancelPendingAdd(id)));
+  TEST_ASSERT_TRUE(devices.isPendingAdd(id));
+  TEST_ASSERT_TRUE(devices.isActive(id));
+
+  driver.cancelOnboardingSucceeds = true;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(devices.cancelPendingAdd(id)));
@@ -4683,6 +4741,31 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
       static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
       static_cast<int>(zhiyun_x100::advertisementModel(x60)));
   TEST_ASSERT_TRUE(zhiyun_x100::matchesMolusAdvertisement(x60, true));
+
+  uint8_t networkKey[16];
+  for (uint8_t i = 0; i < sizeof(networkKey); ++i) networkKey[i] = i + 1;
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      x100, x100.address, networkKey));
+  studio::ble::Address selectedElsewhere =
+      bleAddress("66:77:88:99:aa:bb", x100.address.type);
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      x100, selectedElsewhere, networkKey));
+  studio::ble::Advertisement matchingMesh = x100;
+  matchingMesh.address = bleAddress("77:88:99:aa:bb:cc");
+  uint8_t networkId[8];
+  aputure_light::meshK3(networkKey, networkId);
+  const uint8_t serviceDataHeader[] = {12, 0x16, 0x28, 0x18, 0x00};
+  std::memcpy(matchingMesh.payload + matchingMesh.payloadLength,
+              serviceDataHeader, sizeof(serviceDataHeader));
+  matchingMesh.payloadLength += sizeof(serviceDataHeader);
+  std::memcpy(matchingMesh.payload + matchingMesh.payloadLength, networkId,
+              sizeof(networkId));
+  matchingMesh.payloadLength += sizeof(networkId);
+  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      matchingMesh, selectedElsewhere, networkKey));
+  matchingMesh.payload[matchingMesh.payloadLength - 1] ^= 1;
+  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+      matchingMesh, selectedElsewhere, networkKey));
   studio::ble::Advertisement manufacturerOnly =
       bleAdvertisement("44:55:66:77:88:99", "Other", 0x1827);
   const uint8_t manufacturer[] = {
@@ -4754,6 +4837,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_preserves_renamed_unpaired_shark);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);
+  RUN_TEST(test_manager_cancels_only_the_matching_dispatched_request);
   RUN_TEST(test_manager_routes_to_canon_driver);
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);

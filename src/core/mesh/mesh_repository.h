@@ -8,6 +8,7 @@ class Repository {
  public:
   bool begin();
   bool save();
+  bool replace(const StoreData& replacement);
   StoreData& data() { return data_; }
   const StoreData& data() const { return data_; }
   SequenceAllocator& sequences() { return sequences_; }

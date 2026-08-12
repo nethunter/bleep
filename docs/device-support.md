@@ -96,9 +96,10 @@ of successful movement.
   authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Onboarding: choose `Aputure Light`; the first nearby factory-reset fixture
-  advertising Mesh Provisioning is provisioned into the panel-owned mesh. The
-  If advertisement identity is insufficient, recovery asks for the exact
+- Onboarding: choose `Aputure Light`, then select one of at most four compatible
+  nearby advertisements before PB-GATT begins. The selected factory-reset
+  fixture is provisioned into the panel-owned mesh. If advertisement identity
+  is insufficient, recovery asks for the exact
   fixture: amaran Ace 25c, Pano 60c, Pano 120c, or Aputure MC Pro. Exact product
   naming is kept independently of the shared Amaran vendor tuple. These four
   fixtures remain the initial validation set. Existing
@@ -167,7 +168,10 @@ product-qualified advertisement and identity response.
   panel-owned network and a durable Device Key/unicast allocation, then is
   rediscovered and validated on `0xFEE9`. The normal device record commits only
   after confirmed Ready; failed or canceled onboarding restores the provisional
-  mesh allocation without rewinding reserved sequence high-water. Power and CCT/
+  mesh allocation without rewinding reserved sequence high-water. A failed
+  rollback save keeps the pending add and snapshot retryable. Post-provision
+  discovery accepts only the selected BLE identity or a Mesh Proxy Network ID
+  matching this panel's Network Key. Power and CCT/
   brightness commands remain pending until matching correlated replies arrive;
   scenes therefore wait for confirmation instead of treating the write as
   success. X100 exposes no tint or RGB capability at runtime.

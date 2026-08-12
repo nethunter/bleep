@@ -20,4 +20,11 @@ bool initializeNewMesh(Store& store, StoreData& data, RandomFill randomFill,
   return true;
 }
 
+bool persistReplacement(Store& store, StoreData& data,
+                        const StoreData& replacement) {
+  if (!store.save(replacement)) return false;
+  data = replacement;
+  return true;
+}
+
 }  // namespace studio::mesh

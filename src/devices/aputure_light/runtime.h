@@ -32,7 +32,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool canIdentifyVendorModel(studio::InstanceId instanceId) const;
   void cancelPendingCommand(studio::InstanceId instanceId);
   void forgetLocal(studio::InstanceId instanceId);
-  void cancelOnboarding(studio::InstanceId instanceId);
+  bool cancelOnboarding(studio::InstanceId instanceId);
   size_t onboardingCandidateCount(studio::InstanceId instanceId) const;
   bool onboardingCandidate(studio::InstanceId instanceId, size_t index,
                            studio::OnboardingCandidate& candidate) const;
@@ -99,7 +99,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool hasActiveUsers() const;
   bool isKnownGatewayAddress(const char* address) const;
   void returnToOnboardingPicker(const char* error = nullptr);
-  void rollbackPendingProvision();
+  bool rollbackPendingProvision();
 
   Session sessions_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
   studio::InstanceId gatewayUsers_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
