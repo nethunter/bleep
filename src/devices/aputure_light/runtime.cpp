@@ -211,8 +211,10 @@ void AputureLightRuntime::returnToOnboardingPicker(const char*) {}
 #include "core/ble/ble_runtime.h"
 #include "core/mesh/mesh_repository.h"
 #include "core/preferences_store.h"
+#include "devices/aputure_light/ble_match.h"
 #include "devices/aputure_light/crypto.h"
 #include "devices/aputure_light/protocol.h"
+#include "devices/zhiyun_x100/ble_match.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define APUTURE_LIGHT_LOG Serial0
@@ -363,6 +365,17 @@ bool AputureLightRuntime::activate(const studio::DeviceRecord& record) {
 }
 
 studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const {
+  // A Zhiyun proxy exposes both standard Mesh Proxy and the local FEE9
+  // control service needed by every Zhiyun session. Prefer it whenever one of
+  // those logical members is active; an Aputure proxy cannot satisfy FEE9.
+  for (studio::InstanceId id : gatewayUsers_) {
+    const MeshNodeRecord* node =
+        findNode(studio::mesh::repository().data(), id);
+    if (id != studio::kInvalidInstanceId && node != nullptr &&
+        node->model == studio::DriverId::ZhiyunLight) {
+      return id;
+    }
+  }
   for (studio::InstanceId id : gatewayUsers_) {
     if (id != studio::kInvalidInstanceId) return id;
   }
@@ -372,6 +385,12 @@ studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const {
     }
   }
   return studio::kInvalidInstanceId;
+}
+
+bool AputureLightRuntime::gatewayRequiresZhiyunControl() const {
+  const MeshNodeRecord* node = findNode(
+      studio::mesh::repository().data(), preferredGatewayInstance());
+  return node != nullptr && node->model == studio::DriverId::ZhiyunLight;
 }
 
 bool AputureLightRuntime::hasActiveUsers() const {
@@ -480,6 +499,7 @@ void AputureLightRuntime::deactivate(studio::InstanceId id) {
 bool AputureLightRuntime::beginLink(studio::InstanceId id, bool provisioning) {
   studio::ble::ConnectPolicy policy;
   policy.security = studio::ble::SecurityPolicy::None;
+  policy.directAttemptsBeforeScan = 1;
   policy.diagnosticTag = "aputure_mesh";
   if (link_ == studio::ble::kInvalidLinkHandle) {
     link_ = studio::ble::bleCentral().acquire(*this, policy);
@@ -504,18 +524,13 @@ void AputureLightRuntime::onBleAdvertisement(
   const char* wanted = provisioningLink_ ? kProvisionAdvertisedService
                                          : kProxyAdvertisedService;
   bool matchingProxy = isKnownGatewayAddress(advertisement.address.value);
-  if (!provisioningLink_ && !matchingProxy &&
-      provisioningSnapshot_ != nullptr) {
-    uint8_t advertisedNetworkId[8];
-    uint8_t expectedNetworkId[8];
-    if (studio::ble::meshProxyNetworkId(advertisement,
-                                        advertisedNetworkId)) {
-      meshK3(studio::mesh::repository().data().network.networkKey,
-             expectedNetworkId);
-      matchingProxy =
-          std::memcmp(advertisedNetworkId, expectedNetworkId,
-                      sizeof(expectedNetworkId)) == 0;
-    }
+  if (!provisioningLink_ && !matchingProxy) {
+    matchingProxy = matchesMeshProxyNetwork(
+        advertisement,
+        studio::mesh::repository().data().network.networkKey);
+  }
+  if (!provisioningLink_ && matchingProxy && gatewayRequiresZhiyunControl()) {
+    matchingProxy = zhiyun_x100::matchesMolusAdvertisement(advertisement, true);
   }
   if (studio::ble::advertisesService(advertisement, wanted) &&
       (provisioningLink_ || matchingProxy)) {

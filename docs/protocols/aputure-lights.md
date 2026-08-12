@@ -1,8 +1,9 @@
 # Aputure Light Bluetooth Mesh evidence
 
 Status: `Research` with host-tested encoders, Sidus Link multi-fixture HCI
-evidence, and one Ble(e)p-owned mesh verified on an amaran Ace 25c and Aputure
-MC Pro. Vendor control and broader target-fixture gates remain open.
+evidence, one Ble(e)p-owned mesh verified on an amaran Ace 25c and Aputure
+MC Pro, and an operator-confirmed working amaran Ray 60c. Vendor control and
+broader target-fixture gates remain open.
 
 Onboarding ownership note (2026-08-11): fresh adds collect at most four
 compatible PB-GATT advertisements and do not claim or connect to a peer until
@@ -12,6 +13,14 @@ full-list entry. Connect, provisioning, configuration, or cancellation failure
 restores the provisional node/unicast allocation while preserving any reserved
 sequence high-water. Saved proxy targets still reconnect automatically. This is
 a controller transaction policy and does not change the captured mesh PDUs.
+Steady-state reconnect first tries the saved proxy address once, then scans for
+either any saved member address or a Mesh Proxy Network ID derived from this
+panel's Network Key. The Network ID match is authenticated mesh identity, not a
+product-name heuristic; a foreign mesh remains ineligible. If any active member
+is a Zhiyun light, the bearer must additionally be a product-qualified Zhiyun
+proxy because the proprietary `0xFEE9` service is local to that GATT peer. An
+Aputure proxy can route standard mesh traffic but cannot initialize a Zhiyun
+control session.
 
 ## Reference boundary
 
@@ -375,6 +384,13 @@ and MC Pro; the production unicast four-fixture isolation gate is open. Decoded 
 model field and node reachability, not automatically physical output.
 
 ## Hardware gate
+
+On 2026-08-12, the operator identified the exact fixture as an amaran Ray 60c
+from its physical product label and approved it as working with Ble(e)p. This
+is exact-model physical compatibility evidence. No capture, composition tuple,
+latency measurement, recovery run, or endurance result accompanied the report,
+so those details are not inferred and the generic driver remains
+`Experimental`.
 
 For Pano 60c, Pano 120c, Ace 25c, and MC Pro, verify provisioning, composition,
 configuration statuses, several CCT/tint/RGB/brightness combinations, reboot

@@ -103,6 +103,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   void fail(Session& session, const char* error);
   void updateSharedReady();
   studio::InstanceId preferredGatewayInstance() const;
+  bool gatewayRequiresZhiyunControl() const;
   bool hasActiveUsers() const;
   bool isKnownGatewayAddress(const char* address) const;
   void returnToOnboardingPicker(const char* error = nullptr);

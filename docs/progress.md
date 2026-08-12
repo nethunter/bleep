@@ -63,6 +63,18 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: amaran Ray 60c compatibility confirmation
+
+- The operator supplied a photo whose physical product label identifies an
+  exact amaran Ray 60c and approved the fixture as working with Ble(e)p. The
+  README, device-support matrix, and Aputure protocol evidence now record this
+  bounded exact-model result.
+- The report did not include a protocol capture, composition tuple, timing,
+  recovery cycle, multi-fixture isolation run, or soak result, so none of those
+  gates are treated as closed. This was a documentation-only evidence update;
+  firmware was not changed, built, or flashed, and the owner's guide/PDF was
+  intentionally left unchanged.
+
 ### 2026-08-12: Owner's guide audit and rebuild
 
 - Audited all implementation and supporting-documentation changes since the
@@ -101,6 +113,35 @@ short, factual, and reproducible.
   flash (61.4%), then uploaded successfully to `/dev/cu.usbserial-211240` with
   hash verification and a hard reset. NVS was preserved; on-panel ordering was
   not manually observed.
+
+### 2026-08-12: Shared-light sequence reconnect correction
+
+- Diagnosed a live report that the **Lights** sequence timed out while a light
+  was powered and ready. The shared mesh runtime attempted saved proxy
+  addresses, but its scan fallback accepted this panel's Mesh Proxy Network ID
+  only during post-provision recovery. A valid same-mesh advertisement from a
+  rotated address could therefore be ignored until the sequence deadline.
+- Steady-state reconnect now falls back after one failed direct attempt and
+  accepts either a saved member address or the Network ID derived from this
+  panel's Network Key. Foreign meshes remain rejected. Native tests passed
+  89/89, including matching, mismatched, and absent Network ID cases. Full
+  Montserrat `bleep` built with 141,428 / 327,680 bytes static RAM (43.2%) and
+  1,931,830 / 3,145,728 bytes flash (61.4%), then uploaded successfully to
+  `/dev/cu.usbserial-211240` with hash verification and a hard reset. NVS was
+  preserved. The operator's live **Lights** sequence retry remains to be
+  observed.
+- The first flashed retry confirmed the address-rotation correction: after the
+  saved proxy missed, the runtime found a same-mesh proxy at its current
+  address and reached Mesh Proxy readiness in 6.1 seconds. The sequence still
+  timed out on target 20, the shared X60RGB session. The selected bearer was an
+  Aputure node, which can route mesh PDUs but has no local Zhiyun `0xFEE9`
+  service. Shared selection now prefers and requires a product-qualified
+  Zhiyun proxy whenever a Zhiyun mesh member is active; this preserves one BLE
+  slot while making both transports available. Native tests remain 89/89. The
+  final full Montserrat `bleep` build uses 141,428 / 327,680 bytes static RAM
+  (43.2%) and 1,932,054 / 3,145,728 bytes flash (61.4%). It uploaded to
+  `/dev/cu.usbserial-211240` with hash verification and a hard reset, preserving
+  NVS. The final live retry is recorded below when completed.
 
 ### 2026-08-12: Sequence look preview, RGB final-state ordering, and automatic composition identity
 
