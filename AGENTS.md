@@ -80,6 +80,13 @@ Follow these rules while building:
   a manual update. When requested, render and inspect the affected PDF pages
   before handoff. Keep `hardware/README.md` aligned when hardware or assembly
   guidance changes.
+- For a manual refresh, first collect every implementation and supporting
+  documentation change made since the previous PDF generation on a separate
+  branch, then rebase and merge that branch into the current `main` following
+  the repository merge policy below. Only after that merge, and only while the
+  primary checkout is on `main`, may you edit `docs/manual/manual.md` or rebuild
+  `output/pdf/bleep-instruction-manual.pdf`. Do not put the manual source or
+  generated PDF on the preparatory branch.
 
 ## Conventions
 
