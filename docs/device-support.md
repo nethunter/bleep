@@ -285,9 +285,9 @@ Compatibility evidence is deliberately split from protocol availability:
 | GoPro models in the current Open GoPro support table | Implemented, experimental | No camera tested yet. Retailer-only HERO8/MAX/MINI claims are not inherited. |
 | Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
 | Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
-| Insta360 X5 | Implemented, experimental | GPS-remote connection and mixed-sequence shutter operation are operator-confirmed. |
-| Insta360 GO 3 | Implemented candidate | No model-specific result recorded. |
-| Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; legacy GPS-remote compatibility is not established. |
+| Insta360 X5 | Implemented, verified bounded path | Pairing, initial state, Start/Stop, reported recording status, shutdown, and physical wake are operator-confirmed. Immediate optimistic Start and wake-return address routing have been added; the latter needs one fresh reconnect check. |
+| Insta360 GO 3 | Experimental candidate | No model-specific GPS Remote result recorded. |
+| Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; GPS Remote compatibility is not established. |
 | DJI Osmo Action 5 Pro | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | DJI Osmo 360 | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | Sony RMT-P1BT-compatible cameras | Research only | No savable driver or camera test yet. |
@@ -328,18 +328,49 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### Insta360
 
-- Status: `Experimental`; Insta360 X5 GPS-remote connection and mixed-sequence
-  shutter operation are operator-confirmed. GO 3 validation remains pending.
-- Transport: Ble(e)p emulates an Insta360 GPS remote with service `0xCE80`;
-  the camera scans and connects to the panel. A shutter press notifies
+- Status: `Experimental`; the GPS Remote path is capture-backed and replaces
+  the earlier Mini emulation.
+- Transport: Ble(e)p's primary packet contains the operator-confirmed name
+  `Insta360 Remote (Bleep)`; its scan response contains appearance `0x0180` and
+  proprietary service `0xCE80`. Service `0xCE80` declares
+  CE82 Notify, CE81 Write/Write Without Response, then CE83 Read, matching both
+  the physical capture and the working Mac harness. The camera scans and
+  connects to the panel. Start or Stop notifies
   `FC EF FE 86 00 03 01 02 00` on `0xCE82`.
+- Reported state: X5/GPS Remote captures show the camera writing `FE EF FE 10
+  80 ...` display updates to `0xCE81`. Video idle frames carry remaining time,
+  recording frames carry an elapsed timer, and photo frames distinguish idle
+  from post-capture saving. Ble(e)p exposes explicit Start/Stop only after a
+  video state has been confirmed. A fresh connection provisionally assumes
+  video idle so a Scene can send Start immediately; the first camera state
+  upgrades or replaces that optimistic state. Stop still requires confirmed
+  recording.
+- Initial sync: the X5 enables `0xCE82` notifications and then writes its state
+  to `0xCE81` without a remote query. Ble(e)p logs subscription, the first 16
+  writes, decoded state, and a 15-second timeout from the main loop. It does
+  not print non-state identity payloads. A live CE80-only Mac peripheral test
+  received initialization immediately after subscription and confirmed idle
+  4.36 seconds later, proving that the two other captured vendor services are
+  not required for X5 initial state.
+- Power: shutdown notifies `FC EF FE 86 00 03 01 00 03`. Wake advertises the
+  captured Apple manufacturer `ORBIT` beacon containing the saved camera
+  name's six-character serial, plus the captured `0 dBm` scan response, for up
+  to 60 seconds. Missing or malformed serials fail clearly. Reconnect is the
+  wake confirmation.
 - Candidates: X5 and GO 3. GO 3 is a separate camera, not an alias for GO
   Ultra. GO Ultra remains a visibly experimental probe
-  because current vendor material does not establish legacy GPS-remote support.
-- Boundary: the command is a mode-dependent toggle and has no decoded status
-  response, so the UI reports send success rather than recording state. Scenes
-  expose the same explicit `Shutter Toggle` action in either authored list.
-- Research reference: <https://github.com/theserialhobbyist/insta360_m5StickC_remote>.
+  because current evidence does not establish GPS Remote support.
+- Boundary: Start/Stop remain a toggle at the transport layer and are safe only
+  after camera-reported video state. Unknown state is not inferred. The GPS
+  state, power-off, and wake implementation is capture-backed for X5. Two
+  additional captured vendor services remain intentionally unemulated; the
+  Mac test disproved their absence as an initial-sync blocker on X5. Pairing,
+  initial state, Start, Stop, state updates, shutdown, and physical wake are
+  operator-confirmed on the panel. The wake-return address-routing correction
+  needs one fresh check; GO 3 and GO Ultra remain unverified.
+- Research references:
+  <https://github.com/theserialhobbyist/insta360_m5StickC_remote> and
+  <https://github.com/pchwalek/insta360_ble_esp32>.
 
 ### DJI Osmo
 

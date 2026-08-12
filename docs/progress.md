@@ -19,7 +19,10 @@ short, factual, and reproducible.
   Camera are separate Camera-family entries. GoPro has bonded, multi-instance
   Open GoPro shutter start/stop with response-gated optimistic state. Phone
   Camera exposes a bonded, multi-instance BLE HID volume-up shutter. Insta360
-  now emulates the GPS-remote service and toggle shutter for X5/GO 3 candidates;
+  now emulates the GPS Remote protocol for the X5 under the verified custom name
+  `Insta360 Remote (Bleep)`, decodes GPS display frames for video/photo state, gates
+  explicit Start/Stop on confirmed video state, and implements captured
+  shutdown plus serial-specific `ORBIT` wake advertising;
   GO Ultra remains a distinct experimental probe. DJI now implements its
   published controller handshake, on-panel four-digit first-pair verification,
   explicit record control, and status push for Action 5 Pro/Osmo 360.
@@ -56,6 +59,172 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-11.
+
+### 2026-08-11: Insta360 X5 GPS Remote control and reported state
+
+- Direction correction: a new full GPS-mode capture shows that the X5 does
+  report usable state to the GPS Remote. The implementation therefore replaces
+  Mini emulation with the GPS protocol, advertises the captured name
+  `Insta360 GPS Remote` with appearance `0x0180` and a `0xCE80` scan response,
+  and sends the captured
+  GPS shutter notification ending in `01 02 00`. After the custom `Ble(e)p`
+  name did not appear in the X5 list, the primary advertisement was changed to
+  match the vendor name byte-for-byte while deliberately retaining the service
+  scan response. This isolates exact-name filtering; the full control flow
+  needs post-flash X5 verification.
+- Evidence: synchronized X5/GPS Remote capture established camera writes on
+  `0xCE81`: `FE EF FE 10 80 07 ... m` identifies video idle/remaining time;
+  `... 0D ... .HH:MM:SS` identifies active recording; `... 09 ... NNN+`
+  identifies photo idle; and `... 05 ...` identifies post-capture saving.
+  These updates also occur for camera-local actions, so they are reported state
+  rather than command ACKs. Mini `0x55` state remains documented as research
+  compatibility but is no longer the selected transport identity.
+- Power: the capture established shutdown notification
+  `FC EF FE 86 00 03 01 00 03`, followed by disconnect. The GPS Remote then
+  resumes normal identity advertising; X5 reconnect confirms wake. The
+  Mini-only serial-addressed `ORBIT` advertisement is not used by this path.
+- Implementation: characteristic callbacks enqueue raw writes only. Main-loop
+  decoding owns per-connection video/photo state, command completion, and UI.
+  The Insta360 control uses the Canon-style recorder shell with confirmed
+  Start/Stop, photo capture feedback, and a power button. Unknown state remains
+  unknown and exposes only a raw Shutter fallback. The shared peripheral
+  advertiser supports exact raw primary and scan-response payloads.
+- Documentation: `docs/protocols/insta360-gps-remote.md` records the private
+  capture hashes, GATT roles, golden command/display-state vectors, confidence
+  boundaries, implemented safety rules, unknown fields, and remaining X5
+  gates. The Mini capture remains a separate research note. The protocol index
+  and repository agent guidance require protocol notes to stay synchronized
+  with every research or implementation tranche.
+- Verification before this GPS correction: native tests passed 76/76; full
+  Montserrat `bleep`, `ui_sim`, screenshot traversal, and upload passed. Fresh
+  correction results: native tests passed 76/76; full Montserrat `bleep` built
+  with 140,532 / 327,680 bytes static RAM and 1,909,438 / 3,145,728 bytes
+  flash; `ui_sim` built and its complete screenshot traversal passed. The
+  configured `/dev/cu.usbserial-211240` upload completed, all written regions
+  passed hash verification, and the panel hard-reset. The 26-page owner's guide
+  was rebuilt and every rendered page was visually inspected. Live X5 pairing,
+  status, Start/Stop, photo, shutdown, and wake remain the hardware gate.
+- Exact-name diagnostic: after `Ble(e)p` did not appear in the X5 GPS Remote
+  list, the advertised name was changed to the captured `Insta360 GPS Remote`
+  value without changing the `0xCE80` scan response. Native tests again passed
+  76/76; `bleep` built at 140,532 / 327,680 bytes static RAM and 1,909,454 /
+  3,145,728 bytes flash; upload and flash hash verification passed on
+  `/dev/cu.usbserial-211240`. The regenerated 26-page owner's guide passed a
+  complete rendered-page inspection. Whether the exact name makes the remote
+  discoverable is awaiting the immediate X5 check.
+- Follow-up hardware result: with the exact vendor name, the X5 found the
+  remote; shutter Start, Stop, post-trigger state, and power-off worked. Initial
+  state remained unconfirmed before the first trigger, and power-on did not
+  wake the camera. The idle decoder now accepts variable-length digit/`h`/`m`
+  remaining-time text while retaining the captured fixed markers. A new
+  diagnostic identity uses `Insta360 Remote (Bleep)` in the primary packet,
+  moves appearance beside `0xCE80` in the scan response to fit the 31-byte
+  legacy limit, and extends wake advertising from 30 to 60 seconds.
+  Native tests passed 76/76; full `bleep` built at 140,532 / 327,680 bytes
+  static RAM and 1,909,616 / 3,145,728 bytes flash. Upload and flash hash
+  verification passed on `/dev/cu.usbserial-211240`. Per repository guidance,
+  the owner's manual and generated PDF were not changed.
+- Name-prefix diagnostic: `Insta360 Remote (Bleep)` was discoverable on the X5.
+  The next flashed build removes only the `Insta360` prefix and advertises
+  `Remote (Bleep)` with the same primary/scan-response split, state decoder,
+  and 60-second wake window. Native tests passed 76/76; `bleep` built at
+  140,532 / 327,680 bytes static RAM and 1,909,608 / 3,145,728 bytes flash;
+  upload and hash verification passed on `/dev/cu.usbserial-211240`.
+- Start/Stop-only correction: restored the working `Insta360 Remote (Bleep)`
+  name after the prefix-removal experiment and removed Insta360's raw Shutter
+  capability, dispatch, and UI fallback. Unknown or photo state now exposes no
+  recording action; confirmed video idle exposes Start and confirmed recording
+  exposes Stop. Capture review found unsolicited initial status: connection at
+  frame 4268 / 29.390608 s, CCCD enable at frame 4347 / 31.051122 s, and the
+  first video-idle write at frame 4725 / 35.251909 s, 5.861301 s after
+  connection and well before the first shutter notification at frame 6750 /
+  60.303646 s. No state-query command occurred in between. Native tests passed
+  76/76; full `bleep` built at 140,532 / 327,680 bytes static RAM and
+  1,909,612 / 3,145,728 bytes flash; `ui_sim` and complete screenshot traversal
+  passed; upload and flash hash verification passed on
+  `/dev/cu.usbserial-211240`. The manual/PDF were not updated.
+- Capture-exact wake and initial-state diagnostics: corrected the GPS trace to
+  show `ORBIT` advertising beginning 8.77 ms after shutdown disconnect and the
+  X5 connecting about 25.09 seconds later. Wake now builds the captured 31-byte
+  Apple manufacturer payload from the saved six-character camera serial, uses
+  the three-byte `0 dBm` scan response, retains both buffers for the 60-second
+  window, rejects invalid saved serials, and seeds peer acceptance from the
+  saved address/name. The `0xCE82` subscription callback and `0xCE81` writes
+  enqueue bounded events only; main-loop diagnostics log subscription, the
+  first 16 writes, recognized state, and a 15-second timeout without printing
+  non-state identity frames. Native tests passed 76/76, including the exact
+  `X5 1HDKAB` wake vector and invalid identities. Full `bleep` built at 140,532
+  / 327,680 bytes static RAM and 1,911,274 / 3,145,728 bytes flash; `ui_sim`
+  and its complete screenshot traversal passed. The two additional opaque
+  captured vendor services remain deliberately unemulated and are the leading
+  hypothesis only if `0xCE82` subscribes without initial `0xCE81` writes. The
+  configured `/dev/cu.usbserial-211240` upload completed and every written
+  region passed hash verification. A first bounded 40-second serial window
+  contained no connection diagnostics, so it did not establish an X5
+  initial-sync or wake result; those physical checks remain open. The manual/PDF
+  were not changed.
+- Mac protocol-lab probe: added a PyObjC/CoreBluetooth `0xCE80` peripheral
+  harness with interactive and automated state-gated Start, Stop, power-off,
+  wake, private JSONL logging, and pure protocol tests. An nRF capture confirms
+  the name-only request produces a full 31-byte `Insta360 GPS Remote`
+  advertisement containing macOS-inserted `+12 dBm` TX power and `0xCE80`.
+  The longer custom name was omitted when requested with the service. A cold
+  ORBIT-only CoreBluetooth request reported advertising success but emitted no
+  ORBIT packet in an eight-second nRF capture, so Mac-native wake is blocked on
+  CoreBluetooth and requires a raw-HCI-capable adapter. A live X5 then selected
+  the named Mac peripheral, subscribed to CE82, and sent its initialization
+  stream without a remote query. Confirmed video-idle arrived 4.36 seconds
+  after subscription; Start produced confirmed recording after 1.47 seconds;
+  Stop produced confirmed idle after 3.52 seconds; and power-off produced CE82
+  unsubscribe after 3.24 seconds. This CE80-only result disproves the missing
+  opaque vendor services as an initial-sync blocker for X5. A subsequent
+  128-second Mac ORBIT request produced no reconnect, consistent with the nRF
+  evidence that CoreBluetooth did not emit ORBIT. The lab's three protocol
+  tests passed and the full `bleep` profile built at 140,532 / 327,680 bytes
+  static RAM and 1,911,274 / 3,145,728 bytes flash. Raw logs/captures remain
+  under `/private/tmp`, outside the repository. The manual/PDF were not changed.
+- Reusable desktop protocol harness documentation: recorded how the Mac X5 lab
+  was built and how to adapt the pattern for other devices. The guide starts
+  with the central-versus-peripheral role decision, then covers the PyObjC
+  service and callback lifecycle, pure protocol/test separation, advertising
+  verification with an independent sniffer, state-gated bounded scenarios,
+  JSONL evidence and privacy, CoreBluetooth raw-advertising limits, and the
+  firmware handoff boundary. The protocol index, Android capture workflow, and
+  X5 lab README link to the guide. Documentation-only change; the owner's
+  manual and generated PDF were not changed.
+- Panel protocol correction from the desktop harness: capture reinspection
+  showed the physical GPS Remote and successful Mac peripheral both declare
+  CE82 Notify before CE81 Write/Write Without Response and CE83 Read, while the
+  panel had created CE81 first. The panel now consumes a tested
+  CE82/CE81/CE83 order constant. Normal advertising also returns to the exact
+  captured vendor profile: `Insta360 GPS Remote` plus appearance `0x0180` in
+  the 28-byte primary packet, and HID `0x1812` plus `0 dBm` TX power in the
+  seven-byte scan response. The prior custom identity remains discovery-tested
+  history, not the selected protocol profile. Native tests passed 76/76; full
+  `bleep` built at 140,532 / 327,680 bytes static RAM and 1,911,698 /
+  3,145,728 bytes flash; `ui_sim` and its complete screenshot traversal passed.
+  Upload to `/dev/cu.usbserial-211240` completed, every written region passed
+  hash verification, and the panel hard-reset. A bounded post-boot serial window
+  showed a normal Home boot and no active Insta360 session; open the saved
+  Insta360 control before the fresh X5 initial-state and wake checks. The
+  owner's manual and generated PDF were not changed.
+- X5 completion check and final usability corrections: the operator confirmed
+  that the flashed panel pairs, receives initial and ongoing recording state,
+  starts and stops recording, powers the X5 off, and physically wakes it. A new
+  connection now begins in optimistic video-idle state so Scene Start can send
+  immediately instead of waiting roughly five seconds for CE81; Stop remains
+  confirmation-gated and the first CE81 state replaces the assumption. The
+  advertised identity is restored to `Insta360 Remote (Bleep)`. The remaining
+  observed defect was that a woken X5 did not attach to the retained session
+  until the panel/runtime restarted. During the bounded ORBIT window the
+  Insta360 listener now claims the returning central even when its unresolved
+  address differs, and the main loop maps it to the sole `PoweringOn` session,
+  preventing the generic Phone Camera fallback from owning that link. Native
+  tests passed 76/76; full `bleep` built at 140,532 / 327,680 bytes static RAM
+  and 1,911,904 / 3,145,728 bytes flash; `ui_sim` and its full traversal passed.
+  Upload to `/dev/cu.usbserial-211240` completed, every written region passed
+  hash verification, and the panel hard-reset. One wake/reconnect recheck
+  remains. The owner's manual and generated PDF were not changed.
 
 ### 2026-08-11: Owner-focused manual editorial pass
 
@@ -138,7 +307,6 @@ short, factual, and reproducible.
   figures. The full Montserrat `bleep` profile also built successfully with
   140,340 / 327,680 bytes static RAM and 1,906,428 / 3,145,728 bytes flash.
   Firmware behavior did not change, so no board upload was attempted.
-
 ### 2026-08-09: Aputure Light control-state synchronization
 
 - Aputure Light vendor status handling currently confirms power only; it cannot

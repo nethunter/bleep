@@ -294,6 +294,12 @@ then test boundaries. Unknown opcodes, reset/delete commands, malformed lengths,
 and fuzzing are outside ordinary device onboarding and require a separate safety
 plan.
 
+When the target scans for and connects to a remote, the host probe must emulate
+a BLE peripheral rather than act as a client. Follow the
+[desktop BLE protocol harness guide](desktop-protocol-harness.md) for the
+CoreBluetooth/PyObjC structure, state gating, private JSONL transcript, and
+independent over-the-air advertisement checks.
+
 ## Durable handoff for the next agent
 
 The final public/repository handoff should contain:

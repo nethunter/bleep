@@ -31,18 +31,30 @@ bool ensureInsta360(NimBLEServer* server, GattServices& services) {
     service = server->createService(insta360::kServiceUuid);
   }
   if (service == nullptr) return false;
-  services.instaWrite = service->getCharacteristic(insta360::kWriteUuid);
-  if (services.instaWrite == nullptr) {
-    services.instaWrite = service->createCharacteristic(
-        insta360::kWriteUuid, NIMBLE_PROPERTY::WRITE);
-  }
-  services.instaNotify = service->getCharacteristic(insta360::kNotifyUuid);
+  // The X5 capture and the working CoreBluetooth harness both declare these
+  // in CE82, CE81, CE83 order. Preserve it because the camera performs a full
+  // profile walk before enabling CE82 and sending its unsolicited CE81 state.
+  services.instaNotify =
+      service->getCharacteristic(insta360::kGattCharacteristicOrder[0]);
   if (services.instaNotify == nullptr) {
     services.instaNotify = service->createCharacteristic(
-        insta360::kNotifyUuid,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+        insta360::kGattCharacteristicOrder[0], NIMBLE_PROPERTY::NOTIFY);
   }
-  return services.instaWrite != nullptr && services.instaNotify != nullptr;
+  services.instaWrite =
+      service->getCharacteristic(insta360::kGattCharacteristicOrder[1]);
+  if (services.instaWrite == nullptr) {
+    services.instaWrite = service->createCharacteristic(
+        insta360::kGattCharacteristicOrder[1],
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  }
+  NimBLECharacteristic* info =
+      service->getCharacteristic(insta360::kGattCharacteristicOrder[2]);
+  if (info == nullptr) {
+    info = service->createCharacteristic(insta360::kGattCharacteristicOrder[2],
+                                         NIMBLE_PROPERTY::READ);
+  }
+  return services.instaWrite != nullptr && services.instaNotify != nullptr &&
+         info != nullptr;
 #else
   (void)server;
   (void)services;
@@ -50,8 +62,8 @@ bool ensureInsta360(NimBLEServer* server, GattServices& services) {
 #endif
 }
 
-bool ensurePhoneCamera(NimBLEServer* server, GattServices& services) {
-#if CONFIG_DRIVER_PHONE_CAMERA
+bool ensureCameraHid(NimBLEServer* server, GattServices& services) {
+#if CONFIG_DRIVER_PHONE_CAMERA || CONFIG_DRIVER_INSTA360
   if (gHid == nullptr) {
     gHid = new (std::nothrow) NimBLEHIDDevice(server);
     if (gHid == nullptr) return false;
@@ -64,8 +76,13 @@ bool ensurePhoneCamera(NimBLEServer* server, GattServices& services) {
     gHid->setReportMap(reportMap, sizeof(reportMap));
     gHid->setBatteryLevel(100);
   }
+#if CONFIG_DRIVER_PHONE_CAMERA
   services.phoneInput = gPhoneInput;
   return services.phoneInput != nullptr;
+#else
+  (void)services;
+  return true;
+#endif
 #else
   (void)server;
   (void)services;
@@ -83,18 +100,18 @@ bool ensureGattServices(NimBLEServer* server, GattServices& services) {
 #else
       false;
 #endif
-  const bool missingPhone =
-#if CONFIG_DRIVER_PHONE_CAMERA
+  const bool missingHid =
+#if CONFIG_DRIVER_PHONE_CAMERA || CONFIG_DRIVER_INSTA360
       gHid == nullptr;
 #else
       false;
 #endif
-  if ((missingInsta || missingPhone) &&
+  if ((missingInsta || missingHid) &&
       !ble::preparePeripheralGattMutation(server)) {
     return false;
   }
   if (!ensureInsta360(server, services) ||
-      !ensurePhoneCamera(server, services)) {
+      !ensureCameraHid(server, services)) {
     return false;
   }
   return server->start();

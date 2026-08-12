@@ -29,6 +29,7 @@
 #include "devices/gopro/protocol.h"
 #include "devices/gopro/state.h"
 #include "devices/insta360/protocol.h"
+#include "devices/insta360/state.h"
 #include "devices/dji_osmo/protocol.h"
 #include "devices/home_assistant/protocol.h"
 #include "devices/aputure_light/crypto.h"
@@ -1032,8 +1033,18 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_BITS_LOW(
       studio::capabilityBit(studio::Capability::RecordingState),
       goPro->capabilities);
-  TEST_ASSERT_EQUAL_STRING(
-      "Insta360", studio::DriverCatalog::find(studio::DriverId::Insta360)->model);
+  const studio::DriverDescriptor* insta360Driver =
+      studio::DriverCatalog::find(studio::DriverId::Insta360);
+  TEST_ASSERT_NOT_NULL(insta360Driver);
+  TEST_ASSERT_EQUAL_STRING("Insta360", insta360Driver->model);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::RecordStart) |
+          studio::capabilityBit(studio::Capability::RecordStop) |
+          studio::capabilityBit(studio::Capability::RecordingState),
+      insta360Driver->capabilities);
+  TEST_ASSERT_BITS_LOW(
+      studio::capabilityBit(studio::Capability::RecordTrigger),
+      insta360Driver->capabilities);
   TEST_ASSERT_EQUAL_STRING(
       "DJI Osmo", studio::DriverCatalog::find(studio::DriverId::DjiOsmo)->model);
   TEST_ASSERT_EQUAL_STRING(
@@ -1086,7 +1097,7 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
       static_cast<int>(manager.cancelPendingAdd(instanceId)));
 }
 
-void test_record_trigger_camera_is_available_to_scenes() {
+void test_insta360_explicit_recording_is_available_to_scenes() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
   LegacyBackend legacy;
@@ -1105,14 +1116,14 @@ void test_record_trigger_camera_is_available_to_scenes() {
   studio::SceneId sceneId = studio::kInvalidSceneId;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::SceneRegistryStatus::Ok),
-      static_cast<int>(scenes.add("Toggle camera", sceneId)));
+      static_cast<int>(scenes.add("Insta360 camera", sceneId)));
   studio::SceneRecord record = *scenes.find(sceneId);
   record.startCount = 1;
   record.startSteps[0] =
-      studio::makeActionStep(cameraId, studio::CommandType::RecordTrigger);
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
   record.stopCount = 1;
   record.stopSteps[0] =
-      studio::makeActionStep(cameraId, studio::CommandType::RecordTrigger);
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStop);
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::SceneRegistryStatus::Ok),
       static_cast<int>(scenes.replace(record)));
@@ -1126,7 +1137,7 @@ void test_record_trigger_camera_is_available_to_scenes() {
     scenes.loop(now);
   }
   TEST_ASSERT_EQUAL_INT(1, insta360.dispatchCount);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStart),
                         static_cast<int>(insta360.lastCommand));
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
                         static_cast<int>(scenes.stop()));
@@ -1135,7 +1146,7 @@ void test_record_trigger_camera_is_available_to_scenes() {
     scenes.loop(now);
   }
   TEST_ASSERT_EQUAL_INT(2, insta360.dispatchCount);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordTrigger),
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
                         static_cast<int>(insta360.lastCommand));
 }
 
@@ -1234,15 +1245,168 @@ void test_dji_osmo_protocol_matches_official_connection_vector() {
   TEST_ASSERT_EQUAL_UINT8(0, parsedStart.payload[4]);
 }
 
-void test_insta360_gps_remote_models_and_shutter_vector() {
+void test_insta360_gps_remote_protocol() {
   TEST_ASSERT_TRUE(insta360::matchesCameraName("X5 123456"));
   TEST_ASSERT_TRUE(insta360::matchesCameraName("GO 3 654321"));
   TEST_ASSERT_TRUE(insta360::matchesCameraName("GO Ultra 123456"));
   TEST_ASSERT_TRUE(insta360::isGoUltra("Insta360 GO Ultra"));
   TEST_ASSERT_FALSE(insta360::isGoUltra("GO 3 654321"));
+  TEST_ASSERT_EQUAL_STRING(insta360::kNotifyUuid,
+                           insta360::kGattCharacteristicOrder[0]);
+  TEST_ASSERT_EQUAL_STRING(insta360::kWriteUuid,
+                           insta360::kGattCharacteristicOrder[1]);
+  TEST_ASSERT_EQUAL_STRING(insta360::kInfoUuid,
+                           insta360::kGattCharacteristicOrder[2]);
+  TEST_ASSERT_EQUAL_STRING("Insta360 Remote (Bleep)",
+                           insta360::kAdvertisedName);
+  TEST_ASSERT_EQUAL_UINT16(0x0180, insta360::kAdvertisedAppearance);
+  const uint8_t advertisement[] = {
+      0x02,0x01,0x06,0x18,0x09,
+      'I','n','s','t','a','3','6','0',' ','R','e','m','o','t','e',' ',
+      '(','B','l','e','e','p',')'};
+  TEST_ASSERT_EQUAL_UINT32(28, sizeof(insta360::kAdvertisementData));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(advertisement,
+                                insta360::kAdvertisementData,
+                                sizeof(advertisement));
+  const uint8_t scanResponse[] = {
+      0x03,0x19,0x80,0x01,0x03,0x03,0x80,0xce};
+  TEST_ASSERT_EQUAL_UINT32(8, sizeof(insta360::kScanResponseData));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(scanResponse,
+                                insta360::kScanResponseData,
+                                sizeof(scanResponse));
+  uint8_t wakeAdvertisement[insta360::kWakeAdvertisementDataLength] = {};
+  uint8_t wakeScanResponse[insta360::kWakeScanResponseDataLength] = {};
+  TEST_ASSERT_TRUE(insta360::buildWakeAdvertisementData(
+      "X5 1HDKAB", wakeAdvertisement, wakeScanResponse));
+  const uint8_t capturedWakeAdvertisement[] = {
+      0x02,0x01,0x06,0x1b,0xff,0x4c,0x00,0x02,
+      0x15,0x09,'O','R','B','I','T',0x09,
+      0xff,0x0f,0x00,'1','H','D','K','A','B',
+      0x00,0x00,0x00,0x00,0xe4,0x01};
+  const uint8_t capturedWakeScanResponse[] = {0x02,0x0a,0x00};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(capturedWakeAdvertisement),
+                           insta360::kWakeAdvertisementDataLength);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(capturedWakeScanResponse),
+                           insta360::kWakeScanResponseDataLength);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(capturedWakeAdvertisement,
+                                wakeAdvertisement,
+                                sizeof(capturedWakeAdvertisement));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(capturedWakeScanResponse,
+                                wakeScanResponse,
+                                sizeof(capturedWakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      nullptr, wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      "X5", wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      "X5 ABC", wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      "X5 ABCDEFG", wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      "X5 AB-CD1", wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
+      "Camera ABC123", wakeAdvertisement, wakeScanResponse));
   const uint8_t expected[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x02,0x00};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, insta360::kShutterCommand,
                                 sizeof(expected));
+  const uint8_t powerOff[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x00,0x03};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOff, insta360::kPowerOffCommand,
+                                sizeof(powerOff));
+
+  insta360::State provisional;
+  insta360::assumeVideoIdle(provisional);
+  TEST_ASSERT_TRUE(insta360::canStartRecording(provisional));
+  TEST_ASSERT_FALSE(insta360::canStopRecording(provisional));
+  TEST_ASSERT_FALSE(provisional.recordingConfirmed);
+  provisional.recording = insta360::State::Recording::Recording;
+  provisional.recordingConfirmed = true;
+  TEST_ASSERT_FALSE(insta360::canStartRecording(provisional));
+  TEST_ASSERT_TRUE(insta360::canStopRecording(provisional));
+
+  insta360::CaptureStatus status;
+  const uint8_t gpsVideoIdle[] = {
+      0xfe,0xef,0xfe,0x10,0x80,0x07,0x01,0x2c,0x46,0x01,'3','5','m'};
+  const uint8_t gpsRecording[] = {
+      0xfe,0xef,0xfe,0x10,0x80,0x0d,0x01,0x0e,0x46,0x01,'.',
+      '0','0',':','0','0',':','0','0'};
+  const uint8_t gpsVideoIdleHours[] = {
+      0xfe,0xef,0xfe,0x10,0x80,0x07,0x01,0x2c,0x46,0x01,
+      '1','h','0','5','m'};
+  const uint8_t gpsPhotoIdle[] = {
+      0xfe,0xef,0xfe,0x10,0x80,0x09,0x01,0x1e,0x46,0x01,' ',
+      '9','9','9','+'};
+  const uint8_t gpsPhotoSaving[] = {
+      0xfe,0xef,0xfe,0x10,0x80,0x05,0x01,0x34,0x2c,0x02,'5'};
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      gpsVideoIdle, sizeof(gpsVideoIdle), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CaptureMode::Video),
+                        static_cast<int>(status.mode));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Idle),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      gpsVideoIdleHours, sizeof(gpsVideoIdleHours), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CaptureMode::Video),
+                        static_cast<int>(status.mode));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Idle),
+                        static_cast<int>(status.phase));
+  uint8_t invalidGpsIdle[sizeof(gpsVideoIdleHours)];
+  std::memcpy(invalidGpsIdle, gpsVideoIdleHours, sizeof(invalidGpsIdle));
+  invalidGpsIdle[11] = '?';
+  TEST_ASSERT_FALSE(insta360::decodeCaptureStatus(
+      invalidGpsIdle, sizeof(invalidGpsIdle), status));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      gpsRecording, sizeof(gpsRecording), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Active),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      gpsPhotoIdle, sizeof(gpsPhotoIdle), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CaptureMode::Photo),
+                        static_cast<int>(status.mode));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Idle),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      gpsPhotoSaving, sizeof(gpsPhotoSaving), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Saving),
+                        static_cast<int>(status.phase));
+
+  const uint8_t videoStarting[] = {0xfe,0xef,0xfe,0x55,0x00,0x07,0x00,0x01,0,0,0,0,0};
+  const uint8_t videoRecording[] = {0xfe,0xef,0xfe,0x55,0x00,0x07,0x00,0x02,0,0,0,0,0};
+  const uint8_t videoStopping[] = {0xfe,0xef,0xfe,0x55,0x00,0x07,0x00,0x04,0,0,0,0,0};
+  const uint8_t videoStopped[] = {0xfe,0xef,0xfe,0x55,0x00,0x07,0x00,0x00,0,0,0,0,0};
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      videoStarting, sizeof(videoStarting), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CaptureMode::Video),
+                        static_cast<int>(status.mode));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Starting),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      videoRecording, sizeof(videoRecording), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Active),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      videoStopping, sizeof(videoStopping), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Stopping),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      videoStopped, sizeof(videoStopped), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Idle),
+                        static_cast<int>(status.phase));
+
+  const uint8_t photoSaving[] = {0xfe,0xef,0xfe,0x55,0x00,0x07,0x01,0x05,0,0,0,0,0};
+  TEST_ASSERT_TRUE(insta360::decodeCaptureStatus(
+      photoSaving, sizeof(photoSaving), status));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CaptureMode::Photo),
+                        static_cast<int>(status.mode));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(insta360::CapturePhase::Saving),
+                        static_cast<int>(status.phase));
+  TEST_ASSERT_FALSE(insta360::decodeCaptureStatus(
+      photoSaving, sizeof(photoSaving) - 1, status));
+  uint8_t invalid[sizeof(photoSaving)];
+  std::memcpy(invalid, photoSaving, sizeof(invalid));
+  invalid[3] = 0x56;
+  TEST_ASSERT_FALSE(insta360::decodeCaptureStatus(
+      invalid, sizeof(invalid), status));
+
 }
 
 void test_registry_crud_and_single_shark_limit() {
@@ -4059,10 +4223,10 @@ int main(int, char**) {
   RUN_TEST(test_tascam_scanner_and_confirmed_state);
   RUN_TEST(test_gopro_open_ble_packets_and_optimistic_state);
   RUN_TEST(test_dji_osmo_protocol_matches_official_connection_vector);
-  RUN_TEST(test_insta360_gps_remote_models_and_shutter_vector);
+  RUN_TEST(test_insta360_gps_remote_protocol);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);
   RUN_TEST(test_manager_keeps_every_compiled_camera_driver_reachable);
-  RUN_TEST(test_record_trigger_camera_is_available_to_scenes);
+  RUN_TEST(test_insta360_explicit_recording_is_available_to_scenes);
   RUN_TEST(test_registry_crud_and_single_shark_limit);
   RUN_TEST(test_transactional_add_commits_only_after_pairing_and_readiness);
   RUN_TEST(test_transactional_add_cancel_and_failed_save_do_not_register_device);

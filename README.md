@@ -126,12 +126,14 @@ principles:
 - Separate Camera-family entries for GoPro, Insta360, DJI Osmo, Sony Camera,
   and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
   Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360
-  emulates the GPS remote shutter used by X5/GO 3-class cameras, while DJI
+  emulates the captured X5 GPS Remote protocol as
+  `Insta360 Remote (Bleep)`, while DJI
   implements the published Osmo controller handshake, shows the camera's
   four-digit verification code during first pairing, and supports start/stop
   plus status subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
-  action that repeats in generated Stop. Insta360 X5 GPS-remote connection
-  and mixed-sequence shutter behavior are operator-confirmed, as are Google
+  action that repeats in generated Stop. Insta360 X5 GPS display state,
+  state-aware Start/Stop, and power behavior await exact-identity hardware
+  verification; Google
   Pixel 9 reconnect and shutter behavior; broader model/platform coverage and
   the other families remain experimental. Sony
   still stops at an explicit protocol-research screen.
@@ -157,9 +159,9 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Canon EOS R6 Mark II/III smartphone mode | Current, bounded scope | Bonded BLE pairing, explicit movie start/stop, and camera-reported recording state through `Canon (Smart)` are verified on both models; automatic wake and explicit power-down are included in the workflow. |
 | GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
 | Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
-| Insta360 X5 | Experimental; verified path | GPS-remote connection and mixed-sequence toggle shutter are operator-confirmed; camera state is not readable. |
-| Insta360 GO 3 | Experimental candidate | Uses the same implemented GPS-remote path but has no model-specific hardware result yet. |
-| Insta360 GO Ultra | Experimental probe | Separate target with no established legacy GPS-remote compatibility and no hardware result yet. |
+| Insta360 X5 | Experimental, verified bounded path | Pairing, immediate sequence Start, camera-reported recording state, Start/Stop, shutdown, and physical wake are operator-confirmed. The returning wake connection has a new address-routing fix awaiting confirmation. |
+| Insta360 GO 3 | Experimental candidate | GPS Remote compatibility has not been tested on this model. |
+| Insta360 GO Ultra | Experimental probe | Separate target with no established GPS Remote compatibility or hardware result. |
 | DJI Osmo Action 5 Pro | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | DJI Osmo 360 | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |

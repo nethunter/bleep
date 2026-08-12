@@ -374,10 +374,11 @@ This experimental tranche extends Phase 5 without changing its Canon gates:
   choices under Cameras;
 - implement GoPro Open GoPro BLE pairing and response-gated Set Shutter;
 - implement Phone Camera as a bonded, per-peer BLE HID shutter peripheral;
-- implement Insta360 GPS-remote peripheral emulation for X5/GO 3 candidates,
-  keeping the separate GO Ultra target visibly experimental until hardware
-  proves compatibility, and expose its state-unknown sequence command as an
-  explicit shutter toggle;
+- implement capture-correct Insta360 GPS Remote peripheral emulation for X5,
+  using the operator-confirmed `Insta360 Remote (Bleep)` identity and captured
+  CE82/CE81/CE83 declaration order, GPS display-frame state synchronization,
+  optimistic immediate Start, and confirmed Stop; keep the separate GO Ultra
+  target visibly experimental until hardware proves compatibility;
 - implement DJI's published Osmo controller handshake, recording controls, and
   camera-status subscription for Action 5 Pro and Osmo 360 candidates;
 - keep Sony onboarding blocked on a clear research screen until its
@@ -386,8 +387,10 @@ This experimental tranche extends Phase 5 without changing its Canon gates:
 
 Completion gate: representative GoPro and phone hardware pass add, shutter,
 bonded reconnect, multi-instance routing, forget/re-pair, cancellation, and
-heap/coexistence tests. Insta360 GPS-remote connection is operator-confirmed,
-but shutter/sequence behavior and the remaining coexistence gates stay open.
+heap/coexistence tests. The Insta360 GPS-remote connection and basic shutter
+were operator-confirmed; the newly decoded display-state synchronization,
+exact GPS identity, power behavior, and remaining coexistence gates stay
+open.
 DJI has host vectors but still requires its physical gates; Sony requires both
 implementation and physical proof.
 
