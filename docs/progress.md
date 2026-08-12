@@ -60,6 +60,22 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-11.
 
+### 2026-08-11: Main-only owner's guide refresh
+
+- Added repository guidance requiring each manual refresh to collect and merge
+  post-generation implementation and supporting-documentation changes on a
+  separate branch before the manual source or PDF is touched on `main`.
+- After merging that preparatory branch with `--no-ff`, refreshed the Insta360
+  X5 instructions for the final `Insta360 Remote (Bleep)` identity, state-aware
+  Action Button and Scene behavior, removal of the raw Shutter fallback,
+  provisionally available Start, confirmation-gated Stop, verified pairing,
+  state, recording, shutdown, and physical wake, plus the remaining retained-
+  session wake reconnect recheck.
+- Rebuilt the 26-page owner's guide on `main`, rendered every page to PNG, and
+  visually inspected the complete guide. No clipping, overlap, broken tables,
+  missing images, or page-furniture defects were found. Documentation only;
+  firmware build, simulator, flash, and hardware behavior were unchanged.
+
 ### 2026-08-11: Insta360 X5 GPS Remote control and reported state
 
 - Direction correction: a new full GPS-mode capture shows that the X5 does

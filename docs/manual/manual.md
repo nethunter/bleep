@@ -67,7 +67,7 @@ This table describes a short press. The action runs only when the corresponding 
 | Canon - Smart Phone Mode | Starts recording unless the camera has confirmed that it is already recording; then it stops. Select camera power on-screen. |
 | GoPro | Runs the displayed Record Start or Record Stop action. |
 | Phone Camera | Sends the shutter command. |
-| Insta360 | Sends Shutter Toggle. |
+| Insta360 | Runs Record Start while video is idle or Record Stop while recording. It does nothing while the camera reports photo mode or while recording state is unavailable. |
 | DJI Osmo | Runs the displayed Record Start or Record Stop action. Recording status is camera-confirmed on the verified models. It does nothing while the pairing code is awaiting approval. |
 | Sony Camera research screen | No action. Control is not available. |
 | Aputure and amaran light | Toggles the selected light On or Off. |
@@ -195,18 +195,24 @@ Verified exact model: **Google Pixel 9** for automatic reconnection and mixed-se
 ## Insta360
 
 Ble(e)p speaks the X5's **GPS Remote** protocol and appears to the camera as
-**Insta360 GPS Remote**. It uses the camera's reported display state to offer safe
-Start and Stop actions over the GPS Remote's shutter-toggle command.
+**Insta360 Remote (Bleep)**. It uses the camera's reported display state to offer
+safe Start and Stop actions over the GPS Remote's shutter-toggle command.
 
 1. Open the X5's **GPS Remote** pairing flow.
 2. Add **Insta360** on Ble(e)p and wait for the camera to connect to the panel.
-3. Wait for the panel to show the camera's idle or recording state.
-4. Use **Start** or **Stop**. If no valid state has arrived yet, Ble(e)p exposes
-   only the raw **Shutter** fallback rather than guessing.
+3. Wait for the panel to show the camera's idle or recording state. A fresh
+   connection provisionally allows Start so a sequence does not need to wait
+   for the first status update; the camera's first report replaces that
+   assumption.
+4. Use **Start** while video is idle or **Stop** while recording. Photo mode and
+   unavailable recording state intentionally expose no recording action.
+5. Use the on-screen power control to shut down or wake the camera. Wake can
+   take up to 60 seconds while Ble(e)p waits for the X5 to reconnect.
 
-Exact target: **Insta360 X5**. The capture-correct GPS Remote commands,
-recording status, Start/Stop, photo feedback, shutdown, wake path, and corrected
-GPS identity still need post-fix hardware verification. **Insta360 GO 3** and **GO Ultra** remain
+Exact target: **Insta360 X5**. Pairing, initial and ongoing recording state,
+Start/Stop, photo-state feedback, shutdown, and physical wake are verified on
+the panel. One correction that reattaches a waking X5 to its retained session
+still needs a fresh reconnect check. **Insta360 GO 3** and **GO Ultra** remain
 unverified.
 
 ## DJI Osmo
@@ -366,7 +372,7 @@ Opening scene Settings cancels preparation so you can edit safely. It does not i
 | --- | --- |
 | Canon Trigger | Record Trigger; Ble(e)p cannot tell whether recording started or stopped. |
 | Canon Smart, DJI, Tascam, GoPro | Separate Start and Stop actions. Confirmation varies by device. |
-| Insta360 | Explicit Shutter Toggle in both authored lists; generated Stop repeats it. |
+| Insta360 | Separate state-aware Start and Stop actions. Start can run from the fresh connection's provisional video-idle state; Stop still requires camera-confirmed recording. |
 | Phone Camera | Sends a volume-up command; Ble(e)p cannot see what the camera app did. |
 | Lights and Home Assistant switches | Separate On/Off. Aputure Set color includes color temperature or RGB settings. |
 | Home Assistant button | Press. |
@@ -436,7 +442,7 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | GoPro models supported by Open GoPro | Candidate | Separate shutter Start and Stop | No GoPro has been tested; recording is not confirmed. |
 | Google Pixel 9 | Experimental | Wireless volume-up shutter and reconnection | Ble(e)p cannot see whether the camera app captured an image. |
 | Other iOS, Android, and HarmonyOS phones | Candidate | Wireless volume-up shutter | Phone model, camera app, and multi-phone testing remain open. |
-| Insta360 X5 | Experimental | GPS Remote pairing as `Insta360 GPS Remote`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Corrected-identity hardware verification is pending. |
+| Insta360 X5 | Experimental | GPS Remote pairing as `Insta360 Remote (Bleep)`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Pairing, state, recording, shutdown, and physical wake are verified; one retained-session wake reconnect recheck remains. |
 | Insta360 GO 3 | Candidate | Intended GPS Remote shutter control | This exact model has not been tested. |
 | Insta360 GO Ultra | Research | Listed for investigation | GPS Remote compatibility is unknown. |
 | DJI Osmo Action 5 Pro | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
