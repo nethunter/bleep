@@ -826,14 +826,20 @@ the replacement.
 
 ## ADR-036: Action-camera families stay separate and protocol claims stay narrow
 
-- Status: Experimental; GoPro, phone, Insta360, and DJI hardware gates open.
+- Status: Experimental; exact-model results exist, while panel and coexistence
+  gates remain open.
 - Catalog: `GoPro`, `Insta360`, `DJI Osmo`, `Sony Camera`, and `Phone Camera`
   are separate discoverable entries under Cameras. Numeric driver IDs 10-14
   are stable persistence identities and do not alias Canon or one another.
 - GoPro: use GoPro's published Open GoPro peripheral service, bonded central
-  connection, command/response characteristics, pairing-state command, and
-  Set Shutter on/off. A successful response is command acceptance and produces
-  optimistic UI state; it is not camera-confirmed recording state. Up to four
+  connection, command/response and query/response characteristics, pairing-state
+  command, and Set Shutter on/off. Poll Get Hardware Info until BLE-ready, then
+  register Encoding status 10 on every connection. A successful shutter response
+  is acceptance only; Start/Stop completes when the camera's Encoding update
+  reports the requested state. Mismatched transition state does not complete a
+  pending command; bounded Get Status Values polling provides confirmation if
+  the notification is missed. GoPro MAX2 desktop-harness and flashed-panel
+  cycles confirmed the flow, reported state, and physical Start/Stop. Up to four
   GoPro instances use ordinary per-instance physical slots.
 - Phone: act as one lazy BLE HID peripheral named `Ble(e)p Shutter`. Each saved
   phone is identified by its bonded peer identity and consumes one physical

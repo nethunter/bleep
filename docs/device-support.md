@@ -318,7 +318,8 @@ Compatibility evidence is deliberately split from protocol availability:
 
 | Target | Implementation | Hardware evidence in this tranche |
 | --- | --- | --- |
-| GoPro models in the current Open GoPro support table | Implemented, experimental | No camera tested yet. Retailer-only HERO8/MAX/MINI claims are not inherited. |
+| GoPro MAX2 | Implemented, verified bounded path | Desktop harness and flashed panel confirmed connection, initial Encoding state, explicit Start/Stop, state transitions, and physical recording. |
+| Other GoPro models in the current Open GoPro support table | Implemented candidates | No model-specific result; the MAX2 result is not inherited. |
 | Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
 | Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
 | Insta360 X3 | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
@@ -333,18 +334,23 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### GoPro
 
-- Status: `Experimental`, hardware verification pending.
+- Status: `Experimental`; GoPro MAX2 desktop protocol, physical recording, and
+  the repaired panel connection/state/Start/Stop path are verified.
 - Driver: `GoPro` (`DriverId::GoPro = 10`), up to four instances.
 - Transport: Ble(e)p is the central and the camera is the peripheral. Discovery
   requires advertised service `0xFEA6`; pairing is bonded without MITM.
-- Commands: official Open GoPro command/response characteristics and Set
-  Pairing State plus Set Shutter on/off. Successful command responses are shown
-  as optimistic state, never as camera-confirmed recording.
+- Initialization: subscribe Command Response and Query Response on every
+  connection, poll Get Hardware Info until BLE-ready, then register Encoding
+  status 10. Fragmented Hardware Info responses are reassembled in the main loop.
+- Commands: Set Pairing State plus Set Shutter on/off. A successful shutter
+  response is acceptance only; `0x93` Encoding updates confirm recording state.
+  While a transition is pending, mismatched old state is ignored and bounded
+  Get Status Values polling confirms the requested target or times out.
 - Compatibility claim: only models covered by the current Open GoPro supported
   camera table should be treated as candidates. HERO8, legacy MAX/MINI, or any
   retailer-only claim remains unverified until tested.
-- Evidence: <https://gopro.github.io/OpenGoPro/docs/ble/protocol/ble_setup/>
-  and <https://gopro.github.io/OpenGoPro/docs/ble/control/>.
+- Evidence: [GoPro Open GoPro BLE](protocols/gopro-open-gopro.md), plus the
+  published setup, data-protocol, query, and control documentation linked there.
 
 ### Phone Camera
 

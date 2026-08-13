@@ -143,9 +143,11 @@ principles:
   plus status subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
   action that repeats in generated Stop. Insta360 X5 GPS display state,
   state-aware Start/Stop, and power behavior await exact-identity hardware
-  verification; Google
-  Pixel 9 reconnect and shutter behavior; broader model/platform coverage and
-  the other families remain experimental. Sony
+  verification; Google Pixel 9 reconnect and shutter behavior is
+  operator-confirmed. GoPro MAX2 connection, initial recording state, explicit
+  Start/Stop, and camera-confirmed Encoding state are operator-confirmed on the
+  panel; broader model/platform coverage and the other families remain
+  experimental. Sony
   still stops at an explicit protocol-research screen.
 - Specialized slider controls for keypoints A-H, joystick positioning,
   speed/hold settings, run direction, looping, and progress.
@@ -167,7 +169,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | iFootage Shark Nano II | Current | Pair/reconnect, battery, keypoints, manual movement, timing, loop/direction, and run control. |
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
 | Canon EOS R6 Mark II/III smartphone mode | Current, bounded scope | Bonded BLE pairing, explicit movie start/stop, and camera-reported recording state through `Canon (Smart)` are verified on both models; automatic wake and explicit power-down are included in the workflow. |
-| GoPro (Open GoPro BLE) | Experimental | Bonded multi-instance pairing and response-gated shutter start/stop; recording state is optimistic until camera-side status is implemented and verified. |
+| GoPro MAX2 (Open GoPro BLE) | Experimental, verified bounded path | Bonded pairing, explicit Start/Stop, and camera-confirmed recording state are operator-confirmed on the panel. Other models and lifecycle/coexistence coverage remain open. |
 | Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
 | Insta360 X3 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
 | Insta360 X4 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |

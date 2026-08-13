@@ -76,7 +76,7 @@ void refresh() {
     view.actionLabel = "WAITING";
     view.actionColor = kAccent;
   } else if (state->lastCommandFailed) {
-    view.status = "COMMAND REJECTED";
+    view.status = "NO CONFIRMATION";
     view.detail = "CAMERA STATE UNKNOWN";
     view.actionLabel = "START";
     view.actionColor = kReady;
@@ -89,13 +89,13 @@ void refresh() {
     view.actionColor = kAccent;
   } else if (state->recording == gopro::GoProState::Recording::Recording) {
     view.status = "RECORDING";
-    view.detail = "COMMAND ACCEPTED";
+    view.detail = "GOPRO CONFIRMED";
     view.actionLabel = "STOP";
     view.actionColor = kAccent;
     view.actionEnabled = true;
   } else {
     view.status = "READY";
-    view.detail = "STATE IS OPTIMISTIC";
+    view.detail = state->recordingConfirmed ? "GOPRO CONFIRMED" : "STATE UNKNOWN";
     view.actionLabel = "START";
     view.actionColor = kReady;
     view.actionEnabled = true;

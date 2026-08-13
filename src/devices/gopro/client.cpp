@@ -21,7 +21,7 @@ void responseNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
                               uint8_t* data, size_t length, bool) {
   for (GoProClient* client : gClients) {
     if (client != nullptr && client->ownsResponseCharacteristic(characteristic)) {
-      client->onResponse(data, length);
+      client->onResponse(characteristic, data, length);
     }
   }
 }
@@ -84,8 +84,14 @@ void GoProClient::deactivate() {
   client_ = nullptr;
   commandChar_ = nullptr;
   responseChar_ = nullptr;
+  queryChar_ = nullptr;
+  queryResponseChar_ = nullptr;
   setupPending_ = false;
   pairingResponsePending_ = false;
+  readinessActive_ = false;
+  hardwareResponsePending_ = false;
+  encodingResponsePending_ = false;
+  encodingQueryPending_ = false;
   commandRequested_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
@@ -106,22 +112,55 @@ void GoProClient::loop() {
       return;
     }
   }
-  if ((pairingResponsePending_ || state_.commandPending) &&
+  if (pairingResponsePending_ &&
       static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
-    if (pairingResponsePending_) {
-      pairingResponsePending_ = false;
-      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+    pairingResponsePending_ = false;
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+  }
+  if (readinessActive_ &&
+      static_cast<int32_t>(now - readinessDeadlineMs_) >= 0) {
+    readinessActive_ = false;
+    studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+  } else if (readinessActive_ && hardwareResponsePending_ &&
+             static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
+    hardwareResponsePending_ = false;
+    nextReadinessPollMs_ = now + 750;
+  } else if (readinessActive_ && encodingResponsePending_ &&
+             static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
+    encodingResponsePending_ = false;
+    if (!triedTwoByteStatus_) {
+      triedTwoByteStatus_ = true;
+      if (!requestEncodingRegistration(true))
+        studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     } else {
-      reduceCommandResponse(state_, requestedStart_, 0xff);
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
     }
+  } else if (readinessActive_ && !hardwareResponsePending_ &&
+             !encodingResponsePending_ &&
+             static_cast<int32_t>(now - nextReadinessPollMs_) >= 0) {
+    if (!requestHardwareInfo())
+      studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+  }
+  if (state_.commandPending &&
+      static_cast<int32_t>(now - commandDeadlineMs_) >= 0) {
+    markCommandTimeout(state_);
+    encodingQueryPending_ = false;
+  } else if (state_.commandPending && encodingQueryPending_ &&
+             static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
+    encodingQueryPending_ = false;
+    nextEncodingPollMs_ = now + 250;
+  } else if (state_.commandPending && !encodingQueryPending_ &&
+             static_cast<int32_t>(now - nextEncodingPollMs_) >= 0) {
+    if (!requestEncodingQuery()) markCommandTimeout(state_);
   }
   if (commandRequested_) {
     commandRequested_ = false;
     const Packet packet = buildSetShutter(requestedStart_);
     if (!send(packet.bytes, packet.len)) {
-      reduceCommandResponse(state_, requestedStart_, 0xff);
+      markCommandTimeout(state_);
     } else {
-      responseDeadlineMs_ = now + 4000;
+      commandDeadlineMs_ = now + 10000;
+      nextEncodingPollMs_ = commandDeadlineMs_;
     }
   }
 }
@@ -156,8 +195,15 @@ void GoProClient::forgetBond(const char* address, uint8_t addressType) {
 
 bool GoProClient::setShutter(bool enabled) {
   if (state_.link != Link::Connected || state_.commandPending) return false;
+  if (state_.recordingConfirmed &&
+      (state_.recording == GoProState::Recording::Recording) == enabled) {
+    state_.lastCommandFailed = false;
+    return true;
+  }
   requestedStart_ = enabled;
   commandRequested_ = true;
+  commandDeadlineMs_ = millis() + 10000;
+  nextEncodingPollMs_ = commandDeadlineMs_;
   markCommandQueued(state_, enabled);
   return true;
 }
@@ -200,10 +246,17 @@ bool GoProClient::completeConnect() {
   if (service == nullptr) return false;
   commandChar_ = service->getCharacteristic(NimBLEUUID(kCommandCharacteristicUuid));
   responseChar_ = service->getCharacteristic(NimBLEUUID(kResponseCharacteristicUuid));
-  if (commandChar_ == nullptr || responseChar_ == nullptr ||
-      !responseChar_->subscribe(true, responseNotifyTrampoline, true)) {
+  queryChar_ = service->getCharacteristic(NimBLEUUID(kQueryCharacteristicUuid));
+  queryResponseChar_ =
+      service->getCharacteristic(NimBLEUUID(kQueryResponseCharacteristicUuid));
+  if (commandChar_ == nullptr || responseChar_ == nullptr || queryChar_ == nullptr ||
+      queryResponseChar_ == nullptr ||
+      !responseChar_->subscribe(true, responseNotifyTrampoline, true) ||
+      !queryResponseChar_->subscribe(true, responseNotifyTrampoline, true)) {
     commandChar_ = nullptr;
     responseChar_ = nullptr;
+    queryChar_ = nullptr;
+    queryResponseChar_ = nullptr;
     return false;
   }
   studio::ble::logTiming("gopro", linkHandle_, "gatt_setup", millis() - started,
@@ -215,12 +268,58 @@ bool GoProClient::completeConnect() {
     pairingResponsePending_ = true;
     responseDeadlineMs_ = millis() + 4000;
   } else {
-    markReady();
+    beginReadiness();
   }
   return true;
 }
 
+void GoProClient::beginReadiness() {
+  readinessActive_ = true;
+  hardwareResponsePending_ = false;
+  encodingResponsePending_ = false;
+  triedTwoByteStatus_ = false;
+  readinessDeadlineMs_ = millis() + 20000;
+  nextReadinessPollMs_ = millis();
+}
+
+bool GoProClient::requestHardwareInfo() {
+  const Packet packet = buildGetHardwareInfo();
+  if (!send(packet.bytes, packet.len)) return false;
+  hardwareResponsePending_ = true;
+  responseDeadlineMs_ = millis() + 2500;
+  return true;
+}
+
+bool GoProClient::requestEncodingRegistration(bool twoByteIds) {
+  const Packet packet = buildRegisterEncoding(twoByteIds);
+  if (!sendQuery(packet.bytes, packet.len)) return false;
+  encodingResponsePending_ = true;
+  responseDeadlineMs_ = millis() + 4000;
+  return true;
+}
+
+bool GoProClient::requestEncodingQuery() {
+  const Packet packet = buildGetEncoding(triedTwoByteStatus_);
+  if (!sendQuery(packet.bytes, packet.len)) return false;
+  encodingQueryPending_ = true;
+  responseDeadlineMs_ = millis() + 1500;
+  return true;
+}
+
+void GoProClient::applyEncodingStatus(bool encoding) {
+  if (state_.commandPending) {
+    reducePendingEncodingStatus(state_, encoding, requestedStart_);
+  } else {
+    reduceEncodingStatus(state_, encoding);
+  }
+  if (!state_.commandPending) encodingQueryPending_ = false;
+}
+
 void GoProClient::markReady() {
+  readinessActive_ = false;
+  hardwareResponsePending_ = false;
+  encodingResponsePending_ = false;
+  encodingQueryPending_ = false;
   state_.link = Link::Connected;
   state_.hasSavedDevice = true;
   haveTarget_ = true;
@@ -232,13 +331,21 @@ void GoProClient::teardownConnection() {
   studio::ble::bleCentral().disconnect(linkHandle_);
   commandChar_ = nullptr;
   responseChar_ = nullptr;
+  queryChar_ = nullptr;
+  queryResponseChar_ = nullptr;
 }
 
 void GoProClient::handleDisconnect() {
   commandChar_ = nullptr;
   responseChar_ = nullptr;
+  queryChar_ = nullptr;
+  queryResponseChar_ = nullptr;
   setupPending_ = false;
   pairingResponsePending_ = false;
+  readinessActive_ = false;
+  hardwareResponsePending_ = false;
+  encodingResponsePending_ = false;
+  encodingQueryPending_ = false;
   commandRequested_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
@@ -248,14 +355,69 @@ void GoProClient::drainResponses() {
   if (responseQueue_ == nullptr) return;
   QueuedResponse queued;
   while (xQueueReceive(static_cast<QueueHandle_t>(responseQueue_), &queued, 0) == pdTRUE) {
-    const Response response = parseResponse(queued.data, queued.len);
-    if (!response.valid) continue;
-    if (pairingResponsePending_ && response.command == kSetPairingStateCommand) {
-      pairingResponsePending_ = false;
-      if (response.status == kSuccessStatus) markReady();
-      else studio::ble::bleCentral().markProtocolFailed(linkHandle_);
-    } else if (state_.commandPending && response.command == kSetShutterCommand) {
-      reduceCommandResponse(state_, requestedStart_, response.status);
+    Message message;
+    PacketAccumulator& packets = queued.channel == QueuedResponse::Channel::Command
+                                     ? commandPackets_
+                                     : queryPackets_;
+    if (!packets.feed(queued.data, queued.len, message)) continue;
+    if (queued.channel == QueuedResponse::Channel::Command) {
+      const Response response = parseCommandPayload(message.bytes, message.len);
+      if (!response.valid) continue;
+      if (pairingResponsePending_ && response.command == kSetPairingStateCommand) {
+        pairingResponsePending_ = false;
+        if (response.status == kSuccessStatus) beginReadiness();
+        else studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+      } else if (hardwareResponsePending_ &&
+                 response.command == kGetHardwareInfoCommand) {
+        hardwareResponsePending_ = false;
+        if (response.status == kSuccessStatus) {
+          if (!requestEncodingRegistration(false))
+            studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+        } else {
+          nextReadinessPollMs_ = millis() + 750;
+        }
+      } else if (state_.commandPending &&
+                 response.command == kSetShutterCommand) {
+        reduceCommandResponse(state_, response.status);
+        if (response.status == kSuccessStatus && state_.commandPending) {
+          if (!requestEncodingQuery()) markCommandTimeout(state_);
+        } else {
+          encodingQueryPending_ = false;
+        }
+      }
+    } else {
+      const StatusResponse response =
+          parseStatusPayload(message.bytes, message.len);
+      if (!response.valid) continue;
+      if (encodingResponsePending_ &&
+          (response.operation == kRegisterStatusUpdates ||
+           response.operation == kRegisterStatusUpdates2Byte)) {
+        encodingResponsePending_ = false;
+        if (response.status != kSuccessStatus || !response.hasEncoding) {
+          if (!triedTwoByteStatus_) {
+            triedTwoByteStatus_ = true;
+            if (!requestEncodingRegistration(true))
+              studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+          } else {
+            studio::ble::bleCentral().markProtocolFailed(linkHandle_);
+          }
+          continue;
+        }
+        applyEncodingStatus(response.encoding);
+        markReady();
+      } else if (encodingQueryPending_ &&
+                 (response.operation == kGetStatusValues ||
+                  response.operation == kGetStatusValues2Byte)) {
+        encodingQueryPending_ = false;
+        if (response.status == kSuccessStatus && response.hasEncoding) {
+          applyEncodingStatus(response.encoding);
+        }
+        if (state_.commandPending) nextEncodingPollMs_ = millis() + 250;
+      } else if (response.status == kSuccessStatus && response.hasEncoding &&
+                 (response.operation == kNotifyStatusUpdate ||
+                  response.operation == kNotifyStatusUpdate2Byte)) {
+        applyEncodingStatus(response.encoding);
+      }
     }
   }
 }
@@ -263,6 +425,11 @@ void GoProClient::drainResponses() {
 bool GoProClient::send(const uint8_t* data, size_t len) {
   return commandChar_ != nullptr && data != nullptr && len > 0 &&
          commandChar_->writeValue(data, len, !commandChar_->canWriteNoResponse());
+}
+
+bool GoProClient::sendQuery(const uint8_t* data, size_t len) {
+  return queryChar_ != nullptr && data != nullptr && len > 0 &&
+         queryChar_->writeValue(data, len, !queryChar_->canWriteNoResponse());
 }
 
 void GoProClient::onBleAdvertisement(
@@ -296,9 +463,13 @@ void GoProClient::onBleEvent(studio::ble::LinkHandle link,
   }
 }
 
-void GoProClient::onResponse(const uint8_t* data, size_t len) {
+void GoProClient::onResponse(const void* characteristic, const uint8_t* data,
+                             size_t len) {
   if (responseQueue_ == nullptr || data == nullptr || len == 0) return;
   QueuedResponse queued;
+  queued.channel = characteristic == queryResponseChar_
+                       ? QueuedResponse::Channel::Query
+                       : QueuedResponse::Channel::Command;
   queued.len = static_cast<uint8_t>(len < sizeof(queued.data) ? len : sizeof(queued.data));
   std::memcpy(queued.data, data, queued.len);
   xQueueSend(static_cast<QueueHandle_t>(responseQueue_), &queued, 0);

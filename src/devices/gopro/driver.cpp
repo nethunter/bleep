@@ -85,7 +85,12 @@ DeviceRuntimeState GoProDriver::runtimeState(InstanceId id) const {
   runtime.protocolReady = session->client.protocolReady();
   runtime.commandPending = session->client.state().commandPending;
   runtime.commandFailed = session->client.state().lastCommandFailed;
-  runtime.quality = StateQuality::Optimistic;
+  runtime.recordingConfirmed = session->client.state().recordingConfirmed;
+  runtime.recording = session->client.state().recording ==
+                      gopro::GoProState::Recording::Recording;
+  runtime.quality = session->client.state().recordingConfirmed
+                        ? StateQuality::Confirmed
+                        : StateQuality::Unknown;
   return runtime;
 }
 
