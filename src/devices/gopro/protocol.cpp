@@ -12,6 +12,14 @@ Packet buildSetShutter(bool enabled) {
   return packet;
 }
 
+Packet buildSleep() {
+  Packet packet;
+  packet.bytes[0] = 0x01;
+  packet.bytes[1] = kSleepCommand;
+  packet.len = 2;
+  return packet;
+}
+
 Packet buildSetPairingState() {
   Packet packet;
   packet.bytes[0] = 0x03;

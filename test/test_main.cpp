@@ -33,6 +33,7 @@
 #include "devices/tascam_x8/protocol.h"
 #include "devices/tascam_x8/state.h"
 #include "devices/gopro/protocol.h"
+#include "devices/gopro/ble_match.h"
 #include "devices/gopro/state.h"
 #include "devices/insta360/protocol.h"
 #include "devices/insta360/state.h"
@@ -1244,6 +1245,10 @@ void test_gopro_open_ble_packets_and_confirmed_state() {
   const gopro::Packet stop = gopro::buildSetShutter(false);
   const uint8_t expectedStop[] = {0x03, 0x01, 0x01, 0x00};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.bytes, stop.len);
+  const gopro::Packet sleep = gopro::buildSleep();
+  const uint8_t expectedSleep[] = {0x01, 0x05};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedSleep), sleep.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedSleep, sleep.bytes, sleep.len);
   const gopro::Packet pairing = gopro::buildSetPairingState();
   const uint8_t expectedPairing[] = {0x03, 0x17, 0x01, 0x01};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPairing, pairing.bytes, pairing.len);
@@ -1264,6 +1269,19 @@ void test_gopro_open_ble_packets_and_confirmed_state() {
   TEST_ASSERT_EQUAL_HEX8(gopro::kSetShutterCommand, response.command);
   TEST_ASSERT_EQUAL_HEX8(gopro::kSuccessStatus, response.status);
   TEST_ASSERT_FALSE(gopro::parseResponse(ok, 2).valid);
+
+  studio::ble::Advertisement sleeping;
+  const uint8_t lowPowerAdvertisement[] = {
+      3, 0x03, 0xa6, 0xfe, 5, 0xff, 0xf2, 0x02, 0x03, 0x00};
+  std::memcpy(sleeping.payload, lowPowerAdvertisement,
+              sizeof(lowPowerAdvertisement));
+  sleeping.payloadLength = sizeof(lowPowerAdvertisement);
+  bool processorKnown = false;
+  TEST_ASSERT_FALSE(gopro::processorAwake(sleeping, processorKnown));
+  TEST_ASSERT_TRUE(processorKnown);
+  sleeping.payload[9] = 0x01;
+  TEST_ASSERT_TRUE(gopro::processorAwake(sleeping, processorKnown));
+  TEST_ASSERT_TRUE(processorKnown);
 
   gopro::PacketAccumulator commandPackets;
   gopro::Message message;
@@ -4137,6 +4155,30 @@ void test_ble_central_protocol_failure_can_stop_retry() {
   central.release(link);
 }
 
+void test_ble_central_cancelled_connect_failure_does_not_retry() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  const studio::ble::LinkHandle link = central.acquire(delegate, {});
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  central.disconnect(link);
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = link;
+  TEST_ASSERT_TRUE(backend.emit(failed));
+  central.loop(1);
+  central.loop(10000);
+
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ble::LinkPhase::Idle),
+                        static_cast<int>(central.phase(link)));
+  central.release(link);
+}
+
 void test_ble_central_uses_bounded_scan_bursts() {
   studio::ble::FakeBleBackend backend;
   studio::ble::BleCentral central(backend);
@@ -5127,6 +5169,7 @@ int main(int, char**) {
   RUN_TEST(test_tascam_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_zhiyun_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);
+  RUN_TEST(test_ble_central_cancelled_connect_failure_does_not_retry);
   RUN_TEST(test_ble_central_uses_bounded_scan_bursts);
   RUN_TEST(test_ble_central_parser_bonds_and_queue_overflow);
   RUN_TEST(test_ble_device_advertisement_matchers);

@@ -36,6 +36,9 @@ short, factual, and reproducible.
   are now operator-confirmed. A GoPro MAX2 desktop harness and flashed panel
   confirmed connection, initial idle state, explicit Start/Stop, Encoding
   transitions, and matching physical recording.
+  The GoPro screen now also exposes published Sleep and reconnect-to-wake
+  controls; a flashed MAX2 visibly slept, woke, reconnected after boot, and
+  returned to Ready.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -66,6 +69,55 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
+
+### 2026-08-12: GoPro Sleep and reconnect-to-wake controls
+
+- Added the Canon-style header power control to the GoPro recorder screen.
+  Power-off sends published Open GoPro Sleep command `01 05` only while the
+  camera is protocol-ready, not confirmed recording, and no transition is
+  pending. **Camera asleep** requires both response `02 05 00` and the expected
+  camera disconnect; a missing half reports failure rather than optimistic
+  power state.
+- The first MAX2 test exposed that waiting for the camera to initiate that
+  disconnect leaves the BLE central connected and wakes the camera again about
+  one second after Sleep. The client now closes its link immediately after the
+  successful Sleep response, then requires the resulting disconnect before it
+  reports **Camera asleep**. After this correction, native tests again passed
+  89/89, the complete simulator traversal passed, and the full Montserrat
+  profile built at 141,428 / 327,680 bytes static RAM and 1,935,600 / 3,145,728
+  bytes flash. The corrected 27-page manual was rebuilt and its GoPro page was
+  rendered and visually re-inspected without layout defects. The corrected
+  image uploaded to `/dev/cu.usbserial-211240` with hash verification and a
+  hard reset; the operator-observed retry remains pending.
+- Power-on reconnects the saved BLE peer, which is the published GoPro wake
+  mechanism. Retained asleep sessions remain intentionally offline, and
+  reopening the device or preparing it for a sequence automatically invokes
+  the same wake path before Hardware Info and Encoding readiness run again.
+- The first wake retry exposed an unbounded `Waking` state. Wake now has a
+  30-second overall deadline, after which it cancels the connection and returns
+  to the retryable asleep screen. The shared BLE coordinator also now honors a
+  manual cancellation when a late `ConnectFailed` event arrives instead of
+  silently scheduling another retry. A host regression covers that race.
+- The next physical retry showed the remaining two-stage boot behavior. Serial
+  evidence reached `protocol_ready` 1.97 seconds after the low-power connection,
+  then the MAX2 restarted BLE and disconnected about 5.12 seconds later; the
+  following link reached encryption but stalled before GATT setup. Wake now
+  reads GoPro's documented advertised processor-state bit, uses a low-power
+  connection only to trigger boot, disconnects it after 1.5 seconds, and waits
+  for an awake advertisement before starting security and Open GoPro setup on
+  a fresh link. After flashing this correction, the operator confirmed the full
+  MAX2 cycle was perfect: Sleep, physical turn-on, the fresh post-boot control
+  connection, and return to Ready all completed.
+- Native tests passed 89/89. The complete `ui_sim` build/traversal passed and
+  captured the new 240x240 asleep screen without clipped text or rounded-edge
+  collision. The required full Montserrat `bleep` profile built successfully
+  at 141,428 / 327,680 bytes static RAM and 1,935,586 / 3,145,728 bytes flash.
+  The owner guide and 27-page PDF were rebuilt. The GoPro instructions and
+  compatibility pages were rendered at 120 dpi and visually inspected without
+  clipping, overlap, table overflow, or unexpected page movement. The image
+  uploaded successfully to `/dev/cu.usbserial-211240`; every written region
+  passed hash verification and the panel hard-reset with NVS preserved. This
+  older build preceded the later operator-confirmed MAX2 sleep/wake fix above.
 
 ### 2026-08-12: GoPro MAX2 desktop harness and confirmed-state repair
 

@@ -146,7 +146,8 @@ principles:
   verification; Google Pixel 9 reconnect and shutter behavior is
   operator-confirmed. GoPro MAX2 connection, initial recording state, explicit
   Start/Stop, and camera-confirmed Encoding state are operator-confirmed on the
-  panel; broader model/platform coverage and the other families remain
+  panel. Published Sleep plus reconnect-to-wake controls are implemented and
+  verified on that MAX2; broader model/platform coverage and the other families remain
   experimental. Sony
   still stops at an explicit protocol-research screen.
 - Specialized slider controls for keypoints A-H, joystick positioning,
@@ -169,7 +170,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | iFootage Shark Nano II | Current | Pair/reconnect, battery, keypoints, manual movement, timing, loop/direction, and run control. |
 | Canon EOS R6 Mark II/III via BR-E1 mode | Current | Stateless movie-record trigger through `Canon (Trigger)`. There is no recording-state readback. |
 | Canon EOS R6 Mark II/III smartphone mode | Current, bounded scope | Bonded BLE pairing, explicit movie start/stop, and camera-reported recording state through `Canon (Smart)` are verified on both models; automatic wake and explicit power-down are included in the workflow. |
-| GoPro MAX2 (Open GoPro BLE) | Experimental, verified bounded path | Bonded pairing, explicit Start/Stop, and camera-confirmed recording state are operator-confirmed on the panel. Other models and lifecycle/coexistence coverage remain open. |
+| GoPro MAX2 (Open GoPro BLE) | Experimental, verified bounded path | Bonded pairing, explicit Start/Stop, confirmed recording state, Sleep, physical wake, and post-boot Ready are operator-confirmed on the panel. Other models and coexistence coverage remain open. |
 | Phone Camera — Google Pixel 9 | Experimental; verified path | Bonded reconnect and mixed-sequence BLE HID volume-up shutter are operator-confirmed. Other models and multi-phone coverage remain open. |
 | Insta360 X3 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
 | Insta360 X4 | Experimental, verified bounded path | Operation through Ble(e)p's GPS Remote path is operator-confirmed. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
@@ -207,9 +208,10 @@ values shown on the Shark screen come from the slider.
 ### Controls
 
 - **Touch:** Home, device management, sequences, connection, keypoints,
-  positioning, run controls, per-keypoint settings, and explicit Canon camera
-  power-down. Reopening or preparing a Canon Smart camera that Ble(e)p powered
-  off automatically reconnects and attempts the captured wake sequence. An
+  positioning, run controls, per-keypoint settings, and explicit Canon/GoPro
+  camera power controls. Reopening or preparing a Canon Smart or sleeping
+  GoPro that Ble(e)p powered off reconnects and attempts its device-specific
+  wake path for up to 30 seconds, then returns to a retryable asleep state. An
   accepted touch click produces a crisp haptic tap; a device becoming ready or
   opening an already-connected device uses two quick ticks; Back uses two
   uneven taps; and a newly surfaced error uses two strong pulses. Scrolling

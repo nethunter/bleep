@@ -27,6 +27,8 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   void forgetDevice();
   void forgetBond(const char* address, uint8_t addressType);
   bool setShutter(bool enabled);
+  bool powerOn();
+  bool powerOff();
   bool consumePairingUpdate(char* address, size_t addressCapacity,
                             uint8_t& addressType, char* name,
                             size_t nameCapacity, bool& paired);
@@ -63,6 +65,9 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   bool requestEncodingQuery();
   void applyEncodingStatus(bool encoding);
   void markReady();
+  void completeSleepIfReady();
+  void failSleep();
+  void failWake();
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* commandChar_ = nullptr;
@@ -83,6 +88,12 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   bool encodingQueryPending_ = false;
   bool triedTwoByteStatus_ = false;
   bool commandRequested_ = false;
+  bool sleepRequested_ = false;
+  bool sleepResponseAccepted_ = false;
+  bool sleepDisconnectObserved_ = false;
+  bool wakeProbePending_ = false;
+  bool wakeProbeConnected_ = false;
+  bool wakeAwaitingBoot_ = false;
   bool requestedStart_ = false;
   char targetAddr_[20] = "";
   uint8_t targetAddrType_ = 0;
@@ -92,6 +103,9 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   uint32_t nextReadinessPollMs_ = 0;
   uint32_t commandDeadlineMs_ = 0;
   uint32_t nextEncodingPollMs_ = 0;
+  uint32_t sleepDeadlineMs_ = 0;
+  uint32_t wakeDeadlineMs_ = 0;
+  uint32_t wakeProbeDisconnectAtMs_ = 0;
   PacketAccumulator commandPackets_;
   PacketAccumulator queryPackets_;
   studio::ble::LinkHandle linkHandle_ = studio::ble::kInvalidLinkHandle;

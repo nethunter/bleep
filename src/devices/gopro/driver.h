@@ -9,6 +9,8 @@ class GoProDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::GoPro; }
   bool activate(const DeviceRecord& record) override;
+  bool resume(const DeviceRecord& record) override;
+  bool retainWhileDisconnected(InstanceId instanceId) const override;
   void deactivate(InstanceId instanceId) override;
   void loop() override;
   CommandStatus dispatch(const DeviceCommand& command) override;

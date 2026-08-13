@@ -93,6 +93,12 @@ void GoProClient::deactivate() {
   encodingResponsePending_ = false;
   encodingQueryPending_ = false;
   commandRequested_ = false;
+  sleepRequested_ = false;
+  sleepResponseAccepted_ = false;
+  sleepDisconnectObserved_ = false;
+  wakeProbePending_ = false;
+  wakeProbeConnected_ = false;
+  wakeAwaitingBoot_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
   if (responseQueue_ != nullptr) {
@@ -103,8 +109,20 @@ void GoProClient::deactivate() {
 
 void GoProClient::loop() {
   drainResponses();
-  if (!connectRequested_) return;
+  if (!connectRequested_ && state_.power != State::Power::Sleeping) return;
   const uint32_t now = millis();
+  if (state_.power == State::Power::Waking &&
+      static_cast<int32_t>(now - wakeDeadlineMs_) >= 0) {
+    failWake();
+    return;
+  }
+  if (state_.power == State::Power::Waking && wakeProbeConnected_ &&
+      static_cast<int32_t>(now - wakeProbeDisconnectAtMs_) >= 0) {
+    wakeProbeConnected_ = false;
+    wakeProbePending_ = false;
+    wakeAwaitingBoot_ = true;
+    teardownConnection();
+  }
   if (setupPending_) {
     setupPending_ = false;
     if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
@@ -163,6 +181,21 @@ void GoProClient::loop() {
       nextEncodingPollMs_ = commandDeadlineMs_;
     }
   }
+  if (sleepRequested_) {
+    sleepRequested_ = false;
+    connectRequested_ = false;
+    const Packet packet = buildSleep();
+    if (!send(packet.bytes, packet.len)) {
+      connectRequested_ = true;
+      failSleep();
+    } else {
+      sleepDeadlineMs_ = now + 5000;
+    }
+  }
+  if (state_.power == State::Power::Sleeping &&
+      static_cast<int32_t>(now - sleepDeadlineMs_) >= 0) {
+    failSleep();
+  }
 }
 
 void GoProClient::startScan() {
@@ -194,7 +227,8 @@ void GoProClient::forgetBond(const char* address, uint8_t addressType) {
 }
 
 bool GoProClient::setShutter(bool enabled) {
-  if (state_.link != Link::Connected || state_.commandPending) return false;
+  if (state_.link != Link::Connected || state_.power != State::Power::Awake ||
+      state_.commandPending || state_.powerCommandPending) return false;
   if (state_.recordingConfirmed &&
       (state_.recording == GoProState::Recording::Recording) == enabled) {
     state_.lastCommandFailed = false;
@@ -205,6 +239,44 @@ bool GoProClient::setShutter(bool enabled) {
   commandDeadlineMs_ = millis() + 10000;
   nextEncodingPollMs_ = commandDeadlineMs_;
   markCommandQueued(state_, enabled);
+  return true;
+}
+
+bool GoProClient::powerOn() {
+  if (state_.link != Link::Disconnected ||
+      (state_.power != State::Power::Asleep &&
+       state_.power != State::Power::SleepFailed)) {
+    return false;
+  }
+  connectRequested_ = true;
+  state_.power = State::Power::Waking;
+  state_.powerOffFailed = false;
+  wakeDeadlineMs_ = millis() + 30000;
+  wakeProbePending_ = false;
+  wakeProbeConnected_ = false;
+  wakeAwaitingBoot_ = false;
+  // Scan first so the advertised processor-state bit can distinguish a
+  // sleeping camera that needs a wake-only connection from an awake camera
+  // that is ready for normal GATT setup.
+  beginScan();
+  return true;
+}
+
+bool GoProClient::powerOff() {
+  if (state_.link != Link::Connected || !protocolReady() ||
+      state_.power != State::Power::Awake || state_.commandPending ||
+      state_.powerCommandPending ||
+      (state_.recordingConfirmed &&
+       state_.recording == State::Recording::Recording)) {
+    return false;
+  }
+  state_.power = State::Power::Sleeping;
+  state_.powerCommandPending = true;
+  state_.powerOffFailed = false;
+  sleepRequested_ = true;
+  sleepResponseAccepted_ = false;
+  sleepDisconnectObserved_ = false;
+  sleepDeadlineMs_ = millis() + 5000;
   return true;
 }
 
@@ -321,10 +393,58 @@ void GoProClient::markReady() {
   encodingResponsePending_ = false;
   encodingQueryPending_ = false;
   state_.link = Link::Connected;
+  state_.power = State::Power::Awake;
+  state_.powerCommandPending = false;
+  state_.powerOffFailed = false;
+  wakeProbePending_ = false;
+  wakeProbeConnected_ = false;
+  wakeAwaitingBoot_ = false;
   state_.hasSavedDevice = true;
   haveTarget_ = true;
   pairingChanged_ = true;
   studio::ble::bleCentral().markProtocolReady(linkHandle_);
+}
+
+void GoProClient::completeSleepIfReady() {
+  if (!sleepResponseAccepted_ || !sleepDisconnectObserved_) return;
+  state_.power = State::Power::Asleep;
+  state_.powerCommandPending = false;
+  state_.powerOffFailed = false;
+  resetTransientState(state_);
+}
+
+void GoProClient::failSleep() {
+  sleepRequested_ = false;
+  sleepResponseAccepted_ = false;
+  state_.power = state_.link == Link::Disconnected
+                     ? State::Power::SleepFailed
+                     : State::Power::Awake;
+  state_.powerCommandPending = false;
+  state_.powerOffFailed = true;
+  connectRequested_ = state_.link == Link::Connected;
+}
+
+void GoProClient::failWake() {
+  connectRequested_ = false;
+  wakeProbePending_ = false;
+  wakeProbeConnected_ = false;
+  wakeAwaitingBoot_ = false;
+  setupPending_ = false;
+  pairingResponsePending_ = false;
+  readinessActive_ = false;
+  hardwareResponsePending_ = false;
+  encodingResponsePending_ = false;
+  encodingQueryPending_ = false;
+  studio::ble::bleCentral().disconnect(linkHandle_);
+  client_ = nullptr;
+  commandChar_ = nullptr;
+  responseChar_ = nullptr;
+  queryChar_ = nullptr;
+  queryResponseChar_ = nullptr;
+  state_.link = Link::Disconnected;
+  state_.power = State::Power::Asleep;
+  state_.powerCommandPending = false;
+  resetTransientState(state_);
 }
 
 void GoProClient::teardownConnection() {
@@ -336,6 +456,8 @@ void GoProClient::teardownConnection() {
 }
 
 void GoProClient::handleDisconnect() {
+  const bool expectedSleep = state_.power == State::Power::Sleeping &&
+                             !connectRequested_;
   commandChar_ = nullptr;
   responseChar_ = nullptr;
   queryChar_ = nullptr;
@@ -349,6 +471,12 @@ void GoProClient::handleDisconnect() {
   commandRequested_ = false;
   resetTransientState(state_);
   state_.link = Link::Disconnected;
+  if (expectedSleep) {
+    sleepDisconnectObserved_ = true;
+    completeSleepIfReady();
+  } else if (state_.power == State::Power::Waking && wakeAwaitingBoot_) {
+    beginScan();
+  }
 }
 
 void GoProClient::drainResponses() {
@@ -383,6 +511,19 @@ void GoProClient::drainResponses() {
           if (!requestEncodingQuery()) markCommandTimeout(state_);
         } else {
           encodingQueryPending_ = false;
+        }
+      } else if (state_.power == State::Power::Sleeping &&
+                 response.command == kSleepCommand) {
+        if (response.status == kSuccessStatus) {
+          sleepResponseAccepted_ = true;
+          completeSleepIfReady();
+          // A connected BLE central wakes a sleeping GoPro. End the link as
+          // soon as Sleep is accepted so the camera can remain in standby;
+          // the disconnect event is still required before publishing Asleep.
+          if (!sleepDisconnectObserved_) teardownConnection();
+        } else {
+          connectRequested_ = true;
+          failSleep();
         }
       }
     } else {
@@ -436,6 +577,18 @@ void GoProClient::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
   if (link != linkHandle_ || !matchesAdvertisement(advertisement)) return;
+  if (state_.power == State::Power::Waking && haveTarget_ &&
+      std::strncmp(targetAddr_, advertisement.address.value,
+                   sizeof(targetAddr_)) != 0) {
+    return;
+  }
+  if (state_.power == State::Power::Waking) {
+    bool processorStateKnown = false;
+    const bool awake = processorAwake(advertisement, processorStateKnown);
+    if (wakeAwaitingBoot_ && (!processorStateKnown || !awake)) return;
+    wakeProbePending_ = processorStateKnown && !awake;
+    if (processorStateKnown && awake) wakeAwaitingBoot_ = false;
+  }
   std::strncpy(targetAddr_, advertisement.address.value, sizeof(targetAddr_) - 1);
   targetAddrType_ = advertisement.address.type;
   studio::ble::advertisementName(advertisement, targetName_, sizeof(targetName_));
@@ -449,6 +602,11 @@ void GoProClient::onBleEvent(studio::ble::LinkHandle link,
   if (link != linkHandle_) return;
   if (event.type == studio::ble::EventType::Connected) {
     client_ = static_cast<NimBLEClient*>(studio::ble::bleCentral().nativeClient(linkHandle_));
+    if (state_.power == State::Power::Waking && wakeProbePending_) {
+      wakeProbeConnected_ = true;
+      wakeProbeDisconnectAtMs_ = millis() + 1500;
+      return;
+    }
     if (client_ != nullptr && client_->getConnInfo().isEncrypted()) setupPending_ = true;
     else if (!studio::ble::bleCentral().requestSecurity(linkHandle_))
       studio::ble::bleCentral().markProtocolFailed(linkHandle_);
