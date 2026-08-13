@@ -419,7 +419,7 @@ void refreshWaitParameters() {
   const uint32_t initial =
       editingSceneStep && initialSceneStep.type == studio::SceneStepType::Wait
           ? initialSceneStep.waitMs
-          : 500;
+          : CONFIG_SCENE_DEFAULT_WAIT_MS;
   lv_spinbox_set_value(waitSpinbox, static_cast<int32_t>(initial));
   lv_obj_t* plus = makeButton(controls, "+", onWaitIncrement);
   lv_obj_set_size(plus, 34, 34);
@@ -606,7 +606,10 @@ void refreshCategory() {
                         LV_FLEX_ALIGN_CENTER);
 
   if (sceneStep) {
-    lv_obj_t* wait = makeButton(body, "Wait 500ms", onChooseWait, kColAccent);
+    char waitLabel[24]{};
+    std::snprintf(waitLabel, sizeof(waitLabel), "Wait %ums",
+                  static_cast<unsigned>(CONFIG_SCENE_DEFAULT_WAIT_MS));
+    lv_obj_t* wait = makeButton(body, waitLabel, onChooseWait, kColAccent);
     lv_obj_set_size(wait, 140, 26);
   }
 
@@ -1103,6 +1106,19 @@ void simSaveWait(uint32_t waitMs) {
   }
   lv_spinbox_set_value(waitSpinbox, static_cast<int32_t>(waitMs));
   onSaveWait(nullptr);
+}
+
+void simShowWait() {
+  Callbacks empty{};
+  show(Mode::SceneStep, empty);
+  level = Level::Wait;
+  refresh();
+}
+
+uint32_t simWaitValue() {
+  return waitSpinbox == nullptr
+             ? UINT32_MAX
+             : static_cast<uint32_t>(lv_spinbox_get_value(waitSpinbox));
 }
 
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint) {

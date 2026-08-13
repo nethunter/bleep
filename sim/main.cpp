@@ -1032,6 +1032,12 @@ int main() {
   if (!capture("22_scenes_edit_start")) {
     return 1;
   }
+  picker_shell::simShowWait();
+  if (picker_shell::simWaitValue() != 200) {
+    std::fprintf(stderr, "New sequence wait did not default to 200 ms\n");
+    return 1;
+  }
+  picker_shell::handleBack();
   scene_ui::simEditStep(sceneId, true, 1);
   pump(200);
   if (!capture("22a_scenes_edit_wait")) {

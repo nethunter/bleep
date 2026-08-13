@@ -4796,3 +4796,18 @@ Record values with the exact build environment and commit/worktree state.
   rejection, reboot/fallback proxy ownership, all four Aputure fixtures,
   Aputure/Zhiyun coexistence, and the two-hour soak. Build, simulator, ACK, and
   proxy evidence do not satisfy these gates.
+
+### 2026-08-13: 200 ms default scene wait
+
+- Changed newly added Wait steps from a 500 ms default to 200 ms in both the
+  panel picker and Portal editor. Existing stored waits and the seeded 500 ms
+  Press Record example retain their authored durations.
+- Added a simulator assertion for the new panel default. Native tests passed
+  90/90, and the complete `ui_sim` build and capture traversal passed.
+  `22b_scenes_add_category.png` was visually checked on the 240x240 round
+  layout and clearly shows `Wait 200ms` without clipping.
+- The full Montserrat `bleep` profile built with 141,428 / 327,680 bytes static
+  RAM (43.2%) and 1,936,646 / 3,145,728 bytes flash (61.6%). It uploaded to
+  `/dev/cu.usbserial-211240`; all written-region hashes verified and the panel
+  hard-reset. Physical touch selection and Portal-browser interaction remain
+  operator-unverified.
