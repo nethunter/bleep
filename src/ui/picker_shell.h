@@ -33,6 +33,8 @@ void simShowCategory(Mode mode);
 void simShowDeviceList(Mode mode, studio::DeviceType category);
 void simShowActions(Mode mode, studio::InstanceId instanceId);
 void simShowLightColor(Mode mode, studio::InstanceId instanceId, bool rgb);
+void simShowWait();
+uint32_t simWaitValue();
 void simSaveWait(uint32_t waitMs);
 void simSaveLightCct(int32_t kelvin, int32_t brightness, int32_t tint);
 void simSetLightRgb(uint16_t hue, int32_t saturation, int32_t brightness);

@@ -371,7 +371,8 @@ A scene reaches `Ready`
 only when every target has both a physical link and completed protocol setup.
 In Start or Custom Stop, tap an existing step to change its action or settings;
 waits open a millisecond duration editor and **Set look + On** steps reopen with
-their saved CCT/RGB parameters. New looks default to 5600 K, 50% brightness,
+their saved CCT/RGB parameters. New waits default to 200 ms. New looks default
+to 5600 K, 50% brightness,
 and neutral tint. While that editor is open, settled slider or color-wheel
 changes preview the look on the selected light after a short debounce. Preview
 uses **Set look + On**, so the fixture turns on to make the result visible.

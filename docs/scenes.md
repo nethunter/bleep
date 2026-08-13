@@ -63,6 +63,8 @@ the step list; changing target or action is done by adding a replacement step
 and reordering it. Taller two-tier rows keep the action label above the
 reorder/delete buttons. `Add step` is the final scrollable row rather than fixed
 screen chrome, and adding a Wait uses the same duration editor.
+New Wait steps default to 200 ms; existing saved waits retain their authored
+duration.
 
 Editing a prepared scene reconciles its target set in place. Links for targets
 that remain in the materialized Start/Stop lists stay held, removed targets are
