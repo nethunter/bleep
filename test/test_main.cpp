@@ -4247,6 +4247,29 @@ void test_ble_device_advertisement_matchers() {
       bleAdvertisement("44:55:66:77:88:99", "Amaran", 0x1827);
   TEST_ASSERT_TRUE(studio::ble::advertisesService(unprovisionedAmaran, "1827"));
 
+  studio::ble::Advertisement provisioningIdentity = unprovisionedAmaran;
+  const uint8_t provisioningData[] = {
+      21, 0x16, 0x27, 0x18,
+      0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+      0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x40, 0x00};
+  std::memcpy(provisioningIdentity.payload + provisioningIdentity.payloadLength,
+              provisioningData, sizeof(provisioningData));
+  provisioningIdentity.payloadLength += sizeof(provisioningData);
+  uint8_t deviceUuid[16] = {};
+  uint8_t oobInformation[2] = {};
+  TEST_ASSERT_TRUE(studio::ble::meshProvisioningIdentity(
+      provisioningIdentity, deviceUuid, oobInformation));
+  const uint8_t expectedUuid[] = {
+      0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+      0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedUuid, deviceUuid,
+                                sizeof(expectedUuid));
+  TEST_ASSERT_EQUAL_HEX8(0x40, oobInformation[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x00, oobInformation[1]);
+  provisioningIdentity.payload[provisioningIdentity.payloadLength - 20] = 0x28;
+  TEST_ASSERT_FALSE(studio::ble::meshProvisioningIdentity(
+      provisioningIdentity, deviceUuid, oobInformation));
+
   const uint8_t triggerUuid[16] = {
       0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
       0x00, 0x00, 0xd8, 0x49, 0x2f, 0xff, 0xa8, 0x21};

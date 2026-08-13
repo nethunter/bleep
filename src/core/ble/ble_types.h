@@ -104,6 +104,9 @@ bool advertisementNameContains(const Advertisement& advertisement,
                                const char* token);
 bool advertisesService(const Advertisement& advertisement, const char* uuid);
 uint16_t manufacturerCompanyId(const Advertisement& advertisement);
+bool meshProvisioningIdentity(const Advertisement& advertisement,
+                              uint8_t deviceUuid[16],
+                              uint8_t oobInformation[2]);
 bool meshProxyNetworkId(const Advertisement& advertisement,
                         uint8_t output[8]);
 

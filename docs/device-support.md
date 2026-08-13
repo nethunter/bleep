@@ -96,8 +96,14 @@ of successful movement.
   authoring exposes `Set look + On` with generated Off.
 - Command family: proprietary Telink opcode `0x26`, based on public
   reverse-engineering that must be verified against the target lights.
-- Exact-model evidence: the amaran Ray 60c is operator-confirmed working with
-  Ble(e)p. This verifies that model's bounded control path, but does not close
+- Exact-model evidence: the amaran Ray 60c and Aputure MT Pro are
+  operator-confirmed working with Ble(e)p. The MT Pro currently appears as
+  `Aputure MC Pro`; its control path is verified, but the captured composition
+  header and vendor tuple match MC Pro's known values, so its distinct product
+  discriminator remains under research. One exact MT/MC comparison found
+  different five-character ASCII prefixes in their Mesh Device UUIDs, but that
+  one-pair correlation is not yet a production identification rule. These
+  results do not close
   multi-fixture isolation, recovery, or soak gates for the generic driver.
 - Onboarding: choose `Aputure Light`. One compatible candidate is selected
   automatically after a 750 ms settling window; two to four nearby candidates
@@ -107,8 +113,8 @@ of successful movement.
   (`0x03F6:0x1000`) or the shared Ace/Pano model (`0x0211:0x0000`)
   automatically. Exact advertised product naming is kept independently of the
   shared Amaran vendor tuple. Those four fixtures remain the original
-  validation set; the separately verified Ray 60c extends the exact-model
-  compatibility evidence. Existing
+  validation set; the separately verified Ray 60c and MT Pro extend the
+  exact-model compatibility evidence. Existing
   Sidus/amaran mesh import remains deferred.
   If a provisioned-but-unconfigured fixture returns an unsupported or malformed
   composition, onboarding stops instead of guessing and the recovery screen

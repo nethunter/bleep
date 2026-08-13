@@ -125,7 +125,10 @@ principles:
   ordinary device controls and is reserved for future explicit group actions.
   Initial Composition Data, AppKey, model, and group configuration advances
   only after authenticated success statuses; the reported vendor model chooses
-  MC Pro versus the shared Ace/Pano command model automatically.
+  MC Pro versus the shared Ace/Pano command model automatically. The MT Pro is
+  operator-confirmed working through this control path, but currently shares
+  the MC Pro label because its captured composition identity is identical to
+  MC Pro's known tuple.
 - Experimental `Zhiyun Light` support for multiple MOLUS X100 and X60RGB
   fixtures. Each Add light operation detects the model, provisions a reset
   fixture when needed, persists its mesh-routing selector, and uses confirmed
@@ -183,7 +186,7 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |
 | Tascam Portacapture X8 + AK-BT1 | Current, bounded scope | Record start/stop and recorder-confirmed state, including state restoration after reconnect. |
 | Home Assistant local entities | Experimental; mixed sequence verified | Four selected `light`, `switch`, `input_boolean`, `button`, `scene`, or `script` entities over local HTTP/WebSocket. Four-link BLE coexistence plus accepted Start/Stop delivery is hardware-verified; full domain/lifecycle coverage remains open. |
-| Aputure Light | Experimental; amaran Ray 60c verified path | Automatically selects one stable candidate, or shows a bounded picker when multiple factory-reset Aputure/amaran fixtures are nearby, before provisioning onto the panel-owned mesh. Per-node power/look routing follows the working Studio Lighter unicast path. The exact amaran Ray 60c is operator-confirmed working. Ace 25c, Pano 60c, Pano 120c, and MC Pro identification is implemented; broader physical selection, multi-fixture isolation, recovery, and soak gates remain open. |
+| Aputure Light | Experimental; Ray 60c and MT Pro verified paths | Automatically selects one stable candidate, or shows a bounded picker when multiple factory-reset Aputure/amaran fixtures are nearby, before provisioning onto the panel-owned mesh. Per-node power/look routing follows the working Studio Lighter unicast path. The exact amaran Ray 60c and Aputure MT Pro are operator-confirmed working. MT Pro is currently mislabeled as MC Pro because both report the known `0x03F6:0x1000` vendor tuple and the same composition header IDs. One MT/MC comparison found distinct Mesh Device UUID prefixes, but mapping from that single pair remains research. Ace 25c, Pano 60c, Pano 120c, and MC Pro identification is implemented; broader physical selection, multi-fixture isolation, recovery, and soak gates remain open. |
 | Zhiyun Light (MOLUS X100 / X60RGB) | Experimental | Uses the same conditional onboarding picker, then adds the selected fixture as a logical member of the one-slot mesh. Ble(e)p persists a per-member proprietary routing selector and multiplexes `0xFEE9` control with the standard Mesh Proxy bearer on one retained gateway. X100 supports power and CCT/brightness; X60RGB adds RGB hue/saturation. |
 | Deity PR4 | Later | Transport and protocol research have not started. |
 
