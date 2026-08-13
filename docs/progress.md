@@ -4854,3 +4854,17 @@ Record values with the exact build environment and commit/worktree state.
   caption/paragraph collision, fixed by adding a Factory Reset subheading. The
   final render has no clipping, overlap, unexpected blank pages, or table
   overflow, and text extraction retained the key safety and compatibility facts.
+
+### 2026-08-13: Manual editing and generation instructions
+
+- Replaced the minimal `docs/manual/README.md` build note with the complete
+  repository workflow: authorization and support-list exception, last-update
+  audit, preparatory branch/rebase/no-ff merge, primary-`main` editing rule,
+  source synchronization, build, website-copy checksum, full-page render, visual
+  QA, progress evidence, commit contents, deployment boundary, and temp cleanup.
+- Added the concise owner-writing standard from the completed editorial pass:
+  retain tasks, surprising behavior, safety, recovery, and exact compatibility;
+  remove obvious narration, defensive reassurance, protocol internals, test
+  history, duplicated limitations, and redundant reference layers.
+- This documentation-maintenance change did not modify `manual.md`, regenerate
+  or deploy the PDF, or change, build, test, or flash firmware.
