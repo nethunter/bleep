@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Ble(e)p device compatibility matrix with exact implementation status, hardware evidence, capabilities, and open verification gates.">
+    <meta name="theme-color" content="#050708">
+    <meta property="og:title" content="Ble(e)p — Device compatibility matrix">
+    <meta property="og:description" content="See what is current, verified in bounded scope, experimental, or still research before you build.">
+    <meta property="og:image" content="https://bleep.hml.tech/assets/og-card.png">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bleep.hml.tech/compatibility">
+    <title>Device compatibility — Ble(e)p</title>
+    <link rel="icon" href="assets/favicon.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body class="compatibility-page">
+    <a class="skip-link" href="#main">Skip to compatibility matrix</a>
+
+    <header class="site-header is-scrolled" data-header>
+      <a class="brand" href="index.html" aria-label="Ble(e)p home"><img src="assets/logo-wide.png" alt="Ble(e)p"></a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+        <span></span><span></span><span></span><span class="sr-only">Open navigation</span>
+      </button>
+      <nav class="site-nav" id="site-nav" data-nav>
+        <a href="index.html#why">Why Bleep</a>
+        <a href="index.html#capabilities">Capabilities</a>
+        <a href="compatibility.html" aria-current="page">Compatibility</a>
+        <a href="index.html#hardware">Build it</a>
+        <a class="nav-cta" href="https://github.com/nethunter/bleep">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="compat-hero">
+        <div class="compat-scan" aria-hidden="true"></div>
+        <div class="compat-intro reveal">
+          <p class="eyebrow"><span class="live-dot"></span> Evidence ledger / 0.2.0-dev</p>
+          <h1>Compatibility,<br><em>without the asterisk.</em></h1>
+          <p>“Implemented” is not the same as “tested on your exact device.” This matrix separates shipped code, observed hardware behavior, and the checks still open.</p>
+        </div>
+        <div class="compat-summary reveal" data-delay="1" aria-label="Compatibility summary">
+          <div><strong>8</strong><span>named hardware models with operator evidence</span></div>
+          <div><strong>4</strong><span>physical BLE transport groups at once</span></div>
+          <div><strong>24</strong><span>saved device records</span></div>
+        </div>
+      </section>
+
+      <section class="evidence-key section" aria-labelledby="evidence-title">
+        <div class="section-label reveal"><span>01</span> Read the signal</div>
+        <div class="evidence-heading reveal">
+          <h2 id="evidence-title">Four labels.<br>Four different promises.</h2>
+          <p>The narrowest accurate label wins. A supported protocol family never silently becomes a claim about every model in that family.</p>
+        </div>
+        <dl class="evidence-legend reveal">
+          <div><dt><i class="status-dot status-current"></i>Current</dt><dd>A maintained working path; model-specific limitations can still apply.</dd></div>
+          <div><dt><i class="status-dot status-verified"></i>Verified bounded</dt><dd>The named behavior was observed on the exact named hardware, with remaining gates stated.</dd></div>
+          <div><dt><i class="status-dot status-experimental"></i>Experimental</dt><dd>Code exists, but model coverage or real-hardware validation is incomplete.</dd></div>
+          <div><dt><i class="status-dot status-research"></i>Research / later</dt><dd>No generally usable saved-device path is claimed yet.</dd></div>
+        </dl>
+      </section>
+
+      <section class="matrix-section" aria-labelledby="matrix-title">
+        <div class="matrix-heading section reveal">
+          <div>
+            <div class="section-label"><span>02</span> Device matrix</div>
+            <h2 id="matrix-title">Exact names.<br><em>Honest boundaries.</em></h2>
+          </div>
+          <p>Snapshot: 12 August 2026. The repository documentation remains the source of truth as firmware and hardware evidence evolve.</p>
+        </div>
+
+        <div class="matrix-wrap reveal">
+          <table class="compat-matrix">
+            <thead><tr><th scope="col">Device / path</th><th scope="col">Evidence</th><th scope="col">What works</th><th scope="col">Open boundary</th></tr></thead>
+            <tbody>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Motion</span>iFootage Shark Nano II</th><td data-label="Evidence"><span class="status status-current">Current</span></td><td data-label="What works">Pair/reconnect, battery, keypoints A–H, manual movement, timing, loop/direction, and run control.</td><td data-label="Open boundary">Movement must be physically observed; protocol ACKs alone are not proof.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera · BR-E1 mode</span>Canon EOS R6 Mark II / III</th><td data-label="Evidence"><span class="status status-current">Current</span></td><td data-label="What works">Bonded pairing, reconnect, and stateless movie-record trigger through Canon Trigger.</td><td data-label="Open boundary">No recording-state readback. EOS R6 is not claimed.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera · smartphone mode</span>Canon EOS R6 Mark II / III</th><td data-label="Evidence"><span class="status status-verified">Verified bounded</span></td><td data-label="What works">Explicit movie Start/Stop, camera-reported recording state, automatic wake, and explicit power-down.</td><td data-label="Open boundary">Full Wi-Fi/CCAPI handoff remains blocked; extended lifecycle gates remain.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera</span>Insta360 X5</th><td data-label="Evidence"><span class="status status-verified">Verified bounded</span></td><td data-label="What works">Pairing, initial state, Start/Stop, reported recording state, shutdown, and physical wake.</td><td data-label="Open boundary">Fresh verification of returning wake-address routing remains open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera</span>DJI Osmo Action 5 Pro</th><td data-label="Evidence"><span class="status status-verified">Verified bounded</span></td><td data-label="What works">On-panel first-pair code, explicit Start/Stop, and camera-originated recording status.</td><td data-label="Open boundary">Reconnect, forget/re-pair, and coexistence cycles remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera</span>DJI Osmo 360</th><td data-label="Evidence"><span class="status status-verified">Verified bounded</span></td><td data-label="What works">On-panel first-pair code, explicit Start/Stop, and camera-originated recording status.</td><td data-label="Open boundary">Reconnect, forget/re-pair, and coexistence cycles remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Phone shutter</span>Google Pixel 9</th><td data-label="Evidence"><span class="status status-verified">Verified bounded</span></td><td data-label="What works">Bonded reconnect and BLE HID volume-up shutter in a mixed sequence.</td><td data-label="Open boundary">Other phone models and multi-phone verification remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Recorder · AK-BT1</span>Tascam Portacapture X8</th><td data-label="Evidence"><span class="status status-current">Current, bounded</span></td><td data-label="What works">Explicit record Start/Stop, recorder-confirmed state, and state restoration after reconnect.</td><td data-label="Open boundary">Battery, media, mixer, and broader recorder control are outside this tranche.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Local network</span>Home Assistant entities</th><td data-label="Evidence"><span class="status status-verified">Mixed sequence verified</span></td><td data-label="What works">Four selected lights, switches, input booleans, buttons, scenes, or scripts over local HTTP/WebSocket.</td><td data-label="Open boundary">Full entity-domain, lifecycle, failure-recovery, and endurance coverage remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera family</span>GoPro · current Open GoPro table</th><td data-label="Evidence"><span class="status status-experimental">Experimental</span></td><td data-label="What works">Bonded multi-instance control and response-gated shutter Start/Stop are implemented.</td><td data-label="Open boundary">No camera tested yet; no retailer-only HERO8, MAX, or MINI claim is inherited.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Light</span>Aputure / amaran Light</th><td data-label="Evidence"><span class="status status-experimental">Experimental</span></td><td data-label="What works">Panel-owned mesh onboarding and per-node power, CCT/tint/brightness, or RGB paths for Ace 25c, Pano 60c/120c, and MC Pro identities.</td><td data-label="Open boundary">Pano gates, four-fixture isolation, recovery, optical verification, and soak remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Light</span>Zhiyun MOLUS X100 / X60RGB</th><td data-label="Evidence"><span class="status status-experimental">Experimental</span></td><td data-label="What works">X100 power and CCT/brightness; X60RGB adds captured RGB hue/saturation through the shared mesh path.</td><td data-label="Open boundary">Complete panel-originated optical, reconnect, recovery, and coexistence gates remain open.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera candidates</span>Insta360 GO 3 / GO Ultra</th><td data-label="Evidence"><span class="status status-experimental">Candidate / probe</span></td><td data-label="What works">Separate catalog targets preserve room for model-specific research.</td><td data-label="Open boundary">GPS Remote compatibility and shutter behavior are not established.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Camera</span>Sony RMT-P1BT-compatible</th><td data-label="Evidence"><span class="status status-research">Research</span></td><td data-label="What works">Capture-required onboarding identifies the intended research boundary.</td><td data-label="Open boundary">No savable driver or camera test yet.</td></tr>
+              <tr><th scope="row" data-label="Device / path"><span class="device-family">Recorder</span>Deity PR4</th><td data-label="Evidence"><span class="status status-research">Later</span></td><td data-label="What works">No supported control path is claimed.</td><td data-label="Open boundary">Transport and protocol research have not started.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="compat-notes section">
+        <div class="section-label reveal"><span>03</span> Before you build</div>
+        <div class="compat-notes-grid reveal">
+          <h2>Compatibility is a test result,<br><em>not a vibe.</em></h2>
+          <div>
+            <p>Firmware can implement a protocol while a specific model, firmware revision, reconnect path, or mixed-device sequence remains untested. Ble(e)p keeps those boundaries visible so you can decide what belongs in your studio.</p>
+            <div class="closing-actions">
+              <a class="button button-primary" href="https://github.com/nethunter/bleep/blob/main/docs/device-support.md">Read detailed device notes <span aria-hidden="true">↗</span></a>
+              <a class="button button-secondary" href="index.html">Back to Ble(e)p <span aria-hidden="true">←</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="footer-brand" href="index.html"><img src="assets/logo-wide.png" alt="Ble(e)p"></a>
+      <p>Open, local-first studio control.<br>Built by Hacking Modern Life.</p>
+      <div class="footer-links"><a href="compatibility.html">Compatibility</a><a href="https://github.com/nethunter/bleep">GitHub</a><a href="https://www.youtube.com/@hml">YouTube</a><a href="downloads/bleep-instruction-manual.pdf">Owner’s guide</a></div>
+      <p class="copyright">© <span data-year></span> HML Studio · Apache-2.0</p>
+    </footer>
+  </body>
+</html>

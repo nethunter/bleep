@@ -3,7 +3,13 @@
 </p>
 
 <p align="center">
-  An open, community-built controller for the remotes scattered around a studio.
+  Open, community-built control and automation for studio gear.
+</p>
+
+<p align="center">
+  <a href="https://bleep.hml.tech">Website</a> ·
+  <a href="docs/manual/manual.md">Owner's guide</a> ·
+  <a href="docs/device-support.md">Device support</a>
 </p>
 
 # Ble(e)p

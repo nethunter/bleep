@@ -107,6 +107,47 @@ short, factual, and reproducible.
   firmware was not changed, built, or flashed, and the owner's guide/PDF was
   intentionally left unchanged.
 
+### 2026-08-12: Public project website
+
+- Added a dependency-free static project website under `website/` with a
+  responsive product-led layout, keyboard-accessible capability tabs,
+  development-status language, narrow verified compatibility claims, security
+  headers, the current owner's-guide PDF, and project/YouTube links.
+- Corrected the initial replacement-remote framing after operator review.
+  Jobs-to-be-Done and first-principles positioning now describe Ble(e)p as the
+  missing local control and automation layer for otherwise isolated studio
+  devices, contrasting one-device-at-a-time operation with coordinated
+  sequences without claiming those devices ship with physical remotes.
+- Built the hero product photograph from three operator-provided photos while
+  preserving the real white printed enclosure, round display, three front
+  fasteners, and orange side control. Original source photos were not modified
+  or added to the repository.
+- Desktop and 390 x 844 mobile browser checks passed with no horizontal
+  overflow or console errors; tab switching and reduced-motion support were
+  exercised. The hero orbit is anchored to the photographed round display at
+  both responsive crops instead of drifting onto the enclosure. Deployed the
+  site to the existing empty Firebase Hosting site in GCP project `hml-studio`;
+  `https://hml-studio.web.app` is live.
+- Replaced the hero source with a fidelity-preserving enhanced render and a
+  3344 x 1882 WebP high-density asset. Added a dedicated compatibility evidence
+  ledger with 15 exact device/path rows, explicit Current, verified bounded,
+  Experimental, and Research/Later meanings, and the remaining gate for each
+  path. Desktop and 390 x 844 checks covered the hero, matrix, mobile menu, and
+  cross-page navigation with no horizontal overflow or console errors. The
+  responsive pass also fixed a pre-existing scrolled-header containment issue
+  that could expose the final hidden mobile-navigation link.
+- The required full Montserrat `bleep` profile built successfully with 141,428 /
+  327,680 bytes static RAM (43.2%) and 1,932,510 / 3,145,728 bytes flash
+  (61.4%). This website-only tranche did not flash the panel or alter NVS.
+- Created the Firebase custom-domain mapping for `bleep.hml.tech` and replaced
+  its Namecheap parking A record with the Firebase quick-setup CNAME to
+  `hml-studio.web.app`. Namecheap's authoritative nameservers, Google DNS, and
+  Cloudflare DNS return the CNAME. Firebase ownership, host routing, and managed
+  TLS became active. The bare URL initially retained a pre-mapping Firebase
+  `Site Not Found` edge entry while cache-busted requests served Ble(e)p; a
+  post-activation Hosting redeploy invalidated it. `https://bleep.hml.tech/`
+  now returns HTTP 200 and the Ble(e)p page without a query string.
+
 ### 2026-08-12: Owner's guide audit and rebuild
 
 - Audited all implementation and supporting-documentation changes since the
