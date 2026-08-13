@@ -2,8 +2,9 @@
 
 Status: `Research` with host-tested encoders, Sidus Link multi-fixture HCI
 evidence, one Ble(e)p-owned mesh verified on an amaran Ace 25c and Aputure
-MC Pro, and an operator-confirmed working amaran Ray 60c. Vendor control and
-broader target-fixture gates remain open.
+MC Pro, and operator-confirmed working amaran Ray 60c and Aputure MT Pro
+paths. MT Pro identity remains `Research`; vendor control and broader
+target-fixture gates remain open.
 
 Onboarding ownership note (2026-08-11): fresh adds collect at most four
 compatible PB-GATT advertisements and do not claim or connect to a peer until
@@ -385,6 +386,34 @@ model field and node reachability, not automatically physical output.
 
 ## Hardware gate
 
+On 2026-08-12, the operator confirmed that an exact Aputure MT Pro works with
+Ble(e)p's Aputure Light controls, but Ble(e)p identified it as `Aputure MC Pro`.
+This is physical compatibility evidence for MT Pro, not evidence that it is an
+MC Pro or that the two products have identical identities. Firmware diagnostics
+now emit the selected PB-GATT advertisement payload, Mesh Device UUID and OOB
+bytes, plus the authenticated Composition Data `CID`, `PID`, `VID`, replay-list
+size, features, and decoded bytes. A comparative MC Pro capture or another
+authoritative source must determine which field distinguishes MT Pro. Stable
+radio identities and raw captures remain outside the repository.
+
+The live capture then completed PB-GATT provisioning and all seven
+configuration steps. MT Pro reported one element, Composition `CID 0x03F6`,
+`PID 0x0000`, `VID 0x0000`, replay-list size 20, features `0x000F`, and vendor
+model `0x03F6:0x1000`—the same composition identity currently documented for
+MC Pro. Its Mesh Device UUID and manufacturer service data were captured
+privately but are stable device identity and are not recorded here. This
+disproves composition-only MT/MC classification.
+
+A same-session factory-reset MC Pro comparison then completed the same
+one-element provisioning and seven configuration steps. Its composition,
+vendor tuple, OOB bytes, and manufacturer-data structure matched MT Pro. The
+only observed product-correlated difference was the five-character ASCII
+prefix before the hyphen in the Mesh Device UUID: MT Pro used `000F5-`, while
+MC Pro used `05010-`; each remaining ASCII suffix followed that fixture's
+radio identity. This is a `Research` discriminator from one physically
+identified sample of each model, not yet a production mapping or a claim that
+all firmware/hardware revisions retain those prefixes.
+
 On 2026-08-12, the operator identified the exact fixture as an amaran Ray 60c
 from its physical product label and approved it as working with Ble(e)p. This
 is exact-model physical compatibility evidence. No capture, composition tuple,
@@ -392,11 +421,11 @@ latency measurement, recovery run, or endurance result accompanied the report,
 so those details are not inferred and the generic driver remains
 `Experimental`.
 
-For Pano 60c, Pano 120c, Ace 25c, and MC Pro, verify provisioning, composition,
-configuration statuses, several CCT/tint/RGB/brightness combinations, reboot
-recovery, proxy fallback, interrupted configuration, sequence-number
-continuity, mixed-device sequences, and reset followed by the return of
-provisioning advertisements.
+For Pano 60c, Pano 120c, Ace 25c, MC Pro, and MT Pro, verify provisioning,
+composition, configuration statuses, several CCT/tint/RGB/brightness
+combinations, reboot recovery, proxy fallback, interrupted configuration,
+sequence-number continuity, mixed-device sequences, and reset followed by the
+return of provisioning advertisements.
 Record latency, dropped events, heap, and reconnect stability in
 `docs/progress.md`.
 

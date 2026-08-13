@@ -70,6 +70,45 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: Aputure MT Pro identity capture diagnostics
+
+- The operator confirmed that an exact Aputure MT Pro works with Ble(e)p's
+  Aputure Light controls, while the current composition-driven identity labels
+  it as `Aputure MC Pro`. This verifies the MT Pro control path but leaves exact
+  product identification open.
+- Added bounded onboarding diagnostics for the raw matching PB-GATT
+  advertisement, Mesh Device UUID and OOB bytes, and authenticated Composition
+  Data header (`CID`, `PID`, `VID`, replay-list size, and features) plus the
+  complete decoded composition bytes. No mesh keys, device keys, or application
+  keys are logged. Raw captures and stable radio identities remain outside the
+  repository.
+- Native tests passed 89/89, including extraction and rejection coverage for
+  Mesh Provisioning Service Data. The required full `bleep` profile built at
+  141,428 / 327,680 bytes static RAM and 1,935,082 / 3,145,728 bytes flash.
+  Upload to `/dev/cu.usbserial-211240` verified every written-region hash and
+  hard-reset the panel without erasing NVS.
+- A fresh factory-reset MT Pro onboarding then captured its private Mesh Device
+  UUID and manufacturer data, provisioned one element, completed all seven
+  authenticated configuration steps, and reached protocol-ready. Its
+  Composition Data reported `CID 0x03F6`, `PID 0x0000`, `VID 0x0000`, replay
+  list size 20, features `0x000F`, and vendor model `0x03F6:0x1000`, exactly the
+  known MC Pro composition identity. Composition alone therefore cannot safely
+  distinguish MT Pro from MC Pro; the mapping remained unchanged for the
+  comparative capture below.
+- A same-session factory-reset MC Pro comparison then provisioned one element,
+  completed all seven configuration steps, and reached protocol-ready. Its
+  composition, vendor tuple, OOB bytes, and manufacturer-data structure matched
+  MT Pro. The only observed model-correlated difference was the five-character
+  ASCII Mesh Device UUID prefix: `000F5-` on the exact MT Pro and `05010-` on
+  the exact MC Pro. The remaining UUID suffix followed each fixture's radio
+  identity. This one-sample-per-model result is retained as `Research`; it is
+  not yet implemented as a production classifier.
+- After rebasing onto the current GoPro power-lifecycle `main`, the combined
+  native suite passed 90/90 and the required full Montserrat `bleep` profile
+  built at 141,428 / 327,680 bytes static RAM and 1,936,662 / 3,145,728 bytes
+  flash. No additional panel flash was needed because the rebased changes do
+  not alter the live Aputure diagnostic path already captured above.
+
 ### 2026-08-12: GoPro Sleep and reconnect-to-wake controls
 
 - Added the Canon-style header power control to the GoPro recorder screen.

@@ -538,12 +538,27 @@ void AputureLightRuntime::onBleAdvertisement(
     studio::ble::advertisementName(advertisement, observedName,
                                    sizeof(observedName));
     APUTURE_LIGHT_LOG.printf(
-        "aputure_light event=advertisement role=%s address=%s address_type=%u name=%s\n",
+        "aputure_light event=advertisement role=%s address=%s address_type=%u name=%s rssi=%d payload=",
         provisioningLink_ ? "provisioning" : "proxy",
         advertisement.address.value,
         static_cast<unsigned>(advertisement.address.type),
-        observedName[0] != '\0' ? observedName : "<empty>");
+        observedName[0] != '\0' ? observedName : "<empty>",
+        static_cast<int>(advertisement.rssi));
+    for (size_t i = 0; i < advertisement.payloadLength; ++i) {
+      APUTURE_LIGHT_LOG.printf("%02x", advertisement.payload[i]);
+    }
+    APUTURE_LIGHT_LOG.println();
     if (provisioningLink_) {
+      uint8_t deviceUuid[16];
+      uint8_t oobInformation[2];
+      if (studio::ble::meshProvisioningIdentity(
+              advertisement, deviceUuid, oobInformation)) {
+        APUTURE_LIGHT_LOG.print(
+            "aputure_light event=provisioning_identity device_uuid=");
+        for (uint8_t value : deviceUuid) APUTURE_LIGHT_LOG.printf("%02x", value);
+        APUTURE_LIGHT_LOG.printf(" oob_bytes=%02x%02x\n", oobInformation[0],
+                                 oobInformation[1]);
+      }
       candidates_.observe(advertisement);
       return;
     }
@@ -1054,6 +1069,22 @@ bool AputureLightRuntime::handleConfigurationStatus(
     return false;
   }
   if (configStep_ == 0) {
+    if (decoded.access[0] == 0x02 && decoded.access[1] == 0x00 &&
+        decoded.accessLength >= 12) {
+      const auto get16le = [](const uint8_t* input) {
+        return static_cast<uint16_t>(input[0]) |
+               static_cast<uint16_t>(input[1]) << 8;
+      };
+      APUTURE_LIGHT_LOG.printf(
+          "aputure_light event=composition_probe cid=0x%04x pid=0x%04x vid=0x%04x crpl=%u features=0x%04x bytes=",
+          get16le(decoded.access + 2), get16le(decoded.access + 4),
+          get16le(decoded.access + 6), get16le(decoded.access + 8),
+          get16le(decoded.access + 10));
+      for (size_t i = 0; i < decoded.accessLength; ++i) {
+        APUTURE_LIGHT_LOG.printf("%02x", decoded.access[i]);
+      }
+      APUTURE_LIGHT_LOG.println();
+    }
     CompositionVendorModel composition;
     if (!parseCompositionVendorModel(decoded.access, decoded.accessLength,
                                      composition)) {

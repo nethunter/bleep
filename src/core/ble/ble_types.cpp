@@ -163,6 +163,25 @@ uint16_t manufacturerCompanyId(const Advertisement& advertisement) {
   return 0xffff;
 }
 
+bool meshProvisioningIdentity(const Advertisement& advertisement,
+                              uint8_t deviceUuid[16],
+                              uint8_t oobInformation[2]) {
+  if (deviceUuid == nullptr || oobInformation == nullptr) return false;
+  size_t offset = 0;
+  Field field;
+  while (nextField(advertisement, offset, field)) {
+    // Service Data - 16-bit UUID, Mesh Provisioning UUID 0x1827, followed by
+    // the 16-byte Device UUID and the two OOB Information octets.
+    if (field.type == 0x16 && field.length >= 20 && field.data[0] == 0x27 &&
+        field.data[1] == 0x18) {
+      std::memcpy(deviceUuid, field.data + 2, 16);
+      std::memcpy(oobInformation, field.data + 18, 2);
+      return true;
+    }
+  }
+  return false;
+}
+
 bool meshProxyNetworkId(const Advertisement& advertisement,
                         uint8_t output[8]) {
   if (output == nullptr) return false;
