@@ -301,6 +301,7 @@ img { display: block; max-width: 100%; }
   .capability-tabs button[aria-selected="true"] { padding-left: 0.5rem; }
   .capability-panel { grid-template-columns: minmax(220px, 320px) 1fr; }
   .hardware { grid-template-columns: 1fr; }
+  .hardware { overflow-x: hidden; }
   .hardware-art { order: 2; }
   .status-card { grid-template-columns: 0.25fr 1fr; }
   .site-footer { grid-template-columns: 1fr 1fr; }
@@ -347,7 +348,7 @@ img { display: block; max-width: 100%; }
   .hardware-art { min-height: 400px; }
   .annotation { display: none; }
   .status { padding-inline: 0; }
-  .status-card { grid-template-columns: 1fr; border-inline: 0; }
+  .status-card { grid-template-columns: minmax(0, 1fr); border-inline: 0; }
   .status-code { min-height: 120px; border-right: 0; border-bottom: 1px solid var(--line); font-size: 4rem; writing-mode: initial; transform: none; }
   .status-copy { padding: 2rem 1.2rem 3rem; }
   .site-footer { grid-template-columns: 1fr; align-items: start; }

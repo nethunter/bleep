@@ -189,6 +189,13 @@ short, factual, and reproducible.
   cross-page navigation with no horizontal overflow or console errors. The
   responsive pass also fixed a pre-existing scrolled-header containment issue
   that could expose the final hidden mobile-navigation link.
+- Corrected a 16-17 CSS-pixel horizontal scroll reproduced at Pixel 9/10-class
+  widths. The 118%-wide controller-family artwork now clips at the mobile
+  Hardware section boundary instead of enlarging the root scrolling area; the
+  compatibility page remained overflow-free. A separate version-card
+  min-content constraint found at 360 CSS pixels now uses a shrinkable grid
+  track. Versioned stylesheet URLs bypass the previously deployed one-week
+  immutable browser cache for these corrections.
 - The required full Montserrat `bleep` profile built successfully with 141,428 /
   327,680 bytes static RAM (43.2%) and 1,932,510 / 3,145,728 bytes flash
   (61.4%). This website-only tranche did not flash the panel or alter NVS.
