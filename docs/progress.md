@@ -101,6 +101,11 @@ short, factual, and reproducible.
   Start/Stop, and state transitions are live-confirmed; bonded reconnect,
   local-button updates, forget/re-pair, multi-camera, heap return, and
   coexistence remain open.
+- After rebasing onto current `main`, the combined native suite passed 89/89
+  and the required full Montserrat `bleep` profile built at 141,428 / 327,680
+  bytes static RAM and 1,935,108 / 3,145,728 bytes flash. The merged 27-page
+  manual was rebuilt; its GoPro and compatibility pages were rendered and
+  visually inspected without clipping, overlap, or table overflow.
 - The MAX2 showed the macOS controller label as `...`, not the Mac's `Everlost`
   computer name. CoreBluetooth does not let the Bleak central publish a custom
   local name, and Open GoPro documents its pairing `phoneName` field as having
