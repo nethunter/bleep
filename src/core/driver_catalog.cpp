@@ -113,7 +113,8 @@ constexpr DriverDescriptor kDrivers[] = {
         DeviceType::Camera,
         capabilityBit(Capability::Link) |
             capabilityBit(Capability::RecordStart) |
-            capabilityBit(Capability::RecordStop),
+            capabilityBit(Capability::RecordStop) |
+            capabilityBit(Capability::RecordingState),
         4,
     },
 #endif

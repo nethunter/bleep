@@ -10,6 +10,7 @@ struct GoProState {
 
   Link link = Link::Disconnected;
   Recording recording = Recording::Unknown;
+  bool recordingConfirmed = false;
   bool hasSavedDevice = false;
   bool commandPending = false;
   bool lastCommandFailed = false;
@@ -18,7 +19,10 @@ struct GoProState {
 
 void resetTransientState(GoProState& state);
 void markCommandQueued(GoProState& state, bool start);
-void reduceCommandResponse(GoProState& state, bool requestedStart,
-                           uint8_t status);
+void reduceCommandResponse(GoProState& state, uint8_t status);
+void reduceEncodingStatus(GoProState& state, bool encoding);
+bool reducePendingEncodingStatus(GoProState& state, bool encoding,
+                                 bool expectedEncoding);
+void markCommandTimeout(GoProState& state);
 
 }  // namespace gopro

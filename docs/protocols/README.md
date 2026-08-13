@@ -9,6 +9,7 @@ does not ship raw packet captures.
 - [Canon smartphone-mode BLE](canon-smartphone-ble.md)
 - [Insta360 GPS Remote](insta360-gps-remote.md) — implemented X3/X4/X4 Air/X5 path
 - [Insta360 Mini Remote](insta360-mini-remote.md) — retained capture research
+- [GoPro Open GoPro BLE](gopro-open-gopro.md)
 - [Zhiyun MOLUS X100](zhiyun-x100.md)
 - [Zhiyun MOLUS X60RGB](zhiyun-x60rgb.md)
 - [Android screen-recording + HCI capture workflow](capture-workflow.md)

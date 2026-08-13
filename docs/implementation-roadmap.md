@@ -400,7 +400,8 @@ This experimental tranche extends Phase 5 without changing its Canon gates:
 
 - expose separate GoPro, Insta360, DJI Osmo, Sony Camera, and Phone Camera
   choices under Cameras;
-- implement GoPro Open GoPro BLE pairing and response-gated Set Shutter;
+- implement GoPro Open GoPro BLE pairing, readiness polling, Encoding status
+  registration/query, and state-confirmed Set Shutter;
 - implement Phone Camera as a bonded, per-peer BLE HID shutter peripheral;
 - implement capture-correct Insta360 GPS Remote peripheral emulation for X5,
   using the operator-confirmed `Insta360 Remote (Bleep)` identity and captured
@@ -418,7 +419,9 @@ bonded reconnect, multi-instance routing, forget/re-pair, cancellation, and
 heap/coexistence tests. The Insta360 GPS-remote connection and basic shutter
 were operator-confirmed; the newly decoded display-state synchronization,
 exact GPS identity, power behavior, and remaining coexistence gates stay
-open.
+open. A GoPro MAX2 desktop harness and flashed panel passed connection,
+confirmed initial Encoding state, state-confirmed Start/Stop, and observed
+physical recording; its remaining lifecycle/coexistence checks stay open.
 DJI has host vectors but still requires its physical gates; Sony requires both
 implementation and physical proof.
 

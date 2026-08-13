@@ -515,7 +515,8 @@ class SimGoProDriver : public DeviceDriver {
         command.type == CommandType::RecordStop) {
       const bool start = command.type == CommandType::RecordStart;
       gopro::markCommandQueued(state_, start);
-      gopro::reduceCommandResponse(state_, start, gopro::kSuccessStatus);
+      gopro::reduceCommandResponse(state_, gopro::kSuccessStatus);
+      gopro::reduceEncodingStatus(state_, start);
       return CommandStatus::Succeeded;
     }
     return CommandStatus::Unsupported;
@@ -525,7 +526,10 @@ class SimGoProDriver : public DeviceDriver {
     if (instanceId != activeInstance_) return runtime;
     runtime.link = LinkState::Connected;
     runtime.protocolReady = true;
-    runtime.quality = StateQuality::Optimistic;
+    runtime.recordingConfirmed = state_.recordingConfirmed;
+    runtime.recording = state_.recording == gopro::GoProState::Recording::Recording;
+    runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed
+                                               : StateQuality::Unknown;
     return runtime;
   }
   const void* specializedState(InstanceId instanceId) const override {

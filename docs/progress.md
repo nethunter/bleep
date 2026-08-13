@@ -17,7 +17,8 @@ short, factual, and reproducible.
   scene UI loads on demand.
 - Camera catalog/runtime: GoPro, Insta360, DJI Osmo, Sony Camera, and Phone
   Camera are separate Camera-family entries. GoPro has bonded, multi-instance
-  Open GoPro shutter start/stop with response-gated optimistic state. Phone
+  Open GoPro shutter start/stop with Hardware Info readiness and confirmed
+  Encoding state. Phone
   Camera exposes a bonded, multi-instance BLE HID volume-up shutter. Insta360
   now emulates the GPS Remote protocol for the X5 under the verified custom name
   `Insta360 Remote (Bleep)`, decodes GPS display frames for video/photo state, gates
@@ -32,7 +33,9 @@ short, factual, and reproducible.
   sequence. A Google Pixel 9 also passed bonded reconnect and
   mixed-sequence shutter operation. DJI Osmo Action 5 Pro and Osmo 360 first
   pairing, explicit recording start/stop, and camera-confirmed recording status
-  are now operator-confirmed.
+  are now operator-confirmed. A GoPro MAX2 desktop harness and flashed panel
+  confirmed connection, initial idle state, explicit Start/Stop, Encoding
+  transitions, and matching physical recording.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -63,6 +66,56 @@ short, factual, and reproducible.
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
+
+### 2026-08-12: GoPro MAX2 desktop harness and confirmed-state repair
+
+- Added `tools/gopro_lab/`, a Bleak central/client harness with pure packet
+  builders, General/Extended/Continuation reassembly, strict command/query
+  parsing, read-only status mode, state-gated interactive commands, a bounded
+  recording cycle, and private JSONL transcripts. Its five protocol tests pass.
+- A controlled GoPro MAX2 session advertised `0xFEA6`, connected from macOS,
+  returned a fragmented successful Hardware Info response, accepted one-byte
+  Encoding registration `02 53 0A`, and initially reported idle. A bounded
+  five-second cycle returned successful Shutter On/Off command responses and
+  independent `0x93` Encoding notifications for recording then stopped. The
+  operator confirmed the physical camera connected, started, and stopped.
+- Repaired the panel driver to subscribe Command and Query responses on every
+  connection, poll Hardware Info for readiness, register Encoding status 10,
+  reassemble fragmented responses on the main loop, and complete Start/Stop only
+  from camera-originated state. Successful shutter ACKs no longer create
+  optimistic recording state. A two-byte status-ID fallback is implemented but
+  remains unverified.
+- The first panel Start exposed a transition race: an old Encoding=false value
+  could complete Start before the later Encoding=true update, leaving Ble(e)p
+  ready to send a duplicate Start that MAX2 rejected. A mismatched Encoding
+  value now leaves the transition pending, and the client polls Get Status
+  Values until the requested state is observed or the existing ten-second
+  deadline fails. The operator confirmed initial state on connection and the
+  repaired Start/recording/Stop cycle on the flashed panel.
+- Native tests passed 76/76. The required full Montserrat `bleep` profile built
+  successfully at 140,340 / 327,680 bytes static RAM and 1,908,810 / 3,145,728
+  bytes flash. The complete `ui_sim` build and capture flow also passed after
+  its fake GoPro runtime was updated to publish confirmed recording state. The
+  full image then uploaded to `/dev/cu.usbserial-211240`; every written-region
+  hash verified and the board hard-reset. Repaired panel add, initial state,
+  Start/Stop, and state transitions are live-confirmed; bonded reconnect,
+  local-button updates, forget/re-pair, multi-camera, heap return, and
+  coexistence remain open.
+- After rebasing onto current `main`, the combined native suite passed 89/89
+  and the required full Montserrat `bleep` profile built at 141,428 / 327,680
+  bytes static RAM and 1,935,108 / 3,145,728 bytes flash. The merged 27-page
+  manual was rebuilt; its GoPro and compatibility pages were rendered and
+  visually inspected without clipping, overlap, or table overflow.
+- The MAX2 showed the macOS controller label as `...`, not the Mac's `Everlost`
+  computer name. CoreBluetooth does not let the Bleak central publish a custom
+  local name, and Open GoPro documents its pairing `phoneName` field as having
+  no effect. The flashed panel initializes NimBLE as `Ble(e)p`, connected
+  successfully, and was also displayed by MAX2 as `...`. This is now recorded
+  as camera behavior rather than an actionable controller-name setting.
+- Raw Hardware Info and advertisements contain stable identifiers and remain
+  outside the repository. Status-only and cycle transcript SHA-256 values are
+  recorded in `docs/protocols/gopro-open-gopro.md`. The manual and generated PDF
+  were updated for exact-model evidence without extending it to other GoPros.
 
 ### 2026-08-12: Insta360 X3, X4, and X4 Air compatibility confirmation
 

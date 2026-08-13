@@ -1116,10 +1116,8 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_EQUAL_UINT8(4, goPro->maxInstances);
   TEST_ASSERT_BITS_HIGH(
       studio::capabilityBit(studio::Capability::RecordStart) |
-          studio::capabilityBit(studio::Capability::RecordStop),
-      goPro->capabilities);
-  TEST_ASSERT_BITS_LOW(
-      studio::capabilityBit(studio::Capability::RecordingState),
+          studio::capabilityBit(studio::Capability::RecordStop) |
+          studio::capabilityBit(studio::Capability::RecordingState),
       goPro->capabilities);
   const studio::DriverDescriptor* insta360Driver =
       studio::DriverCatalog::find(studio::DriverId::Insta360);
@@ -1238,7 +1236,7 @@ void test_insta360_explicit_recording_is_available_to_scenes() {
                         static_cast<int>(insta360.lastCommand));
 }
 
-void test_gopro_open_ble_packets_and_optimistic_state() {
+void test_gopro_open_ble_packets_and_confirmed_state() {
   const gopro::Packet start = gopro::buildSetShutter(true);
   const uint8_t expectedStart[] = {0x03, 0x01, 0x01, 0x01};
   TEST_ASSERT_EQUAL_UINT32(sizeof(expectedStart), start.len);
@@ -1249,6 +1247,16 @@ void test_gopro_open_ble_packets_and_optimistic_state() {
   const gopro::Packet pairing = gopro::buildSetPairingState();
   const uint8_t expectedPairing[] = {0x03, 0x17, 0x01, 0x01};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPairing, pairing.bytes, pairing.len);
+  const gopro::Packet hardware = gopro::buildGetHardwareInfo();
+  const uint8_t expectedHardware[] = {0x01, 0x3c};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedHardware, hardware.bytes, hardware.len);
+  const gopro::Packet encoding = gopro::buildRegisterEncoding();
+  const uint8_t expectedEncoding[] = {0x02, 0x53, 0x0a};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedEncoding, encoding.bytes, encoding.len);
+  const gopro::Packet encoding2 = gopro::buildRegisterEncoding(true);
+  const uint8_t expectedEncoding2[] = {0x03, 0x56, 0x00, 0x0a};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedEncoding2, encoding2.bytes,
+                               encoding2.len);
 
   const uint8_t ok[] = {0x02, 0x01, 0x00};
   const gopro::Response response = gopro::parseResponse(ok, sizeof(ok));
@@ -1257,16 +1265,66 @@ void test_gopro_open_ble_packets_and_optimistic_state() {
   TEST_ASSERT_EQUAL_HEX8(gopro::kSuccessStatus, response.status);
   TEST_ASSERT_FALSE(gopro::parseResponse(ok, 2).valid);
 
+  gopro::PacketAccumulator commandPackets;
+  gopro::Message message;
+  const uint8_t hardwareFirst[] = {0x20, 0x16, 0x3c, 0x00, 0x01, 0x3e};
+  const uint8_t hardwareSecond[] = {
+      0x80, 'M', 'A', 'X', '2', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  TEST_ASSERT_FALSE(commandPackets.feed(hardwareFirst, sizeof(hardwareFirst),
+                                        message));
+  TEST_ASSERT_TRUE(commandPackets.feed(hardwareSecond, sizeof(hardwareSecond),
+                                       message));
+  TEST_ASSERT_EQUAL_UINT32(22, message.len);
+  const gopro::Response hardwareResponse =
+      gopro::parseCommandPayload(message.bytes, message.len);
+  TEST_ASSERT_TRUE(hardwareResponse.valid);
+  TEST_ASSERT_EQUAL_HEX8(gopro::kGetHardwareInfoCommand,
+                         hardwareResponse.command);
+  TEST_ASSERT_EQUAL_HEX8(gopro::kSuccessStatus, hardwareResponse.status);
+
+  const uint8_t registeredIdle[] = {0x53, 0x00, 0x0a, 0x01, 0x00};
+  const gopro::StatusResponse idle =
+      gopro::parseStatusPayload(registeredIdle, sizeof(registeredIdle));
+  TEST_ASSERT_TRUE(idle.valid);
+  TEST_ASSERT_TRUE(idle.hasEncoding);
+  TEST_ASSERT_FALSE(idle.encoding);
+  const uint8_t notifiedRecording[] = {0x93, 0x00, 0x0a, 0x01, 0x01};
+  const gopro::StatusResponse recording = gopro::parseStatusPayload(
+      notifiedRecording, sizeof(notifiedRecording));
+  TEST_ASSERT_TRUE(recording.valid);
+  TEST_ASSERT_TRUE(recording.hasEncoding);
+  TEST_ASSERT_TRUE(recording.encoding);
+  const gopro::Packet getEncoding = gopro::buildGetEncoding();
+  const uint8_t expectedGetEncoding[] = {0x02, 0x13, 0x0a};
+  TEST_ASSERT_EQUAL_UINT8(sizeof(expectedGetEncoding), getEncoding.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedGetEncoding, getEncoding.bytes,
+                                getEncoding.len);
+  const uint8_t queriedIdle[] = {0x13, 0x00, 0x0a, 0x01, 0x00};
+  const gopro::StatusResponse query =
+      gopro::parseStatusPayload(queriedIdle, sizeof(queriedIdle));
+  TEST_ASSERT_TRUE(query.valid);
+  TEST_ASSERT_TRUE(query.hasEncoding);
+  TEST_ASSERT_FALSE(query.encoding);
+
   gopro::GoProState state;
   gopro::markCommandQueued(state, true);
   TEST_ASSERT_TRUE(state.commandPending);
-  gopro::reduceCommandResponse(state, true, gopro::kSuccessStatus);
+  gopro::reduceCommandResponse(state, gopro::kSuccessStatus);
+  TEST_ASSERT_TRUE(state.commandPending);
+  TEST_ASSERT_FALSE(state.recordingConfirmed);
+  TEST_ASSERT_FALSE(gopro::reducePendingEncodingStatus(state, false, true));
+  TEST_ASSERT_TRUE(state.commandPending);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(gopro::GoProState::Recording::Starting),
+                        static_cast<int>(state.recording));
+  TEST_ASSERT_TRUE(gopro::reducePendingEncodingStatus(state, true, true));
   TEST_ASSERT_FALSE(state.commandPending);
   TEST_ASSERT_FALSE(state.lastCommandFailed);
+  TEST_ASSERT_TRUE(state.recordingConfirmed);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(gopro::GoProState::Recording::Recording),
                         static_cast<int>(state.recording));
   gopro::markCommandQueued(state, false);
-  gopro::reduceCommandResponse(state, false, 0x02);
+  gopro::reduceCommandResponse(state, 0x02);
   TEST_ASSERT_TRUE(state.lastCommandFailed);
   TEST_ASSERT_EQUAL_INT(static_cast<int>(gopro::GoProState::Recording::Unknown),
                         static_cast<int>(state.recording));
@@ -5008,7 +5066,7 @@ int main(int, char**) {
   RUN_TEST(test_canon_state_requires_camera_notifications);
   RUN_TEST(test_tascam_cobs_commands_match_capture);
   RUN_TEST(test_tascam_scanner_and_confirmed_state);
-  RUN_TEST(test_gopro_open_ble_packets_and_optimistic_state);
+  RUN_TEST(test_gopro_open_ble_packets_and_confirmed_state);
   RUN_TEST(test_dji_osmo_protocol_matches_official_connection_vector);
   RUN_TEST(test_insta360_gps_remote_protocol);
   RUN_TEST(test_driver_catalog_exposes_shark_and_canon);

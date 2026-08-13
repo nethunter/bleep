@@ -177,9 +177,9 @@ Both the EOS R6 Mark II and EOS R6 Mark III have been verified in Trigger Mode a
 
 ## GoPro
 
-Choose **GoPro**, put the camera in its supported wireless pairing mode, and wait for Ready. Ble(e)p provides separate shutter Start and Stop controls, but it cannot confirm the camera's recording state.
+Choose **GoPro**, put the camera in its supported wireless pairing mode, and wait for Ready. Ble(e)p provides separate shutter Start and Stop controls. Ready appears only after the camera answers the Open GoPro readiness query and reports its current Encoding state; subsequent recording changes are camera-confirmed.
 
-No GoPro camera has been physically verified in this project snapshot. Treat only models in GoPro's current official Open GoPro support table as candidates, and do not infer support for legacy HERO8, MAX, or MINI models from retailer claims.
+Exact model evidence: a **GoPro MAX2** connected to the desktop protocol harness and the flashed Ble(e)p panel, reported idle, started and stopped a bounded recording, and reported both state changes while the operator observed the same physical behavior. Treat this as an experimental bounded path because reconnect, multi-camera, forget/re-pair, and coexistence gates remain open. Do not infer support for other GoPro models from this result.
 
 ## Phone Camera
 
@@ -443,7 +443,8 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Canon EOS R6 | Candidate | Intended to use Canon Trigger controls | This exact model has not been tested. |
 | Canon EOS R6 Mark III - Smart Phone Mode | Supported | Separate Record Start/Stop, recording confirmation, wake, and power-down | Other wireless camera controls are not included. |
 | Canon EOS R6 Mark II - Smart Phone Mode | Supported | Separate Record Start/Stop and recording confirmation | Other wireless camera controls are not included. |
-| GoPro models supported by Open GoPro | Candidate | Separate shutter Start and Stop | No GoPro has been tested; recording is not confirmed. |
+| GoPro MAX2 | Experimental | Separate Start/Stop and camera-confirmed recording state | Desktop protocol, flashed-panel state transitions, and physical recording are verified; lifecycle/coexistence gates remain open. |
+| Other GoPro models supported by Open GoPro | Candidate | Intended separate Start/Stop and recording state | No model-specific result; MAX2 evidence is not inherited. |
 | Google Pixel 9 | Experimental | Wireless volume-up shutter and reconnection | Ble(e)p cannot see whether the camera app captured an image. |
 | Other iOS, Android, and HarmonyOS phones | Candidate | Wireless volume-up shutter | Phone model, camera app, and multi-phone testing remain open. |
 | Insta360 X5 | Experimental | GPS Remote pairing as `Insta360 Remote (Bleep)`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Pairing, state, recording, shutdown, and physical wake are verified; one retained-session wake reconnect recheck remains. |
