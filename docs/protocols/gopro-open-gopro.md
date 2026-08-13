@@ -110,9 +110,15 @@ closes its BLE link immediately after successful acceptance because a connected
 central wakes the camera again, then waits until that disconnect is observed
 before publishing **Camera asleep**. The retained session's Power action and
 the generic retained-session resume hook reconnect to wake, then repeat
-Hardware Info readiness and initial Encoding registration. The packet, state
-machine, routing, and simulator UI are implemented; the complete sleep/wake
-cycle remains a pending MAX2 panel gate.
+Hardware Info readiness and initial Encoding registration. The documented
+manufacturer-data processor-state bit distinguishes the low-power wake phase
+from the post-boot control phase: the former gets a short wake-only connection,
+then the client waits for an awake advertisement and starts protocol setup on a
+fresh link. The complete wake attempt is bounded to 30 seconds; expiry cancels
+any pending shared-coordinator retry and returns the retained session to its
+retryable asleep state. The packet, state machine, routing, and simulator UI
+are implemented. A flashed MAX2 visibly completed Sleep, physical wake, the
+fresh post-boot connection, and return to Ready.
 
 ## Evidence and privacy
 

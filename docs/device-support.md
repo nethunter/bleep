@@ -335,7 +335,7 @@ Compatibility evidence is deliberately split from protocol availability:
 ### GoPro
 
 - Status: `Experimental`; GoPro MAX2 desktop protocol, physical recording, and
-  the repaired panel connection/state/Start/Stop path are verified.
+  the repaired panel connection/state/Start/Stop/Sleep/wake path are verified.
 - Driver: `GoPro` (`DriverId::GoPro = 10`), up to four instances.
 - Transport: Ble(e)p is the central and the camera is the peripheral. Discovery
   requires advertised service `0xFEA6`; pairing is bonded without MITM.
@@ -351,8 +351,9 @@ Compatibility evidence is deliberately split from protocol availability:
   its controller-side BLE disconnect before showing **Camera asleep**; leaving
   the link connected wakes the camera again. Power-on is a
   reconnect to the saved peer, which wakes a GoPro during its documented BLE
-  wake-advertising window and repeats the full readiness/state query. This path
-  is implemented but remains MAX2 hardware-unverified.
+  wake-advertising window and repeats the full readiness/state query on a fresh
+  post-boot link. The MAX2 visibly slept, woke, reconnected, and returned to
+  Ready through this path.
 - Compatibility claim: only models covered by the current Open GoPro supported
   camera table should be treated as candidates. HERO8, legacy MAX/MINI, or any
   retailer-only claim remains unverified until tested.

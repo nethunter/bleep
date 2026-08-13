@@ -1080,8 +1080,8 @@ the replacement.
 
 ## ADR-043: GoPro power control uses wakeable sleep with confirmed transition
 
-- Status: Experimental; published protocol and host/UI implementation are
-  complete, while the MAX2 panel hardware gate remains open.
+- Status: Experimental; published protocol, host/UI implementation, and the
+  bounded MAX2 panel Sleep/wake gate are complete.
 - Decision: The GoPro screen exposes the same header power affordance used by
   Canon Smart. Power-off sends Open GoPro Sleep command `0x05`, not the legacy
   hard power-down command. It is unavailable while recording is confirmed or
@@ -1092,15 +1092,21 @@ the replacement.
   the central connected wakes the GoPro again; missing acceptance or disconnect
   reports failure instead of assuming physical sleep.
 - Wake: There is no separate Open GoPro wake command. Pressing power while the
-  retained session is asleep reconnects to the saved BLE peer; opening that
-  device or preparing it for a sequence invokes the same resume path. Protocol
-  readiness and initial Encoding state must complete again before the camera is
-  Ready. GoPro documents BLE wake advertising for the first eight hours after
-  sleep, so this is not an indefinite remote-power guarantee.
+  retained session is asleep first scans the saved peer's documented processor-
+  state advertisement. A low-power camera gets a short wake-only connection;
+  after its BLE restart, the client waits for an awake advertisement and makes
+  a fresh connection for protocol setup. Opening that device or preparing it
+  for a sequence invokes the same resume path. Protocol readiness and initial
+  Encoding state must complete on that post-boot connection before the camera
+  is Ready. A wake attempt is bounded to 30 seconds; failure cancels any queued
+  BLE retry and returns to **Camera asleep** so the operator can retry deliberately.
+  GoPro documents BLE wake advertising for the first eight hours after sleep,
+  so this is not an indefinite remote-power guarantee.
 - Consequence: Back does not put the camera to sleep. A sleeping retained
   session remains intentionally offline rather than being evicted as an
-  unexpected disconnect. The workflow remains exact-model unverified until a
-  flashed MAX2 visibly sleeps and wakes through the panel.
+  unexpected disconnect. A flashed MAX2 visibly slept, woke, established the
+  fresh post-boot control connection, and returned to Ready; other models and
+  longer lifecycle/coexistence coverage remain unverified.
 
 ## Open decisions
 

@@ -67,6 +67,7 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   void markReady();
   void completeSleepIfReady();
   void failSleep();
+  void failWake();
 
   NimBLEClient* client_ = nullptr;
   NimBLERemoteCharacteristic* commandChar_ = nullptr;
@@ -90,6 +91,9 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   bool sleepRequested_ = false;
   bool sleepResponseAccepted_ = false;
   bool sleepDisconnectObserved_ = false;
+  bool wakeProbePending_ = false;
+  bool wakeProbeConnected_ = false;
+  bool wakeAwaitingBoot_ = false;
   bool requestedStart_ = false;
   char targetAddr_[20] = "";
   uint8_t targetAddrType_ = 0;
@@ -100,6 +104,8 @@ class GoProClient : public studio::ble::BleCentralDelegate {
   uint32_t commandDeadlineMs_ = 0;
   uint32_t nextEncodingPollMs_ = 0;
   uint32_t sleepDeadlineMs_ = 0;
+  uint32_t wakeDeadlineMs_ = 0;
+  uint32_t wakeProbeDisconnectAtMs_ = 0;
   PacketAccumulator commandPackets_;
   PacketAccumulator queryPackets_;
   studio::ble::LinkHandle linkHandle_ = studio::ble::kInvalidLinkHandle;

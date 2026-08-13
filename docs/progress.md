@@ -37,8 +37,8 @@ short, factual, and reproducible.
   confirmed connection, initial idle state, explicit Start/Stop, Encoding
   transitions, and matching physical recording.
   The GoPro screen now also exposes published Sleep and reconnect-to-wake
-  controls; their simulator path passes and their first MAX2 panel run remains
-  open.
+  controls; a flashed MAX2 visibly slept, woke, reconnected after boot, and
+  returned to Ready.
 - Universal driver framework: Up to 24 saved device records and 16 NimBLE bonds
   are independent of runtime concurrency. Eight logical active instances map
   onto four explicitly configured
@@ -93,6 +93,21 @@ short, factual, and reproducible.
   mechanism. Retained asleep sessions remain intentionally offline, and
   reopening the device or preparing it for a sequence automatically invokes
   the same wake path before Hardware Info and Encoding readiness run again.
+- The first wake retry exposed an unbounded `Waking` state. Wake now has a
+  30-second overall deadline, after which it cancels the connection and returns
+  to the retryable asleep screen. The shared BLE coordinator also now honors a
+  manual cancellation when a late `ConnectFailed` event arrives instead of
+  silently scheduling another retry. A host regression covers that race.
+- The next physical retry showed the remaining two-stage boot behavior. Serial
+  evidence reached `protocol_ready` 1.97 seconds after the low-power connection,
+  then the MAX2 restarted BLE and disconnected about 5.12 seconds later; the
+  following link reached encryption but stalled before GATT setup. Wake now
+  reads GoPro's documented advertised processor-state bit, uses a low-power
+  connection only to trigger boot, disconnects it after 1.5 seconds, and waits
+  for an awake advertisement before starting security and Open GoPro setup on
+  a fresh link. After flashing this correction, the operator confirmed the full
+  MAX2 cycle was perfect: Sleep, physical turn-on, the fresh post-boot control
+  connection, and return to Ready all completed.
 - Native tests passed 89/89. The complete `ui_sim` build/traversal passed and
   captured the new 240x240 asleep screen without clipped text or rounded-edge
   collision. The required full Montserrat `bleep` profile built successfully
@@ -101,8 +116,8 @@ short, factual, and reproducible.
   compatibility pages were rendered at 120 dpi and visually inspected without
   clipping, overlap, table overflow, or unexpected page movement. The image
   uploaded successfully to `/dev/cu.usbserial-211240`; every written region
-  passed hash verification and the panel hard-reset with NVS preserved. The
-  first operator-observed MAX2 sleep/wake cycle remains pending.
+  passed hash verification and the panel hard-reset with NVS preserved. This
+  older build preceded the later operator-confirmed MAX2 sleep/wake fix above.
 
 ### 2026-08-12: GoPro MAX2 desktop harness and confirmed-state repair
 

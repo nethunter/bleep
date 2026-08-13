@@ -423,8 +423,8 @@ exact GPS identity, power behavior, and remaining coexistence gates stay
 open. A GoPro MAX2 desktop harness and flashed panel passed connection,
 confirmed initial Encoding state, state-confirmed Start/Stop, and observed
 physical recording. Published Sleep/wake control is implemented in firmware
-and simulator but still needs its first flashed MAX2 run; the remaining
-lifecycle/coexistence checks stay open.
+and simulator; a flashed MAX2 visibly slept, woke, reconnected after boot, and
+returned to Ready. The remaining lifecycle/coexistence checks stay open.
 DJI has host vectors but still requires its physical gates; Sony requires both
 implementation and physical proof.
 

@@ -468,8 +468,19 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
       logTiming(slot->policy.diagnosticTag, event.link, "connect_failed",
                 nowMs - slot->connectStartedMs,
                 nowMs - slot->timingStartedMs, "failed");
-      ++slot->connectFailures;
-      scheduleRetry(*slot, nowMs);
+      if (slot->manualDisconnectPending) {
+        slot->manualDisconnectPending = false;
+        if (slot->phase != LinkPhase::WaitingRetry) {
+          slot->phase =
+              slot->scanRequested ? LinkPhase::Scanning : LinkPhase::Idle;
+        }
+      } else if (slot->reconnectRequested) {
+        ++slot->connectFailures;
+        scheduleRetry(*slot, nowMs);
+      } else {
+        slot->phase = LinkPhase::Idle;
+        clearClaim(event.link);
+      }
       break;
     case EventType::Disconnected:
       slot->connectQueued = false;
