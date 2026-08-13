@@ -4832,3 +4832,25 @@ Record values with the exact build environment and commit/worktree state.
   No additional firmware build or flash was required for this documentation
   pass; the implementation's native, simulator, full-profile, upload, and
   remaining physical-interaction results are recorded immediately above.
+
+### 2026-08-13: Concise owner's guide editorial pass
+
+- Identified `104704e` as the previous manual-source/PDF update. No later
+  implementation or supporting-documentation changes required incorporation,
+  so this was an editorial-only pass on clean `main`.
+- Reworked the entire owner-facing guide around actions, surprising behavior,
+  safety, and exact compatibility. Removed low-value reassurance, repeated
+  navigation/readiness explanations, protocol internals, duplicated limitation
+  lists, and the redundant owner's function-reference chapter. Preserved exact
+  model status, confirmation boundaries, recovery guidance, movement warnings,
+  Portal security, and the detailed battery/diode builder instructions.
+- Reduced the source from 8,073 to 5,210 words and from 643 to 516 lines. The
+  rebuilt A4 guide fell from 28 to 21 pages. The stable PDF and website download
+  were synchronized; no firmware source, build, test, or flash was involved.
+- Rendered all 21 pages at 120 dpi and reviewed four complete contact sheets.
+  Full-resolution checks covered the workflow, Settings, compatibility-table,
+  troubleshooting, and builder transitions. Removing a forced page break
+  reclaimed a mostly empty page; the resulting first render revealed a Settings
+  caption/paragraph collision, fixed by adding a Factory Reset subheading. The
+  final render has no clipping, overlap, unexpected blank pages, or table
+  overflow, and text extraction retained the key safety and compatibility facts.
