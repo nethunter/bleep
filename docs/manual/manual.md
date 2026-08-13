@@ -9,11 +9,11 @@ author: "Ble(e)p project"
 
 # Welcome
 
-Ble(e)p is a touch-first remote for studio gear. It can move a slider, roll cameras and audio, set lights, trigger a phone, call Home Assistant actions, and run repeatable sequences. The name means **Bluetooth Low Energy Equipment Panel** - or, less seriously, **Bluetooth Links Everything, Eventually, Probably**.
+Ble(e)p puts the controls you need during a shoot in one small, touch-first remote: sliders, cameras, audio, lights, phones, Home Assistant, and repeatable sequences. Its playful name means **Bluetooth Links Everything, Eventually, Probably**; the practical version is **Bluetooth Low Energy Equipment Panel**.
 
 ![Five Ble(e)p enclosure finishes. All five use the same circular interface.](assets/controller-family-line.png){width=6.4}
 
-> Ble(e)p is still in development. Check the status of your exact equipment before relying on it for paid or unrepeatable work. If a result is **Sent**, **Optimistic**, or **Unknown**, check the equipment itself.
+> Ble(e)p is still in development - the "Eventually, Probably" part is there for a reason. Check exact-model support before critical work, and check the equipment when a result is **Sent**, **Optimistic**, or **Unknown**.
 
 ## Status words used here
 
@@ -27,7 +27,7 @@ Ble(e)p is a touch-first remote for studio gear. It can move a slider, roll came
 
 # Quick start
 
-Ble(e)p starts at Home without connecting to equipment or starting Wi-Fi.
+Ble(e)p starts quietly at Home and waits for you; equipment and Wi-Fi stay off until needed.
 
 1. Open **Devices**.
 2. Open a saved device, or choose **Add device** and follow its pairing steps.
@@ -59,7 +59,7 @@ On supported device screens, a short press also selects **Retry** when it is sho
 
 ![Home: Devices, Groups, Scenes, and Portal. The small cog opens Settings.](assets/ui-home.png){width=2.7}
 
-Open **Devices** to add or control equipment, **Scenes** to build workflows, **Portal** for browser setup and Home Assistant, and the cog for Settings. **Groups** is not available yet.
+Home keeps the everyday choices close: **Devices** for equipment, **Scenes** for repeatable workflows, **Portal** for browser setup and Home Assistant, and the little cog for Settings. **Groups** is not available yet.
 
 <!-- pagebreak -->
 

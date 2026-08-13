@@ -4868,3 +4868,18 @@ Record values with the exact build environment and commit/worktree state.
   history, duplicated limitations, and redundant reference layers.
 - This documentation-maintenance change did not modify `manual.md`, regenerate
   or deploy the PDF, or change, build, test, or flash firmware.
+
+### 2026-08-13: Warmer concise-guide opening
+
+- Restored some of the earlier owner's guide personality without reverting the
+  concise structure: the Welcome again leads with the controls used during a
+  shoot, puts the playful expansion first, gives "Eventually, Probably" a light
+  wink, describes Home as starting quietly, and makes the Home destinations
+  sound more inviting.
+- Kept the guide at 21 A4 pages. An initial optional haptics sentence pushed the
+  Home figure onto a mostly empty 22nd page; removed that flourish and tightened
+  the opening until the compact pagination returned.
+- Rebuilt the PDF, rendered all 21 pages at 120 dpi, reviewed four complete
+  contact sheets, and inspected the opening pages at full resolution. The final
+  render has no clipping, overlap, unexpected blank page, table overflow, or
+  awkward opening-page break. No firmware source, build, test, or flash changed.
