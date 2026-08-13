@@ -4811,3 +4811,24 @@ Record values with the exact build environment and commit/worktree state.
   `/dev/cu.usbserial-211240`; all written-region hashes verified and the panel
   hard-reset. Physical touch selection and Portal-browser interaction remain
   operator-unverified.
+
+### 2026-08-13: Owner's guide refresh for the scene-wait default
+
+- Identified `e45917b` as the previous manual-source/PDF update and audited all
+  subsequent committed and uncommitted repository changes. The intervening
+  `929701d` commit changed repository process documentation only. The sole new
+  user-visible behavior was the 200 ms default for newly added Wait steps.
+- Collected that completed implementation and its supporting documentation on
+  `wip/manual-prep-2026-08-13`, rebased it onto `main`, and merged it with an
+  explicit merge commit before changing the manual on `main`.
+- Updated the owner's guide date and scene instructions to state that new waits
+  start at 200 ms, existing saved waits remain unchanged, and the included
+  Press Record example retains its authored 500 ms pause. Rebuilt the stable
+  28-page A4 PDF and synchronized the website download.
+- Rendered all 28 pages at 120 dpi and reviewed four complete contact sheets.
+  Inspected the cover and affected workflow page at full resolution; no
+  clipping, overlap, unexpected blank page, or table overflow was visible.
+  PDF text extraction confirmed the new date and both wait-duration statements.
+  No additional firmware build or flash was required for this documentation
+  pass; the implementation's native, simulator, full-profile, upload, and
+  remaining physical-interaction results are recorded immediately above.

@@ -2,7 +2,7 @@
 title: "Ble(e)p Owner's Guide"
 subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
 edition: "0.2.0-dev"
-date: "12 August 2026"
+date: "13 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
 ---
@@ -359,11 +359,14 @@ Ble(e)p calls a saved multi-device workflow a **scene** or **sequence**. Use one
 1. Open **Scenes** and select **Add sequence**.
 2. Build the **Start** list with **Add step**. Choose a target, action, and any parameters. For a light, **Set look + On** combines its color, brightness, and power-on in one step.
 3. Add Wait steps in milliseconds where equipment needs time between actions.
+   New waits start at 200 ms; adjust the value for the equipment and workflow.
 4. Select the header arrow to review the generated **Stop** list. It reverses Start order and adds the matching Stop action where one is known.
 5. Optional: choose **Customize Stop** to copy the generated list into an independently editable Stop list.
 6. Use the checkmark, enter a name, and save.
 
 Editing Start updates the generated Stop preview. A new light look starts at 5600 K, 50% brightness, neutral tint, and 100% RGB saturation. Switching CCT/RGB tabs previews that mode on the fixture, and changing the controls previews the selected look. Reopening a step restores its stored mode and values. Each **Set look + On** produces one **Turn Off** in the generated Stop list, which runs in reverse Start order.
+
+Changing the new-step default does not alter existing saved waits. The included Press Record example keeps its authored 500 ms pause.
 
 **Use generated Stop** replaces a custom Stop list only after confirmation. You can edit and reorder existing steps. If a saved device is no longer available, you can still delete its step from a custom Stop list.
 
