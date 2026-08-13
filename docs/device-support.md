@@ -105,6 +105,11 @@ of successful movement.
   one-pair correlation is not yet a production identification rule. These
   results do not close
   multi-fixture isolation, recovery, or soak gates for the generic driver.
+- Supported exact models: amaran Ray 60c, amaran Ace 25c, Aputure MC Pro, and
+  Aputure MT Pro. “Supported” records the operator-approved physical control
+  path for those exact products; it does not close the separately listed
+  multi-fixture, recovery, identification, or endurance gates. The amaran Pano
+  60c and Pano 120c remain candidates until those exact fixtures are tested.
 - Onboarding: choose `Aputure Light`. One compatible candidate is selected
   automatically after a 750 ms settling window; two to four nearby candidates
   use the explicit picker before PB-GATT begins. The selected factory-reset
@@ -324,14 +329,14 @@ Compatibility evidence is deliberately split from protocol availability:
 
 | Target | Implementation | Hardware evidence in this tranche |
 | --- | --- | --- |
-| GoPro MAX2 | Implemented, verified bounded path | Desktop harness and flashed panel confirmed connection, initial Encoding state, explicit Start/Stop, state transitions, and physical recording. |
+| GoPro MAX2 | Implemented, supported | Desktop harness and flashed panel confirmed connection, initial Encoding state, explicit Start/Stop, state transitions, physical recording, Sleep, physical wake, and post-boot Ready. |
 | Other GoPro models in the current Open GoPro support table | Implemented candidates | No model-specific result; the MAX2 result is not inherited. |
 | Google Pixel 9 phone camera over BLE HID | Implemented, verified path | Bonded reconnect and mixed-sequence shutter operation are operator-confirmed. |
 | Other iOS/Android/HarmonyOS phones | Implemented candidates | Generic BLE HID volume-key transport is implemented; model-specific and multi-phone verification remains open. |
-| Insta360 X3 | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
-| Insta360 X4 | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
-| Insta360 X4 Air | Implemented, verified bounded path | Operation through the GPS Remote path is operator-confirmed. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
-| Insta360 X5 | Implemented, verified bounded path | Pairing, initial state, Start/Stop, reported recording status, shutdown, and physical wake are operator-confirmed. Immediate optimistic Start and wake-return address routing have been added; the latter needs one fresh reconnect check. |
+| Insta360 X3 | Implemented, supported | Operation through the GPS Remote path is operator-approved. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
+| Insta360 X4 | Implemented, supported | Operation through the GPS Remote path is operator-approved. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
+| Insta360 X4 Air | Implemented, supported | Operation through the GPS Remote path is operator-approved. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
+| Insta360 X5 | Implemented, supported | Pairing, initial state, Start/Stop, reported recording status, shutdown, and physical wake are operator-confirmed. Immediate optimistic Start and wake-return address routing have been added; the latter needs one fresh reconnect check. |
 | Insta360 GO 3 | Experimental candidate | No model-specific GPS Remote result recorded. |
 | Insta360 GO Ultra | Experimental probe only | No connection or shutter result recorded; GPS Remote compatibility is not established. |
 | DJI Osmo Action 5 Pro | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
@@ -340,8 +345,9 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### GoPro
 
-- Status: `Experimental`; GoPro MAX2 desktop protocol, physical recording, and
-  the repaired panel connection/state/Start/Stop/Sleep/wake path are verified.
+- Status: GoPro MAX2 is `Supported`; its desktop protocol, physical recording,
+  and repaired panel connection/state/Start/Stop/Sleep/wake path are verified.
+  Other GoPro models remain candidates until tested individually.
 - Driver: `GoPro` (`DriverId::GoPro = 10`), up to four instances.
 - Transport: Ble(e)p is the central and the camera is the peripheral. Discovery
   requires advertised service `0xFEA6`; pairing is bonded without MITM.
@@ -387,8 +393,8 @@ Compatibility evidence is deliberately split from protocol availability:
 
 ### Insta360
 
-- Status: `Experimental`; the GPS Remote path is capture-backed and replaces
-  the earlier Mini emulation.
+- Status: `Supported` on the exact X3, X4, X4 Air, and X5 models; the GPS
+  Remote path is capture-backed and replaces the earlier Mini emulation.
 - Exact-model hardware evidence: the operator confirms the GPS Remote path
   works with Insta360 X3, X4, X4 Air, and X5. Only X5 currently has the
   detailed capture and feature-by-feature evidence below; do not infer that

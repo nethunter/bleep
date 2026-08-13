@@ -70,6 +70,39 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-12.
 
+### 2026-08-12: Supported hardware matrix and owner's guide refresh
+
+- Interpreted the operator's explicit approvals as `Supported` exact-model
+  evidence. Promoted Insta360 X3, X4, X4 Air, and X5; GoPro MAX2; amaran Ray
+  60c and Ace 25c; and Aputure MC Pro and MT Pro in the README, detailed
+  device-support notes, public compatibility matrix, and owner's guide. Kept
+  GO 3, GO Ultra, Pano 60c, Pano 120c, other GoPro models, and other similar
+  hardware at their existing candidate/research boundaries.
+- Support remains exact-model and function-specific. Open reconnect,
+  coexistence, recovery, isolation, and endurance checks stay visible as
+  limitations rather than preventing the operator-approved path from being
+  called supported. MT Pro is supported for control while its current MC Pro
+  display-name misidentification remains explicitly documented.
+- Identified `85d906e` as the previous manual-source/PDF update and audited all
+  subsequent commits. The audit incorporated the completed GoPro post-wake
+  reconnect correction and Aputure MT Pro identity/control evidence, while also
+  folding the earlier same-day Insta360 and amaran approvals into the manual's
+  exact-model matrix.
+- Rebuilt the owner's guide as a 28-page A4 PDF and synchronized the website
+  download. Rendered all 28 pages at 120 dpi, reviewed four complete contact
+  sheets, and inspected the camera, light, function-reference, and two
+  compatibility pages at full resolution. The first render exposed an
+  Insta360 table-row collision at the page break; grouping the three identical
+  X3/X4/X4 Air support rows fixed it, and the second full render had no clipping,
+  overlap, unexpected blank pages, or table overflow. PDF text extraction
+  confirmed every promoted exact model.
+- Browser checks at 1440 x 900 and 390 x 844 confirmed 22 compatibility rows,
+  nine `Supported` badges, no console warnings/errors, and no horizontal
+  overflow. Expanding the matrix exposed that its tall mobile wrapper could
+  never meet the old 12-percent reveal threshold; lowered it to 4 percent and
+  cache-busted the shared script. The matrix now reveals correctly at both
+  widths.
+
 ### 2026-08-12: Aputure MT Pro identity capture diagnostics
 
 - The operator confirmed that an exact Aputure MT Pro works with Ble(e)p's

@@ -188,7 +188,7 @@ GoPro documents remote BLE wake for the first eight hours after sleep, so do
 not treat this as indefinite unattended power control. Ble(e)p disables Sleep
 while recording is confirmed or a recording/power transition is pending.
 
-Exact model evidence: a **GoPro MAX2** connected to the desktop protocol harness and the flashed Ble(e)p panel, reported idle, started and stopped a bounded recording, and reported both state changes while the operator observed the same physical behavior. Sleep/wake is implemented from the published protocol but has not yet been run on that camera from the panel. Treat this as an experimental bounded path because power lifecycle, reconnect, multi-camera, forget/re-pair, and coexistence gates remain open. Do not infer support for other GoPro models from this result.
+Exact model evidence: a **GoPro MAX2** connected to the desktop protocol harness and the flashed Ble(e)p panel, reported idle, started and stopped a bounded recording, and reported both state changes while the operator observed the same physical behavior. It also completed Sleep, physical wake, a fresh post-boot control connection, and return to Ready. MAX2 is supported; broader coexistence, multi-camera, forget/re-pair, and endurance coverage remains open. Do not infer support for other GoPro models from this result.
 
 ## Phone Camera
 
@@ -205,11 +205,11 @@ Verified exact model: **Google Pixel 9** for automatic reconnection and mixed-se
 
 ## Insta360
 
-Ble(e)p speaks the X5's **GPS Remote** protocol and appears to the camera as
+Ble(e)p speaks Insta360's **GPS Remote** protocol and appears to the camera as
 **Insta360 Remote (Bleep)**. It uses the camera's reported display state to offer
 safe Start and Stop actions over the GPS Remote's shutter-toggle command.
 
-1. Open the X5's **GPS Remote** pairing flow.
+1. Open the camera's **GPS Remote** pairing flow.
 2. Add **Insta360** on Ble(e)p and wait for the camera to connect to the panel.
 3. Wait for the panel to show the camera's idle or recording state. A fresh
    connection provisionally allows Start so a sequence does not need to wait
@@ -217,14 +217,15 @@ safe Start and Stop actions over the GPS Remote's shutter-toggle command.
    assumption.
 4. Use **Start** while video is idle or **Stop** while recording. Photo mode and
    unavailable recording state intentionally expose no recording action.
-5. Use the on-screen power control to shut down or wake the camera. Wake can
-   take up to 60 seconds while Ble(e)p waits for the X5 to reconnect.
+5. On X5, use the on-screen power control to shut down or wake the camera. Wake
+   can take up to 60 seconds while Ble(e)p waits for it to reconnect.
 
-Exact target: **Insta360 X5**. Pairing, initial and ongoing recording state,
-Start/Stop, photo-state feedback, shutdown, and physical wake are verified on
-the panel. One correction that reattaches a waking X5 to its retained session
-still needs a fresh reconnect check. **Insta360 GO 3** and **GO Ultra** remain
-unverified.
+Supported exact models: **Insta360 X3**, **X4**, **X4 Air**, and **X5**. The
+X3/X4/X4 Air GPS Remote control path is operator-approved. X5 additionally has
+detailed panel verification for pairing, initial and ongoing recording state,
+Start/Stop, photo-state feedback, shutdown, and physical wake. One correction
+that reattaches a waking X5 to its retained session still needs a fresh
+reconnect check. **Insta360 GO 3** and **GO Ultra** remain unverified.
 
 ## DJI Osmo
 
@@ -258,7 +259,7 @@ The generic **Aputure Light** entry adds compatible factory-reset Aputure and am
 
 All supported lights use the same control layout. Unsupported controls are hidden: the X100 is CCT-only, the X60RGB adds RGB, and a Home Assistant light has power only. Ble(e)p remembers each fixture's CCT look, RGB look, active mode, brightness, and power state. Reopening an Off light keeps it Off; changing tabs applies the stored look only while the light is On.
 
-Ble(e)p reads the fixture identity during setup when the model reports it, then saves the exact product name. The **amaran Ray 60c** is operator-confirmed working with Ble(e)p. The **amaran Ace 25c** and **Aputure MC Pro** remain the detailed provisioning and protocol-evidence fixtures. Per-node routing is implemented, but broader multi-fixture isolation, recovery, and soak gates remain open. The amaran Pano 60c and Pano 120c remain candidates until those exact models pass their hardware gates.
+Ble(e)p reads the fixture identity during setup when the model reports it, then saves the exact product name. The **amaran Ray 60c**, **amaran Ace 25c**, **Aputure MC Pro**, and **Aputure MT Pro** are supported exact models. MT Pro control works, but the current firmware labels it as MC Pro because both tested fixtures report the same composition identity. Per-node routing is implemented, but broader multi-fixture isolation, recovery, and soak gates remain open. The amaran Pano 60c and Pano 120c remain candidates until those exact models pass their hardware gates.
 
 ## Zhiyun Light: MOLUS X100 and X60RGB
 
@@ -427,7 +428,7 @@ Factory Reset removes saved devices and pairings, scenes, Wi-Fi details, Home As
 | Shark | Battery, A-H keypoints, manual/joystick move, speed, hold, direction, loop, run/progress | Supported. Movement needs physical observation. |
 | Cameras | Trigger, Start/Stop, toggle, power, status, or phone shutter | Available controls vary; see the compatibility matrix. |
 | Tascam | Record Start/Stop and restored confirmed recording state | Supported on the X8 + AK-BT1 path. |
-| Aputure Light | Independent On/Off, color temperature, tint, brightness, RGB color, remembered state, and Set look + On scene action | Experimental. The amaran Ray 60c path is operator-confirmed; broader multi-fixture isolation, recovery, and complete confirmation still need testing. |
+| Aputure Light | Independent On/Off, color temperature, tint, brightness, RGB color, remembered state, and Set look + On scene action | Supported on exact Ray 60c, Ace 25c, MC Pro, and MT Pro models; broader multi-fixture isolation, recovery, and complete confirmation still need testing. |
 | Zhiyun X100 | On/Off, color temperature, brightness, remembered state, and CCT Set look + On | Experimental. Normal panel control has been tested; RGB is not offered. |
 | Zhiyun X60RGB | On/Off, color temperature, brightness, hue, saturation, remembered state, and CCT/RGB Set look + On | Experimental. More flashed-panel and reconnect testing is needed. |
 | Scenes | Create, rename, enable, disable, duplicate, and delete | Available on Ble(e)p and in Portal where shown. |
@@ -452,11 +453,12 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Canon EOS R6 | Candidate | Intended to use Canon Trigger controls | This exact model has not been tested. |
 | Canon EOS R6 Mark III - Smart Phone Mode | Supported | Separate Record Start/Stop, recording confirmation, wake, and power-down | Other wireless camera controls are not included. |
 | Canon EOS R6 Mark II - Smart Phone Mode | Supported | Separate Record Start/Stop and recording confirmation | Other wireless camera controls are not included. |
-| GoPro MAX2 | Experimental | Separate Start/Stop, confirmed recording state, and Sleep/wake controls | Recording is verified; the new panel power lifecycle and coexistence gates remain open. |
+| GoPro MAX2 | Supported | Separate Start/Stop, confirmed recording state, and Sleep/wake controls | Recording, Sleep, physical wake, reconnection, and post-boot Ready are verified; broader coexistence coverage remains open. |
 | Other GoPro models supported by Open GoPro | Candidate | Intended separate Start/Stop and recording state | No model-specific result; MAX2 evidence is not inherited. |
 | Google Pixel 9 | Experimental | Wireless volume-up shutter and reconnection | Ble(e)p cannot see whether the camera app captured an image. |
 | Other iOS, Android, and HarmonyOS phones | Candidate | Wireless volume-up shutter | Phone model, camera app, and multi-phone testing remain open. |
-| Insta360 X5 | Experimental | GPS Remote pairing as `Insta360 Remote (Bleep)`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Pairing, state, recording, shutdown, and physical wake are verified; one retained-session wake reconnect recheck remains. |
+| Insta360 X3 / X4 / X4 Air | Supported | GPS Remote pairing and camera control | Each listed exact model is approved; complete reconnect, power, and coexistence coverage remains open. |
+| Insta360 X5 | Supported | GPS Remote pairing as `Insta360 Remote (Bleep)`, reported recording/photo state, state-aware Start/Stop, shutdown, and wake | Pairing, state, recording, shutdown, and physical wake are verified; one retained-session wake reconnect recheck remains. |
 | Insta360 GO 3 | Candidate | Intended GPS Remote shutter control | This exact model has not been tested. |
 | Insta360 GO Ultra | Research | Listed for investigation | GPS Remote compatibility is unknown. |
 | DJI Osmo Action 5 Pro | Supported | Four-digit pairing, separate Record Start/Stop, and recording confirmation | Reconnection, forget/re-pair, and multiple-camera use need more testing. |
@@ -464,9 +466,10 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Sony cameras using RMT-P1BT remotes | Research | Listed for investigation | Pairing and control are not available. |
 | Tascam Portacapture X8 + AK-BT1 | Supported | Record Start/Stop and confirmed recording state | Battery, media status, and other recorder features are not included. |
 | Home Assistant local entities | Experimental | Control up to four lights, switches, input booleans, buttons, scenes, or scripts | Other entity types and cloud sign-in are not included. |
-| amaran Ray 60c | Experimental | Unified Aputure Light controls and per-node power/look routing | Exact-model operation is operator-confirmed; protocol capture, recovery, multi-fixture isolation, and soak gates remain open. |
-| amaran Ace 25c | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
-| Aputure MC Pro | Experimental | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
+| amaran Ray 60c | Supported | Unified Aputure Light controls and per-node power/look routing | Exact-model operation is operator-approved; protocol capture, recovery, multi-fixture isolation, and soak gates remain open. |
+| amaran Ace 25c | Supported | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
+| Aputure MC Pro | Supported | First-time setup, exact model identity, per-node power/look routing, RGB color, and power confirmation | Full four-fixture physical isolation, color confirmation, fallback, and soak gates remain open. |
+| Aputure MT Pro | Supported | First-time setup and unified Aputure Light controls | Control is verified, but the current firmware labels the fixture as MC Pro; broader recovery and soak gates remain open. |
 | amaran Pano 60c / Pano 120c | Candidate | Intended to use unified Aputure Light controls and per-node routing | These exact models have not passed their hardware gates. |
 | Zhiyun MOLUS X100 | Experimental | Power, CCT-only color, brightness, remembered state, and current-setting display | Cold first-opening reconnect, power cycling, multiple lights, and recovery need more testing. |
 | Zhiyun MOLUS X60RGB | Experimental | Power, color temperature, brightness, hue, saturation, and remembered state | Host optical control is verified; the flashed shared path, panel use, reconnection, reset recovery, and mixed-light use need more testing. |
