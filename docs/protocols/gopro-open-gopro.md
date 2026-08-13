@@ -82,6 +82,15 @@ command or ten-second status timeout returns recording to unknown. When a
 confirmed target already has the requested state, the command is an idempotent
 success without another shutter write.
 
+The first panel test exposed a transition race not seen in the desktop cycle:
+an old Encoding=false value could arrive while Start was pending and complete
+the transition before Encoding=true. The camera started, but Ble(e)p then
+allowed a duplicate Start that MAX2 rejected. Pending Start/Stop now ignores a
+status value that does not match the requested target and polls Get Status
+Values (`02 13 0A`) until the target is observed or the ten-second deadline
+expires. The repaired panel then reported confirmed idle on connection and
+completed the operator-observed Start/recording/Stop cycle correctly.
+
 ## Evidence and privacy
 
 The reference implementation is under `tools/gopro_lab/`. It records a private
@@ -116,7 +125,7 @@ to provide its configured local name.
 
 ## Remaining gates
 
-- repeat Start, Stop, and local camera-button state changes from Ble(e)p;
+- verify local camera-button state changes from Ble(e)p;
 - verify bonded reconnect and wake from sleep on the panel;
 - verify forget/re-pair, cancellation, multiple GoPros, heap return, and
   coexistence with the other retained links; and
