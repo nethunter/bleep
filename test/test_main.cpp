@@ -1244,6 +1244,10 @@ void test_gopro_open_ble_packets_and_confirmed_state() {
   const gopro::Packet stop = gopro::buildSetShutter(false);
   const uint8_t expectedStop[] = {0x03, 0x01, 0x01, 0x00};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedStop, stop.bytes, stop.len);
+  const gopro::Packet sleep = gopro::buildSleep();
+  const uint8_t expectedSleep[] = {0x01, 0x05};
+  TEST_ASSERT_EQUAL_UINT32(sizeof(expectedSleep), sleep.len);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedSleep, sleep.bytes, sleep.len);
   const gopro::Packet pairing = gopro::buildSetPairingState();
   const uint8_t expectedPairing[] = {0x03, 0x17, 0x01, 0x01};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPairing, pairing.bytes, pairing.len);

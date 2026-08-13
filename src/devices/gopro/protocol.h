@@ -17,6 +17,7 @@ constexpr const char* kQueryResponseCharacteristicUuid =
     "b5f90077-aa8d-11e3-9046-0002a5d5c51b";
 
 constexpr uint8_t kSetShutterCommand = 0x01;
+constexpr uint8_t kSleepCommand = 0x05;
 constexpr uint8_t kSetPairingStateCommand = 0x17;
 constexpr uint8_t kGetHardwareInfoCommand = 0x3c;
 constexpr uint8_t kGetStatusValues = 0x13;
@@ -65,6 +66,7 @@ class PacketAccumulator {
 };
 
 Packet buildSetShutter(bool enabled);
+Packet buildSleep();
 Packet buildSetPairingState();
 Packet buildGetHardwareInfo();
 Packet buildGetEncoding(bool twoByteIds = false);

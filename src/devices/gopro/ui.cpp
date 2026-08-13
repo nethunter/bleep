@@ -41,15 +41,27 @@ void performPrimaryAction() {
 void onBack() { hide(); ui::showDeviceParent(); }
 void onAction() { performPrimaryAction(); }
 
+void onPower() {
+  const auto* state = static_cast<const gopro::GoProState*>(
+      studio::devices().specializedState(instanceId));
+  enqueue(state != nullptr &&
+                  (state->power == gopro::GoProState::Power::Asleep ||
+                   state->power == gopro::GoProState::Power::SleepFailed)
+              ? studio::CommandType::CameraPowerOn
+              : studio::CommandType::CameraPowerOff);
+}
+
 void ensureShell() {
   if (recorder_shell::ownedBy(kOwner)) return;
   if (recorder_shell::screen() != nullptr &&
       lv_scr_act() == recorder_shell::screen()) ui::parkForScreenRebuild();
   recorder_shell::destroyIdle();
   recorder_shell::Options options;
+  options.enablePower = true;
   recorder_shell::Callbacks callbacks;
   callbacks.onBack = onBack;
   callbacks.onAction = onAction;
+  callbacks.onPower = onPower;
   recorder_shell::acquire(kOwner, options, callbacks);
 }
 
@@ -67,6 +79,26 @@ void refresh() {
     view.actionLabel = "RETRY";
     view.actionColor = kReady;
     view.actionEnabled = true;
+  } else if (state != nullptr &&
+             state->power == gopro::GoProState::Power::Asleep) {
+    view.status = "CAMERA ASLEEP";
+    view.detail = "PRESS POWER TO WAKE";
+    view.actionLabel = "WAITING";
+    view.actionColor = kAccent;
+    view.powerEnabled = true;
+  } else if (state != nullptr &&
+             state->power == gopro::GoProState::Power::SleepFailed) {
+    view.status = "SLEEP FAILED";
+    view.detail = "PRESS POWER TO RECONNECT";
+    view.actionLabel = "WAITING";
+    view.actionColor = kAccent;
+    view.powerEnabled = true;
+  } else if (state != nullptr &&
+             state->power == gopro::GoProState::Power::Waking) {
+    view.status = "WAKING...";
+    view.detail = "CONNECTING TO GOPRO";
+    view.actionLabel = "WAIT";
+    view.actionColor = kAccent;
   } else if (runtime.link != studio::LinkState::Connected || state == nullptr) {
     view.status = runtime.link == studio::LinkState::Scanning
                       ? "PAIRING..."
@@ -74,6 +106,11 @@ void refresh() {
                             ? "CONNECTING..." : "DISCONNECTED";
     view.detail = "OPEN GOPRO BLE";
     view.actionLabel = "WAITING";
+    view.actionColor = kAccent;
+  } else if (state->power == gopro::GoProState::Power::Sleeping) {
+    view.status = "GOING TO SLEEP...";
+    view.detail = "WAITING FOR GOPRO";
+    view.actionLabel = "WAIT";
     view.actionColor = kAccent;
   } else if (state->lastCommandFailed) {
     view.status = "NO CONFIRMATION";
@@ -99,6 +136,18 @@ void refresh() {
     view.actionLabel = "START";
     view.actionColor = kReady;
     view.actionEnabled = true;
+  }
+  if (state != nullptr && state->power == gopro::GoProState::Power::Awake &&
+      !state->commandPending && !state->powerCommandPending &&
+      !(state->recordingConfirmed &&
+        state->recording == gopro::GoProState::Recording::Recording)) {
+    view.powerEnabled = true;
+  }
+  if (state != nullptr && state->powerOffFailed) {
+    view.status = "SLEEP FAILED";
+    view.detail = state->power == gopro::GoProState::Power::Awake
+                      ? "GOPRO STILL AWAKE"
+                      : "PRESS POWER TO RECONNECT";
   }
   recorder_shell::apply(view);
 }

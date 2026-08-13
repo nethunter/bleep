@@ -11,6 +11,7 @@
 #include "core/scene_service.h"
 #include "devices/canon_ble/ui.h"
 #include "devices/canon_trigger/ui.h"
+#include "devices/gopro/state.h"
 #include "devices/shark_nano_ii/ui.h"
 #include "devices/tascam_x8/ui.h"
 #include "devices/home_assistant/ui.h"
@@ -386,6 +387,42 @@ int main() {
     if (driverId == studio::DriverId::DjiOsmo &&
         !capture("03_camera_dji_verification")) {
       return 1;
+    }
+    if (driverId == studio::DriverId::GoPro) {
+      studio::DeviceCommand power;
+      power.instanceId = cameraAdd;
+      power.type = studio::CommandType::CameraPowerOff;
+      if (!studio::devices().enqueue(power)) {
+        std::fprintf(stderr, "GoPro sleep command was not queued\n");
+        return 1;
+      }
+      studio::devices().loop();
+      const auto* sleeping = static_cast<const gopro::GoProState*>(
+          studio::devices().specializedState(cameraAdd));
+      if (sleeping == nullptr ||
+          sleeping->power != gopro::GoProState::Power::Asleep ||
+          studio::devices().runtimeState(cameraAdd).link !=
+              studio::LinkState::Disconnected) {
+        std::fprintf(stderr, "GoPro sleep command did not reach asleep state\n");
+        return 1;
+      }
+      pump(220);
+      if (!capture("03_camera_gopro_asleep")) return 1;
+      power.type = studio::CommandType::CameraPowerOn;
+      if (!studio::devices().enqueue(power)) {
+        std::fprintf(stderr, "GoPro wake command was not queued\n");
+        return 1;
+      }
+      studio::devices().loop();
+      const auto* awake = static_cast<const gopro::GoProState*>(
+          studio::devices().specializedState(cameraAdd));
+      if (awake == nullptr ||
+          awake->power != gopro::GoProState::Power::Awake ||
+          studio::devices().runtimeState(cameraAdd).link !=
+              studio::LinkState::Connected) {
+        std::fprintf(stderr, "GoPro wake command did not reconnect\n");
+        return 1;
+      }
     }
     ui::handleLongPress();
     if (studio::devices().pendingAdd() != studio::kInvalidInstanceId) {

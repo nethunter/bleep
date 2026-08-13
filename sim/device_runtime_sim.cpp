@@ -76,7 +76,6 @@ class SimSharkDriver : public DeviceDriver {
     }
     return true;
   }
-
   void deactivate(InstanceId instanceId) override {
     if (instanceId != activeInstance_) return;
     active_ = false;
@@ -505,6 +504,18 @@ class SimGoProDriver : public DeviceDriver {
     pairingChanged_ = !record.paired;
     return true;
   }
+  bool resume(const DeviceRecord&) override {
+    if (state_.power == gopro::GoProState::Power::Asleep ||
+        state_.power == gopro::GoProState::Power::SleepFailed) {
+      state_.power = gopro::GoProState::Power::Awake;
+      state_.link = gopro::GoProState::Link::Connected;
+    }
+    return true;
+  }
+  bool retainWhileDisconnected(InstanceId instanceId) const override {
+    return instanceId == activeInstance_ &&
+           state_.power == gopro::GoProState::Power::Asleep;
+  }
   void deactivate(InstanceId instanceId) override {
     if (instanceId == activeInstance_) activeInstance_ = kInvalidInstanceId;
   }
@@ -519,13 +530,27 @@ class SimGoProDriver : public DeviceDriver {
       gopro::reduceEncodingStatus(state_, start);
       return CommandStatus::Succeeded;
     }
+    if (command.type == CommandType::CameraPowerOff &&
+        state_.recording != gopro::GoProState::Recording::Recording) {
+      state_.power = gopro::GoProState::Power::Asleep;
+      state_.link = gopro::GoProState::Link::Disconnected;
+      return CommandStatus::Succeeded;
+    }
+    if (command.type == CommandType::CameraPowerOn &&
+        state_.power == gopro::GoProState::Power::Asleep) {
+      state_.power = gopro::GoProState::Power::Awake;
+      state_.link = gopro::GoProState::Link::Connected;
+      return CommandStatus::Succeeded;
+    }
     return CommandStatus::Unsupported;
   }
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
     if (instanceId != activeInstance_) return runtime;
-    runtime.link = LinkState::Connected;
-    runtime.protocolReady = true;
+    runtime.link = state_.link == gopro::GoProState::Link::Connected
+                       ? LinkState::Connected
+                       : LinkState::Disconnected;
+    runtime.protocolReady = state_.link == gopro::GoProState::Link::Connected;
     runtime.recordingConfirmed = state_.recordingConfirmed;
     runtime.recording = state_.recording == gopro::GoProState::Recording::Recording;
     runtime.quality = state_.recordingConfirmed ? StateQuality::Confirmed

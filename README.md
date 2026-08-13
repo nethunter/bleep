@@ -146,7 +146,8 @@ principles:
   verification; Google Pixel 9 reconnect and shutter behavior is
   operator-confirmed. GoPro MAX2 connection, initial recording state, explicit
   Start/Stop, and camera-confirmed Encoding state are operator-confirmed on the
-  panel; broader model/platform coverage and the other families remain
+  panel. Published Sleep plus reconnect-to-wake controls are implemented and
+  await their first MAX2 panel run; broader model/platform coverage and the other families remain
   experimental. Sony
   still stops at an explicit protocol-research screen.
 - Specialized slider controls for keypoints A-H, joystick positioning,
@@ -207,9 +208,10 @@ values shown on the Shark screen come from the slider.
 ### Controls
 
 - **Touch:** Home, device management, sequences, connection, keypoints,
-  positioning, run controls, per-keypoint settings, and explicit Canon camera
-  power-down. Reopening or preparing a Canon Smart camera that Ble(e)p powered
-  off automatically reconnects and attempts the captured wake sequence. An
+  positioning, run controls, per-keypoint settings, and explicit Canon/GoPro
+  camera power controls. Reopening or preparing a Canon Smart or sleeping
+  GoPro that Ble(e)p powered off automatically reconnects and attempts its
+  device-specific wake path. An
   accepted touch click produces a crisp haptic tap; a device becoming ready or
   opening an already-connected device uses two quick ticks; Back uses two
   uneven taps; and a newly surfaced error uses two strong pulses. Scrolling

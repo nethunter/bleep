@@ -91,6 +91,29 @@ Values (`02 13 0A`) until the target is observed or the ten-second deadline
 expires. The repaired panel then reported confirmed idle on connection and
 completed the operator-observed Start/recording/Stop cycle correctly.
 
+## Published sleep and wake path
+
+Open GoPro assigns command ID `0x05` to Sleep. Its unparameterized command is:
+
+```text
+Sleep:          01 05
+Success reply:  02 05 00
+```
+
+The command is intentionally Sleep rather than the legacy hard power-down
+operation because GoPro documents the sleeping camera as BLE-connectable. A
+BLE connection wakes and boots it while it continues advertising; the
+documented remote-wake window is the first eight hours after sleep.
+
+The firmware does not equate the `0x05 0x00` response with physical sleep. It
+closes its BLE link immediately after successful acceptance because a connected
+central wakes the camera again, then waits until that disconnect is observed
+before publishing **Camera asleep**. The retained session's Power action and
+the generic retained-session resume hook reconnect to wake, then repeat
+Hardware Info readiness and initial Encoding registration. The packet, state
+machine, routing, and simulator UI are implemented; the complete sleep/wake
+cycle remains a pending MAX2 panel gate.
+
 ## Evidence and privacy
 
 The reference implementation is under `tools/gopro_lab/`. It records a private
@@ -127,6 +150,8 @@ to provide its configured local name.
 
 - verify local camera-button state changes from Ble(e)p;
 - verify bonded reconnect and wake from sleep on the panel;
+- verify the on-screen Sleep response, controller disconnect, visible low-power
+  state, reconnect wake, and return to Ready on MAX2;
 - verify forget/re-pair, cancellation, multiple GoPros, heap return, and
   coexistence with the other retained links; and
 - do not infer support for another GoPro model from the MAX2 result.

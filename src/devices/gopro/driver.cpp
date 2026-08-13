@@ -33,6 +33,25 @@ bool GoProDriver::activate(const DeviceRecord& record) {
   return false;
 }
 
+bool GoProDriver::resume(const DeviceRecord& record) {
+  Session* session = sessionFor(record.instanceId);
+  if (session == nullptr) return false;
+  const auto power = session->client.state().power;
+  if (power == gopro::GoProState::Power::Asleep ||
+      power == gopro::GoProState::Power::SleepFailed)
+    return session->client.powerOn();
+  return true;
+}
+
+bool GoProDriver::retainWhileDisconnected(InstanceId id) const {
+  const Session* session = sessionFor(id);
+  if (session == nullptr) return false;
+  const auto power = session->client.state().power;
+  return power == gopro::GoProState::Power::Sleeping ||
+         power == gopro::GoProState::Power::Asleep ||
+         power == gopro::GoProState::Power::SleepFailed;
+}
+
 void GoProDriver::deactivate(InstanceId id) {
   Session* session = sessionFor(id);
   if (session == nullptr) return;
@@ -67,6 +86,12 @@ CommandStatus GoProDriver::dispatch(const DeviceCommand& command) {
     case CommandType::RecordStop:
       return session->client.setShutter(false) ? CommandStatus::Succeeded
                                                : CommandStatus::Unavailable;
+    case CommandType::CameraPowerOn:
+      return session->client.powerOn() ? CommandStatus::Succeeded
+                                       : CommandStatus::Unavailable;
+    case CommandType::CameraPowerOff:
+      return session->client.powerOff() ? CommandStatus::Succeeded
+                                        : CommandStatus::Unavailable;
     default:
       return CommandStatus::Unsupported;
   }
@@ -83,7 +108,8 @@ DeviceRuntimeState GoProDriver::runtimeState(InstanceId id) const {
     case gopro::GoProState::Link::Connected: runtime.link = LinkState::Connected; break;
   }
   runtime.protocolReady = session->client.protocolReady();
-  runtime.commandPending = session->client.state().commandPending;
+  runtime.commandPending = session->client.state().commandPending ||
+                           session->client.state().powerCommandPending;
   runtime.commandFailed = session->client.state().lastCommandFailed;
   runtime.recordingConfirmed = session->client.state().recordingConfirmed;
   runtime.recording = session->client.state().recording ==
