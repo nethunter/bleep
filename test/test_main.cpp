@@ -43,10 +43,10 @@
 #include "devices/aputure_light/crypto.h"
 #include "devices/aputure_light/protocol.h"
 #include "devices/aputure_light/state.h"
-#include "devices/aputure_light/store.h"
-#include "devices/zhiyun_x100/ble_match.h"
-#include "devices/zhiyun_x100/protocol.h"
-#include "devices/zhiyun_x100/state.h"
+#include "core/mesh/mesh_store.h"
+#include "devices/zhiyun_light/ble_match.h"
+#include "devices/zhiyun_light/protocol.h"
+#include "devices/zhiyun_light/state.h"
 #include "portal_scene_parser.h"
 #include "core/mesh/provisioning_policy.h"
 #include "core/mesh/mesh_initializer.h"
@@ -112,297 +112,6 @@ class MemoryBackend : public studio::IConfigBackend {
  private:
   uint8_t data_[studio::ConfigStore::kMaxBlobSize] = {};
   size_t length_ = 0;
-};
-
-class V1MeshBackend : public studio::IConfigBackend {
- public:
-  V1MeshBackend() {
-    uint8_t* out = data_;
-    const uint8_t magic[] = {'A', 'M', 'S', 'H'};
-    std::memcpy(out, magic, sizeof(magic));
-    out += sizeof(magic);
-    put16(out, 1);
-    *out++ = 2;
-    *out++ = 0;
-    *out++ = 1;
-    std::memset(out, 0, 32);
-    out += 32;
-    put32(out, 0);
-    put16(out, 1);
-    put16(out, 0xc000);
-    put16(out, 4);
-    put32(out, 256);
-    putNode(out, 41, 2);
-    putNode(out, 42, 3);
-    length_ = static_cast<size_t>(out - data_) + 4;
-    put32(out, checksum(data_, length_ - 4));
-  }
-
-  size_t read(uint8_t* destination, size_t capacity) override {
-    if (length_ > capacity) return 0;
-    std::memcpy(destination, data_, length_);
-    return length_;
-  }
-
-  bool write(const uint8_t*, size_t) override { return false; }
-
- private:
-  static void put16(uint8_t*& out, uint16_t value) {
-    *out++ = static_cast<uint8_t>(value);
-    *out++ = static_cast<uint8_t>(value >> 8);
-  }
-  static void put32(uint8_t*& out, uint32_t value) {
-    for (int shift = 0; shift < 32; shift += 8) {
-      *out++ = static_cast<uint8_t>(value >> shift);
-    }
-  }
-  static uint32_t checksum(const uint8_t* bytes, size_t length) {
-    uint32_t value = 2166136261u;
-    for (size_t i = 0; i < length; ++i) {
-      value = (value ^ bytes[i]) * 16777619u;
-    }
-    return value;
-  }
-  static void putNode(uint8_t*& out, studio::InstanceId instanceId,
-                      uint16_t unicastAddress) {
-    put32(out, instanceId);
-    put16(out, static_cast<uint16_t>(studio::DriverId::ZhiyunLight));
-    put16(out, unicastAddress);
-    *out++ = 1;
-    *out++ = 1;
-    std::memset(out, 0, 32 + studio::kBleAddressCapacity);
-    out += 32 + studio::kBleAddressCapacity;
-    *out++ = 0;
-  }
-
-  uint8_t data_[256] = {};
-  size_t length_ = 0;
-};
-
-class V1DeviceBackend : public studio::IConfigBackend {
- public:
-  V1DeviceBackend() {
-    uint8_t* out = data_;
-    const uint8_t magic[] = {'S', 'T', 'D', 'V'};
-    std::memcpy(out, magic, sizeof(magic));
-    out += sizeof(magic);
-    putU16(out, 1);
-    *out++ = 1;
-    *out++ = 1;
-    putU32(out, 43);
-    putU32(out, 42);
-    putU16(out, static_cast<uint16_t>(studio::DriverId::CanonBle));
-    *out++ = 0x03;
-    *out++ = 1;
-    copyFixed(out, studio::kDeviceNameCapacity, "Legacy camera");
-    copyFixed(out, studio::kBleAddressCapacity, "11:22:33:44:55:66");
-    copyFixed(out, studio::kBleNameCapacity, "EOS legacy");
-    const uint32_t crc = checksum(data_, static_cast<size_t>(out - data_));
-    putU32(out, crc);
-    length_ = static_cast<size_t>(out - data_);
-  }
-
-  size_t read(uint8_t* destination, size_t capacity) override {
-    if (capacity < length_) return 0;
-    std::memcpy(destination, data_, length_);
-    return length_;
-  }
-  bool write(const uint8_t*, size_t) override { return false; }
-
- private:
-  static void putU16(uint8_t*& out, uint16_t value) {
-    *out++ = static_cast<uint8_t>(value);
-    *out++ = static_cast<uint8_t>(value >> 8);
-  }
-  static void putU32(uint8_t*& out, uint32_t value) {
-    for (int shift = 0; shift < 32; shift += 8) {
-      *out++ = static_cast<uint8_t>(value >> shift);
-    }
-  }
-  static void copyFixed(uint8_t*& out, size_t capacity, const char* value) {
-    std::memset(out, 0, capacity);
-    std::strncpy(reinterpret_cast<char*>(out), value, capacity - 1);
-    out += capacity;
-  }
-  static uint32_t checksum(const uint8_t* bytes, size_t length) {
-    uint32_t value = 2166136261u;
-    for (size_t i = 0; i < length; ++i) {
-      value = (value ^ bytes[i]) * 16777619u;
-    }
-    return value;
-  }
-
-  uint8_t data_[128] = {};
-  size_t length_ = 0;
-};
-
-class V1SceneBackend : public studio::IConfigBackend {
- public:
-  V1SceneBackend() {
-    uint8_t* out = data_;
-    std::memcpy(out, "SCN1", 4); out += 4;
-    put32(out, 0x01010001);  // version 1, initialized, one scene
-    put32(out, 2);           // next scene id
-    put32(out, 1);           // scene id
-    *out++ = 1;
-    std::memset(out, 0, studio::kDeviceNameCapacity);
-    std::memcpy(out, "Legacy scene", 12); out += studio::kDeviceNameCapacity;
-    *out++ = 1; *out++ = 0;
-    for (size_t list = 0; list < 2; ++list) {
-      for (size_t step = 0; step < CONFIG_MAX_SCENE_STEPS; ++step) {
-        *out++ = static_cast<uint8_t>(step == 0 && list == 0
-            ? studio::SceneStepType::Action : studio::SceneStepType::Wait);
-        put32(out, step == 0 && list == 0 ? 7 : 0);
-        *out++ = static_cast<uint8_t>(step == 0 && list == 0
-            ? studio::CommandType::TurnOn : studio::CommandType::Refresh);
-        put32(out, 0);
-      }
-    }
-    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
-    length_ = static_cast<size_t>(out - data_);
-  }
-  size_t read(uint8_t* destination, size_t capacity) override {
-    if (capacity < length_) return 0;
-    std::memcpy(destination, data_, length_); return length_;
-  }
-  bool write(const uint8_t*, size_t) override { return false; }
-
- private:
-  static void put32(uint8_t*& out, uint32_t value) {
-    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
-  }
-  static uint32_t checksum(const uint8_t* bytes, size_t length) {
-    uint32_t value = 2166136261u;
-    for (size_t i = 0; i < length; ++i) value = (value ^ bytes[i]) * 16777619u;
-    return value;
-  }
-  uint8_t data_[512] = {};
-  size_t length_ = 0;
-};
-
-class V2SceneBackend : public studio::IConfigBackend {
- public:
-  V2SceneBackend() {
-    uint8_t* out = data_;
-    std::memcpy(out, "SCN1", 4); out += 4;
-    put32(out, 0x01010002);  // version 2, initialized, one scene
-    put32(out, 2);
-    put32(out, 1);
-    *out++ = 1;
-    std::memset(out, 0, studio::kDeviceNameCapacity);
-    std::memcpy(out, "Legacy v2", 9); out += studio::kDeviceNameCapacity;
-    *out++ = 1; *out++ = 1;
-    for (size_t list = 0; list < 2; ++list) {
-      for (size_t step = 0; step < CONFIG_MAX_SCENE_STEPS; ++step) {
-        const bool populated = step == 0;
-        *out++ = static_cast<uint8_t>(populated
-            ? studio::SceneStepType::Action : studio::SceneStepType::Wait);
-        put32(out, populated ? (list == 0 ? 7 : 9) : 0);
-        *out++ = static_cast<uint8_t>(populated
-            ? (list == 0 ? studio::CommandType::RecordStart
-                         : studio::CommandType::TurnOff)
-            : studio::CommandType::Refresh);
-        put32(out, 0);
-        put32(out, populated ? 11 : 0);
-        put32(out, populated ? 22 : 0);
-        put32(out, populated ? 33 : 0);
-      }
-    }
-    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
-    length_ = static_cast<size_t>(out - data_);
-  }
-
-  size_t read(uint8_t* destination, size_t capacity) override {
-    if (capacity < length_) return 0;
-    std::memcpy(destination, data_, length_); return length_;
-  }
-  bool write(const uint8_t*, size_t) override { return false; }
-
- private:
-  static void put32(uint8_t*& out, uint32_t value) {
-    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
-  }
-  static uint32_t checksum(const uint8_t* data, size_t length) {
-    uint32_t value = 2166136261u;
-    for (size_t i = 0; i < length; ++i) {
-      value ^= data[i]; value *= 16777619u;
-    }
-    return value;
-  }
-
-  uint8_t data_[1024] = {};
-  size_t length_ = 0;
-};
-
-class V3SceneBackend : public studio::IConfigBackend {
- public:
-  V3SceneBackend() {
-    uint8_t* out = data_;
-    std::memcpy(out, "SCN1", 4); out += 4;
-    put16(out, 3);
-    *out++ = 1;
-    put32(out, 1);
-    put32(out, 2);
-    put32(out, 1);
-    *out++ = 1;
-    std::memset(out, 0, studio::kDeviceNameCapacity);
-    std::memcpy(out, "Legacy v3", 9); out += studio::kDeviceNameCapacity;
-    *out++ = 1; *out++ = 1;
-    encodeAction(out, 7, studio::CommandType::RecordStart, 11, 22, 33);
-    encodeAction(out, 9, studio::CommandType::TurnOff, 44, 55, 66);
-    put32(out, checksum(data_, static_cast<size_t>(out - data_)));
-    length_ = static_cast<size_t>(out - data_);
-  }
-
-  size_t read(uint8_t* destination, size_t capacity) override {
-    if (capacity < length_) return 0;
-    std::memcpy(destination, data_, length_); return length_;
-  }
-  bool write(const uint8_t*, size_t) override { return false; }
-
- private:
-  static void put16(uint8_t*& out, uint16_t value) {
-    *out++ = static_cast<uint8_t>(value);
-    *out++ = static_cast<uint8_t>(value >> 8);
-  }
-  static void put32(uint8_t*& out, uint32_t value) {
-    for (int shift = 0; shift < 32; shift += 8) *out++ = value >> shift;
-  }
-  static void encodeAction(uint8_t*& out, studio::InstanceId target,
-                           studio::CommandType command, int32_t value0,
-                           int32_t value1, int32_t value2) {
-    *out++ = static_cast<uint8_t>(studio::SceneStepType::Action);
-    put32(out, target);
-    *out++ = static_cast<uint8_t>(command);
-    put32(out, 0);
-    put32(out, static_cast<uint32_t>(value0));
-    put32(out, static_cast<uint32_t>(value1));
-    put32(out, static_cast<uint32_t>(value2));
-  }
-  static uint32_t checksum(const uint8_t* data, size_t length) {
-    uint32_t value = 2166136261u;
-    for (size_t i = 0; i < length; ++i) {
-      value ^= data[i]; value *= 16777619u;
-    }
-    return value;
-  }
-
-  uint8_t data_[256] = {};
-  size_t length_ = 0;
-};
-
-class LegacyBackend : public studio::ILegacySharkBackend {
- public:
-  bool readLegacyShark(studio::LegacySharkConfig& config) override {
-    if (!available) {
-      return false;
-    }
-    config = value;
-    return true;
-  }
-
-  bool available = false;
-  studio::LegacySharkConfig value;
 };
 
 class FakeDriver : public studio::DeviceDriver {
@@ -564,7 +273,8 @@ class FakeDriver : public studio::DeviceDriver {
   bool recordingConfirmed = false;
   bool recording = false;
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
-  studio::InstanceId activeInstances[studio::DeviceManager::kMaxActiveLinks] = {};
+  studio::InstanceId
+      activeInstances[studio::DeviceManager::kMaxActiveInstances] = {};
   int activationCount = 0;
   int resumeCount = 0;
   bool resumeSucceeds = true;
@@ -1105,11 +815,11 @@ void test_driver_catalog_exposes_shark_and_canon() {
       studio::capabilityBit(studio::Capability::SetLightTint),
       zhiyun->capabilities);
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(zhiyun_x100::MolusModel::X100),
-      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X100")));
+      static_cast<int>(zhiyun_light::MolusModel::X100),
+      static_cast<int>(zhiyun_light::modelFromName("MOLUS X100")));
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
-      static_cast<int>(zhiyun_x100::modelFromName("MOLUS X60RGB")));
+      static_cast<int>(zhiyun_light::MolusModel::X60Rgb),
+      static_cast<int>(zhiyun_light::modelFromName("MOLUS X60RGB")));
   const studio::DriverDescriptor* goPro =
       studio::DriverCatalog::find(studio::DriverId::GoPro);
   TEST_ASSERT_NOT_NULL(goPro);
@@ -1149,7 +859,6 @@ void test_driver_catalog_exposes_shark_and_canon() {
 
 void test_manager_keeps_every_compiled_camera_driver_reachable() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver shark(studio::DriverId::SharkNanoII);
   FakeDriver canonSmart(studio::DriverId::CanonBle);
   FakeDriver tascam(studio::DriverId::TascamX8);
@@ -1166,7 +875,7 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
       &shark, &canonSmart, &tascam, &canonTrigger, &homeAssistant,
       &aputure, &zhiyun, &goPro, &insta360, &dji,
       &sony, &phone};
-  studio::DeviceManager manager(backend, legacy, drivers,
+  studio::DeviceManager manager(backend, drivers,
                                 sizeof(drivers) / sizeof(drivers[0]));
   TEST_ASSERT_TRUE(manager.begin());
 
@@ -1187,10 +896,9 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
 void test_insta360_explicit_recording_is_available_to_scenes() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver insta360(studio::DriverId::Insta360);
   studio::DeviceDriver* drivers[] = {&insta360};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -1603,10 +1311,9 @@ void test_registry_crud_and_single_shark_limit() {
 
 void test_transactional_add_commits_only_after_pairing_and_readiness() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  studio::DeviceManager devices(backend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
   const size_t initialCount = devices.count();
 
@@ -1639,10 +1346,9 @@ void test_transactional_add_commits_only_after_pairing_and_readiness() {
 
 void test_transactional_add_cancel_and_failed_save_do_not_register_device() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  studio::DeviceManager devices(backend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
   const size_t initialCount = devices.count();
 
@@ -1665,7 +1371,7 @@ void test_transactional_add_cancel_and_failed_save_do_not_register_device() {
   TEST_ASSERT_EQUAL_UINT32(initialCount, devices.count());
   TEST_ASSERT_FALSE(backend.containsText("Canceled Camera"));
 
-  studio::DeviceManager restarted(backend, legacy, drivers, 1);
+  studio::DeviceManager restarted(backend, drivers, 1);
   TEST_ASSERT_TRUE(restarted.begin());
   TEST_ASSERT_EQUAL_UINT32(initialCount, restarted.count());
 
@@ -1877,37 +1583,12 @@ void test_panel_settings_default_round_trip_corruption_and_rollback() {
   TEST_ASSERT_TRUE(restored.hapticEnabled);
 }
 
-void test_v1_device_blob_migrates_without_changing_ble_identity() {
-  V1DeviceBackend backend;
-  studio::ConfigStore store(backend);
-  studio::DeviceRegistry registry;
-  TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(studio::ConfigLoadStatus::Loaded),
-      static_cast<int>(store.load(registry)));
-  TEST_ASSERT_EQUAL_UINT32(1, registry.count());
-  const studio::DeviceRecord* record = registry.at(0);
-  TEST_ASSERT_NOT_NULL(record);
-  TEST_ASSERT_EQUAL_UINT32(42, record->instanceId);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::DriverId::CanonBle),
-                        static_cast<int>(record->driverId));
-  TEST_ASSERT_TRUE(record->enabled);
-  TEST_ASSERT_TRUE(record->paired);
-  TEST_ASSERT_EQUAL_STRING("Legacy camera", record->displayName);
-  TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
-  TEST_ASSERT_EQUAL_UINT8(1, record->bleAddressType);
-  TEST_ASSERT_EQUAL_STRING("EOS legacy", record->bleName);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::HomeAssistantDomain::None),
-                        static_cast<int>(record->homeAssistantDomain));
-  TEST_ASSERT_EQUAL_STRING("", record->homeAssistantEntityId);
-}
-
-void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
+ void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver haDriver(studio::DriverId::HomeAssistant);
   studio::DeviceDriver* drivers[] = {&haDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   const studio::HomeAssistantDomain domains[] = {
@@ -2014,7 +1695,6 @@ void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {
 void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver physicalDriver(studio::DriverId::CanonBle);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   FakeDriver retainedLightDriver(studio::DriverId::AputureLight);
@@ -2023,7 +1703,7 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
   homeAssistantDriver.activationSequence = &activationSequence;
   studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver,
                                      &retainedLightDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 3);
+  studio::DeviceManager devices(deviceBackend, drivers, 3);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -2107,14 +1787,13 @@ void test_mixed_scene_activates_physical_transport_before_home_assistant() {
 void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver cameraDriver(studio::DriverId::CanonBle);
   FakeDriver recorderDriver(studio::DriverId::TascamX8);
   FakeDriver lightDriver(studio::DriverId::ZhiyunLight);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   studio::DeviceDriver* drivers[] = {&cameraDriver, &recorderDriver,
                                      &lightDriver, &homeAssistantDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 4);
+  studio::DeviceManager devices(deviceBackend, drivers, 4);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -2218,13 +1897,12 @@ void test_scene_switch_retains_old_only_links_when_four_resources_fit() {
 void test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver physicalDriver(studio::DriverId::CanonBle);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   physicalDriver.ready = false;
   homeAssistantDriver.ready = false;
   studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -2285,14 +1963,13 @@ void test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts() {
 void test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver physicalDriver(studio::DriverId::CanonBle);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   int activationSequence = 0;
   physicalDriver.activationSequence = &activationSequence;
   homeAssistantDriver.activationSequence = &activationSequence;
   studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -2358,91 +2035,11 @@ void test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target() {
   scenes.cancel();
 }
 
-void test_manager_migrates_legacy_without_boot_activation() {
+ void test_manager_routes_commands_and_blocks_disabled_device() {
   MemoryBackend backend;
-  LegacyBackend legacy;
-  legacy.available = true;
-  legacy.value.paired = true;
-  std::strcpy(legacy.value.address, "11:22:33:44:55:66");
-  legacy.value.addressType = 1;
-  std::strcpy(legacy.value.advertisedName, "Nano Legacy");
   FakeDriver driver;
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
-
-  TEST_ASSERT_TRUE(manager.begin());
-  TEST_ASSERT_EQUAL_UINT32(1, manager.count());
-  TEST_ASSERT_EQUAL_INT(0, driver.activationCount);
-  TEST_ASSERT_EQUAL(studio::kInvalidInstanceId, manager.foregroundInstance());
-  const studio::DeviceRecord* record = manager.at(0);
-  TEST_ASSERT_TRUE(record->paired);
-  TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", record->bleAddress);
-}
-
-void test_manager_starts_empty_without_legacy_shark() {
-  MemoryBackend backend;
-  LegacyBackend legacy;
-  FakeDriver driver;
-  studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
-
-  TEST_ASSERT_TRUE(manager.begin());
-  TEST_ASSERT_EQUAL_UINT32(0, manager.count());
-
-  studio::DeviceManager restarted(backend, legacy, drivers, 1);
-  TEST_ASSERT_TRUE(restarted.begin());
-  TEST_ASSERT_EQUAL_UINT32(0, restarted.count());
-}
-
-void test_manager_removes_old_unpaired_default_shark_only() {
-  MemoryBackend backend;
-  studio::ConfigStore store(backend);
-  studio::DeviceRegistry registry;
-  studio::InstanceId defaultId = studio::kInvalidInstanceId;
-  TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(registry.add(studio::DriverId::SharkNanoII,
-                                    "Shark Nano II", 1, defaultId)));
-  TEST_ASSERT_TRUE(store.save(registry));
-
-  LegacyBackend legacy;
-  FakeDriver driver;
-  studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
-  TEST_ASSERT_TRUE(manager.begin());
-  TEST_ASSERT_EQUAL_UINT32(0, manager.count());
-
-  studio::DeviceManager restarted(backend, legacy, drivers, 1);
-  TEST_ASSERT_TRUE(restarted.begin());
-  TEST_ASSERT_EQUAL_UINT32(0, restarted.count());
-}
-
-void test_manager_preserves_renamed_unpaired_shark() {
-  MemoryBackend backend;
-  studio::ConfigStore store(backend);
-  studio::DeviceRegistry registry;
-  studio::InstanceId sharkId = studio::kInvalidInstanceId;
-  TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(studio::RegistryStatus::Ok),
-      static_cast<int>(registry.add(studio::DriverId::SharkNanoII,
-                                    "Main Slider", 1, sharkId)));
-  TEST_ASSERT_TRUE(store.save(registry));
-
-  LegacyBackend legacy;
-  FakeDriver driver;
-  studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
-  TEST_ASSERT_TRUE(manager.begin());
-  TEST_ASSERT_EQUAL_UINT32(1, manager.count());
-  TEST_ASSERT_EQUAL_STRING("Main Slider", manager.at(0)->displayName);
-}
-
-void test_manager_routes_commands_and_blocks_disabled_device() {
-  MemoryBackend backend;
-  LegacyBackend legacy;
-  FakeDriver driver;
-  studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2479,12 +2076,11 @@ void test_manager_routes_commands_and_blocks_disabled_device() {
 
 void test_manager_uses_per_instance_driver_capabilities() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
   zhiyun.capabilityClearMask =
       studio::capabilityBit(studio::Capability::SetLightRgb);
   studio::DeviceDriver* drivers[] = {&zhiyun};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId id = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2502,10 +2098,9 @@ void test_manager_uses_per_instance_driver_capabilities() {
 
 void test_manager_keeps_latest_tracked_result_when_result_queue_is_full() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver;
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2535,11 +2130,10 @@ void test_manager_keeps_latest_tracked_result_when_result_queue_is_full() {
 
 void test_manager_cancels_only_the_matching_dispatched_request() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver;
   driver.pendingCommand = studio::CommandType::Refresh;
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2570,12 +2164,11 @@ void test_manager_cancels_only_the_matching_dispatched_request() {
 
 void test_manager_routes_to_canon_driver() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver sharkDriver;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver triggerDriver(studio::DriverId::CanonTrigger);
   studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver, &triggerDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 3);
+  studio::DeviceManager manager(backend, drivers, 3);
   TEST_ASSERT_TRUE(manager.begin());
 
   studio::InstanceId canonId = studio::kInvalidInstanceId;
@@ -2651,10 +2244,9 @@ void test_manager_routes_to_canon_driver() {
 
 void test_manager_routes_explicit_tascam_record_commands() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   studio::DeviceDriver* drivers[] = {&tascamDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
 
   studio::InstanceId id = studio::kInvalidInstanceId;
@@ -2683,10 +2275,9 @@ void test_manager_routes_explicit_tascam_record_commands() {
 
 void test_removed_registry_stays_empty_after_restart() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver firstDriver;
   studio::DeviceDriver* firstDrivers[] = {&firstDriver};
-  studio::DeviceManager first(backend, legacy, firstDrivers, 1);
+  studio::DeviceManager first(backend, firstDrivers, 1);
   TEST_ASSERT_TRUE(first.begin());
   studio::InstanceId removedId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2705,7 +2296,7 @@ void test_removed_registry_stays_empty_after_restart() {
 
   FakeDriver secondDriver;
   studio::DeviceDriver* secondDrivers[] = {&secondDriver};
-  studio::DeviceManager second(backend, legacy, secondDrivers, 1);
+  studio::DeviceManager second(backend, secondDrivers, 1);
   TEST_ASSERT_TRUE(second.begin());
   TEST_ASSERT_EQUAL_UINT32(0, second.count());
   TEST_ASSERT_EQUAL_INT(0, secondDriver.activationCount);
@@ -2714,10 +2305,9 @@ void test_removed_registry_stays_empty_after_restart() {
 void test_admin_mutations_roll_back_when_persistence_fails() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
@@ -2774,11 +2364,10 @@ void test_admin_mutations_roll_back_when_persistence_fails() {
 
 void test_manager_holds_concurrent_active_links() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 2);
+  studio::DeviceManager manager(backend, drivers, 2);
   TEST_ASSERT_TRUE(manager.begin());
 
   studio::InstanceId canonId = studio::kInvalidInstanceId;
@@ -2823,14 +2412,13 @@ void test_manager_holds_concurrent_active_links() {
 
 void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver sharkDriver;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
   studio::DeviceDriver* drivers[] = {&sharkDriver, &canonDriver, &tascamDriver,
                                      &homeAssistantDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 4);
+  studio::DeviceManager manager(backend, drivers, 4);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId sharkId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2908,7 +2496,6 @@ void test_manager_retains_ready_sessions_and_evicts_safe_lru() {
 
 void test_manager_counts_shared_mesh_as_one_ble_slot() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver sharkDriver;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
@@ -2920,7 +2507,7 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
   zhiyunDriver.sharedBleFamily = studio::DriverId::PanelOwnedMesh;
   studio::DeviceDriver* drivers[] = {
       &sharkDriver, &canonDriver, &tascamDriver, &meshDriver, &zhiyunDriver};
-  studio::DeviceManager manager(backend, legacy, drivers, 5);
+  studio::DeviceManager manager(backend, drivers, 5);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId sharkId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -2992,10 +2579,9 @@ void test_manager_counts_shared_mesh_as_one_ble_slot() {
 
 void test_manager_cancels_unready_release_and_reuses_ready_session() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId id = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -3032,10 +2618,9 @@ void test_manager_cancels_unready_release_and_reuses_ready_session() {
 
 void test_manager_parks_ownerless_drop_but_keeps_intentional_offline() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager manager(backend, legacy, drivers, 1);
+  studio::DeviceManager manager(backend, drivers, 1);
   TEST_ASSERT_TRUE(manager.begin());
   studio::InstanceId id = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -3132,10 +2717,9 @@ void test_generated_stop_mapping_order_and_capacity() {
 void test_scene_stop_customization_and_relinking() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
   studio::InstanceId cameraId = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -3264,78 +2848,12 @@ void test_scene_registry_and_store_grow_beyond_legacy_limit() {
   TEST_ASSERT_EQUAL_STRING("Sequence 12", restored.at(11)->name);
 }
 
-void test_scene_v1_migration_zeroes_action_arguments() {
-  V1SceneBackend backend;
-  studio::SceneStore store(backend);
-  studio::SceneRegistry restored;
-  bool migrated = false;
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
-                        static_cast<int>(store.load(restored, &migrated)));
-  TEST_ASSERT_TRUE(migrated);
-  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
-  const studio::SceneStep& step = restored.at(0)->startSteps[0];
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOn),
-                        static_cast<int>(step.command));
-  TEST_ASSERT_EQUAL_INT32(0, step.value0);
-  TEST_ASSERT_EQUAL_INT32(0, step.value1);
-  TEST_ASSERT_EQUAL_INT32(0, step.value2);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
-                        static_cast<int>(restored.at(0)->stopMode));
-  TEST_ASSERT_EQUAL_UINT8(1, restored.at(0)->stopCount);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::TurnOff),
-                        static_cast<int>(restored.at(0)->stopSteps[0].command));
-}
-
-void test_scene_v2_migration_discards_authored_stop() {
-  V2SceneBackend backend;
-  studio::SceneStore store(backend);
-  studio::SceneRegistry restored;
-  bool migrated = false;
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
-                        static_cast<int>(store.load(restored, &migrated)));
-  TEST_ASSERT_TRUE(migrated);
-  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
-  const studio::SceneRecord* record = restored.at(0);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
-                        static_cast<int>(record->stopMode));
-  TEST_ASSERT_EQUAL_UINT8(1, record->stopCount);
-  TEST_ASSERT_EQUAL_UINT32(7, record->stopSteps[0].targetId);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
-                        static_cast<int>(record->stopSteps[0].command));
-  TEST_ASSERT_EQUAL_INT32(11, record->stopSteps[0].value0);
-}
-
-void test_scene_v3_migration_discards_authored_stop() {
-  V3SceneBackend backend;
-  studio::SceneStore store(backend);
-  studio::SceneRegistry restored;
-  bool migrated = false;
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
-                        static_cast<int>(store.load(restored, &migrated)));
-  TEST_ASSERT_TRUE(migrated);
-  TEST_ASSERT_EQUAL_UINT32(1, restored.count());
-  const studio::SceneRecord* record = restored.at(0);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
-                        static_cast<int>(record->stopMode));
-  TEST_ASSERT_EQUAL_UINT8(1, record->startCount);
-  TEST_ASSERT_EQUAL_UINT32(7, record->startSteps[0].targetId);
-  TEST_ASSERT_EQUAL_INT32(11, record->startSteps[0].value0);
-  TEST_ASSERT_EQUAL_INT32(22, record->startSteps[0].value1);
-  TEST_ASSERT_EQUAL_INT32(33, record->startSteps[0].value2);
-  TEST_ASSERT_EQUAL_UINT8(1, record->stopCount);
-  TEST_ASSERT_EQUAL_UINT32(7, record->stopSteps[0].targetId);
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
-                        static_cast<int>(record->stopSteps[0].command));
-  TEST_ASSERT_EQUAL_INT32(11, record->stopSteps[0].value0);
-}
-
-void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
+ void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId oldCamera = studio::kInvalidInstanceId;
@@ -3400,11 +2918,10 @@ void test_orphaned_scene_steps_can_be_removed_one_at_a_time() {
 void test_press_record_start_and_generated_stop() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
   TEST_ASSERT_TRUE(devices.begin());
   // Drop the seeded Shark-less registry noise: begin may seed only Shark when
   // compiled; with no Shark driver the registry starts empty/missing.
@@ -3495,11 +3012,10 @@ void test_press_record_start_and_generated_stop() {
 void test_partial_start_failure_can_stop_and_restart() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId canonId = studio::kInvalidInstanceId;
@@ -3557,10 +3073,9 @@ void test_partial_start_failure_can_stop_and_restart() {
 void test_scene_dispatches_persisted_rgb_look_without_cct_fallback() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver lightDriver(studio::DriverId::AputureLight);
   studio::DeviceDriver* drivers[] = {&lightDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId lightId = studio::kInvalidInstanceId;
@@ -3599,11 +3114,10 @@ void test_scene_dispatches_persisted_rgb_look_without_cct_fallback() {
 void test_stop_cancels_inflight_compound_light_action() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver lightDriver(studio::DriverId::ZhiyunLight);
   lightDriver.pendingCommand = studio::CommandType::SetLightCctAndOn;
   studio::DeviceDriver* drivers[] = {&lightDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 1);
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
 
   studio::InstanceId lightId = studio::kInvalidInstanceId;
@@ -3652,11 +3166,10 @@ void test_stop_cancels_inflight_compound_light_action() {
 void test_prepare_ready_then_start_from_held_links() {
   MemoryBackend deviceBackend;
   MemoryBackend sceneBackend;
-  LegacyBackend legacy;
   FakeDriver canonDriver(studio::DriverId::CanonBle);
   FakeDriver tascamDriver(studio::DriverId::TascamX8);
   studio::DeviceDriver* drivers[] = {&canonDriver, &tascamDriver};
-  studio::DeviceManager devices(deviceBackend, legacy, drivers, 2);
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
   TEST_ASSERT_TRUE(devices.begin());
   studio::InstanceId canonId = studio::kInvalidInstanceId;
   studio::InstanceId tascamId = studio::kInvalidInstanceId;
@@ -4106,7 +3619,7 @@ void test_zhiyun_reconnect_scans_after_one_direct_failure() {
   studio::ble::BleCentral central(backend);
   BleTestDelegate delegate;
   studio::ble::ConnectPolicy policy;
-  policy.directAttemptsBeforeScan = zhiyun_x100::kDirectAttemptsBeforeScan;
+  policy.directAttemptsBeforeScan = zhiyun_light::kDirectAttemptsBeforeScan;
   const studio::ble::LinkHandle link = central.acquire(delegate, policy);
 
   TEST_ASSERT_TRUE(
@@ -4553,14 +4066,14 @@ void test_aputure_light_access_payloads_and_validation() {
 
 void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   MemoryBackend backend;
-  aputure_light::MeshStore store(backend);
-  aputure_light::MeshStoreData data;
+  studio::mesh::Store store(backend);
+  studio::mesh::StoreData data;
   data.network.initialized = true;
   for (uint8_t i = 0; i < 16; ++i) {
     data.network.networkKey[i] = i;
     data.network.applicationKey[i] = static_cast<uint8_t>(0xff - i);
   }
-  aputure_light::MeshNodeRecord node;
+  studio::mesh::NodeRecord node;
   node.instanceId = 42;
   node.model = studio::DriverId::AputureLight;
   node.unicastAddress = 2;
@@ -4568,95 +4081,95 @@ void test_aputure_light_store_and_sequence_reservation_survive_restart() {
   node.controlGroupAddress = 0xc001;
   node.vendorCompanyId = 0x03f6;
   node.vendorModelId = 0x1000;
-  node.configurationVersion = aputure_light::kCurrentConfigurationVersion;
-  TEST_ASSERT_TRUE(aputure_light::upsertNode(data, node));
-  aputure_light::MeshNodeRecord zhiyun;
+  node.configurationVersion = studio::mesh::kCurrentConfigurationVersion;
+  TEST_ASSERT_TRUE(studio::mesh::upsertNode(data, node));
+  studio::mesh::NodeRecord zhiyun;
   zhiyun.instanceId = 43;
   zhiyun.model = studio::DriverId::ZhiyunLight;
   zhiyun.unicastAddress = 3;
   zhiyun.configured = true;
   zhiyun.routingSelector =
-      aputure_light::nextZhiyunRoutingSelector(data);
+      studio::mesh::nextZhiyunRoutingSelector(data);
   TEST_ASSERT_EQUAL_UINT8(0, zhiyun.routingSelector);
-  TEST_ASSERT_TRUE(aputure_light::upsertNode(data, zhiyun));
+  TEST_ASSERT_TRUE(studio::mesh::upsertNode(data, zhiyun));
   TEST_ASSERT_EQUAL_UINT8(1,
-      aputure_light::nextZhiyunRoutingSelector(data));
+      studio::mesh::nextZhiyunRoutingSelector(data));
   TEST_ASSERT_TRUE(store.save(data));
-  aputure_light::MeshStoreData loaded;
+  studio::mesh::StoreData loaded;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
                         static_cast<int>(store.load(loaded)));
-  const aputure_light::MeshNodeRecord* loadedNode =
-      aputure_light::findNode(loaded, 42);
+  const studio::mesh::NodeRecord* loadedNode =
+      studio::mesh::findNode(loaded, 42);
   TEST_ASSERT_NOT_NULL(loadedNode);
   TEST_ASSERT_EQUAL_HEX16(0xc001, loadedNode->controlGroupAddress);
   TEST_ASSERT_EQUAL_HEX16(0x03f6, loadedNode->vendorCompanyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, loadedNode->vendorModelId);
-  TEST_ASSERT_EQUAL_UINT8(aputure_light::kCurrentConfigurationVersion,
+  TEST_ASSERT_EQUAL_UINT8(studio::mesh::kCurrentConfigurationVersion,
                           loadedNode->configurationVersion);
   TEST_ASSERT_EQUAL_HEX16(
-      0xc001, aputure_light::defaultControlGroupAddress(loaded, *loadedNode));
-  const aputure_light::MeshNodeRecord fallbackGroupNode = {
+      0xc001, studio::mesh::defaultControlGroupAddress(loaded, *loadedNode));
+  const studio::mesh::NodeRecord fallbackGroupNode = {
       44, studio::DriverId::AputureLight, 4};
   TEST_ASSERT_EQUAL_HEX16(
       0xc003,
-      aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode));
-  const aputure_light::MeshNodeRecord secondGroupNode = {
+      studio::mesh::defaultControlGroupAddress(loaded, fallbackGroupNode));
+  const studio::mesh::NodeRecord secondGroupNode = {
       45, studio::DriverId::AputureLight, 5};
   TEST_ASSERT_EQUAL_HEX16(
       0xc004,
-      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+      studio::mesh::defaultControlGroupAddress(loaded, secondGroupNode));
   TEST_ASSERT_NOT_EQUAL(
-      aputure_light::defaultControlGroupAddress(loaded, fallbackGroupNode),
-      aputure_light::defaultControlGroupAddress(loaded, secondGroupNode));
+      studio::mesh::defaultControlGroupAddress(loaded, fallbackGroupNode),
+      studio::mesh::defaultControlGroupAddress(loaded, secondGroupNode));
   TEST_ASSERT_EQUAL_HEX16(
-      0xc001, aputure_light::memberControlGroupAddress(loaded, 42));
+      0xc001, studio::mesh::memberControlGroupAddress(loaded, 42));
   TEST_ASSERT_EQUAL_HEX16(
-      0, aputure_light::memberControlGroupAddress(loaded, 999));
-  aputure_light::MeshNodeRecord pendingMcPro;
+      0, studio::mesh::memberControlGroupAddress(loaded, 999));
+  studio::mesh::NodeRecord pendingMcPro;
   pendingMcPro.instanceId = 44;
   pendingMcPro.model = studio::DriverId::AputureLight;
   pendingMcPro.unicastAddress = 4;
-  TEST_ASSERT_TRUE(aputure_light::upsertNode(loaded, pendingMcPro));
-  TEST_ASSERT_TRUE(aputure_light::assignVendorModel(
+  TEST_ASSERT_TRUE(studio::mesh::upsertNode(loaded, pendingMcPro));
+  TEST_ASSERT_TRUE(studio::mesh::assignVendorModel(
       loaded, 44, 0x03f6, 0x1000));
-  aputure_light::MeshNodeRecord* identifiedMcPro =
-      aputure_light::findNode(loaded, 44);
+  studio::mesh::NodeRecord* identifiedMcPro =
+      studio::mesh::findNode(loaded, 44);
   TEST_ASSERT_NOT_NULL(identifiedMcPro);
   TEST_ASSERT_EQUAL_HEX16(0x03f6, identifiedMcPro->vendorCompanyId);
   TEST_ASSERT_EQUAL_HEX16(0x1000, identifiedMcPro->vendorModelId);
   TEST_ASSERT_EQUAL_HEX16(0xc003, identifiedMcPro->controlGroupAddress);
-  TEST_ASSERT_TRUE(aputure_light::assignVendorModel(
+  TEST_ASSERT_TRUE(studio::mesh::assignVendorModel(
       loaded, 44, 0x0211, 0x0000));
   TEST_ASSERT_EQUAL_HEX16(0x0211, identifiedMcPro->vendorCompanyId);
   TEST_ASSERT_EQUAL_HEX16(0x0000, identifiedMcPro->vendorModelId);
   identifiedMcPro->configured = true;
-  TEST_ASSERT_FALSE(aputure_light::assignVendorModel(
+  TEST_ASSERT_FALSE(studio::mesh::assignVendorModel(
       loaded, 44, 0x0211, 0x0000));
   std::strcpy(loaded.nodes[0].bleAddress, "aa:bb:cc:dd:ee:01");
   std::strcpy(loaded.nodes[1].bleAddress, "aa:bb:cc:dd:ee:02");
-  TEST_ASSERT_TRUE(aputure_light::isKnownMeshProxyAddress(
+  TEST_ASSERT_TRUE(studio::mesh::isKnownMeshProxyAddress(
       loaded, "aa:bb:cc:dd:ee:01"));
-  TEST_ASSERT_TRUE(aputure_light::isKnownMeshProxyAddress(
+  TEST_ASSERT_TRUE(studio::mesh::isKnownMeshProxyAddress(
       loaded, "aa:bb:cc:dd:ee:02"));
-  TEST_ASSERT_FALSE(aputure_light::isKnownMeshProxyAddress(
+  TEST_ASSERT_FALSE(studio::mesh::isKnownMeshProxyAddress(
       loaded, "aa:bb:cc:dd:ee:03"));
-  TEST_ASSERT_FALSE(aputure_light::isKnownMeshProxyAddress(loaded, nullptr));
-  const aputure_light::MeshNodeRecord* loadedZhiyun =
-      aputure_light::findNode(loaded, 43);
+  TEST_ASSERT_FALSE(studio::mesh::isKnownMeshProxyAddress(loaded, nullptr));
+  const studio::mesh::NodeRecord* loadedZhiyun =
+      studio::mesh::findNode(loaded, 43);
   TEST_ASSERT_NOT_NULL(loadedZhiyun);
   TEST_ASSERT_EQUAL_UINT8(0, loadedZhiyun->routingSelector);
-  aputure_light::SequenceAllocator first;
+  studio::mesh::SequenceAllocator first;
   TEST_ASSERT_TRUE(first.begin(store, loaded));
   uint32_t sequence = 99;
   TEST_ASSERT_TRUE(first.next(sequence));
   TEST_ASSERT_EQUAL_UINT32(0, sequence);
-  aputure_light::MeshStoreData restarted;
+  studio::mesh::StoreData restarted;
   TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
                         static_cast<int>(store.load(restarted)));
-  aputure_light::SequenceAllocator second;
+  studio::mesh::SequenceAllocator second;
   TEST_ASSERT_TRUE(second.begin(store, restarted));
   TEST_ASSERT_TRUE(second.next(sequence));
-  TEST_ASSERT_EQUAL_UINT32(aputure_light::kSequenceBlockSize, sequence);
+  TEST_ASSERT_EQUAL_UINT32(studio::mesh::kSequenceBlockSize, sequence);
 }
 
 struct RandomFillContext {
@@ -4825,11 +4338,10 @@ void test_single_onboarding_candidate_auto_selects_after_settling() {
 
 void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
   MemoryBackend backend;
-  LegacyBackend legacy;
   FakeDriver driver(studio::DriverId::CanonBle);
   driver.onboardingCandidateAvailable = true;
   studio::DeviceDriver* drivers[] = {&driver};
-  studio::DeviceManager devices(backend, legacy, drivers, 1);
+  studio::DeviceManager devices(backend, drivers, 1);
   TEST_ASSERT_TRUE(devices.begin());
   studio::InstanceId id = studio::kInvalidInstanceId;
   TEST_ASSERT_EQUAL_INT(
@@ -4874,52 +4386,32 @@ void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
 
 void test_mesh_store_round_trip_at_device_capacity() {
   MemoryBackend backend;
-  aputure_light::MeshStore store(backend);
-  aputure_light::MeshStoreData data;
+  studio::mesh::Store store(backend);
+  studio::mesh::StoreData data;
   data.network.initialized = true;
   for (size_t i = 0; i < CONFIG_MAX_DEVICE_INSTANCES; ++i) {
-    aputure_light::MeshNodeRecord node;
+    studio::mesh::NodeRecord node;
     node.instanceId = static_cast<studio::InstanceId>(i + 1);
     node.model = studio::DriverId::AputureLight;
     node.unicastAddress = static_cast<uint16_t>(i + 2);
     node.configured = true;
-    TEST_ASSERT_TRUE(aputure_light::upsertNode(data, node));
+    TEST_ASSERT_TRUE(studio::mesh::upsertNode(data, node));
   }
   TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, data.nodeCount);
   TEST_ASSERT_TRUE(store.save(data));
 
-  aputure_light::MeshStoreData restored;
+  studio::mesh::StoreData restored;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Loaded),
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_EQUAL_UINT32(CONFIG_MAX_DEVICE_INSTANCES, restored.nodeCount);
   TEST_ASSERT_NOT_NULL(
-      aputure_light::findNode(restored, CONFIG_MAX_DEVICE_INSTANCES));
+      studio::mesh::findNode(restored, CONFIG_MAX_DEVICE_INSTANCES));
 }
 
-void test_mesh_v1_store_migrates_zhiyun_routing_selectors() {
-  V1MeshBackend backend;
-  aputure_light::MeshStore store(backend);
-  aputure_light::MeshStoreData data;
-  TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(studio::ConfigLoadStatus::Loaded),
-      static_cast<int>(store.load(data)));
-  TEST_ASSERT_EQUAL_UINT8(2, data.nodeCount);
-  const aputure_light::MeshNodeRecord* first =
-      aputure_light::findNode(data, 41);
-  const aputure_light::MeshNodeRecord* second =
-      aputure_light::findNode(data, 42);
-  TEST_ASSERT_NOT_NULL(first);
-  TEST_ASSERT_NOT_NULL(second);
-  TEST_ASSERT_EQUAL_UINT8(0, first->routingSelector);
-  TEST_ASSERT_EQUAL_UINT8(1, second->routingSelector);
-  TEST_ASSERT_EQUAL_HEX16(0, first->controlGroupAddress);
-  TEST_ASSERT_EQUAL_UINT32(256, data.network.sequenceHighWater);
-}
-
-void test_zhiyun_x100_frames_and_confirmed_state_replies() {
-  const zhiyun_x100::FrameBytes brightnessRead =
-      zhiyun_x100::buildReadRequest(6, zhiyun_x100::kCommandBrightness);
+void test_zhiyun_light_frames_and_confirmed_state_replies() {
+  const zhiyun_light::FrameBytes brightnessRead =
+      zhiyun_light::buildReadRequest(6, zhiyun_light::kCommandBrightness);
   const uint8_t expectedRead[] = {
       0x24,0x3c,0x0d,0x00,0x00,0x01,0x06,0x00,0x01,0x10,
       0x00,0x80,0x00,0x00,0x00,0x00,0x00,0x36,0xf0};
@@ -4927,8 +4419,8 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedRead, brightnessRead.bytes,
                                 sizeof(expectedRead));
 
-  const zhiyun_x100::FrameBytes powerOff =
-      zhiyun_x100::buildPowerWrite(0x0172, false);
+  const zhiyun_light::FrameBytes powerOff =
+      zhiyun_light::buildPowerWrite(0x0172, false);
   const uint8_t expectedPowerOff[] = {
       0x24,0x3c,0x0a,0x00,0x00,0x01,0x72,0x01,0x08,0x10,
       0x00,0x80,0x01,0x00,0x9b,0x6d};
@@ -4939,27 +4431,27 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
   const uint8_t brightnessReply[] = {
       0x24,0x3c,0x0d,0x00,0x01,0x00,0x06,0x00,0x01,0x10,
       0x00,0x80,0x00,0x00,0x00,0x40,0x40,0x28,0xf3};
-  zhiyun_x100::FrameScanner scanner;
+  zhiyun_light::FrameScanner scanner;
   unsigned callbacks = 0;
   scanner.feed(brightnessReply, 7,
-               [&](const zhiyun_x100::ParsedFrame&) { ++callbacks; });
+               [&](const zhiyun_light::ParsedFrame&) { ++callbacks; });
   scanner.feed(brightnessReply + 7, sizeof(brightnessReply) - 7,
-               [&](const zhiyun_x100::ParsedFrame& frame) {
+               [&](const zhiyun_light::ParsedFrame& frame) {
                  ++callbacks;
                  float brightness = -1.0f;
-                 TEST_ASSERT_TRUE(zhiyun_x100::parseBrightness(frame,
+                 TEST_ASSERT_TRUE(zhiyun_light::parseBrightness(frame,
                                                                brightness));
                  TEST_ASSERT_FLOAT_WITHIN(0.001f, 3.0f, brightness);
                  TEST_ASSERT_EQUAL_UINT16(6, frame.sequence);
                });
   TEST_ASSERT_EQUAL_UINT32(1, callbacks);
-  TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(2700, 0, 0));
-  TEST_ASSERT_TRUE(zhiyun_x100::validCctCommand(6500, 100, 0));
-  TEST_ASSERT_FALSE(zhiyun_x100::validCctCommand(5600, 50, 1));
-  TEST_ASSERT_EQUAL_UINT16(4500, zhiyun_x100::normalizeCct(4549));
-  TEST_ASSERT_EQUAL_UINT16(4600, zhiyun_x100::normalizeCct(4550));
-  const zhiyun_x100::FrameBytes capturedCct =
-      zhiyun_x100::buildCctWrite(0x000c, 5450);
+  TEST_ASSERT_TRUE(zhiyun_light::validCctCommand(2700, 0, 0));
+  TEST_ASSERT_TRUE(zhiyun_light::validCctCommand(6500, 100, 0));
+  TEST_ASSERT_FALSE(zhiyun_light::validCctCommand(5600, 50, 1));
+  TEST_ASSERT_EQUAL_UINT16(4500, zhiyun_light::normalizeCct(4549));
+  TEST_ASSERT_EQUAL_UINT16(4600, zhiyun_light::normalizeCct(4550));
+  const zhiyun_light::FrameBytes capturedCct =
+      zhiyun_light::buildCctWrite(0x000c, 5450);
   const uint8_t expectedCct[] = {
       0x24,0x3c,0x0b,0x00,0x00,0x01,0x0c,0x00,0x02,0x10,
       0x00,0x80,0x01,0x4a,0x15,0xa9,0xea};
@@ -4967,18 +4459,18 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedCct, capturedCct.bytes,
                                 sizeof(expectedCct));
   TEST_ASSERT_EQUAL_UINT32(0,
-      zhiyun_x100::buildCctWrite(1, 2699).length);
+      zhiyun_light::buildCctWrite(1, 2699).length);
 
-  const zhiyun_x100::FrameBytes x60Cct =
-      zhiyun_x100::buildCctWrite(0x000b, 5100, 1);
+  const zhiyun_light::FrameBytes x60Cct =
+      zhiyun_light::buildCctWrite(0x000b, 5100, 1);
   const uint8_t expectedX60Cct[] = {
       0x24,0x3c,0x0b,0x00,0x00,0x01,0x0b,0x00,0x02,0x10,
       0x01,0x80,0x01,0xec,0x13,0x4d,0x26};
   TEST_ASSERT_EQUAL_UINT32(sizeof(expectedX60Cct), x60Cct.length);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedX60Cct, x60Cct.bytes,
                                 sizeof(expectedX60Cct));
-  const zhiyun_x100::FrameBytes x60Hue =
-      zhiyun_x100::buildHueWrite(0x013b, 240.0f);
+  const zhiyun_light::FrameBytes x60Hue =
+      zhiyun_light::buildHueWrite(0x013b, 240.0f);
   const uint8_t expectedX60Hue[] = {
       0x24,0x3c,0x0d,0x00,0x00,0x01,0x3b,0x01,0x04,0x10,
       0x01,0x80,0x01,0x00,0x00,0x70,0x43,0xb6,0x5e};
@@ -4990,16 +4482,16 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
       0x01,0x80,0x01,0x00,0x00,0xc8,0x42,0xb5,0xd4};
   bool parsedSaturation = false;
   scanner.feed(x60SaturationReply, sizeof(x60SaturationReply),
-               [&](const zhiyun_x100::ParsedFrame& frame) {
+               [&](const zhiyun_light::ParsedFrame& frame) {
                  float saturation = -1.0f;
-                 parsedSaturation = zhiyun_x100::parseSaturation(
+                 parsedSaturation = zhiyun_light::parseSaturation(
                      frame, saturation, 1, true);
                  TEST_ASSERT_FLOAT_WITHIN(0.001f, 100.0f, saturation);
                });
   TEST_ASSERT_TRUE(parsedSaturation);
   uint16_t hue = 99;
   uint8_t saturation = 99;
-  zhiyun_x100::rgbToHsv(0x0000ff, hue, saturation);
+  zhiyun_light::rgbToHsv(0x0000ff, hue, saturation);
   TEST_ASSERT_EQUAL_UINT16(240, hue);
   TEST_ASSERT_EQUAL_UINT8(100, saturation);
   struct CapturedSwatch {
@@ -5011,24 +4503,24 @@ void test_zhiyun_x100_frames_and_confirmed_state_replies() {
       {0x00ffff, 180}, {0xff8000, 30},  {0x00ff00, 120},
   };
   for (const CapturedSwatch& swatch : capturedSwatches) {
-    zhiyun_x100::rgbToHsv(swatch.rgb, hue, saturation);
+    zhiyun_light::rgbToHsv(swatch.rgb, hue, saturation);
     TEST_ASSERT_EQUAL_UINT16(swatch.hue, hue);
     TEST_ASSERT_EQUAL_UINT8(100, saturation);
   }
 }
 
-void test_zhiyun_x100_identity_and_advertisement_match() {
+void test_zhiyun_light_identity_and_advertisement_match() {
   const uint8_t identityReply[] = {
       0x24,0x3c,0x22,0x00,0x01,0x00,0x02,0x00,0x03,0x20,
       0x30,0x39,0x30,0x32,0x30,0x37,0x65,0x30,0x63,0x33,
       0x31,0x32,0x30,0x32,0x35,0x30,0x00,0x70,0x6c,0x31,
       0x30,0x35,0x00,0x00,0x00,0x00,0x00,0x00,
       0xf3,0xc6};
-  zhiyun_x100::FrameScanner scanner;
+  zhiyun_light::FrameScanner scanner;
   bool identified = false;
   scanner.feed(identityReply, sizeof(identityReply),
-               [&](const zhiyun_x100::ParsedFrame& frame) {
-                 identified = zhiyun_x100::identityIsX100(frame);
+               [&](const zhiyun_light::ParsedFrame& frame) {
+                 identified = zhiyun_light::identityIsX100(frame);
                });
   TEST_ASSERT_TRUE(identified);
   const uint8_t x60IdentityReply[] = {
@@ -5038,33 +4530,33 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
       0x31,0x30,0x34,0x00,0x00,0x00,0x00,0x00,0xce,0xd6};
   bool identifiedX60 = false;
   scanner.feed(x60IdentityReply, sizeof(x60IdentityReply),
-               [&](const zhiyun_x100::ParsedFrame& frame) {
+               [&](const zhiyun_light::ParsedFrame& frame) {
                  identifiedX60 =
-                     zhiyun_x100::identityContains(frame, "plx104");
+                     zhiyun_light::identityContains(frame, "plx104");
                });
   TEST_ASSERT_TRUE(identifiedX60);
   const studio::ble::Advertisement x100 =
       bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1828);
-  TEST_ASSERT_TRUE(zhiyun_x100::matchesAdvertisement(x100));
+  TEST_ASSERT_TRUE(zhiyun_light::matchesAdvertisement(x100));
   const studio::ble::Advertisement unprovisioned =
       bleAdvertisement("44:55:66:77:88:99", "PL105_4BF3", 0x1827);
-  TEST_ASSERT_FALSE(zhiyun_x100::matchesAdvertisement(unprovisioned));
+  TEST_ASSERT_FALSE(zhiyun_light::matchesAdvertisement(unprovisioned));
   TEST_ASSERT_TRUE(
-      zhiyun_x100::matchesUnprovisionedAdvertisement(unprovisioned));
+      zhiyun_light::matchesUnprovisionedAdvertisement(unprovisioned));
   const studio::ble::Advertisement x60 =
       bleAdvertisement("55:66:77:88:99:aa", "X104_C957", 0x1828);
   TEST_ASSERT_EQUAL_INT(
-      static_cast<int>(zhiyun_x100::MolusModel::X60Rgb),
-      static_cast<int>(zhiyun_x100::advertisementModel(x60)));
-  TEST_ASSERT_TRUE(zhiyun_x100::matchesMolusAdvertisement(x60, true));
+      static_cast<int>(zhiyun_light::MolusModel::X60Rgb),
+      static_cast<int>(zhiyun_light::advertisementModel(x60)));
+  TEST_ASSERT_TRUE(zhiyun_light::matchesMolusAdvertisement(x60, true));
 
   uint8_t networkKey[16];
   for (uint8_t i = 0; i < sizeof(networkKey); ++i) networkKey[i] = i + 1;
-  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+  TEST_ASSERT_TRUE(zhiyun_light::matchesSelectedProvisionedAdvertisement(
       x100, x100.address, networkKey));
   studio::ble::Address selectedElsewhere =
       bleAddress("66:77:88:99:aa:bb", x100.address.type);
-  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+  TEST_ASSERT_FALSE(zhiyun_light::matchesSelectedProvisionedAdvertisement(
       x100, selectedElsewhere, networkKey));
   studio::ble::Advertisement matchingMesh = x100;
   matchingMesh.address = bleAddress("77:88:99:aa:bb:cc");
@@ -5077,12 +4569,12 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
   std::memcpy(matchingMesh.payload + matchingMesh.payloadLength, networkId,
               sizeof(networkId));
   matchingMesh.payloadLength += sizeof(networkId);
-  TEST_ASSERT_TRUE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+  TEST_ASSERT_TRUE(zhiyun_light::matchesSelectedProvisionedAdvertisement(
       matchingMesh, selectedElsewhere, networkKey));
   TEST_ASSERT_TRUE(
       aputure_light::matchesMeshProxyNetwork(matchingMesh, networkKey));
   matchingMesh.payload[matchingMesh.payloadLength - 1] ^= 1;
-  TEST_ASSERT_FALSE(zhiyun_x100::matchesSelectedProvisionedAdvertisement(
+  TEST_ASSERT_FALSE(zhiyun_light::matchesSelectedProvisionedAdvertisement(
       matchingMesh, selectedElsewhere, networkKey));
   TEST_ASSERT_FALSE(
       aputure_light::matchesMeshProxyNetwork(matchingMesh, networkKey));
@@ -5094,10 +4586,10 @@ void test_zhiyun_x100_identity_and_advertisement_match() {
   std::memcpy(manufacturerOnly.payload + manufacturerOnly.payloadLength,
               manufacturer, sizeof(manufacturer));
   manufacturerOnly.payloadLength += sizeof(manufacturer);
-  TEST_ASSERT_TRUE(zhiyun_x100::matchesUnprovisionedAdvertisement(
+  TEST_ASSERT_TRUE(zhiyun_light::matchesUnprovisionedAdvertisement(
       manufacturerOnly));
   manufacturerOnly.payload[manufacturerOnly.payloadLength - 1] = '6';
-  TEST_ASSERT_FALSE(zhiyun_x100::matchesUnprovisionedAdvertisement(
+  TEST_ASSERT_FALSE(zhiyun_light::matchesUnprovisionedAdvertisement(
       manufacturerOnly));
 }
 
@@ -5146,16 +4638,11 @@ int main(int, char**) {
   RUN_TEST(test_panel_identity_uses_full_hardware_id_and_short_setup_suffix);
   RUN_TEST(test_portal_parses_sequence_action_commands_from_json);
   RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
-  RUN_TEST(test_v1_device_blob_migrates_without_changing_ble_identity);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);
   RUN_TEST(test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts);
   RUN_TEST(test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target);
-  RUN_TEST(test_manager_migrates_legacy_without_boot_activation);
-  RUN_TEST(test_manager_starts_empty_without_legacy_shark);
-  RUN_TEST(test_manager_removes_old_unpaired_default_shark_only);
-  RUN_TEST(test_manager_preserves_renamed_unpaired_shark);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_uses_per_instance_driver_capabilities);
   RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);
@@ -5173,9 +4660,6 @@ int main(int, char**) {
   RUN_TEST(test_scene_stop_customization_and_relinking);
   RUN_TEST(test_scene_store_round_trip_and_corruption);
   RUN_TEST(test_scene_registry_and_store_grow_beyond_legacy_limit);
-  RUN_TEST(test_scene_v1_migration_zeroes_action_arguments);
-  RUN_TEST(test_scene_v2_migration_discards_authored_stop);
-  RUN_TEST(test_scene_v3_migration_discards_authored_stop);
   RUN_TEST(test_orphaned_scene_steps_can_be_removed_one_at_a_time);
   RUN_TEST(test_press_record_start_and_generated_stop);
   RUN_TEST(test_partial_start_failure_can_stop_and_restart);
@@ -5204,9 +4688,8 @@ int main(int, char**) {
   RUN_TEST(test_single_onboarding_candidate_auto_selects_after_settling);
   RUN_TEST(test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
-  RUN_TEST(test_mesh_v1_store_migrates_zhiyun_routing_selectors);
-  RUN_TEST(test_zhiyun_x100_frames_and_confirmed_state_replies);
-  RUN_TEST(test_zhiyun_x100_identity_and_advertisement_match);
+  RUN_TEST(test_zhiyun_light_frames_and_confirmed_state_replies);
+  RUN_TEST(test_zhiyun_light_identity_and_advertisement_match);
   RUN_TEST(test_mesh_no_oob_policy_accepts_x100_static_oob_capability);
   return UNITY_END();
 }

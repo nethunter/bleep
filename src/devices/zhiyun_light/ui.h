@@ -2,9 +2,8 @@
 
 #include "core/device_types.h"
 
-namespace zhiyun_x100_ui {
+namespace zhiyun_light_ui {
 
-void init();
 void show(studio::InstanceId instanceId);
 void hide();
 void release();
@@ -17,4 +16,4 @@ void handleLongPress();
 void simShowRgb();
 #endif
 
-}  // namespace zhiyun_x100_ui
+}  // namespace zhiyun_light_ui

@@ -16,6 +16,7 @@ AputureLightRuntime* runtime() {
   return instance;
 }
 AputureLightRuntime* runtimeIfActive() { return instance; }
+AputureLightRuntime::~AputureLightRuntime() { delete proxyTransport_; }
 void releaseRuntimeIfIdle() {
   if (instance != nullptr && instance->idle()) {
     delete instance;
@@ -159,8 +160,21 @@ bool AputureLightRuntime::selectOnboardingCandidate(studio::InstanceId id,
   return true;
 }
 bool AputureLightRuntime::simObserveCandidate(const studio::ble::Advertisement& advertisement) { return candidates_.observe(advertisement); }
-bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord&) { return true; }
-void AputureLightRuntime::releaseGateway(studio::InstanceId) {}
+bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord& record) {
+  if (proxyTransport_ == nullptr) {
+    proxyTransport_ = new (std::nothrow) studio::mesh::ProxyTransport;
+  }
+  return proxyTransport_ != nullptr &&
+         proxyTransport_->acquire(record.instanceId);
+}
+void AputureLightRuntime::releaseGateway(studio::InstanceId id) {
+  if (proxyTransport_ == nullptr) return;
+  proxyTransport_->release(id);
+  if (proxyTransport_->empty()) {
+    delete proxyTransport_;
+    proxyTransport_ = nullptr;
+  }
+}
 void* AputureLightRuntime::gatewayClient() const { return nullptr; }
 void AputureLightRuntime::onBleAdvertisement(studio::ble::LinkHandle, const studio::ble::Advertisement&) {}
 void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle, const studio::ble::Event&) {}
@@ -214,7 +228,7 @@ void AputureLightRuntime::returnToOnboardingPicker(const char*) {}
 #include "devices/aputure_light/ble_match.h"
 #include "devices/aputure_light/crypto.h"
 #include "devices/aputure_light/protocol.h"
-#include "devices/zhiyun_x100/ble_match.h"
+#include "devices/zhiyun_light/ble_match.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define APUTURE_LIGHT_LOG Serial0
@@ -261,6 +275,7 @@ AputureLightRuntime* runtime() {
   return runtimeInstance;
 }
 AputureLightRuntime* runtimeIfActive() { return runtimeInstance; }
+AputureLightRuntime::~AputureLightRuntime() { delete proxyTransport_; }
 void releaseRuntimeIfIdle() {
   if (runtimeInstance != nullptr && runtimeInstance->idle()) {
     if (activeRuntime == runtimeInstance) activeRuntime = nullptr;
@@ -299,10 +314,10 @@ bool AputureLightRuntime::activate(const studio::DeviceRecord& record) {
                  sizeof(session->productName) - 1);
     session->productName[sizeof(session->productName) - 1] = '\0';
   }
-  MeshStoreData& meshData = studio::mesh::repository().data();
-  MeshNodeRecord* node = findNode(meshData, record.instanceId);
+  StoreData& meshData = studio::mesh::repository().data();
+  NodeRecord* node = findNode(meshData, record.instanceId);
   bool nodeChanged = false;
-  MeshNodeRecord previousNode;
+  NodeRecord previousNode;
   if (node != nullptr) previousNode = *node;
   if (node != nullptr && node->vendorCompanyId == 0) {
     uint16_t companyId = 0;
@@ -368,16 +383,10 @@ studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const {
   // A Zhiyun proxy exposes both standard Mesh Proxy and the local FEE9
   // control service needed by every Zhiyun session. Prefer it whenever one of
   // those logical members is active; an Aputure proxy cannot satisfy FEE9.
-  for (studio::InstanceId id : gatewayUsers_) {
-    const MeshNodeRecord* node =
-        findNode(studio::mesh::repository().data(), id);
-    if (id != studio::kInvalidInstanceId && node != nullptr &&
-        node->model == studio::DriverId::ZhiyunLight) {
-      return id;
-    }
-  }
-  for (studio::InstanceId id : gatewayUsers_) {
-    if (id != studio::kInvalidInstanceId) return id;
+  if (proxyTransport_ != nullptr) {
+    const studio::InstanceId preferred =
+        proxyTransport_->preferred(studio::mesh::repository().data());
+    if (preferred != studio::kInvalidInstanceId) return preferred;
   }
   for (const Session& session : sessions_) {
     if (session.instanceId != studio::kInvalidInstanceId) {
@@ -388,9 +397,8 @@ studio::InstanceId AputureLightRuntime::preferredGatewayInstance() const {
 }
 
 bool AputureLightRuntime::gatewayRequiresZhiyunControl() const {
-  const MeshNodeRecord* node = findNode(
-      studio::mesh::repository().data(), preferredGatewayInstance());
-  return node != nullptr && node->model == studio::DriverId::ZhiyunLight;
+  return proxyTransport_ != nullptr && proxyTransport_->requiresZhiyunService(
+                                           studio::mesh::repository().data());
 }
 
 bool AputureLightRuntime::hasActiveUsers() const {
@@ -406,27 +414,20 @@ bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord& record) {
       findNode(studio::mesh::repository().data(), record.instanceId) == nullptr) {
     return false;
   }
-  bool registered = false;
-  bool added = false;
-  for (studio::InstanceId id : gatewayUsers_) {
-    registered = registered || id == record.instanceId;
+  if (proxyTransport_ == nullptr) {
+    proxyTransport_ = new (std::nothrow) studio::mesh::ProxyTransport;
   }
-  if (!registered) {
-    for (studio::InstanceId& id : gatewayUsers_) {
-      if (id != studio::kInvalidInstanceId) continue;
-      id = record.instanceId;
-      registered = true;
-      added = true;
-      break;
-    }
-  }
-  if (!registered) return false;
+  if (proxyTransport_ == nullptr) return false;
+  const bool alreadyRegistered = proxyTransport_->contains(record.instanceId);
+  if (!proxyTransport_->acquire(record.instanceId)) return false;
   const studio::InstanceId preferred = preferredGatewayInstance();
   if (link_ == studio::ble::kInvalidLinkHandle) {
     if (beginLink(preferred, false)) return true;
-    if (added) {
-      for (studio::InstanceId& id : gatewayUsers_) {
-        if (id == record.instanceId) id = studio::kInvalidInstanceId;
+    if (!alreadyRegistered) {
+      proxyTransport_->release(record.instanceId);
+      if (proxyTransport_->empty()) {
+        delete proxyTransport_;
+        proxyTransport_ = nullptr;
       }
     }
     return false;
@@ -444,8 +445,12 @@ bool AputureLightRuntime::acquireGateway(const studio::DeviceRecord& record) {
 }
 
 void AputureLightRuntime::releaseGateway(studio::InstanceId instanceId) {
-  for (studio::InstanceId& id : gatewayUsers_) {
-    if (id == instanceId) id = studio::kInvalidInstanceId;
+  if (proxyTransport_ != nullptr) {
+    proxyTransport_->release(instanceId);
+    if (proxyTransport_->empty()) {
+      delete proxyTransport_;
+      proxyTransport_ = nullptr;
+    }
   }
   if (!hasActiveUsers() && link_ != studio::ble::kInvalidLinkHandle) {
     studio::ble::bleCentral().release(link_);
@@ -509,7 +514,7 @@ bool AputureLightRuntime::beginLink(studio::InstanceId id, bool provisioning) {
   provisioningLink_ = provisioning;
   if (provisioning) candidates_.clear();
   activeRuntime = this;
-  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
+  const NodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (!provisioning && node != nullptr && node->bleAddress[0] != '\0') {
     return studio::ble::bleCentral().requestConnect(
         link_, addressFrom(node->bleAddress, node->bleAddressType));
@@ -530,7 +535,7 @@ void AputureLightRuntime::onBleAdvertisement(
         studio::mesh::repository().data().network.networkKey);
   }
   if (!provisioningLink_ && matchingProxy && gatewayRequiresZhiyunControl()) {
-    matchingProxy = zhiyun_x100::matchesMolusAdvertisement(advertisement, true);
+    matchingProxy = zhiyun_light::matchesMolusAdvertisement(advertisement, true);
   }
   if (studio::ble::advertisesService(advertisement, wanted) &&
       (provisioningLink_ || matchingProxy)) {
@@ -665,7 +670,7 @@ bool AputureLightRuntime::rollbackPendingProvision() {
   if (provisioningSnapshot_ == nullptr) return true;
   const uint32_t sequenceHighWater =
       studio::mesh::repository().data().network.sequenceHighWater;
-  MeshStoreData restored = *provisioningSnapshot_;
+  StoreData restored = *provisioningSnapshot_;
   if (sequenceHighWater >
       restored.network.sequenceHighWater) {
     restored.network.sequenceHighWater = sequenceHighWater;
@@ -746,7 +751,7 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
       if (session.instanceId == studio::kInvalidInstanceId) continue;
       session.state.proxyConnected = false;
       session.state.nodeReachable = false;
-      const MeshNodeRecord* node =
+      const NodeRecord* node =
           findNode(studio::mesh::repository().data(), session.instanceId);
       if (node != nullptr && node->configured) {
         session.state.phase = AputureLightState::Phase::ConnectingProxy;
@@ -763,7 +768,7 @@ void AputureLightRuntime::onBleEvent(studio::ble::LinkHandle link,
     if (link_ != studio::ble::kInvalidLinkHandle &&
         preferred != studio::kInvalidInstanceId) {
       linkInstance_ = preferred;
-      const MeshNodeRecord* node =
+      const NodeRecord* node =
           findNode(studio::mesh::repository().data(), preferred);
       if (node != nullptr && node->bleAddress[0] != '\0') {
         studio::ble::bleCentral().requestConnect(
@@ -839,9 +844,9 @@ bool AputureLightRuntime::setupProxy() {
       subscribed ? "ok" : "failed");
   if (!subscribed) return false;
   ++gatewayGeneration_;
-  const MeshStoreData& diagnosticMesh = studio::mesh::repository().data();
+  const StoreData& diagnosticMesh = studio::mesh::repository().data();
   for (uint8_t i = 0; i < diagnosticMesh.nodeCount; ++i) {
-    const MeshNodeRecord& diagnosticNode = diagnosticMesh.nodes[i];
+    const NodeRecord& diagnosticNode = diagnosticMesh.nodes[i];
     if (diagnosticNode.model != studio::DriverId::AputureLight) continue;
     APUTURE_LIGHT_LOG.printf(
         "aputure_light event=node instance=%lu unicast=0x%04x configured=%u config_version=%u company=0x%04x model=0x%04x group=0x%04x address=%s\n",
@@ -853,7 +858,7 @@ bool AputureLightRuntime::setupProxy() {
         diagnosticNode.bleAddress[0] != '\0' ? diagnosticNode.bleAddress
                                                : "<empty>");
   }
-  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
+  const NodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node != nullptr && !node->configured) {
     configStep_ = 0;
     configRetryCount_ = 0;
@@ -987,8 +992,8 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
     return;
   }
 
-  const MeshStoreData& meshData = studio::mesh::repository().data();
-  const MeshNodeRecord* configuringNode = findNode(meshData, linkInstance_);
+  const StoreData& meshData = studio::mesh::repository().data();
+  const NodeRecord* configuringNode = findNode(meshData, linkInstance_);
   if (configuringNode != nullptr && configAwaitingStatus_) {
     APUTURE_LIGHT_LOG.print("aputure_light event=config_rx bytes=");
     for (size_t i = 0; i < notification.length; ++i) {
@@ -1035,7 +1040,7 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
     return;
   }
   for (uint8_t i = 0; i < meshData.nodeCount; ++i) {
-    const MeshNodeRecord& node = meshData.nodes[i];
+    const NodeRecord& node = meshData.nodes[i];
     if (node.unicastAddress != decoded.source) continue;
     Session* session = sessionFor(node.instanceId);
     if (session == nullptr) return;
@@ -1060,7 +1065,7 @@ void AputureLightRuntime::processNotification(const Notification& notification) 
 
 bool AputureLightRuntime::handleConfigurationStatus(
     const DecodedAccessMessage& decoded) {
-  MeshNodeRecord* node =
+  NodeRecord* node =
       findNode(studio::mesh::repository().data(), linkInstance_);
   if (node == nullptr || decoded.source != node->unicastAddress ||
       decoded.destination !=
@@ -1100,7 +1105,7 @@ bool AputureLightRuntime::handleConfigurationStatus(
       }
       return false;
     }
-    const MeshNodeRecord previous = *node;
+    const NodeRecord previous = *node;
     if (!assignVendorModel(studio::mesh::repository().data(), node->instanceId,
                            composition.companyId, composition.modelId) ||
         !studio::mesh::repository().save()) {
@@ -1182,11 +1187,11 @@ bool AputureLightRuntime::handleConfigurationStatus(
 bool AputureLightRuntime::completeProvisioning() {
   Session* session = sessionFor(linkInstance_);
   if (session == nullptr || !provisioner_.complete()) return false;
-  MeshStoreData& meshData = studio::mesh::repository().data();
-  const MeshStoreData previous = meshData;
-  MeshStoreData* snapshot = new (std::nothrow) MeshStoreData(previous);
+  StoreData& meshData = studio::mesh::repository().data();
+  const StoreData previous = meshData;
+  StoreData* snapshot = new (std::nothrow) StoreData(previous);
   if (snapshot == nullptr) return false;
-  MeshNodeRecord node; node.instanceId = session->instanceId; node.model = session->model;
+  NodeRecord node; node.instanceId = session->instanceId; node.model = session->model;
   node.unicastAddress = meshData.network.nextUnicastAddress;
   node.elementCount = provisioner_.elementCount();
   std::memcpy(node.deviceKey, provisioner_.deviceKey(), 16);
@@ -1242,7 +1247,7 @@ bool AputureLightRuntime::completeProvisioning() {
 }
 
 bool AputureLightRuntime::configureNext() {
-  MeshNodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
+  NodeRecord* node = findNode(studio::mesh::repository().data(), linkInstance_);
   if (node == nullptr || dataIn_ == nullptr) {
     APUTURE_LIGHT_LOG.printf(
         "aputure_light event=config_failed step=%u reason=missing_state node=%u in=%u\n",
@@ -1413,13 +1418,13 @@ bool AputureLightRuntime::configureNext() {
 }
 
 bool AputureLightRuntime::sendAccess(studio::InstanceId id, const uint8_t* access, size_t length) {
-  const MeshNodeRecord* node = findNode(studio::mesh::repository().data(), id);
+  const NodeRecord* node = findNode(studio::mesh::repository().data(), id);
   if (node == nullptr || !node->configured) return false;
   return sendAccessTo(node->unicastAddress, access, length);
 }
 
 uint16_t AputureLightRuntime::controlGroupFor(studio::InstanceId id) const {
-  const MeshStoreData& meshData = studio::mesh::repository().data();
+  const StoreData& meshData = studio::mesh::repository().data();
   return memberControlGroupAddress(meshData, id);
 }
 
@@ -1476,7 +1481,7 @@ studio::CommandStatus AputureLightRuntime::dispatch(const studio::DeviceCommand&
                  ? studio::CommandStatus::Succeeded
                  : studio::CommandStatus::Unavailable;
     }
-    MeshNodeRecord* node =
+    NodeRecord* node =
         findNode(studio::mesh::repository().data(), command.instanceId);
     session->state.error[0] = '\0';
     if (connected_ && !provisioningLink_ && dataIn_ != nullptr &&
@@ -1569,7 +1574,7 @@ studio::DeviceRuntimeState AputureLightRuntime::runtimeState(studio::InstanceId 
 }
 const AputureLightState* AputureLightRuntime::state(studio::InstanceId id) const { const Session* s=sessionFor(id); return s ? &s->state : nullptr; }
 bool AputureLightRuntime::consumePairingUpdate(studio::InstanceId id, studio::DeviceRecord& record) {
-  Session* session=sessionFor(id); const MeshNodeRecord* node=findNode(studio::mesh::repository().data(),id);
+  Session* session=sessionFor(id); const NodeRecord* node=findNode(studio::mesh::repository().data(),id);
   if (!session || !node || !session->pairingDirty) return false;
   session->pairingDirty=false;
   record.paired=node->configured;
@@ -1614,8 +1619,8 @@ bool AputureLightRuntime::identifyVendorModel(studio::InstanceId id,
         "aputure_light event=identify_failed reason=repository");
     return false;
   }
-  MeshStoreData& meshData = studio::mesh::repository().data();
-  MeshNodeRecord* node = findNode(meshData, id);
+  StoreData& meshData = studio::mesh::repository().data();
+  NodeRecord* node = findNode(meshData, id);
   Session* session = sessionFor(id);
   if (node == nullptr || node->configured || session == nullptr) {
     APUTURE_LIGHT_LOG.printf(
@@ -1625,7 +1630,7 @@ bool AputureLightRuntime::identifyVendorModel(studio::InstanceId id,
         session != nullptr ? 1u : 0u);
     return false;
   }
-  const MeshNodeRecord previous = *node;
+  const NodeRecord previous = *node;
   if (!assignVendorModel(meshData, id, companyId, modelId)) {
     APUTURE_LIGHT_LOG.println(
         "aputure_light event=identify_failed reason=assignment");
@@ -1673,7 +1678,7 @@ bool AputureLightRuntime::identifyVendorModel(studio::InstanceId id,
   return beginLink(id, false);
 }
 bool AputureLightRuntime::canIdentifyVendorModel(studio::InstanceId id) const {
-  const MeshNodeRecord* node =
+  const NodeRecord* node =
       findNode(studio::mesh::repository().data(), id);
   return node != nullptr && !node->configured && sessionFor(id) != nullptr;
 }
@@ -1695,7 +1700,7 @@ void AputureLightRuntime::fail(Session& session, const char* error) { session.st
 void AputureLightRuntime::updateSharedReady() {
   for (auto& session : sessions_) {
     if (session.instanceId == studio::kInvalidInstanceId) continue;
-    const MeshNodeRecord* node=findNode(studio::mesh::repository().data(),session.instanceId);
+    const NodeRecord* node=findNode(studio::mesh::repository().data(),session.instanceId);
     if (node && node->configured) { session.state.phase=AputureLightState::Phase::Ready; session.state.proxyConnected=true; session.pairingDirty=true; }
   }
 }

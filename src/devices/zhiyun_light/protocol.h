@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <functional>
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 
 enum class MolusModel : uint8_t { Unknown, X100, X60Rgb };
 
@@ -92,4 +92,4 @@ class FrameScanner {
   size_t length_ = 0;
 };
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

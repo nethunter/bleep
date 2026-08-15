@@ -35,7 +35,7 @@ jobs:
           - home_assistant
           - shark_nano_ii
           - aputure_light
-          - zhiyun_x100
+          - zhiyun_light
           - gopro
           - phone_camera
           - insta360

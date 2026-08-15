@@ -1,8 +1,10 @@
 #pragma once
 
+#include "core/active_instance_pool.h"
 #include "core/command_queue.h"
 #include "core/config_store.h"
 #include "core/device_driver.h"
+#include "core/device_configuration.h"
 #include "core/driver_catalog.h"
 
 namespace studio {
@@ -14,25 +16,24 @@ class DeviceManager {
   // make later catalog items impossible to open.
   static constexpr size_t kMaxCompiledDrivers = 16;
   static constexpr size_t kMaxActiveInstances = CONFIG_MAX_ACTIVE_INSTANCES;
-  // Compatibility name for existing driver/test code; this is now an active
-  // instance bound, not the physical BLE link bound.
-  static constexpr size_t kMaxActiveLinks = kMaxActiveInstances;
 
-  DeviceManager(IConfigBackend& backend, ILegacySharkBackend& legacyBackend,
-                DeviceDriver* const* drivers, size_t driverCount);
+  DeviceManager(IConfigBackend& backend, DeviceDriver* const* drivers,
+                size_t driverCount);
 
   bool begin();
   void loop();
 
-  size_t count() const { return registry_.count(); }
-  const DeviceRecord* at(size_t index) const { return registry_.at(index); }
+  size_t count() const { return configuration_.registry().count(); }
+  const DeviceRecord* at(size_t index) const {
+    return configuration_.registry().at(index);
+  }
   const DeviceRecord* find(InstanceId instanceId) const {
-    return isPendingAdd(instanceId) ? &pendingRecord_
-                                    : registry_.find(instanceId);
+    return isPendingAdd(instanceId) ? &configuration_.pending()
+                                    : configuration_.registry().find(instanceId);
   }
   InstanceProfile profile(InstanceId instanceId) const;
   InstanceId foregroundInstance() const;
-  size_t activeCount() const { return activeCount_; }
+  size_t activeCount() const { return activePool_.count(); }
   size_t bleSlotCount() const;
   bool isActive(InstanceId instanceId) const;
   bool ownedBy(InstanceId instanceId, ConnectionOwner owner) const;
@@ -41,13 +42,13 @@ class DeviceManager {
   RegistryStatus add(DriverId driverId, const char* displayName, InstanceId& outId);
   RegistryStatus beginAdd(DriverId driverId, const char* displayName,
                           InstanceId& outId);
-  InstanceId pendingAdd() const { return pendingRecord_.instanceId; }
+  InstanceId pendingAdd() const { return configuration_.pending().instanceId; }
   bool isPendingAdd(InstanceId instanceId) const {
     return instanceId != kInvalidInstanceId &&
-           pendingRecord_.instanceId == instanceId;
+           configuration_.pending().instanceId == instanceId;
   }
   bool pendingAddCommitFailed(InstanceId instanceId) const {
-    return isPendingAdd(instanceId) && pendingCommitFailed_;
+    return isPendingAdd(instanceId) && configuration_.pendingCommitFailed();
   }
   bool retryPendingAdd(InstanceId instanceId);
   size_t onboardingCandidateCount(InstanceId instanceId) const;
@@ -87,14 +88,7 @@ class DeviceManager {
 
  private:
   DeviceDriver* driverFor(DriverId driverId) const;
-  bool removeLegacyDefaultShark();
-  struct ActiveSlot {
-    InstanceId instanceId = kInvalidInstanceId;
-    uint8_t owners = 0;
-    bool retained = false;
-    uint32_t lastUsed = 0;
-    uint32_t pendingRequestId = 0;
-  };
+  using ActiveSlot = ActiveInstancePool::Slot;
 
   ActiveSlot* slotFor(InstanceId instanceId);
   const ActiveSlot* slotFor(InstanceId instanceId) const;
@@ -115,18 +109,12 @@ class DeviceManager {
   bool save();
   CommandStatus dispatch(const DeviceCommand& command);
 
-  ILegacySharkBackend& legacyBackend_;
   DeviceDriver* drivers_[kMaxCompiledDrivers] = {};
   size_t driverCount_ = 0;
-  ConfigStore store_;
-  DeviceRegistry registry_;
-  DeviceRecord pendingRecord_;
-  bool pendingCommitFailed_ = false;
+  DeviceConfiguration configuration_;
   DeviceCommandQueue commands_;
   DeviceResultQueue results_;
-  ActiveSlot activeSlots_[kMaxActiveInstances] = {};
-  size_t activeCount_ = 0;
-  uint32_t useCounter_ = 0;
+  ActiveInstancePool activePool_;
   uint32_t nextRequestId_ = 1;
   bool begun_ = false;
 };

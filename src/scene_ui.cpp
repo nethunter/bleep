@@ -1283,8 +1283,6 @@ void showEditView(studio::SceneId sceneId, bool startList) {
 
 }  // namespace
 
-void init() {}
-
 void tick() {
   if (!visible) return;
   if (picker_shell::active()) picker_shell::tick();

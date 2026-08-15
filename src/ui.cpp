@@ -42,8 +42,8 @@
 #if CONFIG_DRIVER_APUTURE_LIGHT
 #include "devices/aputure_light/ui.h"
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-#include "devices/zhiyun_x100/ui.h"
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
+#include "devices/zhiyun_light/ui.h"
 #endif
 #if CONFIG_DRIVER_GOPRO
 #include "devices/gopro/ui.h"
@@ -54,7 +54,7 @@
 #if CONFIG_DRIVER_DJI_OSMO
 #include "devices/dji_osmo/ui.h"
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
 #include "devices/action_camera_research/ui.h"
 #endif
 #if CONFIG_DRIVER_PHONE_CAMERA
@@ -73,6 +73,125 @@ constexpr uint32_t kColAccent = 0x35C7F2;
 constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
+
+struct DeviceUiHooks {
+  constexpr DeviceUiHooks(
+      studio::DriverId nextDriverId = studio::DriverId::Unknown,
+      void (*nextShow)(studio::InstanceId) = nullptr,
+      void (*nextHide)() = nullptr, void (*nextRelease)() = nullptr,
+      bool (*nextActive)() = nullptr, void (*nextTick)() = nullptr,
+      void (*nextShortPress)() = nullptr,
+      void (*nextLongPress)() = nullptr)
+      : driverId(nextDriverId),
+        show(nextShow),
+        hide(nextHide),
+        release(nextRelease),
+        active(nextActive),
+        tick(nextTick),
+        shortPress(nextShortPress),
+        longPress(nextLongPress) {}
+
+  studio::DriverId driverId;
+  void (*show)(studio::InstanceId);
+  void (*hide)();
+  void (*release)();
+  bool (*active)();
+  void (*tick)();
+  void (*shortPress)();
+  void (*longPress)();
+};
+
+const DeviceUiHooks kDeviceUis[] = {
+#if CONFIG_DRIVER_PHONE_CAMERA
+    {studio::DriverId::PhoneCamera, phone_camera_ui::show,
+     phone_camera_ui::hide, phone_camera_ui::release, phone_camera_ui::active,
+     phone_camera_ui::tick, phone_camera_ui::handleShortPress,
+     phone_camera_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_INSTA360
+    {studio::DriverId::Insta360, insta360_ui::show, insta360_ui::hide,
+     insta360_ui::release, insta360_ui::active, insta360_ui::tick,
+     insta360_ui::handleShortPress, insta360_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+    {studio::DriverId::DjiOsmo, dji_osmo_ui::show, dji_osmo_ui::hide,
+     dji_osmo_ui::release, dji_osmo_ui::active, dji_osmo_ui::tick,
+     dji_osmo_ui::handleShortPress, dji_osmo_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_SONY_CAMERA
+    {studio::DriverId::SonyCamera, action_camera_research_ui::show,
+     action_camera_research_ui::hide, action_camera_research_ui::release,
+     action_camera_research_ui::active, nullptr, nullptr,
+     action_camera_research_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_GOPRO
+    {studio::DriverId::GoPro, gopro_ui::show, gopro_ui::hide,
+     gopro_ui::release, gopro_ui::active, gopro_ui::tick,
+     gopro_ui::handleShortPress, gopro_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
+    {studio::DriverId::ZhiyunLight, zhiyun_light_ui::show,
+     zhiyun_light_ui::hide, zhiyun_light_ui::release,
+     zhiyun_light_ui::active, zhiyun_light_ui::tick,
+     zhiyun_light_ui::handleShortPress, zhiyun_light_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_APUTURE_LIGHT
+    {studio::DriverId::AputureLight, aputure_light_ui::show,
+     aputure_light_ui::hide, aputure_light_ui::release,
+     aputure_light_ui::active, aputure_light_ui::tick,
+     aputure_light_ui::handleShortPress, aputure_light_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_SHARK_NANO_II
+    {studio::DriverId::SharkNanoII, shark_ui::show, shark_ui::hide,
+     shark_ui::release, shark_ui::active, shark_ui::tick,
+     shark_ui::handleShortPress, shark_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+    {studio::DriverId::CanonTrigger, canon_trigger_ui::show,
+     canon_trigger_ui::hide, canon_trigger_ui::release,
+     canon_trigger_ui::active, canon_trigger_ui::tick,
+     canon_trigger_ui::handleShortPress, canon_trigger_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+    {studio::DriverId::CanonBle, canon_ble_ui::show, canon_ble_ui::hide,
+     canon_ble_ui::release, canon_ble_ui::active, canon_ble_ui::tick,
+     canon_ble_ui::handleShortPress, canon_ble_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+    {studio::DriverId::TascamX8, tascam_x8_ui::show, tascam_x8_ui::hide,
+     tascam_x8_ui::release, tascam_x8_ui::active, tascam_x8_ui::tick,
+     tascam_x8_ui::handleShortPress, tascam_x8_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+    {studio::DriverId::HomeAssistant, home_assistant_ui::show,
+     home_assistant_ui::hide, home_assistant_ui::release,
+     home_assistant_ui::active, home_assistant_ui::tick,
+     home_assistant_ui::handleShortPress, home_assistant_ui::handleLongPress},
+#endif
+    {},
+};
+
+const DeviceUiHooks* activeDeviceUi() {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.active != nullptr && hooks.active()) return &hooks;
+  }
+  return nullptr;
+}
+
+const DeviceUiHooks* deviceUi(studio::DriverId driverId) {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.driverId == driverId) return &hooks;
+  }
+  return nullptr;
+}
+
+void hideDeviceUis() {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.hide != nullptr && hooks.active != nullptr && hooks.active()) {
+      hooks.hide();
+    }
+  }
+}
 
 enum class Screen : uint8_t { Home, Devices, Portal, Settings };
 enum class SettingsView : uint8_t { Menu, Wifi, About, SystemInfo, FactoryReset };
@@ -1331,42 +1450,9 @@ void buildRenameOverlay() {
 }  // namespace
 
 void releaseDeviceUis() {
-#if CONFIG_DRIVER_INSTA360
-  insta360_ui::release();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  dji_osmo_ui::release();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  phone_camera_ui::release();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  action_camera_research_ui::release();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  gopro_ui::release();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  zhiyun_x100_ui::release();
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  aputure_light_ui::release();
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  shark_ui::release();
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  canon_trigger_ui::release();
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  canon_ble_ui::release();
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  tascam_x8_ui::release();
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  home_assistant_ui::release();
-#endif
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.release != nullptr) hooks.release();
+  }
 }
 
 void init() {
@@ -1447,74 +1533,16 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::tick();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->tick != nullptr) activeUi->tick();
     return;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::tick(); return; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::tick(); return; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) return;
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::tick();
-    return;
-  }
-#endif
   if (settingsHeaderNeedsRefresh && settingsHeader != nullptr) {
     settingsHeaderNeedsRefresh = false;
     lv_obj_move_foreground(settingsHeader);
     lv_obj_invalidate(scrSettings);
   }
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::tick();
-    return;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::tick();
     return;
@@ -1561,69 +1589,11 @@ void tick() {
 }
 
 void handleShortPress() {
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::handleShortPress();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->shortPress != nullptr) activeUi->shortPress();
     return;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::handleShortPress(); return; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::handleShortPress(); return; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) return;
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::handleShortPress();
-    return;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::handleShortPress();
     return;
@@ -1631,72 +1601,11 @@ void handleShortPress() {
 }
 
 bool handleLongPress() {
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::handleLongPress();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->longPress != nullptr) activeUi->longPress();
     return true;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::handleLongPress(); return true; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::handleLongPress(); return true; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) {
-    action_camera_research_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::handleLongPress();
-    return true;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::handleLongPress();
     return true;
@@ -1734,62 +1643,9 @@ bool handleLongPressToHome() {
 }
 
 void showHome() {
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) insta360_ui::hide();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) phone_camera_ui::hide();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) gopro_ui::hide();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::hide();
-  }
-#endif
-  if (portal::active()) {
-    portal::stop();
-  }
-  if (scene_ui::active()) {
-    scene_ui::hide();
-  }
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::hide();
-  }
-#endif
+  hideDeviceUis();
+  if (portal::active()) portal::stop();
+  if (scene_ui::active()) scene_ui::hide();
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -1810,59 +1666,8 @@ void showSettings() {
 }
 
 void showDevices() {
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) insta360_ui::hide();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) phone_camera_ui::hide();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) gopro_ui::hide();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::hide();
-  }
-#endif
-  if (scene_ui::active()) {
-    scene_ui::hide();
-  }
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::hide();
-  }
-#endif
+  hideDeviceUis();
+  if (scene_ui::active()) scene_ui::hide();
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -1889,74 +1694,11 @@ void showPortal() {
 
 void showDevice(studio::InstanceId instanceId) {
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  if (record == nullptr || !record->enabled) {
-    return;
-  }
+  if (record == nullptr || !record->enabled) return;
+  const DeviceUiHooks* hooks = deviceUi(record->driverId);
+  if (hooks == nullptr || hooks->show == nullptr) return;
   releaseDeviceRows();
-  switch (record->driverId) {
-#if CONFIG_DRIVER_PHONE_CAMERA
-    case studio::DriverId::PhoneCamera:
-      phone_camera_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_GOPRO
-    case studio::DriverId::GoPro:
-      gopro_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_INSTA360
-    case studio::DriverId::Insta360:
-      insta360_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-    case studio::DriverId::DjiOsmo:
-      dji_osmo_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-    case studio::DriverId::SonyCamera:
-      action_camera_research_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-    case studio::DriverId::ZhiyunLight:
-      zhiyun_x100_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-    case studio::DriverId::AputureLight:
-      aputure_light_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-    case studio::DriverId::SharkNanoII:
-      shark_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-    case studio::DriverId::CanonTrigger:
-      canon_trigger_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-    case studio::DriverId::CanonBle:
-      canon_ble_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-    case studio::DriverId::TascamX8:
-      tascam_x8_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-    case studio::DriverId::HomeAssistant:
-      home_assistant_ui::show(instanceId);
-      break;
-#endif
-    default:
-      break;
-  }
+  hooks->show(instanceId);
 }
 
 void showDeviceParent() {

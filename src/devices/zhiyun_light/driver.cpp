@@ -1,4 +1,4 @@
-#include "devices/zhiyun_x100/driver.h"
+#include "devices/zhiyun_light/driver.h"
 
 #include <Arduino.h>
 
@@ -7,7 +7,7 @@
 
 #include "core/mesh/mesh_repository.h"
 #include "devices/aputure_light/runtime.h"
-#include "devices/zhiyun_x100/ble_match.h"
+#include "devices/zhiyun_light/ble_match.h"
 
 namespace studio {
 
@@ -15,14 +15,14 @@ InstanceProfile ZhiyunLightDriver::instanceProfile(
     const DeviceRecord& record,
     const InstanceProfile& catalogProfile) const {
   InstanceProfile profile = catalogProfile;
-  zhiyun_x100::MolusModel model = zhiyun_x100::MolusModel::Unknown;
+  zhiyun_light::MolusModel model = zhiyun_light::MolusModel::Unknown;
   if (const Session* session = find(record.instanceId))
     model = session->client.state().model;
-  if (model == zhiyun_x100::MolusModel::Unknown)
-    model = zhiyun_x100::modelFromName(record.bleName);
-  if (model == zhiyun_x100::MolusModel::Unknown)
-    model = zhiyun_x100::modelFromName(record.displayName);
-  if (!zhiyun_x100::supportsRgb(model))
+  if (model == zhiyun_light::MolusModel::Unknown)
+    model = zhiyun_light::modelFromName(record.bleName);
+  if (model == zhiyun_light::MolusModel::Unknown)
+    model = zhiyun_light::modelFromName(record.displayName);
+  if (!zhiyun_light::supportsRgb(model))
     profile.capabilities &= ~capabilityBit(Capability::SetLightRgb);
   return profile;
 }
@@ -214,7 +214,7 @@ void ZhiyunLightDriver::loop() {
 CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   Session* session = find(command.instanceId);
   if (session == nullptr) return CommandStatus::Unavailable;
-  zhiyun_x100::X100Client& client = session->client;
+  zhiyun_light::ZhiyunLightClient& client = session->client;
   session->compoundFailed = false;
   switch (command.type) {
     case CommandType::Connect:
@@ -240,7 +240,7 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
                                      : CommandStatus::Unavailable;
     case CommandType::SetLightCct:
     case CommandType::SetLightCctAndOn:
-      if (!zhiyun_x100::validCctCommand(command.value0, command.value1,
+      if (!zhiyun_light::validCctCommand(command.value0, command.value1,
                                         command.value2))
         return CommandStatus::InvalidArgument;
       if (!client.setCct(static_cast<uint16_t>(command.value0),
@@ -251,7 +251,7 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
       return CommandStatus::Succeeded;
     case CommandType::SetLightRgb:
     case CommandType::SetLightRgbAndOn:
-      if (!zhiyun_x100::validRgbCommand(command.value0, command.value1))
+      if (!zhiyun_light::validRgbCommand(command.value0, command.value1))
         return CommandStatus::InvalidArgument;
       if (!client.setRgb(static_cast<uint32_t>(command.value0),
                          static_cast<uint8_t>(command.value1)))
@@ -276,18 +276,18 @@ DeviceRuntimeState ZhiyunLightDriver::runtimeState(InstanceId instanceId) const 
   DeviceRuntimeState runtime;
   const Session* session = find(instanceId);
   if (session == nullptr) return runtime;
-  const zhiyun_x100::X100State& state = session->client.state();
+  const zhiyun_light::ZhiyunLightState& state = session->client.state();
   switch (state.link) {
-    case zhiyun_x100::X100State::Link::Disconnected:
+    case zhiyun_light::ZhiyunLightState::Link::Disconnected:
       runtime.link = LinkState::Disconnected;
       break;
-    case zhiyun_x100::X100State::Link::Scanning:
+    case zhiyun_light::ZhiyunLightState::Link::Scanning:
       runtime.link = LinkState::Scanning;
       break;
-    case zhiyun_x100::X100State::Link::Connecting:
+    case zhiyun_light::ZhiyunLightState::Link::Connecting:
       runtime.link = LinkState::Connecting;
       break;
-    case zhiyun_x100::X100State::Link::Connected:
+    case zhiyun_light::ZhiyunLightState::Link::Connected:
       runtime.link = LinkState::Connected;
       break;
   }
@@ -309,24 +309,24 @@ bool ZhiyunLightDriver::lightControlState(InstanceId instanceId,
                                           LightControlState& out) const {
   const Session* session = find(instanceId);
   if (session == nullptr) return false;
-  const zhiyun_x100::X100State& state = session->client.state();
-  out.available = state.phase == zhiyun_x100::X100State::Phase::Ready;
+  const zhiyun_light::ZhiyunLightState& state = session->client.state();
+  out.available = state.phase == zhiyun_light::ZhiyunLightState::Phase::Ready;
   out.supportsPower = out.supportsCct = true;
-  out.supportsRgb = zhiyun_x100::supportsRgb(state.model);
+  out.supportsRgb = zhiyun_light::supportsRgb(state.model);
   out.on = state.on;
   out.stateKnown = state.confirmed;
   out.commandPending = state.commandPending ||
                        session->compoundStage != Session::CompoundStage::None;
   out.commandFailed = state.lastCommandFailed || session->compoundFailed;
   out.quality = state.confirmed ? StateQuality::Confirmed : StateQuality::Unknown;
-  out.minKelvin = zhiyun_x100::kMinKelvin;
-  out.maxKelvin = zhiyun_x100::kMaxKelvin;
+  out.minKelvin = zhiyun_light::kMinKelvin;
+  out.maxKelvin = zhiyun_light::kMaxKelvin;
   out.kelvin = state.kelvin;
   out.brightness = static_cast<uint8_t>(state.brightness + 0.5f);
   out.cctBrightness = out.brightness;
   out.rgbBrightness = out.brightness;
   out.rgb = state.rgb;
-  out.rgbMode = out.supportsRgb && state.mode == zhiyun_x100::X100State::Mode::Rgb;
+  out.rgbMode = out.supportsRgb && state.mode == zhiyun_light::ZhiyunLightState::Mode::Rgb;
   std::strncpy(out.status, state.error[0] != '\0' ? state.error
                                                    : (state.confirmed ? "Ready / confirmed"
                                                                       : "State unknown"),
@@ -386,7 +386,7 @@ bool ZhiyunLightDriver::consumePairingUpdate(InstanceId instanceId,
   record.bleName[sizeof(record.bleName) - 1] = '\0';
   if (std::strcmp(record.displayName, "Zhiyun Light") == 0) {
     const char* modelName = session->client.state().model ==
-                                    zhiyun_x100::MolusModel::X60Rgb
+                                    zhiyun_light::MolusModel::X60Rgb
                                 ? "MOLUS X60RGB"
                                 : "MOLUS X100";
     std::strncpy(record.displayName, modelName,

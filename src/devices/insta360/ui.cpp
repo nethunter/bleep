@@ -1,11 +1,9 @@
 #include "devices/insta360/ui.h"
 
-#include <Arduino.h>
-
 #include "core/device_manager.h"
 #include "devices/insta360/state.h"
+#include "ui/recorder_screen_controller.h"
 #include "ui/recorder_shell.h"
-#include "../../ui.h"
 
 namespace insta360_ui {
 namespace {
@@ -13,19 +11,14 @@ namespace {
 constexpr uint32_t kAccent = 0xE53935;
 constexpr uint32_t kReady = 0x2E7D5B;
 constexpr auto kOwner = recorder_shell::Owner::Insta360;
-studio::InstanceId instanceId = studio::kInvalidInstanceId;
-bool visible = false;
-uint32_t lastRefreshMs = 0;
+studio_ui::RecorderScreenController controller(kOwner);
 
 void enqueue(studio::CommandType type) {
-  if (instanceId == studio::kInvalidInstanceId) return;
-  studio::DeviceCommand command;
-  command.instanceId = instanceId;
-  command.type = type;
-  studio::devices().enqueue(command);
+  controller.enqueue(type);
 }
 
 void action() {
+  const studio::InstanceId instanceId = controller.instanceId();
   if (studio::devices().pendingAddCommitFailed(instanceId)) {
     studio::devices().retryPendingAdd(instanceId);
     return;
@@ -45,6 +38,7 @@ void action() {
 }
 
 void power() {
+  const studio::InstanceId instanceId = controller.instanceId();
   const auto runtime = studio::devices().runtimeState(instanceId);
   const auto* state = static_cast<const insta360::State*>(
       studio::devices().specializedState(instanceId));
@@ -56,29 +50,13 @@ void power() {
 }
 
 void back() {
-  hide();
-  ui::showDeviceParent();
-}
-
-void ensureShell() {
-  if (recorder_shell::ownedBy(kOwner)) return;
-  if (recorder_shell::screen() != nullptr &&
-      lv_scr_act() == recorder_shell::screen()) {
-    ui::parkForScreenRebuild();
-  }
-  recorder_shell::destroyIdle();
-  recorder_shell::Options options;
-  options.enablePower = true;
-  recorder_shell::Callbacks callbacks;
-  callbacks.onBack = back;
-  callbacks.onAction = action;
-  callbacks.onPower = power;
-  recorder_shell::acquire(kOwner, options, callbacks);
+  controller.back();
 }
 
 void refresh() {
   if (!recorder_shell::ownedBy(kOwner)) return;
   recorder_shell::View view;
+  const studio::InstanceId instanceId = controller.instanceId();
   const auto* record = studio::devices().find(instanceId);
   view.title = record != nullptr ? record->displayName : "Insta360";
   const auto runtime = studio::devices().runtimeState(instanceId);
@@ -194,41 +172,22 @@ void refresh() {
 }  // namespace
 
 void show(studio::InstanceId id) {
-  ensureShell();
-  instanceId = id;
-  visible = studio::devices().acquire(id, studio::ConnectionOwner::Foreground);
-  if (!visible) {
-    instanceId = studio::kInvalidInstanceId;
-    return;
-  }
-  lastRefreshMs = 0;
-  refresh();
-  lv_scr_load(recorder_shell::screen());
-  ui::releaseInactiveScreens();
+  recorder_shell::Options options;
+  options.enablePower = true;
+  recorder_shell::Callbacks callbacks;
+  callbacks.onBack = back;
+  callbacks.onAction = action;
+  callbacks.onPower = power;
+  controller.show(id, options, callbacks, refresh);
 }
 
-void hide() {
-  if (visible) {
-    studio::devices().release(instanceId,
-                              studio::ConnectionOwner::Foreground);
-  }
-  visible = false;
-  instanceId = studio::kInvalidInstanceId;
-}
+void hide() { controller.hide(); }
 
-void release() {
-  if (!visible) recorder_shell::release(kOwner);
-}
+void release() { controller.release(); }
 
-bool active() { return visible; }
+bool active() { return controller.active(); }
 
-void tick() {
-  const uint32_t now = millis();
-  if (now - lastRefreshMs >= 200) {
-    lastRefreshMs = now;
-    refresh();
-  }
-}
+void tick() { controller.tick(); }
 
 void handleShortPress() { action(); }
 void handleLongPress() { back(); }

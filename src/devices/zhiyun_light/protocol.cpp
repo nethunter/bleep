@@ -1,9 +1,9 @@
-#include "devices/zhiyun_x100/protocol.h"
+#include "devices/zhiyun_light/protocol.h"
 
 #include <cmath>
 #include <cstring>
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 namespace {
 
 void put16(uint8_t* destination, uint16_t value) {
@@ -248,4 +248,4 @@ void FrameScanner::process(const Handler& handler) {
   if (remaining > 0) process(handler);
 }
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

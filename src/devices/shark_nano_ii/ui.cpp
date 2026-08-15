@@ -1316,8 +1316,6 @@ void showScreenForState(const shark::SharkClient::State& s) {
 
 }  // namespace
 
-void init() {}
-
 void show(studio::InstanceId instanceId) {
   if (!studio::devices().acquire(instanceId,
                                  studio::ConnectionOwner::Foreground)) {

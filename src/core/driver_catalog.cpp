@@ -90,7 +90,7 @@ constexpr DriverDescriptor kDrivers[] = {
         4,
     },
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
     {
         DriverId::ZhiyunLight,
         "zhiyun.light",
@@ -137,7 +137,7 @@ constexpr DriverDescriptor kDrivers[] = {
          capabilityBit(Capability::RecordingState),
      4},
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
     {DriverId::SonyCamera, "sony.camera.research", "Sony", "Sony Camera",
      DeviceType::Camera, capabilityBit(Capability::Link), 4},
 #endif

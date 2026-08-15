@@ -8,8 +8,7 @@ SceneService::SceneService(IConfigBackend& backend, DeviceManager& devices)
     : store_(backend), devices_(devices), runner_(devices_, registry_) {}
 
 bool SceneService::begin() {
-  bool migrated = false;
-  const ConfigLoadStatus status = store_.load(registry_, &migrated);
+  const ConfigLoadStatus status = store_.load(registry_);
   if (status == ConfigLoadStatus::Corrupt) {
     registry_.clear(true);
     begun_ = true;
@@ -18,10 +17,6 @@ bool SceneService::begin() {
   if (status == ConfigLoadStatus::Missing) {
     registry_.clear(true);
     save();
-  }
-  if (migrated && !save()) {
-    begun_ = true;
-    return false;
   }
   begun_ = true;
   return true;

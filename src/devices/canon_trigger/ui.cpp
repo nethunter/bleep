@@ -192,8 +192,6 @@ void ensureScreen() {
 
 }  // namespace
 
-void init() {}
-
 void show(studio::InstanceId id) {
   ensureScreen();
   instanceId = id;

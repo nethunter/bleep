@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/device_driver.h"
-#include "devices/zhiyun_x100/client.h"
+#include "devices/zhiyun_light/client.h"
 
 namespace studio {
 
@@ -40,7 +40,7 @@ class ZhiyunLightDriver : public DeviceDriver {
   struct Session {
     InstanceId instanceId = kInvalidInstanceId;
     DeviceRecord record;
-    zhiyun_x100::X100Client client;
+    zhiyun_light::ZhiyunLightClient client;
     bool sharedGateway = false;
     bool gatewayAttached = false;
     uint32_t gatewayGeneration = 0xffffffffu;
@@ -56,7 +56,5 @@ class ZhiyunLightDriver : public DeviceDriver {
   size_t sessionCount_ = 0;
   bool repositoryHeld_ = false;
 };
-
-using ZhiyunX100Driver = ZhiyunLightDriver;
 
 }  // namespace studio

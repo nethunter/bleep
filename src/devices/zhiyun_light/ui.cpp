@@ -1,4 +1,4 @@
-#include "devices/zhiyun_x100/ui.h"
+#include "devices/zhiyun_light/ui.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -6,12 +6,12 @@
 #include "../../ui.h"
 #include "core/ble/onboarding_auto_select.h"
 #include "core/device_manager.h"
-#include "devices/zhiyun_x100/state.h"
+#include "devices/zhiyun_light/state.h"
 #include "haptic_feedback.h"
 #include "ui/ble_pairing_screen.h"
 #include "ui/light_control.h"
 
-namespace zhiyun_x100_ui {
+namespace zhiyun_light_ui {
 namespace {
 
 studio::InstanceId instanceId = studio::kInvalidInstanceId;
@@ -83,24 +83,24 @@ void updateCandidates(bool show) {
   pairingScreen.setCandidates(candidates, count, onCandidate);
 }
 
-const char* phaseText(const zhiyun_x100::X100State* state) {
+const char* phaseText(const zhiyun_light::ZhiyunLightState* state) {
   if (state == nullptr) return "Unavailable";
-  if (state->phase == zhiyun_x100::X100State::Phase::Failed)
+  if (state->phase == zhiyun_light::ZhiyunLightState::Phase::Failed)
     return state->error[0] != '\0' ? state->error : "Connection failed";
-  if (state->link == zhiyun_x100::X100State::Link::Scanning)
+  if (state->link == zhiyun_light::ZhiyunLightState::Link::Scanning)
     return "Scanning for Zhiyun";
-  if (state->link == zhiyun_x100::X100State::Link::Connecting)
+  if (state->link == zhiyun_light::ZhiyunLightState::Link::Connecting)
     return "Connecting";
-  if (state->phase == zhiyun_x100::X100State::Phase::Provisioning)
+  if (state->phase == zhiyun_light::ZhiyunLightState::Phase::Provisioning)
     return "Creating mesh";
-  if (state->phase == zhiyun_x100::X100State::Phase::Initializing)
+  if (state->phase == zhiyun_light::ZhiyunLightState::Phase::Initializing)
     return "Initializing control";
-  if (state->phase == zhiyun_x100::X100State::Phase::ReadingState)
+  if (state->phase == zhiyun_light::ZhiyunLightState::Phase::ReadingState)
     return "Reading light state";
   return "Waiting for light";
 }
 
-void showForState(const zhiyun_x100::X100State* state) {
+void showForState(const zhiyun_light::ZhiyunLightState* state) {
   if (studio::devices().pendingAddCommitFailed(instanceId)) {
     pairingScreen.create(onBackEvent, onRetryEvent);
     pairingScreen.setTitle("Zhiyun Light");
@@ -111,7 +111,7 @@ void showForState(const zhiyun_x100::X100State* state) {
     return;
   }
   if (state != nullptr &&
-      state->phase == zhiyun_x100::X100State::Phase::Ready) {
+      state->phase == zhiyun_light::ZhiyunLightState::Phase::Ready) {
     if (!light_control_ui::active())
       light_control_ui::show(instanceId, onSharedBack);
     return;
@@ -121,21 +121,19 @@ void showForState(const zhiyun_x100::X100State* state) {
   pairingScreen.create(onBackEvent, onRetryEvent);
   pairingScreen.setTitle("Zhiyun Light");
   const bool failed = state != nullptr &&
-                      state->phase == zhiyun_x100::X100State::Phase::Failed;
+                      state->phase == zhiyun_light::ZhiyunLightState::Phase::Failed;
   pairingScreen.setStatus(phaseText(state),
                           failed ? "Check the light and retry"
                                  : "Reset or provisioned light nearby",
                           !failed, failed, "Retry");
   const bool scanning = state == nullptr ||
-                        state->link == zhiyun_x100::X100State::Link::Scanning;
+                        state->link == zhiyun_light::ZhiyunLightState::Link::Scanning;
   updateCandidates(scanning && !failed);
   if (lv_scr_act() != pairingScreen.screen())
     lv_scr_load(pairingScreen.screen());
 }
 
 }  // namespace
-
-void init() {}
 
 void show(studio::InstanceId id) {
   autoSelect.reset();
@@ -147,7 +145,7 @@ void show(studio::InstanceId id) {
     return;
   }
   lastRefreshMs = 0;
-  showForState(static_cast<const zhiyun_x100::X100State*>(
+  showForState(static_cast<const zhiyun_light::ZhiyunLightState*>(
       studio::devices().specializedState(id)));
   ui::releaseInactiveScreens();
 }
@@ -179,7 +177,7 @@ void tick() {
   const uint32_t now = millis();
   if (now - lastRefreshMs < 250) return;
   lastRefreshMs = now;
-  showForState(static_cast<const zhiyun_x100::X100State*>(
+  showForState(static_cast<const zhiyun_light::ZhiyunLightState*>(
       studio::devices().specializedState(instanceId)));
 }
 
@@ -198,4 +196,4 @@ void handleLongPress() {
 void simShowRgb() { light_control_ui::simShowRgb(); }
 #endif
 
-}  // namespace zhiyun_x100_ui
+}  // namespace zhiyun_light_ui

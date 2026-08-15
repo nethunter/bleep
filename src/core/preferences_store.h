@@ -34,9 +34,4 @@ class PreferencesMeshBackend : public IConfigBackend {
   bool write(const uint8_t* data, size_t length) override;
 };
 
-class PreferencesLegacySharkBackend : public ILegacySharkBackend {
- public:
-  bool readLegacyShark(LegacySharkConfig& config) override;
-};
-
 }  // namespace studio

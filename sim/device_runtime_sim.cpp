@@ -18,8 +18,8 @@
 #include "devices/action_camera_research/driver.h"
 #include "devices/home_assistant/driver.h"
 #include "devices/aputure_light/driver.h"
-#include "devices/zhiyun_x100/ble_match.h"
-#include "devices/zhiyun_x100/state.h"
+#include "devices/zhiyun_light/ble_match.h"
+#include "devices/zhiyun_light/state.h"
 
 namespace studio {
 namespace {
@@ -45,19 +45,6 @@ class MemoryConfigBackend : public IConfigBackend {
 
  private:
   std::vector<uint8_t> blob_;
-};
-
-class SeededLegacyBackend : public ILegacySharkBackend {
- public:
-  bool readLegacyShark(LegacySharkConfig& config) override {
-    config.paired = true;
-    std::strncpy(config.address, "AA:BB:CC:DD:EE:FF", sizeof(config.address) - 1);
-    config.address[sizeof(config.address) - 1] = '\0';
-    config.addressType = 0;
-    std::strncpy(config.advertisedName, "Shark Nano II", sizeof(config.advertisedName) - 1);
-    config.advertisedName[sizeof(config.advertisedName) - 1] = '\0';
-    return true;
-  }
 };
 
 class SimSharkDriver : public DeviceDriver {
@@ -393,25 +380,25 @@ class SimTascamDriver : public DeviceDriver {
   tascam_x8::TascamX8State state_;
 };
 
-class SimZhiyunX100Driver : public DeviceDriver {
+class SimZhiyunLightDriver : public DeviceDriver {
  public:
   DriverId driverId() const override { return DriverId::ZhiyunLight; }
   InstanceProfile instanceProfile(
       const DeviceRecord& record,
       const InstanceProfile& catalogProfile) const override {
     InstanceProfile profile = catalogProfile;
-    zhiyun_x100::MolusModel model =
-        zhiyun_x100::modelFromName(record.bleName);
-    if (model == zhiyun_x100::MolusModel::Unknown)
-      model = zhiyun_x100::modelFromName(record.displayName);
-    if (!zhiyun_x100::supportsRgb(model))
+    zhiyun_light::MolusModel model =
+        zhiyun_light::modelFromName(record.bleName);
+    if (model == zhiyun_light::MolusModel::Unknown)
+      model = zhiyun_light::modelFromName(record.displayName);
+    if (!zhiyun_light::supportsRgb(model))
       profile.capabilities &= ~capabilityBit(Capability::SetLightRgb);
     return profile;
   }
   bool activate(const DeviceRecord& record) override {
     activeInstance_ = record.instanceId;
-    state_.link = zhiyun_x100::X100State::Link::Connected;
-    state_.phase = zhiyun_x100::X100State::Phase::Ready;
+    state_.link = zhiyun_light::ZhiyunLightState::Link::Connected;
+    state_.phase = zhiyun_light::ZhiyunLightState::Phase::Ready;
     state_.hasSavedDevice = true;
     state_.confirmed = true;
     state_.on = true;
@@ -424,7 +411,7 @@ class SimZhiyunX100Driver : public DeviceDriver {
   void deactivate(InstanceId instanceId) override {
     if (instanceId != activeInstance_) return;
     activeInstance_ = kInvalidInstanceId;
-    state_.link = zhiyun_x100::X100State::Link::Disconnected;
+    state_.link = zhiyun_light::ZhiyunLightState::Link::Disconnected;
   }
   void loop() override {}
   CommandStatus dispatch(const DeviceCommand& command) override {
@@ -450,10 +437,10 @@ class SimZhiyunX100Driver : public DeviceDriver {
   DeviceRuntimeState runtimeState(InstanceId instanceId) const override {
     DeviceRuntimeState runtime;
     if (instanceId != activeInstance_) return runtime;
-    runtime.link = state_.link == zhiyun_x100::X100State::Link::Connected
+    runtime.link = state_.link == zhiyun_light::ZhiyunLightState::Link::Connected
                        ? LinkState::Connected
                        : LinkState::Disconnected;
-    runtime.protocolReady = state_.phase == zhiyun_x100::X100State::Phase::Ready;
+    runtime.protocolReady = state_.phase == zhiyun_light::ZhiyunLightState::Phase::Ready;
     runtime.quality = state_.confirmed ? StateQuality::Confirmed
                                        : StateQuality::Unknown;
     runtime.commandPending = state_.commandPending;
@@ -466,32 +453,32 @@ class SimZhiyunX100Driver : public DeviceDriver {
   bool lightControlState(InstanceId instanceId,
                          LightControlState& out) const override {
     if (instanceId != activeInstance_) return false;
-    out.available = state_.phase == zhiyun_x100::X100State::Phase::Ready;
+    out.available = state_.phase == zhiyun_light::ZhiyunLightState::Phase::Ready;
     out.supportsPower = out.supportsCct = true;
-    out.supportsRgb = zhiyun_x100::supportsRgb(state_.model);
+    out.supportsRgb = zhiyun_light::supportsRgb(state_.model);
     out.on = state_.on;
     out.stateKnown = state_.confirmed;
     out.quality = state_.confirmed ? StateQuality::Confirmed : StateQuality::Unknown;
-    out.minKelvin = zhiyun_x100::kMinKelvin;
-    out.maxKelvin = zhiyun_x100::kMaxKelvin;
+    out.minKelvin = zhiyun_light::kMinKelvin;
+    out.maxKelvin = zhiyun_light::kMaxKelvin;
     out.kelvin = state_.kelvin;
     out.brightness = static_cast<uint8_t>(state_.brightness + 0.5f);
     out.cctBrightness = out.brightness;
     out.rgbBrightness = out.brightness;
     out.rgb = state_.rgb;
     out.rgbMode = out.supportsRgb &&
-                  state_.mode == zhiyun_x100::X100State::Mode::Rgb;
+                  state_.mode == zhiyun_light::ZhiyunLightState::Mode::Rgb;
     std::strncpy(out.status, state_.confirmed ? "Ready / confirmed"
                                               : "State unknown",
                  sizeof(out.status) - 1);
     return true;
   }
   bool consumePairingUpdate(InstanceId, DeviceRecord&) override { return false; }
-  zhiyun_x100::X100State& state() { return state_; }
+  zhiyun_light::ZhiyunLightState& state() { return state_; }
 
  private:
   InstanceId activeInstance_ = kInvalidInstanceId;
-  zhiyun_x100::X100State state_;
+  zhiyun_light::ZhiyunLightState state_;
 };
 
 class SimGoProDriver : public DeviceDriver {
@@ -604,14 +591,13 @@ class SimDjiOsmoDriver : public DeviceDriver {
 MemoryConfigBackend gBackend;
 MemoryConfigBackend gScenesBackend;
 MemoryConfigBackend gPanelSettingsBackend;
-SeededLegacyBackend gLegacy;
 SimSharkDriver gSharkDriver;
 SimCanonTriggerDriver gCanonTriggerDriver;
 SimCanonDriver gCanonDriver;
 SimTascamDriver gTascamDriver;
 HomeAssistantDriver gHomeAssistantDriver;
 AputureLightDriver gAputureLight;
-SimZhiyunX100Driver gZhiyunX100Driver;
+SimZhiyunLightDriver gZhiyunLightDriver;
 SimGoProDriver gGoProDriver;
 SimInsta360Driver gInsta360Driver;
 SimDjiOsmoDriver gDjiOsmoDriver;
@@ -620,13 +606,13 @@ ActionCameraResearchDriver gPhoneCameraDriver(DriverId::PhoneCamera);
 DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver, &gHomeAssistantDriver,
                             &gAputureLight,
-                            &gZhiyunX100Driver, &gGoProDriver,
+                            &gZhiyunLightDriver, &gGoProDriver,
                             &gInsta360Driver, &gDjiOsmoDriver,
                             &gSonyCameraDriver, &gPhoneCameraDriver};
 static_assert(sizeof(gDrivers) / sizeof(gDrivers[0]) <=
                   DeviceManager::kMaxCompiledDrivers,
               "simulated driver table exceeds DeviceManager capacity");
-DeviceManager gManager(gBackend, gLegacy, gDrivers,
+DeviceManager gManager(gBackend, gDrivers,
                        sizeof(gDrivers) / sizeof(gDrivers[0]));
 SceneService gScenes(gScenesBackend, gManager);
 PanelSettingsService gPanelSettings(gPanelSettingsBackend);
@@ -647,8 +633,8 @@ canon_trigger::CanonTriggerState& simCanonTriggerState() {
 tascam_x8::TascamX8State& simTascamState() {
   return gTascamDriver.state();
 }
-zhiyun_x100::X100State& simZhiyunState() {
-  return gZhiyunX100Driver.state();
+zhiyun_light::ZhiyunLightState& simZhiyunState() {
+  return gZhiyunLightDriver.state();
 }
 
 void simSetConnectedDemoState() {

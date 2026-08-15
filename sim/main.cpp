@@ -18,7 +18,7 @@
 #include "devices/home_assistant/client.h"
 #include "devices/aputure_light/ui.h"
 #include "devices/aputure_light/runtime.h"
-#include "devices/zhiyun_x100/ui.h"
+#include "devices/zhiyun_light/ui.h"
 #include "haptic_feedback.h"
 #include "portal_service.h"
 #include "scene_ui.h"
@@ -236,6 +236,8 @@ int main() {
 
   studio::devices().begin();
   studio::scenes().begin();
+  studio::InstanceId sharkId = studio::kInvalidInstanceId;
+  studio::devices().add(studio::DriverId::SharkNanoII, "Slider A", sharkId);
   if (studio::devices().count() > 0) {
     const studio::DeviceRecord* record = studio::devices().at(0);
     if (record != nullptr) {
@@ -945,24 +947,24 @@ int main() {
   aputure_light_ui::hide();
   studio::devices().release(pano120Id, studio::ConnectionOwner::Sequence);
 
-  zhiyun_x100_ui::show(zhiyunId);
+  zhiyun_light_ui::show(zhiyunId);
   pump(300);
-  if (!capture("20g_zhiyun_x100_confirmed")) {
+  if (!capture("20g_zhiyun_light_confirmed")) {
     return 1;
   }
-  zhiyun_x100_ui::hide();
-  studio::simZhiyunState().model = zhiyun_x100::MolusModel::X60Rgb;
-  studio::simZhiyunState().mode = zhiyun_x100::X100State::Mode::Rgb;
+  zhiyun_light_ui::hide();
+  studio::simZhiyunState().model = zhiyun_light::MolusModel::X60Rgb;
+  studio::simZhiyunState().mode = zhiyun_light::ZhiyunLightState::Mode::Rgb;
   studio::simZhiyunState().rgb = 0x0066ff;
   studio::simZhiyunState().saturation = 100;
   studio::simZhiyunState().brightness = 42.0f;
-  zhiyun_x100_ui::show(zhiyunId2);
-  zhiyun_x100_ui::simShowRgb();
+  zhiyun_light_ui::show(zhiyunId2);
+  zhiyun_light_ui::simShowRgb();
   pump(300);
   if (!capture("20h_zhiyun_x60rgb_confirmed")) {
     return 1;
   }
-  zhiyun_x100_ui::hide();
+  zhiyun_light_ui::hide();
   ui::showHome();
   tascam_x8_ui::show(tascamId);
   pump(100);

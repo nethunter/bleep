@@ -88,70 +88,14 @@ void logSceneAction(const char* event, SceneId sceneId, uint8_t stepIndex,
 }  // namespace
 
 SceneRunner::SceneRunner(DeviceManager& devices, SceneRegistry& registry)
-    : devices_(devices), registry_(registry) {}
+    : devices_(devices),
+      registry_(registry),
+      validator_(devices),
+      executor_(devices),
+      targetLease_(devices) {}
 
 SceneValidationStatus SceneRunner::validate(const SceneRecord& record) const {
-  if (record.name[0] == '\0') {
-    return SceneValidationStatus::InvalidName;
-  }
-  if (record.startCount == 0 && record.stopCount == 0) {
-    return SceneValidationStatus::Empty;
-  }
-  if (record.startCount > CONFIG_MAX_SCENE_STEPS ||
-      record.stopCount > CONFIG_MAX_SCENE_STEPS) {
-    return SceneValidationStatus::Full;
-  }
-
-  TargetSet targets;
-  const SceneStep* lists[] = {record.startSteps, record.stopSteps};
-  const uint8_t counts[] = {record.startCount, record.stopCount};
-  for (size_t list = 0; list < 2; ++list) {
-    for (uint8_t i = 0; i < counts[list]; ++i) {
-      const SceneStep& step = lists[list][i];
-      if (step.type == SceneStepType::Wait) {
-        if (step.waitMs < CONFIG_SCENE_MIN_WAIT_MS ||
-            step.waitMs > CONFIG_SCENE_MAX_WAIT_MS) {
-          return SceneValidationStatus::WaitOutOfRange;
-        }
-        continue;
-      }
-      if (step.type != SceneStepType::Action) {
-        return SceneValidationStatus::InvalidStep;
-      }
-      if (!commandAllowedInScene(step.command)) {
-        return SceneValidationStatus::UnsupportedCommand;
-      }
-      const DeviceRecord* device = devices_.find(step.targetId);
-      if (device == nullptr) {
-        return SceneValidationStatus::MissingTarget;
-      }
-      if (!device->enabled) {
-        return SceneValidationStatus::DisabledTarget;
-      }
-      const InstanceProfile profile = devices_.profile(device->instanceId);
-      if (profile.type == DeviceType::Unknown) {
-        return SceneValidationStatus::MissingTarget;
-      }
-      const uint32_t required = requiredCapabilities(step.command);
-      if (required == 0 || (profile.capabilities & required) != required) {
-        return SceneValidationStatus::MissingCapability;
-      }
-      bool known = false;
-      for (uint8_t t = 0; t < targets.count; ++t) {
-        if (targets.ids[t] == step.targetId) {
-          known = true;
-          break;
-        }
-      }
-      if (!known) {
-        if (targets.count >= CONFIG_MAX_ACTIVE_INSTANCES) {
-          return SceneValidationStatus::TooManyTargets;
-        }
-        targets.ids[targets.count++] = step.targetId;
-      }
-    }
-  }
-  return SceneValidationStatus::Ok;
+  return validator_.validate(record);
 }
 
 SceneValidationStatus SceneRunner::validate(SceneId sceneId) const {
@@ -163,40 +107,12 @@ SceneValidationStatus SceneRunner::validate(SceneId sceneId) const {
 }
 
 bool SceneRunner::collectTargets(const SceneRecord& record, TargetSet& out) const {
-  out = TargetSet{};
-  const SceneStep* lists[] = {record.startSteps, record.stopSteps};
-  const uint8_t counts[] = {record.startCount, record.stopCount};
-  for (size_t list = 0; list < 2; ++list) {
-    for (uint8_t i = 0; i < counts[list]; ++i) {
-      const SceneStep& step = lists[list][i];
-      if (step.type != SceneStepType::Action) {
-        continue;
-      }
-      bool known = false;
-      for (uint8_t t = 0; t < out.count; ++t) {
-        if (out.ids[t] == step.targetId) {
-          known = true;
-          break;
-        }
-      }
-      if (known) {
-        continue;
-      }
-      if (out.count >= CONFIG_MAX_ACTIVE_INSTANCES) {
-        return false;
-      }
-      out.ids[out.count++] = step.targetId;
-    }
-  }
-  return true;
+  return targetLease_.collect(record, out);
 }
 
 bool SceneRunner::containsTarget(const TargetSet& targets,
                                  InstanceId instanceId) const {
-  for (uint8_t i = 0; i < targets.count; ++i) {
-    if (targets.ids[i] == instanceId) return true;
-  }
-  return false;
+  return targetLease_.contains(targets, instanceId);
 }
 
 bool SceneRunner::activateTargets(const TargetSet& targets) {
@@ -272,30 +188,16 @@ bool SceneRunner::activateDeferredHomeAssistantTargets() {
 }
 
 void SceneRunner::releaseTargets(const TargetSet& targets) {
-  for (uint8_t i = 0; i < targets.count; ++i) {
-    devices_.release(targets.ids[i], ConnectionOwner::Sequence);
-  }
+  targetLease_.release(targets);
 }
 
 void SceneRunner::releaseTargetsExcept(const TargetSet& current,
                                        const TargetSet& next) {
-  for (uint8_t i = 0; i < current.count; ++i) {
-    if (!containsTarget(next, current.ids[i])) {
-      devices_.release(current.ids[i], ConnectionOwner::Sequence);
-    }
-  }
+  targetLease_.releaseExcept(current, next);
 }
 
 bool SceneRunner::ownsTargets(const TargetSet& targets) const {
-  if (targets.count == 0) {
-    return false;
-  }
-  for (uint8_t i = 0; i < targets.count; ++i) {
-    if (!devices_.ownedBy(targets.ids[i], ConnectionOwner::Sequence)) {
-      return false;
-    }
-  }
-  return true;
+  return targetLease_.owns(targets);
 }
 
 bool SceneRunner::allTargetsConnected(const TargetSet& targets,
@@ -604,7 +506,7 @@ SceneRunStatus SceneRunner::stop() {
     const SceneStep* interrupted = currentStep();
     if (interrupted != nullptr && interrupted->type == SceneStepType::Action &&
         pendingRequestId_ != 0) {
-      devices_.cancelCommand(pendingRequestId_, interrupted->targetId);
+      executor_.cancel(pendingRequestId_, interrupted->targetId);
     }
   }
   waitingForResult_ = false;
@@ -667,16 +569,10 @@ void SceneRunner::dispatchCurrentAction() {
   if (step == nullptr || step->type != SceneStepType::Action) {
     return;
   }
-  DeviceCommand command;
-  command.instanceId = step->targetId;
-  command.type = step->command;
-  command.value0 = step->value0;
-  command.value1 = step->value1;
-  command.value2 = step->value2;
   const DeviceRuntimeState before = devices_.runtimeState(step->targetId);
   logSceneAction("dispatch", progress_.sceneId, progress_.stepIndex, step, 0,
                  &before);
-  if (!devices_.enqueue(command, &pendingRequestId_)) {
+  if (!executor_.enqueue(*step, pendingRequestId_)) {
     fail(SceneRunStatus::ActionFailed, "Queue full");
     return;
   }
