@@ -68,7 +68,49 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-12.
+- Last updated: 2026-08-15.
+
+### 2026-08-15: Version 0.3.0 ownership and clean-schema refactor
+
+- Replaced five handwritten persistence encoders with one bounded
+  little-endian blob codec. Device v2, scene v4, mesh v3, HA v1, and panel v1
+  remain byte-stable current formats; older device, scene, and mesh migration
+  paths and the pre-registry Shark backend were removed. No automatic erase or
+  Factory Reset was performed.
+- Extracted `DeviceConfiguration`, `ActiveInstancePool`, `SceneValidator`,
+  `SceneTargetLease`, and `SceneStepExecutor` boundaries. Moved mesh storage to
+  `core/mesh` and added a dynamically allocated, reference-counted proxy owner
+  that selects a Zhiyun-qualified gateway whenever `0xFEE9` is required.
+- Renamed the generic implementation/build surface from `zhiyun_x100` to
+  `zhiyun_light` while preserving exact X100/X60RGB evidence and model names.
+  All driver defaults are now off, profiles opt in explicitly, and Sony,
+  Insta360, and DJI use independent compile flags.
+- Replaced the central device-UI dispatch chains with a compile-time hook
+  table and consolidated six recorder-screen lifecycle implementations into
+  `RecorderScreenController`. Removed obsolete empty UI initialization hooks.
+  The complete simulator traversal passed with unchanged LVGL measurements:
+  42,848 bytes free after maximum-device initialization, 23,576 after sequence
+  Stop settings, and 25,024 at completion; peak use remained 12,675 bytes.
+- Split the 4,695-line native runner into protocol, persistence,
+  manager/scene, BLE, and mesh/light case sources; moved `FakeBleBackend` out of
+  production `src`; and added a unified Python protocol-lab runner. Native tests
+  pass 83/83 after adding golden persistence and proxy-qualification coverage.
+- Added repository checks for tracked caches, temporary artifacts, unexpected
+  PDFs, and broken local Markdown links. Removed five formerly tracked cache/
+  temporary artifacts. Versioned `v*` CI builds validate the configured version
+  and publish firmware, owner's guide, and SHA-256 checksums without weakening
+  the existing full/isolated build matrix.
+- The required full Montserrat profile passed after the runtime/UI extraction
+  at 141,476 / 327,680 bytes static RAM and 1,934,816 / 3,145,728 bytes flash.
+  The upload target then auto-detected `/dev/cu.usbmodem21111201`, but the port
+  could not be opened because it was busy, absent, or denied by the host, so no
+  panel flash or new physical fixture behavior was observed in this session.
+- Rebuilt the 0.3.0 owner's guide as a 21-page A4 PDF, synchronized the website
+  copy, and verified identical SHA-256 hashes. All rendered pages and three
+  complete contact sheets were visually checked with no clipping, overlap,
+  unexpected blank pages, or table overflow. Website checks at 1440 x 900 and
+  390 x 844 showed 0.3.0, no horizontal overflow, and no console warnings or
+  errors.
 
 ### 2026-08-12: Supported hardware matrix and owner's guide refresh
 

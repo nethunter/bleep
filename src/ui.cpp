@@ -19,6 +19,7 @@
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
+#include "ui/rename_prompt.h"
 #include "ui/round_page.h"
 #include "ui/title_marquee.h"
 #include "portal_service.h"
@@ -234,42 +235,18 @@ lv_obj_t* deviceModalBody = nullptr;
 lv_obj_t* enabledSwitch = nullptr;
 lv_obj_t* disconnectButton = nullptr;
 lv_obj_t* removeButton = nullptr;
-lv_obj_t* renameOverlay = nullptr;
-lv_obj_t* renameText = nullptr;
-lv_obj_t* renameKeypad = nullptr;
-lv_obj_t* renamePageLabel = nullptr;
-lv_obj_t* renameCaseLabel = nullptr;
 
 studio::InstanceId managedInstance = studio::kInvalidInstanceId;
 uint32_t lastRefreshMs = 0;
 bool removeArmed = false;
 bool disconnectArmed = false;
-uint8_t renamePage = 0;
-bool renameUpperCase = true;
 size_t devicePage = 0;
-RenameDoneFn renameDoneCallback = nullptr;
-RenameCancelFn renameCancelCallback = nullptr;
 uint8_t hapticErrorMask = 0;
 studio::InstanceId hapticForegroundInstance = studio::kInvalidInstanceId;
 bool hapticForegroundReady = false;
 studio::SceneId hapticSceneId = studio::kInvalidSceneId;
 studio::ScenePhase hapticScenePhase = studio::ScenePhase::Idle;
 
-static const char* kRenameUpperPage0[] = {"A", "B", "C", "\n", "D", "E", "F", "\n",
-                                         "G", "H", "I", ""};
-static const char* kRenameUpperPage1[] = {"J", "K", "L", "\n", "M", "N", "O", "\n",
-                                         "P", "Q", "R", ""};
-static const char* kRenameUpperPage2[] = {"S", "T", "U", "\n", "V", "W", "X", "\n",
-                                         "Y", "Z", "", ""};
-static const char* kRenameLowerPage0[] = {"a", "b", "c", "\n", "d", "e", "f", "\n",
-                                         "g", "h", "i", ""};
-static const char* kRenameLowerPage1[] = {"j", "k", "l", "\n", "m", "n", "o", "\n",
-                                         "p", "q", "r", ""};
-static const char* kRenameLowerPage2[] = {"s", "t", "u", "\n", "v", "w", "x", "\n",
-                                         "y", "z", "", ""};
-static const char* kRenameSymbolPage[] = {"0", "1", "2", "3", "\n", "4", "5", "6", "7",
-                                         "\n", "8", "9", "-", "_", ""};
-constexpr uint8_t kRenamePageCount = 4;
 
 void styleScreen(lv_obj_t* object) {
   lv_obj_set_style_bg_color(object, lv_color_hex(kColBg), 0);
@@ -353,16 +330,8 @@ void closeDeviceModal() {
 }
 
 void closeRename() {
-  destroyOverlay(renameOverlay);
-  renameText = nullptr;
-  renameKeypad = nullptr;
-  renamePageLabel = nullptr;
-  renameCaseLabel = nullptr;
-  renameDoneCallback = nullptr;
-  renameCancelCallback = nullptr;
+  studio_ui::rename_prompt::close();
 }
-
-void buildRenameOverlay();
 
 void onAddPickerClosed() {
   if (addButton != nullptr) {
@@ -458,7 +427,6 @@ void onOpenDevice(lv_event_t* event) {
 }
 
 void buildDeviceModal();
-void buildRenameOverlay();
 void onAddDevice(lv_event_t*);
 void refreshDevices();
 void refreshDeviceModal();
@@ -708,75 +676,6 @@ void onCancelRemove(lv_event_t*) {
   refreshDeviceModal();
 }
 
-const char** renamePageMap() {
-  if (renamePage == 0) {
-    return renameUpperCase ? kRenameUpperPage0 : kRenameLowerPage0;
-  }
-  if (renamePage == 1) {
-    return renameUpperCase ? kRenameUpperPage1 : kRenameLowerPage1;
-  }
-  if (renamePage == 2) {
-    return renameUpperCase ? kRenameUpperPage2 : kRenameLowerPage2;
-  }
-  return kRenameSymbolPage;
-}
-
-void refreshRenameKeypad() {
-  static const char* kPageNames[] = {"A-I", "J-R", "S-Z", "0-9"};
-  lv_btnmatrix_set_map(renameKeypad, renamePageMap());
-  lv_label_set_text(renamePageLabel, kPageNames[renamePage]);
-  lv_label_set_text(renameCaseLabel, renameUpperCase ? "Aa" : "aA");
-}
-
-void stepRenamePage(int delta) {
-  int page = static_cast<int>(renamePage) + delta;
-  if (page < 0) {
-    page += kRenamePageCount;
-  } else if (page >= kRenamePageCount) {
-    page -= kRenamePageCount;
-  }
-  renamePage = static_cast<uint8_t>(page);
-  refreshRenameKeypad();
-}
-
-void onRenamePrevious(lv_event_t*) { stepRenamePage(-1); }
-
-void onRenameNext(lv_event_t*) { stepRenamePage(1); }
-
-void onRenameKeypadGesture(lv_event_t*) {
-  lv_indev_t* input = lv_indev_get_act();
-  if (input == nullptr) {
-    return;
-  }
-  const lv_dir_t direction = lv_indev_get_gesture_dir(input);
-  if (direction == LV_DIR_LEFT) {
-    stepRenamePage(1);
-  } else if (direction == LV_DIR_RIGHT) {
-    stepRenamePage(-1);
-  }
-}
-
-void onRenameCharacter(lv_event_t* event) {
-  lv_obj_t* keypad = lv_event_get_target(event);
-  const uint16_t button = lv_btnmatrix_get_selected_btn(keypad);
-  if (button == LV_BTNMATRIX_BTN_NONE) {
-    return;
-  }
-  const char* text = lv_btnmatrix_get_btn_text(keypad, button);
-  if (text != nullptr && text[0] != '\0') {
-    lv_textarea_add_text(renameText, text);
-  }
-}
-
-void onRenameBackspace(lv_event_t*) { lv_textarea_del_char(renameText); }
-
-void onRenameSpace(lv_event_t*) { lv_textarea_add_char(renameText, ' '); }
-
-void onRenameCase(lv_event_t*) {
-  renameUpperCase = !renameUpperCase;
-  refreshRenameKeypad();
-}
-
 void onDeviceRenameDone(const char* name) {
   if (managedInstance != studio::kInvalidInstanceId && name != nullptr) {
     studio::devices().rename(managedInstance, name);
@@ -794,26 +693,8 @@ void onOpenRename(lv_event_t*) {
   promptRename(record->displayName, onDeviceRenameDone);
 }
 
-void onSaveRename(lv_event_t*) {
-  const RenameDoneFn done = renameDoneCallback;
-  char name[studio::kDeviceNameCapacity] = "";
-  if (renameText != nullptr) {
-    std::strncpy(name, lv_textarea_get_text(renameText), sizeof(name) - 1);
-  }
-  closeRename();
-  if (done != nullptr) {
-    done(name);
-  }
-}
-
-void onCancelRename(lv_event_t*) {
-  const RenameCancelFn cancel = renameCancelCallback;
-  closeRename();
-  if (cancel != nullptr) {
-    cancel();
-  } else if (screen == Screen::Devices) {
-    refreshDevices();
-  }
+void onDefaultRenameCancel() {
+  if (screen == Screen::Devices) refreshDevices();
 }
 
 void destroySettingsScreen() {
@@ -1376,77 +1257,6 @@ void refreshDeviceModal() {
   }
 }
 
-void buildRenameOverlay() {
-  if (renameOverlay != nullptr) {
-    return;
-  }
-  renameOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(renameOverlay, 236, 236);
-  lv_obj_center(renameOverlay);
-  lv_obj_set_style_radius(renameOverlay, 118, 0);
-  lv_obj_set_style_bg_color(renameOverlay, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_color(renameOverlay, lv_color_hex(kColAccent), 0);
-  lv_obj_set_style_pad_all(renameOverlay, 0, 0);
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t* cancel =
-      makeButton(renameOverlay, LV_SYMBOL_CLOSE, onCancelRename, kColPanel);
-  lv_obj_set_size(cancel, 30, 30);
-  lv_obj_align(cancel, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  renameText = lv_textarea_create(renameOverlay);
-  lv_obj_set_size(renameText, 100, 30);
-  lv_obj_align(renameText, LV_ALIGN_TOP_MID, 0, 18);
-  lv_textarea_set_max_length(renameText, studio::kDeviceNameCapacity - 1);
-  lv_textarea_set_one_line(renameText, true);
-  lv_textarea_set_cursor_click_pos(renameText, true);
-
-  lv_obj_t* save = makeButton(renameOverlay, LV_SYMBOL_OK, onSaveRename, kColAccent);
-  lv_obj_set_size(save, 30, 30);
-  lv_obj_align(save, LV_ALIGN_TOP_RIGHT, -34, 24);
-
-  lv_obj_t* previous = makeButton(renameOverlay, LV_SYMBOL_LEFT, onRenamePrevious);
-  lv_obj_set_size(previous, 32, 28);
-  lv_obj_align(previous, LV_ALIGN_TOP_MID, -55, 53);
-
-  renamePageLabel = lv_label_create(renameOverlay);
-  lv_obj_set_style_text_font(renamePageLabel, UI_FONT_14, 0);
-  lv_obj_set_style_text_color(renamePageLabel, lv_color_hex(kColMuted), 0);
-  lv_obj_align(renamePageLabel, LV_ALIGN_TOP_MID, 0, 59);
-
-  lv_obj_t* next = makeButton(renameOverlay, LV_SYMBOL_RIGHT, onRenameNext);
-  lv_obj_set_size(next, 32, 28);
-  lv_obj_align(next, LV_ALIGN_TOP_MID, 55, 53);
-
-  renameKeypad = lv_btnmatrix_create(renameOverlay);
-  lv_obj_set_size(renameKeypad, 150, 84);
-  lv_obj_align(renameKeypad, LV_ALIGN_TOP_MID, 0, 83);
-  lv_obj_set_style_bg_color(renameKeypad, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_width(renameKeypad, 0, 0);
-  lv_obj_set_style_pad_all(renameKeypad, 2, 0);
-  lv_obj_set_style_pad_gap(renameKeypad, 3, 0);
-  lv_obj_set_style_bg_color(renameKeypad, lv_color_hex(kColPanel), LV_PART_ITEMS);
-  lv_obj_set_style_radius(renameKeypad, 7, LV_PART_ITEMS);
-  lv_obj_set_style_text_font(renameKeypad, UI_FONT_16, LV_PART_ITEMS);
-  lv_obj_add_event_cb(renameKeypad, onRenameCharacter, LV_EVENT_VALUE_CHANGED, nullptr);
-  lv_obj_add_event_cb(renameKeypad, onRenameKeypadGesture, LV_EVENT_GESTURE, nullptr);
-
-  lv_obj_t* backspace =
-      makeButton(renameOverlay, LV_SYMBOL_BACKSPACE, onRenameBackspace);
-  lv_obj_set_size(backspace, 40, 26);
-  lv_obj_align(backspace, LV_ALIGN_TOP_MID, -51, 172);
-  lv_obj_t* space = makeButton(renameOverlay, "Space", onRenameSpace);
-  lv_obj_set_size(space, 56, 26);
-  lv_obj_align(space, LV_ALIGN_TOP_MID, 0, 172);
-  lv_obj_t* letterCase = makeButton(renameOverlay, "Aa", onRenameCase);
-  lv_obj_set_size(letterCase, 40, 26);
-  lv_obj_align(letterCase, LV_ALIGN_TOP_MID, 51, 172);
-  renameCaseLabel = lv_obj_get_child(letterCase, 0);
-
-  refreshRenameKeypad();
-}
-
 }  // namespace
 
 void releaseDeviceUis() {
@@ -1613,8 +1423,8 @@ bool handleLongPress() {
   if (picker_shell::handleBack()) {
     return true;
   }
-  if (renameOverlay != nullptr) {
-    onCancelRename(nullptr);
+  if (studio_ui::rename_prompt::active()) {
+    studio_ui::rename_prompt::cancel();
     return true;
   } else if (deviceModal != nullptr) {
     closeDeviceModal();
@@ -1724,25 +1534,13 @@ void releaseInactiveScreens() { releaseDeviceUis(); }
 
 void promptRename(const char* initial, RenameDoneFn onDone,
                   RenameCancelFn onCancel) {
-  if (renameOverlay == nullptr) {
-    buildRenameOverlay();
-  }
-  renameDoneCallback = onDone;
-  renameCancelCallback = onCancel;
-  lv_textarea_set_text(renameText, initial != nullptr ? initial : "");
-  lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
-  renamePage = 0;
-  renameUpperCase = true;
-  refreshRenameKeypad();
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+  studio_ui::rename_prompt::show(
+      initial, onDone, onCancel != nullptr ? onCancel : onDefaultRenameCancel);
 }
 
 void closeRenamePrompt() { closeRename(); }
 
-bool renamePromptActive() {
-  return renameOverlay != nullptr &&
-         !lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
-}
+bool renamePromptActive() { return studio_ui::rename_prompt::active(); }
 
 #ifdef UI_SIMULATOR
 studio::InstanceId simDeviceAtDisplayIndex(size_t index) {
@@ -1809,12 +1607,11 @@ void simShowRename(studio::InstanceId instanceId) {
 }
 
 void simSubmitRename(const char* name) {
-  if (renameText == nullptr) return;
-  lv_textarea_set_text(renameText, name != nullptr ? name : "");
-  onSaveRename(nullptr);
+  studio_ui::rename_prompt::simSetText(name);
+  studio_ui::rename_prompt::simSave();
 }
 
-void simCancelRename() { onCancelRename(nullptr); }
+void simCancelRename() { studio_ui::rename_prompt::cancel(); }
 
 void simRequestManagedDisconnect() { onDisconnect(nullptr); }
 void simRequestManagedRemove() { onRemove(nullptr); }

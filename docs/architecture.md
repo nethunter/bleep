@@ -55,12 +55,12 @@ feasibility spikes:
   ceiling, command/result queues, up to eight logical active instances grouped
   onto four physical BLE transport slots, per-owner lifecycle, and persistence;
 - schema version 2 stores up to twenty-four device records in the `studio` NVS
-  namespace, migrates v1 BLE records unchanged, and retains records for
-  unavailable driver IDs. HA credentials/token and panel-owned mesh secrets use
-  separate checksummed records;
-- a missing registry is initialized empty. A paired Shark from the pre-registry
-  `shark` namespace is still migrated, while the untouched unpaired Shark
-  placeholder created by earlier firmware is removed on upgrade;
+  namespace and retains records for unavailable driver IDs. Version 0.3.0 is a
+  deliberate current-schema boundary: older device, scene, and mesh encodings
+  are rejected rather than migrated. HA credentials/token and panel-owned mesh
+  secrets use separate checksummed records;
+- a missing registry is initialized empty. Pre-registry Shark storage and the
+  former default-placeholder cleanup path have been removed;
 - the catalog permits one Shark, up to three Canon Trigger instances, up to
   three Canon Smart instances, and one Tascam X8 within the twenty-four-record
   registry;
@@ -80,12 +80,12 @@ feasibility spikes:
   user-authored native groups remain deferred.
 
 Scene records use a dynamically growing, checked-allocation registry rather
-than a configured scene-count ceiling. Schema v3 introduced compact authored
-step storage and a 32-bit scene count; schema v4 adds generated/custom Stop
-mode. Loading v1/v2 fixed-width or v3 compact records converts every scene to
-Generated Stop and rewrites the canonical v4 blob. RAM and available NVS space
-remain real resource boundaries; failed growth or persistence rolls the
-attempted mutation back without changing existing scenes.
+than a configured scene-count ceiling. The current schema v4 stores compact
+authored steps, a 32-bit scene count, and generated/custom Stop mode. Older
+schemas are intentionally rejected at the 0.3.0 clean-storage boundary. RAM
+and available NVS space remain real resource boundaries; failed growth or
+persistence rolls the attempted mutation back without changing existing
+scenes.
 
 ## Compile-time driver catalog
 
@@ -447,7 +447,10 @@ GATT is accessed through a transport facade:
 - Shark, Canon, and Tascam use their device-specific GATT services;
 - Aputure Light and Zhiyun lights share one panel-owned mesh repository, durable unicast
   allocator, and userspace no-OOB PB-GATT provisioner over that central;
-- the mesh runtime owns one retained proxy client. It exposes standard Mesh
+- the mesh runtime owns one retained proxy client. A dynamically allocated
+  `ProxyTransport` reference-counts logical users and prefers a saved Zhiyun
+  node whenever the active set requires the additional `0xFEE9` service. It
+  exposes standard Mesh
   Proxy Data In/Out to Aputure Light access messages and lets saved Zhiyun
   sessions attach their separate `0xFEE9` characteristics to that same native
   client;
@@ -538,7 +541,7 @@ Versioned persistent records cover:
 - runtime device instances and groups;
 - panel-owned mesh identity and keys;
 - scenes and execution metadata;
-- schema version and migration status.
+- schema version and compatibility status;
 - panel preferences such as haptic enablement.
 
 Secrets are masked in UI and logs. Backups exclude keys and credentials unless

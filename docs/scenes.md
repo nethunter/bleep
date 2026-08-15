@@ -184,9 +184,9 @@ A wait reverses to the same duration. Generated Stop is refreshed atomically
 after every Start add, edit, reorder, or delete. Custom Stop is independent and
 is not modified by later Start edits.
 
-Schema 3 stores the mode and materialized list. Schema 1/2 scenes migrate to
-Generated mode and discard their formerly authored Stop. A legacy scene with
-no Start steps migrates to an empty scene and must be repaired before running.
+Schema 4 stores the mode and materialized list. Version 0.3.0 accepts only that
+current encoding; older development schemas are rejected at load and are not
+migrated or erased automatically.
 
 ## Execution journal
 

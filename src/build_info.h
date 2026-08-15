@@ -1,7 +1,7 @@
 #pragma once
 
 #ifndef BLEEP_FIRMWARE_VERSION
-#define BLEEP_FIRMWARE_VERSION "0.1.0-dev"
+#define BLEEP_FIRMWARE_VERSION "0.3.0"
 #endif
 
 #ifndef BLEEP_GIT_COMMIT
