@@ -248,8 +248,9 @@ values shown on the Shark screen come from the slider.
 You need a compatible Python 3 installation and PlatformIO. From the repository
 root:
 
-This `0.2.0-dev` naming baseline intentionally does not migrate the former
-Amaran driver IDs or `amaran_mesh` NVS key. Before flashing it over an earlier
+The clean-storage boundary introduced during `0.2.0-dev` remains in 0.3.0: the
+firmware does not migrate former Amaran driver IDs, the `amaran_mesh` NVS key,
+or pre-current device/scene/mesh schemas. Before flashing over an older
 development build, use **Settings > Factory Reset** on the currently installed
 firmware. The reset clears saved configuration; it does not erase firmware.
 
@@ -266,7 +267,8 @@ The main Montserrat profile compiles every current driver and is the standard
 local firmware check. GitHub Actions is the cross-profile testing ground: every
 pull request and push to `main` builds the full Montserrat and Roboto profiles,
 plus the isolated Shark, Canon Smart, Canon Trigger, Tascam X8, Home Assistant,
-  Aputure Light, Zhiyun, GoPro, Phone Camera, Insta360, and DJI Osmo profiles.
+  Aputure Light, Zhiyun Light, GoPro, Phone Camera, Insta360, and DJI Osmo
+profiles.
 Build an isolated profile locally only when diagnosing a profile-specific
 failure.
 

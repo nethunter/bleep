@@ -2,11 +2,11 @@
 
 #include <cstdint>
 
-#include "devices/zhiyun_x100/protocol.h"
+#include "devices/zhiyun_light/protocol.h"
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 
-struct X100State {
+struct ZhiyunLightState {
   enum class Link : uint8_t { Disconnected, Scanning, Connecting, Connected };
   enum class Phase : uint8_t {
     Idle,
@@ -47,10 +47,10 @@ struct X100State {
   char error[48] = "";
 };
 
-using MolusState = X100State;
+using MolusState = ZhiyunLightState;
 
 bool validCctCommand(int kelvin, int brightness, int tintPermille);
 bool validRgbCommand(int rgb, int brightness);
 void rgbToHsv(uint32_t rgb, uint16_t& hue, uint8_t& saturation);
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

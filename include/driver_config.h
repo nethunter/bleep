@@ -4,7 +4,7 @@
 // Kconfig symbols so a future Arduino-as-component build can replace defaults
 // without changing driver code.
 #ifndef CONFIG_DRIVER_SHARK_NANO_II
-#define CONFIG_DRIVER_SHARK_NANO_II 1
+#define CONFIG_DRIVER_SHARK_NANO_II 0
 #endif
 
 #ifndef CONFIG_DRIVER_CANON_BLE
@@ -27,26 +27,24 @@
 #define CONFIG_DRIVER_APUTURE_LIGHT 0
 #endif
 
-#ifndef CONFIG_DRIVER_ZHIYUN_X100
-#define CONFIG_DRIVER_ZHIYUN_X100 0
+#ifndef CONFIG_DRIVER_ZHIYUN_LIGHT
+#define CONFIG_DRIVER_ZHIYUN_LIGHT 0
 #endif
 
 #ifndef CONFIG_DRIVER_GOPRO
 #define CONFIG_DRIVER_GOPRO 0
 #endif
 
-#ifndef CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-#define CONFIG_DRIVER_ACTION_CAMERA_RESEARCH 0
+#ifndef CONFIG_DRIVER_SONY_CAMERA
+#define CONFIG_DRIVER_SONY_CAMERA 0
 #endif
 
-// Until dedicated composer toggles land, the action-camera bundle enables the
-// two implemented families plus Sony's still-blocked research entry.
 #ifndef CONFIG_DRIVER_INSTA360
-#define CONFIG_DRIVER_INSTA360 CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#define CONFIG_DRIVER_INSTA360 0
 #endif
 
 #ifndef CONFIG_DRIVER_DJI_OSMO
-#define CONFIG_DRIVER_DJI_OSMO CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#define CONFIG_DRIVER_DJI_OSMO 0
 #endif
 
 #ifndef CONFIG_DRIVER_PHONE_CAMERA
@@ -56,7 +54,7 @@
 #define CONFIG_BLE_RUNTIME_ENABLED                                      \
   (CONFIG_DRIVER_SHARK_NANO_II || CONFIG_DRIVER_CANON_BLE ||           \
    CONFIG_DRIVER_CANON_TRIGGER || CONFIG_DRIVER_TASCAM_X8 ||           \
-   CONFIG_DRIVER_APUTURE_LIGHT || CONFIG_DRIVER_ZHIYUN_X100 ||         \
+   CONFIG_DRIVER_APUTURE_LIGHT || CONFIG_DRIVER_ZHIYUN_LIGHT ||        \
    CONFIG_DRIVER_GOPRO || CONFIG_DRIVER_INSTA360 || CONFIG_DRIVER_DJI_OSMO || \
    CONFIG_DRIVER_PHONE_CAMERA)
 

@@ -4,9 +4,9 @@
 
 #include "core/ble/ble_types.h"
 #include "devices/aputure_light/crypto.h"
-#include "devices/zhiyun_x100/protocol.h"
+#include "devices/zhiyun_light/protocol.h"
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 
 constexpr uint8_t kDirectAttemptsBeforeScan = 1;
 
@@ -118,4 +118,4 @@ inline bool matchesUnprovisionedAdvertisement(
          studio::ble::advertisesService(advertisement, "1827");
 }
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

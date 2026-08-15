@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "core/blob_codec.h"
+
 namespace studio {
 namespace {
 
@@ -11,47 +13,6 @@ constexpr size_t kBodySize = 1 + kWifiSsidCapacity + kWifiPasswordCapacity +
                              kHomeAssistantUrlCapacity +
                              kHomeAssistantTokenCapacity;
 constexpr size_t kEncodedSize = sizeof(kMagic) + 2 + kBodySize + 4;
-
-uint32_t checksum(const uint8_t* data, size_t length) {
-  uint32_t value = 2166136261u;
-  for (size_t i = 0; i < length; ++i) {
-    value = (value ^ data[i]) * 16777619u;
-  }
-  return value;
-}
-
-void putU16(uint8_t*& out, uint16_t value) {
-  *out++ = static_cast<uint8_t>(value & 0xff);
-  *out++ = static_cast<uint8_t>((value >> 8) & 0xff);
-}
-
-void putU32(uint8_t*& out, uint32_t value) {
-  for (int shift = 0; shift < 32; shift += 8) {
-    *out++ = static_cast<uint8_t>((value >> shift) & 0xff);
-  }
-}
-
-uint16_t getU16(const uint8_t*& in) {
-  const uint16_t value = static_cast<uint16_t>(in[0]) |
-                         static_cast<uint16_t>(in[1]) << 8;
-  in += 2;
-  return value;
-}
-
-uint32_t getU32(const uint8_t*& in) {
-  uint32_t value = 0;
-  for (int shift = 0; shift < 32; shift += 8) {
-    value |= static_cast<uint32_t>(*in++) << shift;
-  }
-  return value;
-}
-
-template <size_t N>
-void copyText(char (&destination)[N], const uint8_t*& cursor) {
-  std::memcpy(destination, cursor, N);
-  destination[N - 1] = '\0';
-  cursor += N;
-}
 
 }  // namespace
 
@@ -81,21 +42,27 @@ ConfigLoadStatus HomeAssistantConfigStore::load(HomeAssistantConfig& config) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
-  const uint8_t* cursor = bytes + sizeof(kMagic);
-  if (getU16(cursor) != kVersion) {
+  BlobReader reader(bytes + sizeof(kMagic), sizeof(bytes) - sizeof(kMagic));
+  uint16_t version = 0;
+  if (!reader.u16(version) || version != kVersion) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
-  const uint8_t* checksumCursor = bytes + sizeof(bytes) - 4;
-  if (getU32(checksumCursor) != checksum(bytes, sizeof(bytes) - 4)) {
+  BlobReader checksumReader(bytes + sizeof(bytes) - 4, 4);
+  uint32_t storedChecksum = 0;
+  if (!checksumReader.u32(storedChecksum) ||
+      storedChecksum != fnv1a(bytes, sizeof(bytes) - 4)) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
-  config.configured = *cursor++ != 0;
-  copyText(config.wifiSsid, cursor);
-  copyText(config.wifiPassword, cursor);
-  copyText(config.baseUrl, cursor);
-  copyText(config.token, cursor);
+  uint8_t configured = 0;
+  if (!reader.u8(configured) || configured > 1 ||
+      !reader.text(config.wifiSsid) || !reader.text(config.wifiPassword) ||
+      !reader.text(config.baseUrl) || !reader.text(config.token)) {
+    config = {};
+    return ConfigLoadStatus::Corrupt;
+  }
+  config.configured = configured != 0;
   if (config.configured &&
       (config.wifiSsid[0] == '\0' || config.token[0] == '\0' ||
        !validLocalHomeAssistantUrl(config.baseUrl))) {
@@ -112,21 +79,17 @@ bool HomeAssistantConfigStore::save(const HomeAssistantConfig& config) {
     return false;
   }
   uint8_t bytes[kEncodedSize] = {};
-  uint8_t* cursor = bytes;
-  std::memcpy(cursor, kMagic, sizeof(kMagic));
-  cursor += sizeof(kMagic);
-  putU16(cursor, kVersion);
-  *cursor++ = config.configured ? 1 : 0;
-  std::memcpy(cursor, config.wifiSsid, sizeof(config.wifiSsid));
-  cursor += sizeof(config.wifiSsid);
-  std::memcpy(cursor, config.wifiPassword, sizeof(config.wifiPassword));
-  cursor += sizeof(config.wifiPassword);
-  std::memcpy(cursor, config.baseUrl, sizeof(config.baseUrl));
-  cursor += sizeof(config.baseUrl);
-  std::memcpy(cursor, config.token, sizeof(config.token));
-  cursor += sizeof(config.token);
-  putU32(cursor, checksum(bytes, sizeof(bytes) - 4));
-  return backend_.write(bytes, sizeof(bytes));
+  BlobWriter writer(bytes, sizeof(bytes));
+  writer.bytes(kMagic, sizeof(kMagic));
+  writer.u16(kVersion);
+  writer.u8(config.configured ? 1 : 0);
+  writer.bytes(config.wifiSsid, sizeof(config.wifiSsid));
+  writer.bytes(config.wifiPassword, sizeof(config.wifiPassword));
+  writer.bytes(config.baseUrl, sizeof(config.baseUrl));
+  writer.bytes(config.token, sizeof(config.token));
+  writer.u32(fnv1a(bytes, sizeof(bytes) - 4));
+  return writer.valid() && writer.size() == sizeof(bytes) &&
+         backend_.write(bytes, sizeof(bytes));
 }
 
 bool HomeAssistantConfigStore::clear() {

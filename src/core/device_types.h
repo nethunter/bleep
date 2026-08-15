@@ -19,7 +19,6 @@ enum class DriverId : uint16_t {
   HomeAssistant = 5,
   AputureLight = 6,
   ZhiyunLight = 9,
-  ZhiyunX100 = 9,
   GoPro = 10,
   Insta360 = 11,
   DjiOsmo = 12,

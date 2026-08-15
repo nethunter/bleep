@@ -4,7 +4,6 @@
 
 namespace tascam_x8_ui {
 
-void init();
 void show(studio::InstanceId instanceId);
 void hide();
 void release();

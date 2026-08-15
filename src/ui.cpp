@@ -19,6 +19,7 @@
 #include "driver_config.h"
 #include "scene_ui.h"
 #include "ui/picker_shell.h"
+#include "ui/rename_prompt.h"
 #include "ui/round_page.h"
 #include "ui/title_marquee.h"
 #include "portal_service.h"
@@ -42,8 +43,8 @@
 #if CONFIG_DRIVER_APUTURE_LIGHT
 #include "devices/aputure_light/ui.h"
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-#include "devices/zhiyun_x100/ui.h"
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
+#include "devices/zhiyun_light/ui.h"
 #endif
 #if CONFIG_DRIVER_GOPRO
 #include "devices/gopro/ui.h"
@@ -54,7 +55,7 @@
 #if CONFIG_DRIVER_DJI_OSMO
 #include "devices/dji_osmo/ui.h"
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
 #include "devices/action_camera_research/ui.h"
 #endif
 #if CONFIG_DRIVER_PHONE_CAMERA
@@ -73,6 +74,125 @@ constexpr uint32_t kColAccent = 0x35C7F2;
 constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
+
+struct DeviceUiHooks {
+  constexpr DeviceUiHooks(
+      studio::DriverId nextDriverId = studio::DriverId::Unknown,
+      void (*nextShow)(studio::InstanceId) = nullptr,
+      void (*nextHide)() = nullptr, void (*nextRelease)() = nullptr,
+      bool (*nextActive)() = nullptr, void (*nextTick)() = nullptr,
+      void (*nextShortPress)() = nullptr,
+      void (*nextLongPress)() = nullptr)
+      : driverId(nextDriverId),
+        show(nextShow),
+        hide(nextHide),
+        release(nextRelease),
+        active(nextActive),
+        tick(nextTick),
+        shortPress(nextShortPress),
+        longPress(nextLongPress) {}
+
+  studio::DriverId driverId;
+  void (*show)(studio::InstanceId);
+  void (*hide)();
+  void (*release)();
+  bool (*active)();
+  void (*tick)();
+  void (*shortPress)();
+  void (*longPress)();
+};
+
+const DeviceUiHooks kDeviceUis[] = {
+#if CONFIG_DRIVER_PHONE_CAMERA
+    {studio::DriverId::PhoneCamera, phone_camera_ui::show,
+     phone_camera_ui::hide, phone_camera_ui::release, phone_camera_ui::active,
+     phone_camera_ui::tick, phone_camera_ui::handleShortPress,
+     phone_camera_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_INSTA360
+    {studio::DriverId::Insta360, insta360_ui::show, insta360_ui::hide,
+     insta360_ui::release, insta360_ui::active, insta360_ui::tick,
+     insta360_ui::handleShortPress, insta360_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_DJI_OSMO
+    {studio::DriverId::DjiOsmo, dji_osmo_ui::show, dji_osmo_ui::hide,
+     dji_osmo_ui::release, dji_osmo_ui::active, dji_osmo_ui::tick,
+     dji_osmo_ui::handleShortPress, dji_osmo_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_SONY_CAMERA
+    {studio::DriverId::SonyCamera, action_camera_research_ui::show,
+     action_camera_research_ui::hide, action_camera_research_ui::release,
+     action_camera_research_ui::active, nullptr, nullptr,
+     action_camera_research_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_GOPRO
+    {studio::DriverId::GoPro, gopro_ui::show, gopro_ui::hide,
+     gopro_ui::release, gopro_ui::active, gopro_ui::tick,
+     gopro_ui::handleShortPress, gopro_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
+    {studio::DriverId::ZhiyunLight, zhiyun_light_ui::show,
+     zhiyun_light_ui::hide, zhiyun_light_ui::release,
+     zhiyun_light_ui::active, zhiyun_light_ui::tick,
+     zhiyun_light_ui::handleShortPress, zhiyun_light_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_APUTURE_LIGHT
+    {studio::DriverId::AputureLight, aputure_light_ui::show,
+     aputure_light_ui::hide, aputure_light_ui::release,
+     aputure_light_ui::active, aputure_light_ui::tick,
+     aputure_light_ui::handleShortPress, aputure_light_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_SHARK_NANO_II
+    {studio::DriverId::SharkNanoII, shark_ui::show, shark_ui::hide,
+     shark_ui::release, shark_ui::active, shark_ui::tick,
+     shark_ui::handleShortPress, shark_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_CANON_TRIGGER
+    {studio::DriverId::CanonTrigger, canon_trigger_ui::show,
+     canon_trigger_ui::hide, canon_trigger_ui::release,
+     canon_trigger_ui::active, canon_trigger_ui::tick,
+     canon_trigger_ui::handleShortPress, canon_trigger_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_CANON_BLE
+    {studio::DriverId::CanonBle, canon_ble_ui::show, canon_ble_ui::hide,
+     canon_ble_ui::release, canon_ble_ui::active, canon_ble_ui::tick,
+     canon_ble_ui::handleShortPress, canon_ble_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_TASCAM_X8
+    {studio::DriverId::TascamX8, tascam_x8_ui::show, tascam_x8_ui::hide,
+     tascam_x8_ui::release, tascam_x8_ui::active, tascam_x8_ui::tick,
+     tascam_x8_ui::handleShortPress, tascam_x8_ui::handleLongPress},
+#endif
+#if CONFIG_DRIVER_HOME_ASSISTANT
+    {studio::DriverId::HomeAssistant, home_assistant_ui::show,
+     home_assistant_ui::hide, home_assistant_ui::release,
+     home_assistant_ui::active, home_assistant_ui::tick,
+     home_assistant_ui::handleShortPress, home_assistant_ui::handleLongPress},
+#endif
+    {},
+};
+
+const DeviceUiHooks* activeDeviceUi() {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.active != nullptr && hooks.active()) return &hooks;
+  }
+  return nullptr;
+}
+
+const DeviceUiHooks* deviceUi(studio::DriverId driverId) {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.driverId == driverId) return &hooks;
+  }
+  return nullptr;
+}
+
+void hideDeviceUis() {
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.hide != nullptr && hooks.active != nullptr && hooks.active()) {
+      hooks.hide();
+    }
+  }
+}
 
 enum class Screen : uint8_t { Home, Devices, Portal, Settings };
 enum class SettingsView : uint8_t { Menu, Wifi, About, SystemInfo, FactoryReset };
@@ -115,42 +235,18 @@ lv_obj_t* deviceModalBody = nullptr;
 lv_obj_t* enabledSwitch = nullptr;
 lv_obj_t* disconnectButton = nullptr;
 lv_obj_t* removeButton = nullptr;
-lv_obj_t* renameOverlay = nullptr;
-lv_obj_t* renameText = nullptr;
-lv_obj_t* renameKeypad = nullptr;
-lv_obj_t* renamePageLabel = nullptr;
-lv_obj_t* renameCaseLabel = nullptr;
 
 studio::InstanceId managedInstance = studio::kInvalidInstanceId;
 uint32_t lastRefreshMs = 0;
 bool removeArmed = false;
 bool disconnectArmed = false;
-uint8_t renamePage = 0;
-bool renameUpperCase = true;
 size_t devicePage = 0;
-RenameDoneFn renameDoneCallback = nullptr;
-RenameCancelFn renameCancelCallback = nullptr;
 uint8_t hapticErrorMask = 0;
 studio::InstanceId hapticForegroundInstance = studio::kInvalidInstanceId;
 bool hapticForegroundReady = false;
 studio::SceneId hapticSceneId = studio::kInvalidSceneId;
 studio::ScenePhase hapticScenePhase = studio::ScenePhase::Idle;
 
-static const char* kRenameUpperPage0[] = {"A", "B", "C", "\n", "D", "E", "F", "\n",
-                                         "G", "H", "I", ""};
-static const char* kRenameUpperPage1[] = {"J", "K", "L", "\n", "M", "N", "O", "\n",
-                                         "P", "Q", "R", ""};
-static const char* kRenameUpperPage2[] = {"S", "T", "U", "\n", "V", "W", "X", "\n",
-                                         "Y", "Z", "", ""};
-static const char* kRenameLowerPage0[] = {"a", "b", "c", "\n", "d", "e", "f", "\n",
-                                         "g", "h", "i", ""};
-static const char* kRenameLowerPage1[] = {"j", "k", "l", "\n", "m", "n", "o", "\n",
-                                         "p", "q", "r", ""};
-static const char* kRenameLowerPage2[] = {"s", "t", "u", "\n", "v", "w", "x", "\n",
-                                         "y", "z", "", ""};
-static const char* kRenameSymbolPage[] = {"0", "1", "2", "3", "\n", "4", "5", "6", "7",
-                                         "\n", "8", "9", "-", "_", ""};
-constexpr uint8_t kRenamePageCount = 4;
 
 void styleScreen(lv_obj_t* object) {
   lv_obj_set_style_bg_color(object, lv_color_hex(kColBg), 0);
@@ -234,16 +330,8 @@ void closeDeviceModal() {
 }
 
 void closeRename() {
-  destroyOverlay(renameOverlay);
-  renameText = nullptr;
-  renameKeypad = nullptr;
-  renamePageLabel = nullptr;
-  renameCaseLabel = nullptr;
-  renameDoneCallback = nullptr;
-  renameCancelCallback = nullptr;
+  studio_ui::rename_prompt::close();
 }
-
-void buildRenameOverlay();
 
 void onAddPickerClosed() {
   if (addButton != nullptr) {
@@ -339,7 +427,6 @@ void onOpenDevice(lv_event_t* event) {
 }
 
 void buildDeviceModal();
-void buildRenameOverlay();
 void onAddDevice(lv_event_t*);
 void refreshDevices();
 void refreshDeviceModal();
@@ -589,75 +676,6 @@ void onCancelRemove(lv_event_t*) {
   refreshDeviceModal();
 }
 
-const char** renamePageMap() {
-  if (renamePage == 0) {
-    return renameUpperCase ? kRenameUpperPage0 : kRenameLowerPage0;
-  }
-  if (renamePage == 1) {
-    return renameUpperCase ? kRenameUpperPage1 : kRenameLowerPage1;
-  }
-  if (renamePage == 2) {
-    return renameUpperCase ? kRenameUpperPage2 : kRenameLowerPage2;
-  }
-  return kRenameSymbolPage;
-}
-
-void refreshRenameKeypad() {
-  static const char* kPageNames[] = {"A-I", "J-R", "S-Z", "0-9"};
-  lv_btnmatrix_set_map(renameKeypad, renamePageMap());
-  lv_label_set_text(renamePageLabel, kPageNames[renamePage]);
-  lv_label_set_text(renameCaseLabel, renameUpperCase ? "Aa" : "aA");
-}
-
-void stepRenamePage(int delta) {
-  int page = static_cast<int>(renamePage) + delta;
-  if (page < 0) {
-    page += kRenamePageCount;
-  } else if (page >= kRenamePageCount) {
-    page -= kRenamePageCount;
-  }
-  renamePage = static_cast<uint8_t>(page);
-  refreshRenameKeypad();
-}
-
-void onRenamePrevious(lv_event_t*) { stepRenamePage(-1); }
-
-void onRenameNext(lv_event_t*) { stepRenamePage(1); }
-
-void onRenameKeypadGesture(lv_event_t*) {
-  lv_indev_t* input = lv_indev_get_act();
-  if (input == nullptr) {
-    return;
-  }
-  const lv_dir_t direction = lv_indev_get_gesture_dir(input);
-  if (direction == LV_DIR_LEFT) {
-    stepRenamePage(1);
-  } else if (direction == LV_DIR_RIGHT) {
-    stepRenamePage(-1);
-  }
-}
-
-void onRenameCharacter(lv_event_t* event) {
-  lv_obj_t* keypad = lv_event_get_target(event);
-  const uint16_t button = lv_btnmatrix_get_selected_btn(keypad);
-  if (button == LV_BTNMATRIX_BTN_NONE) {
-    return;
-  }
-  const char* text = lv_btnmatrix_get_btn_text(keypad, button);
-  if (text != nullptr && text[0] != '\0') {
-    lv_textarea_add_text(renameText, text);
-  }
-}
-
-void onRenameBackspace(lv_event_t*) { lv_textarea_del_char(renameText); }
-
-void onRenameSpace(lv_event_t*) { lv_textarea_add_char(renameText, ' '); }
-
-void onRenameCase(lv_event_t*) {
-  renameUpperCase = !renameUpperCase;
-  refreshRenameKeypad();
-}
-
 void onDeviceRenameDone(const char* name) {
   if (managedInstance != studio::kInvalidInstanceId && name != nullptr) {
     studio::devices().rename(managedInstance, name);
@@ -675,26 +693,8 @@ void onOpenRename(lv_event_t*) {
   promptRename(record->displayName, onDeviceRenameDone);
 }
 
-void onSaveRename(lv_event_t*) {
-  const RenameDoneFn done = renameDoneCallback;
-  char name[studio::kDeviceNameCapacity] = "";
-  if (renameText != nullptr) {
-    std::strncpy(name, lv_textarea_get_text(renameText), sizeof(name) - 1);
-  }
-  closeRename();
-  if (done != nullptr) {
-    done(name);
-  }
-}
-
-void onCancelRename(lv_event_t*) {
-  const RenameCancelFn cancel = renameCancelCallback;
-  closeRename();
-  if (cancel != nullptr) {
-    cancel();
-  } else if (screen == Screen::Devices) {
-    refreshDevices();
-  }
+void onDefaultRenameCancel() {
+  if (screen == Screen::Devices) refreshDevices();
 }
 
 void destroySettingsScreen() {
@@ -1257,116 +1257,12 @@ void refreshDeviceModal() {
   }
 }
 
-void buildRenameOverlay() {
-  if (renameOverlay != nullptr) {
-    return;
-  }
-  renameOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(renameOverlay, 236, 236);
-  lv_obj_center(renameOverlay);
-  lv_obj_set_style_radius(renameOverlay, 118, 0);
-  lv_obj_set_style_bg_color(renameOverlay, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_color(renameOverlay, lv_color_hex(kColAccent), 0);
-  lv_obj_set_style_pad_all(renameOverlay, 0, 0);
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t* cancel =
-      makeButton(renameOverlay, LV_SYMBOL_CLOSE, onCancelRename, kColPanel);
-  lv_obj_set_size(cancel, 30, 30);
-  lv_obj_align(cancel, LV_ALIGN_TOP_LEFT, 34, 24);
-
-  renameText = lv_textarea_create(renameOverlay);
-  lv_obj_set_size(renameText, 100, 30);
-  lv_obj_align(renameText, LV_ALIGN_TOP_MID, 0, 18);
-  lv_textarea_set_max_length(renameText, studio::kDeviceNameCapacity - 1);
-  lv_textarea_set_one_line(renameText, true);
-  lv_textarea_set_cursor_click_pos(renameText, true);
-
-  lv_obj_t* save = makeButton(renameOverlay, LV_SYMBOL_OK, onSaveRename, kColAccent);
-  lv_obj_set_size(save, 30, 30);
-  lv_obj_align(save, LV_ALIGN_TOP_RIGHT, -34, 24);
-
-  lv_obj_t* previous = makeButton(renameOverlay, LV_SYMBOL_LEFT, onRenamePrevious);
-  lv_obj_set_size(previous, 32, 28);
-  lv_obj_align(previous, LV_ALIGN_TOP_MID, -55, 53);
-
-  renamePageLabel = lv_label_create(renameOverlay);
-  lv_obj_set_style_text_font(renamePageLabel, UI_FONT_14, 0);
-  lv_obj_set_style_text_color(renamePageLabel, lv_color_hex(kColMuted), 0);
-  lv_obj_align(renamePageLabel, LV_ALIGN_TOP_MID, 0, 59);
-
-  lv_obj_t* next = makeButton(renameOverlay, LV_SYMBOL_RIGHT, onRenameNext);
-  lv_obj_set_size(next, 32, 28);
-  lv_obj_align(next, LV_ALIGN_TOP_MID, 55, 53);
-
-  renameKeypad = lv_btnmatrix_create(renameOverlay);
-  lv_obj_set_size(renameKeypad, 150, 84);
-  lv_obj_align(renameKeypad, LV_ALIGN_TOP_MID, 0, 83);
-  lv_obj_set_style_bg_color(renameKeypad, lv_color_hex(kColBg), 0);
-  lv_obj_set_style_border_width(renameKeypad, 0, 0);
-  lv_obj_set_style_pad_all(renameKeypad, 2, 0);
-  lv_obj_set_style_pad_gap(renameKeypad, 3, 0);
-  lv_obj_set_style_bg_color(renameKeypad, lv_color_hex(kColPanel), LV_PART_ITEMS);
-  lv_obj_set_style_radius(renameKeypad, 7, LV_PART_ITEMS);
-  lv_obj_set_style_text_font(renameKeypad, UI_FONT_16, LV_PART_ITEMS);
-  lv_obj_add_event_cb(renameKeypad, onRenameCharacter, LV_EVENT_VALUE_CHANGED, nullptr);
-  lv_obj_add_event_cb(renameKeypad, onRenameKeypadGesture, LV_EVENT_GESTURE, nullptr);
-
-  lv_obj_t* backspace =
-      makeButton(renameOverlay, LV_SYMBOL_BACKSPACE, onRenameBackspace);
-  lv_obj_set_size(backspace, 40, 26);
-  lv_obj_align(backspace, LV_ALIGN_TOP_MID, -51, 172);
-  lv_obj_t* space = makeButton(renameOverlay, "Space", onRenameSpace);
-  lv_obj_set_size(space, 56, 26);
-  lv_obj_align(space, LV_ALIGN_TOP_MID, 0, 172);
-  lv_obj_t* letterCase = makeButton(renameOverlay, "Aa", onRenameCase);
-  lv_obj_set_size(letterCase, 40, 26);
-  lv_obj_align(letterCase, LV_ALIGN_TOP_MID, 51, 172);
-  renameCaseLabel = lv_obj_get_child(letterCase, 0);
-
-  refreshRenameKeypad();
-}
-
 }  // namespace
 
 void releaseDeviceUis() {
-#if CONFIG_DRIVER_INSTA360
-  insta360_ui::release();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  dji_osmo_ui::release();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  phone_camera_ui::release();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  action_camera_research_ui::release();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  gopro_ui::release();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  zhiyun_x100_ui::release();
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  aputure_light_ui::release();
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  shark_ui::release();
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  canon_trigger_ui::release();
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  canon_ble_ui::release();
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  tascam_x8_ui::release();
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  home_assistant_ui::release();
-#endif
+  for (const DeviceUiHooks& hooks : kDeviceUis) {
+    if (hooks.release != nullptr) hooks.release();
+  }
 }
 
 void init() {
@@ -1447,74 +1343,16 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::tick();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->tick != nullptr) activeUi->tick();
     return;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::tick(); return; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::tick(); return; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) return;
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::tick();
-    return;
-  }
-#endif
   if (settingsHeaderNeedsRefresh && settingsHeader != nullptr) {
     settingsHeaderNeedsRefresh = false;
     lv_obj_move_foreground(settingsHeader);
     lv_obj_invalidate(scrSettings);
   }
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::tick();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::tick();
-    return;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::tick();
     return;
@@ -1561,69 +1399,11 @@ void tick() {
 }
 
 void handleShortPress() {
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::handleShortPress();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->shortPress != nullptr) activeUi->shortPress();
     return;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::handleShortPress(); return; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::handleShortPress(); return; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) return;
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::handleShortPress();
-    return;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::handleShortPress();
-    return;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::handleShortPress();
     return;
@@ -1631,72 +1411,11 @@ void handleShortPress() {
 }
 
 bool handleLongPress() {
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) {
-    phone_camera_ui::handleLongPress();
+  const DeviceUiHooks* activeUi = activeDeviceUi();
+  if (activeUi != nullptr) {
+    if (activeUi->longPress != nullptr) activeUi->longPress();
     return true;
   }
-#endif
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) { insta360_ui::handleLongPress(); return true; }
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) { dji_osmo_ui::handleLongPress(); return true; }
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) {
-    action_camera_research_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) {
-    gopro_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::handleLongPress();
-    return true;
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::handleLongPress();
-    return true;
-  }
-#endif
   if (scene_ui::active()) {
     scene_ui::handleLongPress();
     return true;
@@ -1704,8 +1423,8 @@ bool handleLongPress() {
   if (picker_shell::handleBack()) {
     return true;
   }
-  if (renameOverlay != nullptr) {
-    onCancelRename(nullptr);
+  if (studio_ui::rename_prompt::active()) {
+    studio_ui::rename_prompt::cancel();
     return true;
   } else if (deviceModal != nullptr) {
     closeDeviceModal();
@@ -1734,62 +1453,9 @@ bool handleLongPressToHome() {
 }
 
 void showHome() {
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) insta360_ui::hide();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) phone_camera_ui::hide();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) gopro_ui::hide();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::hide();
-  }
-#endif
-  if (portal::active()) {
-    portal::stop();
-  }
-  if (scene_ui::active()) {
-    scene_ui::hide();
-  }
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::hide();
-  }
-#endif
+  hideDeviceUis();
+  if (portal::active()) portal::stop();
+  if (scene_ui::active()) scene_ui::hide();
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -1810,59 +1476,8 @@ void showSettings() {
 }
 
 void showDevices() {
-#if CONFIG_DRIVER_INSTA360
-  if (insta360_ui::active()) insta360_ui::hide();
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-  if (dji_osmo_ui::active()) dji_osmo_ui::hide();
-#endif
-#if CONFIG_DRIVER_PHONE_CAMERA
-  if (phone_camera_ui::active()) phone_camera_ui::hide();
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-  if (action_camera_research_ui::active()) action_camera_research_ui::hide();
-#endif
-#if CONFIG_DRIVER_GOPRO
-  if (gopro_ui::active()) gopro_ui::hide();
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-  if (zhiyun_x100_ui::active()) {
-    zhiyun_x100_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-  if (aputure_light_ui::active()) {
-    aputure_light_ui::hide();
-  }
-#endif
-  if (scene_ui::active()) {
-    scene_ui::hide();
-  }
-#if CONFIG_DRIVER_SHARK_NANO_II
-  if (shark_ui::active()) {
-    shark_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-  if (canon_trigger_ui::active()) {
-    canon_trigger_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-  if (canon_ble_ui::active()) {
-    canon_ble_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-  if (tascam_x8_ui::active()) {
-    tascam_x8_ui::hide();
-  }
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-  if (home_assistant_ui::active()) {
-    home_assistant_ui::hide();
-  }
-#endif
+  hideDeviceUis();
+  if (scene_ui::active()) scene_ui::hide();
   closeDeviceModal();
   closeRename();
   closeAddPicker();
@@ -1889,74 +1504,11 @@ void showPortal() {
 
 void showDevice(studio::InstanceId instanceId) {
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  if (record == nullptr || !record->enabled) {
-    return;
-  }
+  if (record == nullptr || !record->enabled) return;
+  const DeviceUiHooks* hooks = deviceUi(record->driverId);
+  if (hooks == nullptr || hooks->show == nullptr) return;
   releaseDeviceRows();
-  switch (record->driverId) {
-#if CONFIG_DRIVER_PHONE_CAMERA
-    case studio::DriverId::PhoneCamera:
-      phone_camera_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_GOPRO
-    case studio::DriverId::GoPro:
-      gopro_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_INSTA360
-    case studio::DriverId::Insta360:
-      insta360_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_DJI_OSMO
-    case studio::DriverId::DjiOsmo:
-      dji_osmo_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
-    case studio::DriverId::SonyCamera:
-      action_camera_research_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-    case studio::DriverId::ZhiyunLight:
-      zhiyun_x100_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_APUTURE_LIGHT
-    case studio::DriverId::AputureLight:
-      aputure_light_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_SHARK_NANO_II
-    case studio::DriverId::SharkNanoII:
-      shark_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_TRIGGER
-    case studio::DriverId::CanonTrigger:
-      canon_trigger_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_CANON_BLE
-    case studio::DriverId::CanonBle:
-      canon_ble_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_TASCAM_X8
-    case studio::DriverId::TascamX8:
-      tascam_x8_ui::show(instanceId);
-      break;
-#endif
-#if CONFIG_DRIVER_HOME_ASSISTANT
-    case studio::DriverId::HomeAssistant:
-      home_assistant_ui::show(instanceId);
-      break;
-#endif
-    default:
-      break;
-  }
+  hooks->show(instanceId);
 }
 
 void showDeviceParent() {
@@ -1982,25 +1534,13 @@ void releaseInactiveScreens() { releaseDeviceUis(); }
 
 void promptRename(const char* initial, RenameDoneFn onDone,
                   RenameCancelFn onCancel) {
-  if (renameOverlay == nullptr) {
-    buildRenameOverlay();
-  }
-  renameDoneCallback = onDone;
-  renameCancelCallback = onCancel;
-  lv_textarea_set_text(renameText, initial != nullptr ? initial : "");
-  lv_textarea_set_cursor_pos(renameText, LV_TEXTAREA_CURSOR_LAST);
-  renamePage = 0;
-  renameUpperCase = true;
-  refreshRenameKeypad();
-  lv_obj_clear_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
+  studio_ui::rename_prompt::show(
+      initial, onDone, onCancel != nullptr ? onCancel : onDefaultRenameCancel);
 }
 
 void closeRenamePrompt() { closeRename(); }
 
-bool renamePromptActive() {
-  return renameOverlay != nullptr &&
-         !lv_obj_has_flag(renameOverlay, LV_OBJ_FLAG_HIDDEN);
-}
+bool renamePromptActive() { return studio_ui::rename_prompt::active(); }
 
 #ifdef UI_SIMULATOR
 studio::InstanceId simDeviceAtDisplayIndex(size_t index) {
@@ -2067,12 +1607,11 @@ void simShowRename(studio::InstanceId instanceId) {
 }
 
 void simSubmitRename(const char* name) {
-  if (renameText == nullptr) return;
-  lv_textarea_set_text(renameText, name != nullptr ? name : "");
-  onSaveRename(nullptr);
+  studio_ui::rename_prompt::simSetText(name);
+  studio_ui::rename_prompt::simSave();
 }
 
-void simCancelRename() { onCancelRename(nullptr); }
+void simCancelRename() { studio_ui::rename_prompt::cancel(); }
 
 void simRequestManagedDisconnect() { onDisconnect(nullptr); }
 void simRequestManagedRemove() { onRemove(nullptr); }

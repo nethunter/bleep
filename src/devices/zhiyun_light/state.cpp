@@ -1,10 +1,10 @@
-#include "devices/zhiyun_x100/state.h"
+#include "devices/zhiyun_light/state.h"
 
-#include "devices/zhiyun_x100/protocol.h"
+#include "devices/zhiyun_light/protocol.h"
 
 #include <algorithm>
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 
 bool validCctCommand(int kelvin, int brightness, int tintPermille) {
   return kelvin >= kMinKelvin && kelvin <= kMaxKelvin && brightness >= 0 &&
@@ -40,4 +40,4 @@ void rgbToHsv(uint32_t rgb, uint16_t& hue, uint8_t& saturation) {
                    : static_cast<uint8_t>((delta / maximum) * 100.0f + 0.5f);
 }
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

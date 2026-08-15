@@ -1,4 +1,4 @@
-#include "devices/zhiyun_x100/client.h"
+#include "devices/zhiyun_light/client.h"
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -12,28 +12,28 @@
 #include "core/ble/ble_timing.h"
 #include "core/preferences_store.h"
 #include "core/mesh/mesh_repository.h"
-#include "devices/zhiyun_x100/ble_match.h"
+#include "devices/zhiyun_light/ble_match.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 namespace {
 
 constexpr size_t kMaxMolusClients = 4;
-X100Client* gNotifyClients[kMaxMolusClients] = {};
+ZhiyunLightClient* gNotifyClients[kMaxMolusClients] = {};
 uint16_t gSharedSequence = 2;
 
 void notifyTrampoline(NimBLERemoteCharacteristic* characteristic, uint8_t* data,
                       size_t length, bool) {
-  for (X100Client* client : gNotifyClients) {
+  for (ZhiyunLightClient* client : gNotifyClients) {
     if (client != nullptr && client->ownsNotifyCharacteristic(characteristic)) {
       client->onNotifyBytes(data, length);
     }
   }
 }
 
-void registerNotifyClient(X100Client* client) {
-  for (X100Client*& slot : gNotifyClients) {
+void registerNotifyClient(ZhiyunLightClient* client) {
+  for (ZhiyunLightClient*& slot : gNotifyClients) {
     if (slot == client) return;
     if (slot == nullptr) {
       slot = client;
@@ -42,15 +42,15 @@ void registerNotifyClient(X100Client* client) {
   }
 }
 
-void unregisterNotifyClient(X100Client* client) {
-  for (X100Client*& slot : gNotifyClients) {
+void unregisterNotifyClient(ZhiyunLightClient* client) {
+  for (ZhiyunLightClient*& slot : gNotifyClients) {
     if (slot == client) slot = nullptr;
   }
 }
 
 }  // namespace
 
-bool X100Client::begin() {
+bool ZhiyunLightClient::begin() {
   if (initialized_) return true;
   if (notifyStream_ == nullptr) notifyStream_ = xStreamBufferCreate(512, 1);
   if (notifyStream_ == nullptr) return false;
@@ -71,7 +71,7 @@ bool X100Client::begin() {
   return true;
 }
 
-bool X100Client::beginShared() {
+bool ZhiyunLightClient::beginShared() {
   if (initialized_ && sharedTransport_) return true;
   if (notifyStream_ == nullptr) notifyStream_ = xStreamBufferCreate(512, 1);
   initialized_ = notifyStream_ != nullptr;
@@ -81,7 +81,7 @@ bool X100Client::beginShared() {
   return true;
 }
 
-void X100Client::prepareActivation(studio::InstanceId instanceId,
+void ZhiyunLightClient::prepareActivation(studio::InstanceId instanceId,
                                    const char* address, uint8_t addressType,
                                    const char* name, bool paired) {
   instanceId_ = instanceId;
@@ -110,7 +110,7 @@ void X100Client::prepareActivation(studio::InstanceId instanceId,
   state_.maxBrightness = 100;
 }
 
-bool X100Client::activate(studio::InstanceId instanceId, const char* address,
+bool ZhiyunLightClient::activate(studio::InstanceId instanceId, const char* address,
                           uint8_t addressType, const char* name, bool paired) {
   sharedTransport_ = false;
   if (!begin()) return false;
@@ -129,7 +129,7 @@ bool X100Client::activate(studio::InstanceId instanceId, const char* address,
   return true;
 }
 
-bool X100Client::activateShared(studio::InstanceId instanceId,
+bool ZhiyunLightClient::activateShared(studio::InstanceId instanceId,
                                 const char* address, uint8_t addressType,
                                 const char* name, bool paired) {
   if (!beginShared()) return false;
@@ -142,17 +142,17 @@ bool X100Client::activateShared(studio::InstanceId instanceId,
       routingSelector_ = node->routingSelector;
     }
   }
-  state_.link = X100State::Link::Connecting;
-  state_.phase = X100State::Phase::Idle;
+  state_.link = ZhiyunLightState::Link::Connecting;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   return true;
 }
 
-bool X100Client::attachShared(void* nativeClient,
+bool ZhiyunLightClient::attachShared(void* nativeClient,
                               studio::ble::LinkHandle link) {
   if (!sharedTransport_ || nativeClient == nullptr ||
       link == studio::ble::kInvalidLinkHandle) return false;
   NimBLEClient* client = static_cast<NimBLEClient*>(nativeClient);
-  if (client_ == client && state_.phase == X100State::Phase::Ready) return true;
+  if (client_ == client && state_.phase == ZhiyunLightState::Phase::Ready) return true;
   client_ = client;
   linkHandle_ = link;
   setupPending_ = false;
@@ -161,20 +161,20 @@ bool X100Client::attachShared(void* nativeClient,
   return client_->isConnected() && completeConnect();
 }
 
-void X100Client::detachShared() {
+void ZhiyunLightClient::detachShared() {
   if (!sharedTransport_) return;
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
   notifyCharacteristic_ = nullptr;
   awaitingResponse_ = false;
   operation_ = Operation::None;
-  state_.link = X100State::Link::Disconnected;
-  state_.phase = X100State::Phase::Idle;
+  state_.link = ZhiyunLightState::Link::Disconnected;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   state_.commandPending = false;
   linkHandle_ = studio::ble::kInvalidLinkHandle;
 }
 
-void X100Client::cancelPendingCommand() {
+void ZhiyunLightClient::cancelPendingCommand() {
   awaitingResponse_ = false;
   operation_ = Operation::None;
   verifyAtMs_ = 0;
@@ -186,7 +186,7 @@ void X100Client::cancelPendingCommand() {
   state_.error[0] = '\0';
 }
 
-bool X100Client::resumeConnection() {
+bool ZhiyunLightClient::resumeConnection() {
   if (!initialized_ || sharedTransport_) return false;
   connectRequested_ = true;
   state_.error[0] = '\0';
@@ -195,10 +195,10 @@ bool X100Client::resumeConnection() {
       studio::ble::bleCentral().phase(linkHandle_);
   if (protocolReady()) return true;
   if (state_.hasSavedDevice && haveTarget_) {
-    if (state_.link != X100State::Link::Connected)
-      state_.link = X100State::Link::Connecting;
-    if (state_.phase == X100State::Phase::Failed)
-      state_.phase = X100State::Phase::Idle;
+    if (state_.link != ZhiyunLightState::Link::Connected)
+      state_.link = ZhiyunLightState::Link::Connecting;
+    if (state_.phase == ZhiyunLightState::Phase::Failed)
+      state_.phase = ZhiyunLightState::Phase::Idle;
     if (phase == studio::ble::LinkPhase::Idle) beginConnect();
     return true;
   }
@@ -206,7 +206,7 @@ bool X100Client::resumeConnection() {
   return true;
 }
 
-void X100Client::deactivate() {
+void ZhiyunLightClient::deactivate() {
   rollbackPendingProvision();
   connectRequested_ = false;
   if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle)
@@ -233,13 +233,13 @@ void X100Client::deactivate() {
   scanAfterProvision_ = false;
   provisioningLength_ = 0;
   scanner_.reset();
-  state_.link = X100State::Link::Disconnected;
-  state_.phase = X100State::Phase::Idle;
+  state_.link = ZhiyunLightState::Link::Disconnected;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   state_.commandPending = false;
   instanceId_ = studio::kInvalidInstanceId;
 }
 
-void X100Client::loop() {
+void ZhiyunLightClient::loop() {
   drainNotifications();
   if (!connectRequested_) return;
   const uint32_t now = millis();
@@ -250,7 +250,7 @@ void X100Client::loop() {
         returnToOnboardingPicker("Zhiyun setup failed");
         return;
       }
-      state_.phase = X100State::Phase::Failed;
+      state_.phase = ZhiyunLightState::Phase::Failed;
       std::strncpy(state_.error, "Zhiyun setup failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
@@ -258,7 +258,7 @@ void X100Client::loop() {
       return;
     }
   }
-  if (state_.phase == X100State::Phase::Provisioning &&
+  if (state_.phase == ZhiyunLightState::Phase::Provisioning &&
       provisioningDeadlineMs_ != 0 &&
       static_cast<int32_t>(now - provisioningDeadlineMs_) >= 0) {
     provisioningDeadlineMs_ = 0;
@@ -267,7 +267,7 @@ void X100Client::loop() {
       returnToOnboardingPicker("Provisioning timeout");
       return;
     }
-    state_.phase = X100State::Phase::Failed;
+    state_.phase = ZhiyunLightState::Phase::Failed;
     std::strncpy(state_.error, "Provisioning timeout",
                  sizeof(state_.error) - 1);
     state_.error[sizeof(state_.error) - 1] = '\0';
@@ -282,7 +282,7 @@ void X100Client::loop() {
         awaitingResponse_ = false;
         return;
       }
-      state_.phase = X100State::Phase::Failed;
+      state_.phase = ZhiyunLightState::Phase::Failed;
       std::strncpy(state_.error, "Initialization timeout",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
@@ -299,25 +299,25 @@ void X100Client::loop() {
   }
 }
 
-bool X100Client::protocolReady() const {
+bool ZhiyunLightClient::protocolReady() const {
   return linkHandle_ != studio::ble::kInvalidLinkHandle &&
-         state_.phase == X100State::Phase::Ready &&
+         state_.phase == ZhiyunLightState::Phase::Ready &&
          (sharedTransport_ ||
           studio::ble::bleCentral().protocolReady(linkHandle_));
 }
 
-bool X100Client::ownsNotifyCharacteristic(
+bool ZhiyunLightClient::ownsNotifyCharacteristic(
     const NimBLERemoteCharacteristic* characteristic) const {
   return characteristic != nullptr &&
          (characteristic == notifyCharacteristic_ ||
           characteristic == provisioningOut_);
 }
 
-const char* X100Client::identityMarker() const {
+const char* ZhiyunLightClient::identityMarker() const {
   return state_.model == MolusModel::X60Rgb ? "plx104" : "pl105";
 }
 
-uint16_t X100Client::nextSequence() {
+uint16_t ZhiyunLightClient::nextSequence() {
   if (sharedTransport_) {
     const uint16_t result = gSharedSequence;
     ++gSharedSequence;
@@ -330,20 +330,20 @@ uint16_t X100Client::nextSequence() {
   return result;
 }
 
-void X100Client::markProtocolReady() {
+void ZhiyunLightClient::markProtocolReady() {
   if (!sharedTransport_) studio::ble::bleCentral().markProtocolReady(linkHandle_);
 }
 
-void X100Client::markProtocolFailed() {
+void ZhiyunLightClient::markProtocolFailed() {
   if (!sharedTransport_) studio::ble::bleCentral().markProtocolFailed(linkHandle_);
 }
 
-bool X100Client::writeFrame(const FrameBytes& frame) {
+bool ZhiyunLightClient::writeFrame(const FrameBytes& frame) {
   return writeCharacteristic_ != nullptr && frame.length > 0 &&
          writeCharacteristic_->writeValue(frame.bytes, frame.length, false);
 }
 
-bool X100Client::sendQuery(uint16_t command, const uint8_t* payload,
+bool ZhiyunLightClient::sendQuery(uint16_t command, const uint8_t* payload,
                            size_t payloadLength) {
   const uint16_t sequence = nextSequence();
   const FrameBytes frame = payload == nullptr
@@ -358,7 +358,7 @@ bool X100Client::sendQuery(uint16_t command, const uint8_t* payload,
   return true;
 }
 
-bool X100Client::sendInitializationStep() {
+bool ZhiyunLightClient::sendInitializationStep() {
   static constexpr uint16_t x100Commands[] = {
       kCommandIdentity, kCommandFirmware, kCommandStatus, kCommandMode,
       kCommandBrightness, kCommandCct, kCommandPower,
@@ -387,7 +387,7 @@ bool X100Client::sendInitializationStep() {
   return sendQuery(commands[step_]);
 }
 
-bool X100Client::completeConnect() {
+bool ZhiyunLightClient::completeConnect() {
   if (provisioningLink_) return setupProvisioning();
   const uint32_t started = millis();
   NimBLERemoteService* service =
@@ -407,19 +407,19 @@ bool X100Client::completeConnect() {
   sequence_ = 2;
   step_ = 0;
   operation_ = Operation::Initialize;
-  state_.link = X100State::Link::Connected;
-  state_.phase = X100State::Phase::Initializing;
+  state_.link = ZhiyunLightState::Link::Connected;
+  state_.phase = ZhiyunLightState::Phase::Initializing;
   studio::ble::logTiming(
       "zhiyun_light", linkHandle_, "gatt_setup", millis() - started,
       millis() - studio::ble::bleCentral().timingStartedAt(linkHandle_), "ok");
   return sendInitializationStep();
 }
 
-bool X100Client::loadMesh() {
+bool ZhiyunLightClient::loadMesh() {
   return studio::mesh::repository().begin();
 }
 
-bool X100Client::setupProvisioning() {
+bool ZhiyunLightClient::setupProvisioning() {
   NimBLERemoteService* service = client_->getService(
       NimBLEUUID("00001827-0000-1000-8000-00805f9b34fb"));
   if (service == nullptr) return false;
@@ -434,8 +434,8 @@ bool X100Client::setupProvisioning() {
     return false;
   }
   provisioningLength_ = 0;
-  state_.link = X100State::Link::Connected;
-  state_.phase = X100State::Phase::Provisioning;
+  state_.link = ZhiyunLightState::Link::Connected;
+  state_.phase = ZhiyunLightState::Phase::Provisioning;
   provisioningDeadlineMs_ = millis() + 30000;
   studio::mesh::StoreData& meshData = studio::mesh::repository().data();
   return provisioner_.begin(meshData.network.networkKey,
@@ -443,7 +443,7 @@ bool X100Client::setupProvisioning() {
                             meshData.network.nextUnicastAddress, *this);
 }
 
-bool X100Client::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
+bool ZhiyunLightClient::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
   if (provisioningIn_ == nullptr || pdu == nullptr || length + 1 > 80)
     return false;
   uint8_t wrapped[80] = {0x03};
@@ -451,7 +451,7 @@ bool X100Client::sendProvisioningPdu(const uint8_t* pdu, size_t length) {
   return provisioningIn_->writeValue(wrapped, length + 1, false);
 }
 
-bool X100Client::finishProvisioning() {
+bool ZhiyunLightClient::finishProvisioning() {
   if (!provisioner_.complete() || instanceId_ == studio::kInvalidInstanceId)
     return false;
   studio::mesh::StoreData& meshData = studio::mesh::repository().data();
@@ -497,12 +497,12 @@ bool X100Client::finishProvisioning() {
   provisioningLink_ = false;
   scanAfterProvision_ = true;
   haveTarget_ = false;
-  state_.phase = X100State::Phase::Initializing;
+  state_.phase = ZhiyunLightState::Phase::Initializing;
   studio::ble::bleCentral().disconnect(linkHandle_, false);
   return true;
 }
 
-void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
+void ZhiyunLightClient::handleProvisioningBytes(const uint8_t* data, size_t length) {
   if (data == nullptr || length == 0 ||
       length > sizeof(provisioningBytes_) - provisioningLength_) {
     returnToOnboardingPicker("Provisioning data overflow");
@@ -544,7 +544,7 @@ void X100Client::handleProvisioningBytes(const uint8_t* data, size_t length) {
   }
 }
 
-void X100Client::handleFrame(const ParsedFrame& frame) {
+void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
   if (!frame.response || !awaitingResponse_ ||
       frame.sequence != expectedSequence_ || frame.command != expectedCommand_) {
     return;
@@ -564,7 +564,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
         returnToOnboardingPicker("Unexpected Zhiyun response");
         return;
       }
-      state_.phase = X100State::Phase::Failed;
+      state_.phase = ZhiyunLightState::Phase::Failed;
       std::strncpy(state_.error, "Unexpected Zhiyun response",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
@@ -578,7 +578,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
         returnToOnboardingPicker("Initialization write failed");
         return;
       }
-      state_.phase = X100State::Phase::Failed;
+      state_.phase = ZhiyunLightState::Phase::Failed;
       std::strncpy(state_.error, "Initialization write failed",
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
@@ -621,7 +621,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       state_.readbackKelvin = actual;
       if (valid) {
         state_.kelvin = actual;
-        state_.mode = X100State::Mode::Cct;
+        state_.mode = ZhiyunLightState::Mode::Cct;
       }
     }
     if (!valid && retryCctVerification()) return;
@@ -659,7 +659,7 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
       if (valid) {
         state_.brightness = actual;
         state_.rgb = desiredRgb_;
-        state_.mode = X100State::Mode::Rgb;
+        state_.mode = ZhiyunLightState::Mode::Rgb;
       }
     }
     if (valid && step_ < 2) {
@@ -684,8 +684,8 @@ void X100Client::handleFrame(const ParsedFrame& frame) {
   finishCommand(valid, valid ? nullptr : "State mismatch");
 }
 
-void X100Client::finishInitialization() {
-  state_.phase = X100State::Phase::Ready;
+void ZhiyunLightClient::finishInitialization() {
+  state_.phase = ZhiyunLightState::Phase::Ready;
   state_.confirmed = true;
   state_.hasSavedDevice = true;
   state_.lastCommandFailed = false;
@@ -699,7 +699,7 @@ void X100Client::finishInitialization() {
   markProtocolReady();
 }
 
-bool X100Client::setPower(bool on) {
+bool ZhiyunLightClient::setPower(bool on) {
   if (!protocolReady() || state_.commandPending) return false;
   const FrameBytes frame = buildPowerWrite(nextSequence(), on, selector());
   if (!writeFrame(frame)) return false;
@@ -715,7 +715,7 @@ bool X100Client::setPower(bool on) {
   return true;
 }
 
-bool X100Client::setCct(uint16_t kelvin, uint8_t brightness) {
+bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness) {
   if (!protocolReady() || state_.commandPending || kelvin < kMinKelvin ||
       kelvin > kMaxKelvin || brightness > 100) return false;
   const uint16_t normalizedKelvin = normalizeCct(kelvin);
@@ -740,7 +740,7 @@ bool X100Client::setCct(uint16_t kelvin, uint8_t brightness) {
   return true;
 }
 
-bool X100Client::setRgb(uint32_t rgb, uint8_t brightness) {
+bool ZhiyunLightClient::setRgb(uint32_t rgb, uint8_t brightness) {
   if (!protocolReady() || state_.commandPending ||
       !supportsRgb(state_.model) || rgb > 0xffffff || brightness > 100)
     return false;
@@ -763,7 +763,7 @@ bool X100Client::setRgb(uint32_t rgb, uint8_t brightness) {
   return false;
 }
 
-bool X100Client::refresh() {
+bool ZhiyunLightClient::refresh() {
   if (!protocolReady() || state_.commandPending) return false;
   operation_ = Operation::Refresh;
   step_ = 0;
@@ -774,7 +774,7 @@ bool X100Client::refresh() {
   return false;
 }
 
-bool X100Client::sendVerificationStep() {
+bool ZhiyunLightClient::sendVerificationStep() {
   uint16_t command = kCommandPower;
   if (operation_ == Operation::Cct || operation_ == Operation::Refresh) {
     command = step_ == 0 ? kCommandBrightness
@@ -783,7 +783,7 @@ bool X100Client::sendVerificationStep() {
   return sendQuery(command);
 }
 
-bool X100Client::sendRgbStep() {
+bool ZhiyunLightClient::sendRgbStep() {
   if (operation_ != Operation::Rgb || step_ > 2) return false;
   const uint16_t sequence = nextSequence();
   uint16_t command = kCommandHue;
@@ -808,7 +808,7 @@ bool X100Client::sendRgbStep() {
   return true;
 }
 
-bool X100Client::retryCctVerification() {
+bool ZhiyunLightClient::retryCctVerification() {
   constexpr uint8_t kMaxRetries = 7;
   if (operation_ != Operation::Cct || verificationAttempts_ >= kMaxRetries)
     return false;
@@ -817,7 +817,7 @@ bool X100Client::retryCctVerification() {
   return true;
 }
 
-void X100Client::finishCommand(bool success, const char* error) {
+void ZhiyunLightClient::finishCommand(bool success, const char* error) {
   awaitingResponse_ = false;
   verifyAtMs_ = 0;
   state_.commandPending = false;
@@ -834,7 +834,7 @@ void X100Client::finishCommand(bool success, const char* error) {
   operation_ = Operation::None;
 }
 
-void X100Client::startScan() {
+void ZhiyunLightClient::startScan() {
   if (provisioningSnapshot_ != nullptr) {
     returnToOnboardingPicker();
     if (provisioningSnapshot_ != nullptr) return;
@@ -848,7 +848,7 @@ void X100Client::startScan() {
   beginScan();
 }
 
-void X100Client::forgetDevice() {
+void ZhiyunLightClient::forgetDevice() {
   haveTarget_ = false;
   targetAddress_[0] = '\0';
   targetName_[0] = '\0';
@@ -858,9 +858,9 @@ void X100Client::forgetDevice() {
   if (connectRequested_) startScan();
 }
 
-bool X100Client::cancelOnboarding() {
+bool ZhiyunLightClient::cancelOnboarding() {
   if (!rollbackPendingProvision()) {
-    state_.phase = X100State::Phase::Failed;
+    state_.phase = ZhiyunLightState::Phase::Failed;
     state_.lastCommandFailed = true;
     std::strncpy(state_.error, "Mesh rollback save failed",
                  sizeof(state_.error) - 1);
@@ -882,7 +882,7 @@ bool X100Client::cancelOnboarding() {
   return true;
 }
 
-bool X100Client::onboardingCandidate(
+bool ZhiyunLightClient::onboardingCandidate(
     size_t index, studio::OnboardingCandidate& candidate) const {
   const auto* entry = candidates_.at(index);
   if (entry == nullptr) return false;
@@ -900,13 +900,13 @@ bool X100Client::onboardingCandidate(
   return true;
 }
 
-bool X100Client::selectOnboardingCandidate(uint32_t token) {
+bool ZhiyunLightClient::selectOnboardingCandidate(uint32_t token) {
   const auto* entry = candidates_.find(token);
   if (entry == nullptr || haveTarget_ || state_.hasSavedDevice) return false;
   if (!studio::ble::bleCentral().selectAdvertisement(linkHandle_,
                                                       entry->advertisement)) {
-    state_.link = X100State::Link::Scanning;
-    state_.phase = X100State::Phase::Idle;
+    state_.link = ZhiyunLightState::Link::Scanning;
+    state_.phase = ZhiyunLightState::Phase::Idle;
     studio::ble::bleCentral().requestScan(linkHandle_, true);
     return false;
   }
@@ -921,11 +921,11 @@ bool X100Client::selectOnboardingCandidate(uint32_t token) {
                                  sizeof(targetName_));
   haveTarget_ = true;
   onboardingSelectionActive_ = true;
-  state_.link = X100State::Link::Connecting;
+  state_.link = ZhiyunLightState::Link::Connecting;
   return true;
 }
 
-void X100Client::ignorePeerAddress(const char* address) {
+void ZhiyunLightClient::ignorePeerAddress(const char* address) {
   if (address == nullptr || address[0] == '\0') return;
   for (uint8_t i = 0; i < ignoredAddressCount_; ++i) {
     if (std::strcmp(ignoredAddresses_[i], address) == 0) return;
@@ -938,15 +938,15 @@ void X100Client::ignorePeerAddress(const char* address) {
   ++ignoredAddressCount_;
 }
 
-void X100Client::beginScan() {
-  state_.link = X100State::Link::Scanning;
-  state_.phase = X100State::Phase::Idle;
+void ZhiyunLightClient::beginScan() {
+  state_.link = ZhiyunLightState::Link::Scanning;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   studio::ble::bleCentral().requestScan(linkHandle_, true);
 }
 
-void X100Client::returnToOnboardingPicker(const char* error) {
+void ZhiyunLightClient::returnToOnboardingPicker(const char* error) {
   if (!rollbackPendingProvision()) {
-    state_.phase = X100State::Phase::Failed;
+    state_.phase = ZhiyunLightState::Phase::Failed;
     state_.lastCommandFailed = true;
     std::strncpy(state_.error, "Mesh rollback save failed",
                  sizeof(state_.error) - 1);
@@ -964,8 +964,8 @@ void X100Client::returnToOnboardingPicker(const char* error) {
   state_.model = MolusModel::Unknown;
   setupPending_ = false;
   provisioningDeadlineMs_ = 0;
-  state_.link = X100State::Link::Scanning;
-  state_.phase = X100State::Phase::Idle;
+  state_.link = ZhiyunLightState::Link::Scanning;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   if (error != nullptr) {
     std::strncpy(state_.error, error, sizeof(state_.error) - 1);
     state_.error[sizeof(state_.error) - 1] = '\0';
@@ -976,7 +976,7 @@ void X100Client::returnToOnboardingPicker(const char* error) {
   }
 }
 
-bool X100Client::rollbackPendingProvision() {
+bool ZhiyunLightClient::rollbackPendingProvision() {
   if (provisioningSnapshot_ == nullptr) return true;
   const uint32_t sequenceHighWater =
       studio::mesh::repository().data().network.sequenceHighWater;
@@ -991,16 +991,16 @@ bool X100Client::rollbackPendingProvision() {
   return true;
 }
 
-void X100Client::beginConnect() {
+void ZhiyunLightClient::beginConnect() {
   studio::ble::Address address;
   std::strncpy(address.value, targetAddress_, sizeof(address.value) - 1);
   address.value[sizeof(address.value) - 1] = '\0';
   address.type = targetAddressType_;
-  state_.link = X100State::Link::Connecting;
+  state_.link = ZhiyunLightState::Link::Connecting;
   studio::ble::bleCentral().requestConnect(linkHandle_, address);
 }
 
-void X100Client::handleDisconnect() {
+void ZhiyunLightClient::handleDisconnect() {
   client_ = nullptr;
   writeCharacteristic_ = nullptr;
   notifyCharacteristic_ = nullptr;
@@ -1013,8 +1013,8 @@ void X100Client::handleDisconnect() {
   scanner_.reset();
   provisioningLength_ = 0;
   provisioningDeadlineMs_ = 0;
-  state_.link = X100State::Link::Disconnected;
-  state_.phase = X100State::Phase::Idle;
+  state_.link = ZhiyunLightState::Link::Disconnected;
+  state_.phase = ZhiyunLightState::Phase::Idle;
   state_.commandPending = false;
   if (scanAfterProvision_ && connectRequested_) {
     scanAfterProvision_ = false;
@@ -1022,7 +1022,7 @@ void X100Client::handleDisconnect() {
   }
 }
 
-bool X100Client::consumePairingUpdate(
+bool ZhiyunLightClient::consumePairingUpdate(
     char* address, size_t addressCapacity, uint8_t& addressType, char* name,
     size_t nameCapacity, bool& paired) {
   if (!pairingChanged_) return false;
@@ -1040,7 +1040,7 @@ bool X100Client::consumePairingUpdate(
   return true;
 }
 
-void X100Client::onBleAdvertisement(
+void ZhiyunLightClient::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
   if (link != linkHandle_) return;
@@ -1079,10 +1079,10 @@ void X100Client::onBleAdvertisement(
     studio::ble::advertisementName(advertisement, targetName_,
                                    sizeof(targetName_));
     haveTarget_ = true;
-    state_.link = X100State::Link::Connecting;
+    state_.link = ZhiyunLightState::Link::Connecting;
   } else if (state_.hasSavedDevice && haveTarget_) {
     if (std::strcmp(targetAddress_, advertisement.address.value) == 0) {
-      state_.link = X100State::Link::Connecting;
+      state_.link = ZhiyunLightState::Link::Connecting;
       studio::ble::bleCentral().selectAdvertisement(linkHandle_, advertisement);
     }
   } else if (!haveTarget_) {
@@ -1090,7 +1090,7 @@ void X100Client::onBleAdvertisement(
   }
 }
 
-void X100Client::onBleEvent(studio::ble::LinkHandle link,
+void ZhiyunLightClient::onBleEvent(studio::ble::LinkHandle link,
                             const studio::ble::Event& event) {
   if (link != linkHandle_) return;
   if (event.type == studio::ble::EventType::Connected) {
@@ -1100,7 +1100,7 @@ void X100Client::onBleEvent(studio::ble::LinkHandle link,
     setupAtMs_ = millis();
   } else if (event.type == studio::ble::EventType::ConnectFailed) {
     if (!state_.hasSavedDevice) returnToOnboardingPicker("Connect failed");
-    else state_.link = X100State::Link::Disconnected;
+    else state_.link = ZhiyunLightState::Link::Disconnected;
   } else if (event.type == studio::ble::EventType::Disconnected) {
     if (onboardingSelectionActive_ && provisioningLink_ &&
         provisioningSnapshot_ == nullptr) {
@@ -1111,13 +1111,13 @@ void X100Client::onBleEvent(studio::ble::LinkHandle link,
   }
 }
 
-void X100Client::onNotifyBytes(const uint8_t* data, size_t length) {
+void ZhiyunLightClient::onNotifyBytes(const uint8_t* data, size_t length) {
   if (notifyStream_ == nullptr || data == nullptr || length == 0) return;
   xStreamBufferSend(static_cast<StreamBufferHandle_t>(notifyStream_), data,
                     length, 0);
 }
 
-void X100Client::drainNotifications() {
+void ZhiyunLightClient::drainNotifications() {
   if (notifyStream_ == nullptr) return;
   uint8_t bytes[128];
   size_t received = 0;
@@ -1132,4 +1132,4 @@ void X100Client::drainNotifications() {
   }
 }
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

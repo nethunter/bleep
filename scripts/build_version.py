@@ -25,7 +25,7 @@ commit_date = git("show", "-s", "--format=%cs", "HEAD") or "unknown"
 if commit != "unknown" and git("status", "--porcelain"):
   commit += "-dirty"
 
-version = env.GetProjectOption("custom_firmware_version", "0.2.0-dev")  # type: ignore[name-defined]
+version = env.GetProjectOption("custom_firmware_version", "0.3.0")  # type: ignore[name-defined]
 env.Append(CPPDEFINES=[  # type: ignore[name-defined]
     ("BLEEP_FIRMWARE_VERSION", env.StringifyMacro(version)),
     ("BLEEP_GIT_COMMIT", env.StringifyMacro(commit)),

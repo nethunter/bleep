@@ -4,7 +4,6 @@
 
 namespace scene_ui {
 
-void init();
 void tick();
 bool active();
 bool deviceControlOpen();

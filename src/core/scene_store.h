@@ -14,7 +14,7 @@ class SceneStore {
 
   explicit SceneStore(IConfigBackend& backend) : backend_(backend) {}
 
-  ConfigLoadStatus load(SceneRegistry& registry, bool* migrated = nullptr);
+  ConfigLoadStatus load(SceneRegistry& registry);
   bool save(const SceneRegistry& registry);
 
  private:

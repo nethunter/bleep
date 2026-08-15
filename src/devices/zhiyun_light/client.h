@@ -8,15 +8,15 @@
 #include "core/device_types.h"
 #include "core/mesh/pb_gatt_provisioner.h"
 #include "core/mesh/mesh_store.h"
-#include "devices/zhiyun_x100/protocol.h"
-#include "devices/zhiyun_x100/state.h"
+#include "devices/zhiyun_light/protocol.h"
+#include "devices/zhiyun_light/state.h"
 
 class NimBLEClient;
 class NimBLERemoteCharacteristic;
 
-namespace zhiyun_x100 {
+namespace zhiyun_light {
 
-class X100Client : public studio::ble::BleCentralDelegate,
+class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
                    public studio::mesh::ProvisioningSender {
  public:
   bool activate(studio::InstanceId instanceId, const char* address,
@@ -28,7 +28,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   void deactivate();
   void loop();
 
-  const X100State& state() const { return state_; }
+  const ZhiyunLightState& state() const { return state_; }
   bool protocolReady() const;
   bool setPower(bool on);
   bool setCct(uint16_t kelvin, uint8_t brightness);
@@ -105,7 +105,7 @@ class X100Client : public studio::ble::BleCentralDelegate,
   NimBLERemoteCharacteristic* provisioningIn_ = nullptr;
   NimBLERemoteCharacteristic* provisioningOut_ = nullptr;
   FrameScanner scanner_;
-  X100State state_;
+  ZhiyunLightState state_;
   void* notifyStream_ = nullptr;
   studio::ble::LinkHandle linkHandle_ = studio::ble::kInvalidLinkHandle;
   studio::InstanceId instanceId_ = studio::kInvalidInstanceId;
@@ -148,4 +148,4 @@ class X100Client : public studio::ble::BleCentralDelegate,
   size_t provisioningLength_ = 0;
 };
 
-}  // namespace zhiyun_x100
+}  // namespace zhiyun_light

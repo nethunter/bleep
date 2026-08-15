@@ -4,9 +4,9 @@
 
 namespace studio {
 
-DeviceManager::DeviceManager(IConfigBackend& backend, ILegacySharkBackend& legacyBackend,
+DeviceManager::DeviceManager(IConfigBackend& backend,
                              DeviceDriver* const* drivers, size_t driverCount)
-    : legacyBackend_(legacyBackend), store_(backend) {
+    : configuration_(backend) {
   driverCount_ =
       driverCount < kMaxCompiledDrivers ? driverCount : kMaxCompiledDrivers;
   for (size_t i = 0; i < driverCount_; ++i) {
@@ -15,17 +15,13 @@ DeviceManager::DeviceManager(IConfigBackend& backend, ILegacySharkBackend& legac
 }
 
 bool DeviceManager::begin() {
-  const ConfigLoadStatus status = store_.load(registry_);
+  const ConfigLoadStatus status = configuration_.load();
   if (status == ConfigLoadStatus::Corrupt) {
-    registry_.clear(true);
+    configuration_.resetCorrupt();
     begun_ = true;
     return false;
   }
   if (status == ConfigLoadStatus::Missing && !seedInitialRegistry()) {
-    begun_ = true;
-    return false;
-  }
-  if (status == ConfigLoadStatus::Loaded && !removeLegacyDefaultShark()) {
     begun_ = true;
     return false;
   }
@@ -34,89 +30,36 @@ bool DeviceManager::begin() {
 }
 
 bool DeviceManager::seedInitialRegistry() {
-  registry_.clear(false);
-#if CONFIG_DRIVER_SHARK_NANO_II
-  LegacySharkConfig legacy;
-  if (legacyBackend_.readLegacyShark(legacy) && legacy.paired) {
-    const DriverDescriptor* descriptor =
-        DriverCatalog::find(DriverId::SharkNanoII);
-    if (descriptor == nullptr) return false;
-    InstanceId instanceId = kInvalidInstanceId;
-    if (registry_.add(descriptor->id, descriptor->model, descriptor->maxInstances,
-                      instanceId) != RegistryStatus::Ok) {
-      return false;
-    }
-    registry_.updatePairing(instanceId, legacy.address, legacy.addressType,
-                            legacy.advertisedName);
-  }
-#endif
-  return save();
-}
-
-bool DeviceManager::removeLegacyDefaultShark() {
-  for (size_t i = 0; i < registry_.count(); ++i) {
-    const DeviceRecord* record = registry_.at(i);
-    if (record == nullptr || record->driverId != DriverId::SharkNanoII ||
-        record->paired || record->bleAddress[0] != '\0' ||
-        record->bleName[0] != '\0' ||
-        std::strcmp(record->displayName, "Shark Nano II") != 0) {
-      continue;
-    }
-    const DeviceRegistry previous = registry_;
-    if (!previous.valid()) return false;
-    if (registry_.remove(record->instanceId) != RegistryStatus::Ok || !save()) {
-      registry_ = previous;
-      return false;
-    }
-    break;
-  }
-  return true;
+  return configuration_.initializeEmpty();
 }
 
 uint8_t DeviceManager::ownerBit(ConnectionOwner owner) {
-  return static_cast<uint8_t>(owner);
+  return ActiveInstancePool::ownerBit(owner);
 }
 
 DeviceManager::ActiveSlot* DeviceManager::slotFor(InstanceId instanceId) {
-  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId == instanceId) {
-      return &activeSlots_[i];
-    }
-  }
-  return nullptr;
+  return activePool_.find(instanceId);
 }
 
 const DeviceManager::ActiveSlot* DeviceManager::slotFor(
     InstanceId instanceId) const {
-  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId == instanceId) {
-      return &activeSlots_[i];
-    }
-  }
-  return nullptr;
+  return activePool_.find(instanceId);
 }
 
 InstanceId DeviceManager::foregroundInstance() const {
-  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if ((activeSlots_[i].owners & ownerBit(ConnectionOwner::Foreground)) != 0) {
-      return activeSlots_[i].instanceId;
-    }
-  }
-  return kInvalidInstanceId;
+  return activePool_.foregroundInstance();
 }
 
 bool DeviceManager::isActive(InstanceId instanceId) const {
-  return instanceId != kInvalidInstanceId && slotFor(instanceId) != nullptr;
+  return activePool_.contains(instanceId);
 }
 
 bool DeviceManager::ownedBy(InstanceId instanceId, ConnectionOwner owner) const {
-  const ActiveSlot* slot = slotFor(instanceId);
-  return slot != nullptr && (slot->owners & ownerBit(owner)) != 0;
+  return activePool_.ownedBy(instanceId, owner);
 }
 
 bool DeviceManager::isRetained(InstanceId instanceId) const {
-  const ActiveSlot* slot = slotFor(instanceId);
-  return slot != nullptr && slot->retained;
+  return activePool_.retained(instanceId);
 }
 
 BleSlotKey DeviceManager::bleSlotKey(InstanceId instanceId) const {
@@ -130,8 +73,8 @@ size_t DeviceManager::bleSlotCount() const {
   BleSlotKey keys[CONFIG_MAX_ACTIVE_LINKS] = {};
   size_t count = 0;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId == kInvalidInstanceId) continue;
-    const BleSlotKey key = bleSlotKey(activeSlots_[i].instanceId);
+    if (activePool_.slots()[i].instanceId == kInvalidInstanceId) continue;
+    const BleSlotKey key = bleSlotKey(activePool_.slots()[i].instanceId);
     if (!key.valid()) continue;
     bool known = false;
     for (size_t j = 0; j < count; ++j) known = known || keys[j] == key;
@@ -141,45 +84,20 @@ size_t DeviceManager::bleSlotCount() const {
 }
 
 void DeviceManager::touch(ActiveSlot& slot) {
-  ++useCounter_;
-  if (useCounter_ == 0) {
-    useCounter_ = 1;
-  }
-  slot.lastUsed = useCounter_;
+  activePool_.touch(slot);
 }
 
 bool DeviceManager::addActive(InstanceId instanceId, ConnectionOwner owner) {
-  ActiveSlot* existing = slotFor(instanceId);
-  if (existing != nullptr) {
-    existing->owners |= ownerBit(owner);
-    touch(*existing);
-    return true;
-  }
-  for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId != kInvalidInstanceId) {
-      continue;
-    }
-    activeSlots_[i].instanceId = instanceId;
-    activeSlots_[i].owners = ownerBit(owner);
-    activeSlots_[i].retained = false;
-    touch(activeSlots_[i]);
-    ++activeCount_;
-    return true;
-  }
-  return false;
+  return activePool_.add(instanceId, owner);
 }
 
 void DeviceManager::removeActive(InstanceId instanceId) {
-  ActiveSlot* slot = slotFor(instanceId);
-  if (slot != nullptr) {
-    *slot = ActiveSlot{};
-    --activeCount_;
-  }
+  activePool_.remove(instanceId);
 }
 
 void DeviceManager::applySkipPeers(DeviceDriver& driver, const DeviceRecord& record) {
-  for (size_t i = 0; i < registry_.count(); ++i) {
-    const DeviceRecord* other = registry_.at(i);
+  for (size_t i = 0; i < configuration_.registry().count(); ++i) {
+    const DeviceRecord* other = configuration_.registry().at(i);
     if (other == nullptr || other->instanceId == record.instanceId ||
         other->driverId != record.driverId || !other->paired ||
         other->bleAddress[0] == '\0') {
@@ -201,7 +119,7 @@ void DeviceManager::loop() {
   }
 
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    ActiveSlot& slot = activeSlots_[i];
+    ActiveSlot& slot = activePool_.slots()[i];
     DeviceRecord* activeRecord = mutableRecord(slot.instanceId);
     if (activeRecord == nullptr) {
       continue;
@@ -222,7 +140,7 @@ void DeviceManager::loop() {
       save();
     }
     if (isPendingAdd(activeRecord->instanceId) && activeRecord->paired &&
-        runtime.protocolReady && !pendingCommitFailed_) {
+        runtime.protocolReady && !configuration_.pendingCommitFailed()) {
       commitPendingAdd();
     }
     if (slot.owners == 0 && slot.retained &&
@@ -266,12 +184,13 @@ RegistryStatus DeviceManager::add(DriverId driverId, const char* displayName,
     outId = kInvalidInstanceId;
     return RegistryStatus::Invalid;
   }
-  const RegistryStatus status =
-      registry_.add(driverId, displayName, descriptor->maxInstances, outId);
-  if (status == RegistryStatus::Ok && !save()) {
-    registry_.remove(outId);
+  const RegistryStatus status = configuration_.transact(
+      [driverId, displayName, descriptor, &outId](DeviceRegistry& registry) {
+        return registry.add(driverId, displayName, descriptor->maxInstances,
+                            outId);
+      });
+  if (status != RegistryStatus::Ok) {
     outId = kInvalidInstanceId;
-    return RegistryStatus::Invalid;
   }
   return status;
 }
@@ -289,28 +208,15 @@ RegistryStatus DeviceManager::beginAdd(DriverId driverId,
       driverId == DriverId::HomeAssistant) {
     return RegistryStatus::Invalid;
   }
-  if (registry_.count() >= registry_.capacity()) {
-    return RegistryStatus::Full;
-  }
-  if (registry_.countByDriver(driverId) >= descriptor->maxInstances) {
-    return RegistryStatus::DuplicateDriver;
-  }
-  pendingRecord_ = DeviceRecord{};
-  pendingRecord_.instanceId = registry_.nextInstanceId();
-  pendingRecord_.driverId = driverId;
-  pendingRecord_.enabled = true;
-  std::strncpy(pendingRecord_.displayName, displayName,
-               sizeof(pendingRecord_.displayName) - 1);
-  outId = pendingRecord_.instanceId;
-  pendingCommitFailed_ = false;
-  return RegistryStatus::Ok;
+  return configuration_.prepare(driverId, displayName,
+                                descriptor->maxInstances, outId);
 }
 
 bool DeviceManager::retryPendingAdd(InstanceId instanceId) {
-  if (!isPendingAdd(instanceId) || !pendingCommitFailed_) {
+  if (!isPendingAdd(instanceId) || !configuration_.pendingCommitFailed()) {
     return false;
   }
-  pendingCommitFailed_ = false;
+  configuration_.setPendingCommitFailed(false);
   return commitPendingAdd();
 }
 
@@ -342,56 +248,39 @@ RegistryStatus DeviceManager::cancelPendingAdd(InstanceId instanceId) {
   if (!isPendingAdd(instanceId)) {
     return RegistryStatus::NotFound;
   }
-  DeviceDriver* driver = driverFor(pendingRecord_.driverId);
-  if (driver != nullptr && !driver->cancelOnboarding(pendingRecord_)) {
+  DeviceDriver* driver = driverFor(configuration_.pending().driverId);
+  if (driver != nullptr && !driver->cancelOnboarding(configuration_.pending())) {
     return RegistryStatus::Invalid;
   }
   if (isActive(instanceId)) {
     deactivate(instanceId);
   }
-  pendingRecord_ = DeviceRecord{};
-  pendingCommitFailed_ = false;
+  configuration_.cancelPending();
   return RegistryStatus::Ok;
 }
 
 bool DeviceManager::commitPendingAdd() {
-  if (pendingAdd() == kInvalidInstanceId || !pendingRecord_.paired ||
-      !runtimeState(pendingRecord_.instanceId).protocolReady) {
+  if (pendingAdd() == kInvalidInstanceId || !configuration_.pending().paired ||
+      !runtimeState(configuration_.pending().instanceId).protocolReady) {
     return false;
   }
   const DriverDescriptor* descriptor =
-      DriverCatalog::find(pendingRecord_.driverId);
+      DriverCatalog::find(configuration_.pending().driverId);
   if (descriptor == nullptr) {
     return false;
   }
-  const DeviceRegistry previous = registry_;
-  if (!previous.valid()) return false;
-  if (registry_.commitPrepared(pendingRecord_, descriptor->maxInstances) !=
-      RegistryStatus::Ok) {
-    return false;
-  }
-  if (!save()) {
-    registry_ = previous;
-    pendingCommitFailed_ = true;
-    return false;
-  }
-  pendingRecord_ = DeviceRecord{};
-  pendingCommitFailed_ = false;
-  return true;
+  return configuration_.commitPending(descriptor->maxInstances);
 }
 
 RegistryStatus DeviceManager::remove(InstanceId instanceId) {
-  DeviceRecord* record = registry_.find(instanceId);
+  DeviceRecord* record = configuration_.registry().find(instanceId);
   if (record == nullptr) return RegistryStatus::NotFound;
   const DeviceRecord removed = *record;
-  const DeviceRegistry previous = registry_;
-  if (!previous.valid()) return RegistryStatus::Full;
-  const RegistryStatus status = registry_.remove(instanceId);
+  const RegistryStatus status = configuration_.transact(
+      [instanceId](DeviceRegistry& registry) {
+        return registry.remove(instanceId);
+      });
   if (status != RegistryStatus::Ok) return status;
-  if (!save()) {
-    registry_ = previous;
-    return RegistryStatus::Invalid;
-  }
   DeviceDriver* driver = driverFor(removed.driverId);
   if (isActive(instanceId)) {
     if (driver != nullptr) driver->deactivate(instanceId);
@@ -405,7 +294,7 @@ RegistryStatus DeviceManager::remove(InstanceId instanceId) {
 }
 
 RegistryStatus DeviceManager::rename(InstanceId instanceId, const char* displayName) {
-  const DeviceRecord* record = registry_.find(instanceId);
+  const DeviceRecord* record = configuration_.registry().find(instanceId);
   return record == nullptr ? RegistryStatus::NotFound
                            : update(instanceId, displayName, record->enabled);
 }
@@ -416,27 +305,26 @@ RegistryStatus DeviceManager::update(InstanceId instanceId,
   if (displayName != nullptr) {
     std::strncpy(safeName, displayName, sizeof(safeName) - 1);
   }
-  const DeviceRegistry previous = registry_;
-  if (!previous.valid()) return RegistryStatus::Full;
-  RegistryStatus status = registry_.rename(instanceId, safeName);
+  const RegistryStatus status = configuration_.transact(
+      [instanceId, &safeName, enabled](DeviceRegistry& registry) {
+        const RegistryStatus renamed = registry.rename(instanceId, safeName);
+        return renamed == RegistryStatus::Ok
+                   ? registry.setEnabled(instanceId, enabled)
+                   : renamed;
+      });
   if (status != RegistryStatus::Ok) return status;
-  status = registry_.setEnabled(instanceId, enabled);
-  if (status != RegistryStatus::Ok || !save()) {
-    registry_ = previous;
-    return RegistryStatus::Invalid;
-  }
   if (!enabled && isActive(instanceId)) deactivate(instanceId);
   return RegistryStatus::Ok;
 }
 
 RegistryStatus DeviceManager::setEnabled(InstanceId instanceId, bool enabled) {
-  const DeviceRecord* record = registry_.find(instanceId);
+  const DeviceRecord* record = configuration_.registry().find(instanceId);
   return record == nullptr ? RegistryStatus::NotFound
                            : update(instanceId, record->displayName, enabled);
 }
 
 RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
-  DeviceRecord* record = registry_.find(instanceId);
+  DeviceRecord* record = configuration_.registry().find(instanceId);
   if (record == nullptr) {
     return RegistryStatus::NotFound;
   }
@@ -447,7 +335,7 @@ RegistryStatus DeviceManager::clearPairing(InstanceId instanceId) {
   if (isActive(instanceId)) {
     deactivate(instanceId);
   }
-  const RegistryStatus status = registry_.clearPairing(instanceId);
+  const RegistryStatus status = configuration_.registry().clearPairing(instanceId);
   if (status == RegistryStatus::Ok) {
     save();
   }
@@ -463,9 +351,9 @@ RegistryStatus DeviceManager::addHomeAssistantEntity(
     return added;
   }
   const RegistryStatus configured =
-      registry_.configureHomeAssistant(outId, domain, entityId);
+      configuration_.registry().configureHomeAssistant(outId, domain, entityId);
   if (configured != RegistryStatus::Ok || !save()) {
-    registry_.remove(outId);
+    configuration_.registry().remove(outId);
     outId = kInvalidInstanceId;
     save();
     return configured == RegistryStatus::Ok ? RegistryStatus::Invalid
@@ -480,7 +368,7 @@ RegistryStatus DeviceManager::rebindHomeAssistantEntity(
     deactivate(instanceId);
   }
   const RegistryStatus status =
-      registry_.configureHomeAssistant(instanceId, domain, entityId);
+      configuration_.registry().configureHomeAssistant(instanceId, domain, entityId);
   return status == RegistryStatus::Ok && !save() ? RegistryStatus::Invalid
                                                   : status;
 }
@@ -503,50 +391,50 @@ RegistryStatus DeviceManager::replaceHomeAssistantEntities(
     }
   }
 
-  DeviceRegistry previous = registry_;
+  DeviceRegistry previous = configuration_.registry();
   if (!previous.valid()) return RegistryStatus::Full;
-  for (size_t i = 0; i < registry_.count(); ++i) {
-    const DeviceRecord* record = registry_.at(i);
+  for (size_t i = 0; i < configuration_.registry().count(); ++i) {
+    const DeviceRecord* record = configuration_.registry().at(i);
     if (record != nullptr && record->driverId == DriverId::HomeAssistant &&
         isActive(record->instanceId)) {
       deactivate(record->instanceId);
     }
   }
-  for (size_t i = registry_.count(); i > 0; --i) {
-    const DeviceRecord* record = registry_.at(i - 1);
+  for (size_t i = configuration_.registry().count(); i > 0; --i) {
+    const DeviceRecord* record = configuration_.registry().at(i - 1);
     if (record == nullptr || record->driverId != DriverId::HomeAssistant) continue;
     bool keep = false;
     for (size_t s = 0; s < count; ++s) {
       keep = keep || selections[s].instanceId == record->instanceId;
     }
-    if (!keep) registry_.remove(record->instanceId);
+    if (!keep) configuration_.registry().remove(record->instanceId);
   }
   for (size_t s = 0; s < count; ++s) {
     InstanceId id = selections[s].instanceId;
-    DeviceRecord* existing = registry_.find(id);
+    DeviceRecord* existing = configuration_.registry().find(id);
     if (existing == nullptr) {
       const DriverDescriptor* descriptor = DriverCatalog::find(DriverId::HomeAssistant);
       if (descriptor == nullptr ||
-          registry_.add(DriverId::HomeAssistant, selections[s].displayName,
+          configuration_.registry().add(DriverId::HomeAssistant, selections[s].displayName,
                         descriptor->maxInstances, id) != RegistryStatus::Ok) {
-        registry_ = previous;
+        configuration_.registry() = previous;
         return RegistryStatus::Full;
       }
     } else if (existing->driverId != DriverId::HomeAssistant) {
-      registry_ = previous;
+      configuration_.registry() = previous;
       return RegistryStatus::Invalid;
     } else {
-      registry_.rename(id, selections[s].displayName);
+      configuration_.registry().rename(id, selections[s].displayName);
     }
-    const RegistryStatus configured = registry_.configureHomeAssistant(
+    const RegistryStatus configured = configuration_.registry().configureHomeAssistant(
         id, selections[s].domain, selections[s].entityId);
     if (configured != RegistryStatus::Ok) {
-      registry_ = previous;
+      configuration_.registry() = previous;
       return configured;
     }
   }
   if (!save()) {
-    registry_ = previous;
+    configuration_.registry() = previous;
     return RegistryStatus::Invalid;
   }
   return RegistryStatus::Ok;
@@ -579,7 +467,7 @@ bool DeviceManager::acquire(InstanceId instanceId, ConnectionOwner owner) {
   if (!ensureBleSlotAvailable(*record, *driver)) {
     return false;
   }
-  if (activeCount_ >= kMaxActiveInstances && !evictOldestIdleInstance()) {
+  if (activePool_.count() >= kMaxActiveInstances && !evictOldestIdleInstance()) {
     return false;
   }
   if (!driver->activate(*record)) {
@@ -613,8 +501,8 @@ bool DeviceManager::ensureBleSlotAvailable(const DeviceRecord& record,
   const BleSlotKey requested = driver.bleSlotKey(record);
   if (!requested.valid()) return true;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId != kInvalidInstanceId &&
-        bleSlotKey(activeSlots_[i].instanceId) == requested) {
+    if (activePool_.slots()[i].instanceId != kInvalidInstanceId &&
+        bleSlotKey(activePool_.slots()[i].instanceId) == requested) {
       return true;
     }
   }
@@ -624,7 +512,7 @@ bool DeviceManager::ensureBleSlotAvailable(const DeviceRecord& record,
 bool DeviceManager::evictOldestIdleInstance() {
   ActiveSlot* oldest = nullptr;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    ActiveSlot& slot = activeSlots_[i];
+    ActiveSlot& slot = activePool_.slots()[i];
     if (slot.instanceId == kInvalidInstanceId || slot.owners != 0) continue;
     const DeviceRuntimeState runtime = runtimeState(slot.instanceId);
     if (runtime.commandPending ||
@@ -642,14 +530,14 @@ bool DeviceManager::evictOldestIdleBleGroup() {
   BleSlotKey oldest;
   uint32_t oldestUse = 0;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    const ActiveSlot& candidate = activeSlots_[i];
+    const ActiveSlot& candidate = activePool_.slots()[i];
     if (candidate.instanceId == kInvalidInstanceId) continue;
     const BleSlotKey key = bleSlotKey(candidate.instanceId);
     if (!key.valid()) continue;
     bool safe = true;
     uint32_t groupUse = 0;
     for (size_t j = 0; j < kMaxActiveInstances; ++j) {
-      const ActiveSlot& member = activeSlots_[j];
+      const ActiveSlot& member = activePool_.slots()[j];
       if (member.instanceId == kInvalidInstanceId ||
           bleSlotKey(member.instanceId) != key) {
         continue;
@@ -671,9 +559,9 @@ bool DeviceManager::evictOldestIdleBleGroup() {
   InstanceId members[kMaxActiveInstances] = {};
   size_t memberCount = 0;
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId != kInvalidInstanceId &&
-        bleSlotKey(activeSlots_[i].instanceId) == oldest) {
-      members[memberCount++] = activeSlots_[i].instanceId;
+    if (activePool_.slots()[i].instanceId != kInvalidInstanceId &&
+        bleSlotKey(activePool_.slots()[i].instanceId) == oldest) {
+      members[memberCount++] = activePool_.slots()[i].instanceId;
     }
   }
   for (size_t i = 0; i < memberCount; ++i) deactivate(members[i]);
@@ -727,8 +615,8 @@ void DeviceManager::deactivate(InstanceId instanceId) {
 
 void DeviceManager::deactivateAll() {
   for (size_t i = 0; i < kMaxActiveInstances; ++i) {
-    if (activeSlots_[i].instanceId != kInvalidInstanceId) {
-      deactivate(activeSlots_[i].instanceId);
+    if (activePool_.slots()[i].instanceId != kInvalidInstanceId) {
+      deactivate(activePool_.slots()[i].instanceId);
     }
   }
 }
@@ -856,11 +744,11 @@ DeviceDriver* DeviceManager::driverFor(DriverId driverId) const {
 }
 
 DeviceRecord* DeviceManager::mutableRecord(InstanceId instanceId) {
-  return isPendingAdd(instanceId) ? &pendingRecord_
-                                  : registry_.find(instanceId);
+  return isPendingAdd(instanceId) ? &configuration_.pending()
+                                  : configuration_.registry().find(instanceId);
 }
 
-bool DeviceManager::save() { return store_.save(registry_); }
+bool DeviceManager::save() { return configuration_.save(); }
 
 CommandStatus DeviceManager::dispatch(const DeviceCommand& command) {
   DeviceRecord* record = mutableRecord(command.instanceId);

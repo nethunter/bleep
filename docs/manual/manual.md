@@ -1,8 +1,8 @@
 ---
 title: "Ble(e)p Owner's Guide"
 subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
-edition: "0.2.0-dev"
-date: "13 August 2026"
+edition: "0.3.0"
+date: "15 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
 ---
@@ -511,6 +511,6 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep -t upload
 ```
 
-The configured upload port is `/dev/cu.usbserial-211240`; do not guess another port if it is absent. The `0.2.0-dev` Aputure Light storage baseline does not migrate former Amaran driver IDs or the old `amaran_mesh` key. Before installing it over that older development firmware, run Factory Reset from the currently installed firmware. Reset destroys saved configuration and bonds, not the application image.
+The configured upload port is `/dev/cu.usbserial-211240`; do not guess another port if it is absent. Version 0.3.0 accepts only the current device, scene, and mesh storage schemas. It does not migrate former Amaran driver IDs, the old `amaran_mesh` key, or older development schemas. Before installing it over firmware from before the clean-storage baseline, run Factory Reset from the currently installed firmware. Reset destroys saved configuration and bonds, not the application image; the firmware never erases them automatically.
 
 Build success is not proof of panel behavior, peripheral compatibility, browser behavior, tactile feel, or endurance. Record those separately and retain exact-model confidence labels.

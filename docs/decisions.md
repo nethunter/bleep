@@ -1108,6 +1108,36 @@ the replacement.
   fresh post-boot control connection, and returned to Ready; other models and
   longer lifecycle/coexistence coverage remain unverified.
 
+## ADR-044: Version 0.3.0 uses explicit ownership boundaries and current schemas only
+
+- Status: Accepted software refactor; target-device behavior gates remain as
+  recorded by their protocol ADRs.
+- Persistence: Device schema 2, scene schema 4, mesh schema 3, HA schema 1,
+  and panel-settings schema 1 are the only accepted encodings. One bounded
+  little-endian blob codec owns integer, byte, text, checksum, and bounds
+  handling. Golden-byte and old-schema rejection tests protect the boundary.
+  No storage is erased automatically.
+- Runtime ownership: `DeviceConfiguration` owns registry persistence and
+  transactional mutation; `ActiveInstancePool` owns active slots, connection
+  owners, retention, and LRU selection. Scene validation, target leases, and
+  action dispatch are separate collaborators while `SceneRunner` remains the
+  main-loop phase coordinator.
+- Mesh boundary: Mesh records belong to `core/mesh`, not a logical light
+  driver. A dynamically allocated `ProxyTransport` reference-counts the logical
+  users of the one physical proxy and selects a Zhiyun-qualified bearer when
+  any active Zhiyun target requires `0xFEE9`. Aputure and Zhiyun remain separate
+  drivers and preserve their command and confirmation semantics.
+- UI and composition: Compile-time `DeviceUiHooks` replace central dispatch
+  chains, and recorder screens share lifecycle/ownership through
+  `RecorderScreenController`. Every driver default is off in the common header;
+  full and isolated profiles explicitly opt in. Sony, Insta360, and DJI have
+  independent compile flags, and the generic Zhiyun profile name no longer
+  encodes X100 as the only model.
+- Verification: Host tests, full UI traversal, the Montserrat target build,
+  isolated CI profiles, repository-artifact checks, and versioned release
+  assets are software gates. They do not promote any open physical behavior,
+  coexistence, tactile, reconnect, or endurance claim.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

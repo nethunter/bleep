@@ -2,6 +2,9 @@
 
 #include "core/device_manager.h"
 #include "core/scene_registry.h"
+#include "core/scene_step_executor.h"
+#include "core/scene_target_lease.h"
+#include "core/scene_validator.h"
 
 namespace studio {
 
@@ -29,10 +32,7 @@ class SceneRunner {
  private:
   enum class Direction : uint8_t { None, Prepare, Start, Stop };
 
-  struct TargetSet {
-    InstanceId ids[CONFIG_MAX_ACTIVE_INSTANCES] = {};
-    uint8_t count = 0;
-  };
+  using TargetSet = SceneTargetSet;
 
   bool collectTargets(const SceneRecord& record, TargetSet& out) const;
   bool containsTarget(const TargetSet& targets, InstanceId instanceId) const;
@@ -55,6 +55,9 @@ class SceneRunner {
 
   DeviceManager& devices_;
   SceneRegistry& registry_;
+  SceneValidator validator_;
+  SceneStepExecutor executor_;
+  SceneTargetLease targetLease_;
   SceneProgress progress_;
   SceneRecord activeScene_;
   TargetSet targets_;

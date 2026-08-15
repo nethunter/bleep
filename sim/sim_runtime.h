@@ -4,7 +4,7 @@
 #include "devices/canon_trigger/state.h"
 #include "devices/shark_nano_ii/state.h"
 #include "devices/tascam_x8/state.h"
-#include "devices/zhiyun_x100/state.h"
+#include "devices/zhiyun_light/state.h"
 
 namespace studio {
 
@@ -13,7 +13,7 @@ shark::SharkState& simSharkState();
 canon_ble::CanonBleState& simCanonState();
 canon_trigger::CanonTriggerState& simCanonTriggerState();
 tascam_x8::TascamX8State& simTascamState();
-zhiyun_x100::X100State& simZhiyunState();
+zhiyun_light::ZhiyunLightState& simZhiyunState();
 void simSetConnectedDemoState();
 void simSetScanningState();
 void simSetCanonConnectedState(bool recording, bool confirmed = true);

@@ -11,19 +11,6 @@ class IConfigBackend {
   virtual bool write(const uint8_t* data, size_t length) = 0;
 };
 
-struct LegacySharkConfig {
-  bool paired = false;
-  char address[kBleAddressCapacity] = "";
-  uint8_t addressType = 0;
-  char advertisedName[kBleNameCapacity] = "";
-};
-
-class ILegacySharkBackend {
- public:
-  virtual ~ILegacySharkBackend() = default;
-  virtual bool readLegacyShark(LegacySharkConfig& config) = 0;
-};
-
 enum class ConfigLoadStatus : uint8_t {
   Loaded,
   Missing,

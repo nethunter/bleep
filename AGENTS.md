@@ -91,13 +91,13 @@ Follow these rules while building:
   setup, compatibility, safety, and troubleshooting changes into the manual
   source before rebuilding it. Do not treat the request as merely regenerating
   the PDF from unchanged source.
-- For a manual refresh, first collect every implementation and supporting
-  documentation change made since the previous PDF generation on a separate
-  branch, then rebase and merge that branch into the current `main` following
-  the repository merge policy below. Only after that merge, and only while the
-  primary checkout is on `main`, may you edit `docs/manual/manual.md` or rebuild
-  `output/pdf/bleep-instruction-manual.pdf`. Do not put the manual source or
-  generated PDF on the preparatory branch.
+- For an explicitly requested manual refresh, first identify and audit every
+  implementation and supporting documentation change made since the previous
+  PDF generation. The manual source, generated PDF, and synchronized website
+  copy may be completed on the same scoped feature branch as those changes.
+  Run the complete render-and-inspect workflow on that branch, rebase it onto
+  the current `main`, rerun the affected artifact checks, and merge it from
+  `main` with `--no-ff` following the repository merge policy below.
 
 ## Conventions
 

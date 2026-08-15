@@ -2,46 +2,14 @@
 
 #include <cstring>
 
+#include "core/blob_codec.h"
+
 namespace studio {
 namespace {
 
 constexpr uint8_t kMagic[] = {'P', 'S', 'E', 'T'};
 constexpr uint16_t kVersion = 1;
 constexpr size_t kEncodedSize = sizeof(kMagic) + 2 + 1 + 4;
-
-uint32_t checksum(const uint8_t* data, size_t length) {
-  uint32_t value = 2166136261u;
-  for (size_t i = 0; i < length; ++i) {
-    value = (value ^ data[i]) * 16777619u;
-  }
-  return value;
-}
-
-void putU16(uint8_t*& out, uint16_t value) {
-  *out++ = static_cast<uint8_t>(value & 0xff);
-  *out++ = static_cast<uint8_t>((value >> 8) & 0xff);
-}
-
-void putU32(uint8_t*& out, uint32_t value) {
-  for (int shift = 0; shift < 32; shift += 8) {
-    *out++ = static_cast<uint8_t>(value >> shift);
-  }
-}
-
-uint16_t getU16(const uint8_t*& in) {
-  const uint16_t value = static_cast<uint16_t>(in[0]) |
-                         static_cast<uint16_t>(in[1]) << 8;
-  in += 2;
-  return value;
-}
-
-uint32_t getU32(const uint8_t*& in) {
-  uint32_t value = 0;
-  for (int shift = 0; shift < 32; shift += 8) {
-    value |= static_cast<uint32_t>(*in++) << shift;
-  }
-  return value;
-}
 
 }  // namespace
 
@@ -57,15 +25,18 @@ ConfigLoadStatus PanelSettingsStore::load(PanelSettings& settings) {
     settings = {};
     return ConfigLoadStatus::Corrupt;
   }
-  const uint8_t* cursor = bytes + sizeof(kMagic);
-  if (getU16(cursor) != kVersion) {
+  BlobReader reader(bytes + sizeof(kMagic), sizeof(bytes) - sizeof(kMagic));
+  uint16_t version = 0;
+  if (!reader.u16(version) || version != kVersion) {
     settings = {};
     return ConfigLoadStatus::Corrupt;
   }
-  const uint8_t enabled = *cursor++;
-  const uint8_t* checksumCursor = bytes + sizeof(bytes) - 4;
-  if (enabled > 1 ||
-      getU32(checksumCursor) != checksum(bytes, sizeof(bytes) - 4)) {
+  uint8_t enabled = 0;
+  BlobReader checksumReader(bytes + sizeof(bytes) - 4, 4);
+  uint32_t storedChecksum = 0;
+  if (!reader.u8(enabled) || enabled > 1 ||
+      !checksumReader.u32(storedChecksum) ||
+      storedChecksum != fnv1a(bytes, sizeof(bytes) - 4)) {
     settings = {};
     return ConfigLoadStatus::Corrupt;
   }
@@ -75,13 +46,13 @@ ConfigLoadStatus PanelSettingsStore::load(PanelSettings& settings) {
 
 bool PanelSettingsStore::save(const PanelSettings& settings) {
   uint8_t bytes[kEncodedSize] = {};
-  uint8_t* cursor = bytes;
-  std::memcpy(cursor, kMagic, sizeof(kMagic));
-  cursor += sizeof(kMagic);
-  putU16(cursor, kVersion);
-  *cursor++ = settings.hapticEnabled ? 1 : 0;
-  putU32(cursor, checksum(bytes, sizeof(bytes) - 4));
-  return backend_.write(bytes, sizeof(bytes));
+  BlobWriter writer(bytes, sizeof(bytes));
+  writer.bytes(kMagic, sizeof(kMagic));
+  writer.u16(kVersion);
+  writer.u8(settings.hapticEnabled ? 1 : 0);
+  writer.u32(fnv1a(bytes, sizeof(bytes) - 4));
+  return writer.valid() && writer.size() == sizeof(bytes) &&
+         backend_.write(bytes, sizeof(bytes));
 }
 
 bool PanelSettingsService::begin() {

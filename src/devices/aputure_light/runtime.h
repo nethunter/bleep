@@ -6,18 +6,31 @@
 #include "core/ble/ble_central.h"
 #include "core/ble/onboarding_candidates.h"
 #include "core/device_types.h"
+#include "core/mesh/mesh_store.h"
 #include "core/mesh/pb_gatt_provisioner.h"
+#include "core/mesh/proxy_transport.h"
 #include "devices/aputure_light/state.h"
-#include "devices/aputure_light/store.h"
 #include "devices/aputure_light/protocol.h"
 
 class NimBLERemoteCharacteristic;
 
 namespace aputure_light {
 
+using studio::mesh::NodeRecord;
+using studio::mesh::StoreData;
+using studio::mesh::assignVendorModel;
+using studio::mesh::defaultControlGroupAddress;
+using studio::mesh::findNode;
+using studio::mesh::isKnownMeshProxyAddress;
+using studio::mesh::kCurrentConfigurationVersion;
+using studio::mesh::memberControlGroupAddress;
+using studio::mesh::removeNode;
+using studio::mesh::upsertNode;
+
 class AputureLightRuntime : public studio::ble::BleCentralDelegate,
                       public studio::mesh::ProvisioningSender {
  public:
+  ~AputureLightRuntime();
   bool activate(const studio::DeviceRecord& record);
   void deactivate(studio::InstanceId instanceId);
   void loop();
@@ -110,7 +123,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   bool rollbackPendingProvision();
 
   Session sessions_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
-  studio::InstanceId gatewayUsers_[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+  studio::mesh::ProxyTransport* proxyTransport_ = nullptr;
   studio::ble::LinkHandle link_ = studio::ble::kInvalidLinkHandle;
   studio::InstanceId linkInstance_ = studio::kInvalidInstanceId;
   bool provisioningLink_ = false;
@@ -136,7 +149,7 @@ class AputureLightRuntime : public studio::ble::BleCentralDelegate,
   uint8_t provisioningAddressType_ = 0;
   char provisioningName_[studio::kBleNameCapacity] = "";
   studio::ble::OnboardingCandidates candidates_;
-  MeshStoreData* provisioningSnapshot_ = nullptr;
+  StoreData* provisioningSnapshot_ = nullptr;
   studio::mesh::PbGattProvisioner provisioner_;
 };
 

@@ -20,8 +20,8 @@
 #if CONFIG_DRIVER_APUTURE_LIGHT
 #include "devices/aputure_light/driver.h"
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
-#include "devices/zhiyun_x100/driver.h"
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
+#include "devices/zhiyun_light/driver.h"
 #endif
 #if CONFIG_DRIVER_GOPRO
 #include "devices/gopro/driver.h"
@@ -32,7 +32,7 @@
 #if CONFIG_DRIVER_DJI_OSMO
 #include "devices/dji_osmo/driver.h"
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
 #include "devices/action_camera_research/driver.h"
 #endif
 #if CONFIG_DRIVER_PHONE_CAMERA
@@ -67,7 +67,7 @@ static_assert(sizeof(HomeAssistantDriver) <= 64,
 static_assert(sizeof(AputureLightDriver) <= 64,
               "Aputure Light driver shell must stay dormant");
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
 static_assert(sizeof(ZhiyunLightDriver) <= 64,
               "Zhiyun driver shell must stay dormant");
 #endif
@@ -80,7 +80,7 @@ static_assert(sizeof(Insta360Driver) <= 64, "Insta360 driver shell must stay dor
 #if CONFIG_DRIVER_DJI_OSMO
 static_assert(sizeof(DjiOsmoDriver) <= 64, "DJI Osmo driver shell must stay dormant");
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
 static_assert(sizeof(ActionCameraResearchDriver) <= 64,
               "Research driver shell must stay dormant");
 #endif
@@ -91,7 +91,6 @@ static_assert(sizeof(PhoneCameraDriver) <= 64,
 
 DeviceManager& devices() {
   static PreferencesConfigBackend backend;
-  static PreferencesLegacySharkBackend legacyBackend;
 #if CONFIG_DRIVER_SHARK_NANO_II
   static SharkDriver sharkDriver;
 #endif
@@ -110,7 +109,7 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_APUTURE_LIGHT
   static AputureLightDriver aputureLight;
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
   static ZhiyunLightDriver zhiyunLightDriver;
 #endif
 #if CONFIG_DRIVER_GOPRO
@@ -122,7 +121,7 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_DJI_OSMO
   static DjiOsmoDriver djiOsmoDriver;
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
   static ActionCameraResearchDriver sonyCameraDriver(DriverId::SonyCamera);
 #endif
 #if CONFIG_DRIVER_PHONE_CAMERA
@@ -147,7 +146,7 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_APUTURE_LIGHT
       &aputureLight,
 #endif
-#if CONFIG_DRIVER_ZHIYUN_X100
+#if CONFIG_DRIVER_ZHIYUN_LIGHT
       &zhiyunLightDriver,
 #endif
 #if CONFIG_DRIVER_GOPRO
@@ -159,7 +158,7 @@ DeviceManager& devices() {
 #if CONFIG_DRIVER_DJI_OSMO
       &djiOsmoDriver,
 #endif
-#if CONFIG_DRIVER_ACTION_CAMERA_RESEARCH
+#if CONFIG_DRIVER_SONY_CAMERA
       &sonyCameraDriver,
 #endif
 #if CONFIG_DRIVER_PHONE_CAMERA
@@ -170,9 +169,8 @@ DeviceManager& devices() {
   static_assert((sizeof(drivers) / sizeof(drivers[0])) - 1 <=
                     DeviceManager::kMaxCompiledDrivers,
                 "compiled driver table exceeds DeviceManager capacity");
-  static DeviceManager manager(
-      backend, legacyBackend, drivers,
-      (sizeof(drivers) / sizeof(drivers[0])) - 1);
+  static DeviceManager manager(backend, drivers,
+                               (sizeof(drivers) / sizeof(drivers[0])) - 1);
   return manager;
 }
 

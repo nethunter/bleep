@@ -3,12 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
+  repository-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/check_repository_artifacts.py
+
   native-tests:
     runs-on: ubuntu-latest
     steps:
@@ -19,6 +26,7 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements.txt
       - run: python -m platformio test -e native
+      - run: python tools/run_protocol_labs.py
 
   firmware-build:
     name: firmware-build (${{ matrix.environment }})
@@ -35,7 +43,7 @@ jobs:
           - home_assistant
           - shark_nano_ii
           - aputure_light
-          - zhiyun_x100
+          - zhiyun_light
           - gopro
           - phone_camera
           - insta360
@@ -107,3 +115,33 @@ jobs:
           fi
 
           gh release upload "$tag" release/* --clobber
+
+  publish-versioned-release:
+    name: publish versioned release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - repository-checks
+      - native-tests
+      - firmware-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-firmware
+          path: release
+      - name: Validate tag and prepare release assets
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          configured="$(sed -n 's/^custom_firmware_version = //p' platformio.ini)"
+          test "$version" = "$configured"
+          mv release/firmware.bin "release/bleep-${version}.bin"
+          cp output/pdf/bleep-instruction-manual.pdf release/
+          cd release
+          sha256sum * > "bleep-${version}.sha256"
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --generate-notes --verify-tag
