@@ -448,3 +448,46 @@ void test_panel_settings_default_round_trip_corruption_and_rollback() {
       static_cast<int>(studio::SceneValidationStatus::MissingCapability),
       static_cast<int>(scenes.validate(scene)));
 }
+
+void test_active_instance_pool_rejects_invalid_instance_id() {
+  studio::ActiveInstancePool pool;
+  TEST_ASSERT_FALSE(
+      pool.add(studio::kInvalidInstanceId, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_UINT32(0, pool.count());
+
+  pool.remove(studio::kInvalidInstanceId);
+  TEST_ASSERT_EQUAL_UINT32(0, pool.count());
+
+  TEST_ASSERT_TRUE(pool.add(7, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_UINT32(1, pool.count());
+  pool.remove(studio::kInvalidInstanceId);
+  TEST_ASSERT_EQUAL_UINT32(1, pool.count());
+  TEST_ASSERT_TRUE(pool.contains(7));
+}
+
+void test_transact_rolls_back_registry_on_mutation_failure() {
+  MemoryBackend backend;
+  studio::DeviceConfiguration configuration(backend);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Missing),
+                        static_cast<int>(configuration.load()));
+  TEST_ASSERT_TRUE(configuration.initializeEmpty());
+
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(configuration.registry().add(
+          studio::DriverId::CanonBle, "Camera", 1, id)));
+  TEST_ASSERT_TRUE(configuration.save());
+
+  // A failing mutation must leave the in-memory registry untouched so it stays
+  // byte-identical to the durable blob.
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Invalid),
+      static_cast<int>(configuration.transact([id](studio::DeviceRegistry& reg) {
+        reg.rename(id, "Renamed In Failure");
+        return studio::RegistryStatus::Invalid;
+      })));
+  const studio::DeviceRecord* record = configuration.registry().find(id);
+  TEST_ASSERT_NOT_NULL(record);
+  TEST_ASSERT_EQUAL_STRING("Camera", record->displayName);
+}

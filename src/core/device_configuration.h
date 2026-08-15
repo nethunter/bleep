@@ -72,7 +72,10 @@ class DeviceConfiguration {
     const DeviceRegistry previous = registry_;
     if (!previous.valid()) return RegistryStatus::Full;
     const RegistryStatus status = mutation(registry_);
-    if (status != RegistryStatus::Ok) return status;
+    if (status != RegistryStatus::Ok) {
+      registry_ = previous;
+      return status;
+    }
     if (!save()) {
       registry_ = previous;
       return RegistryStatus::Invalid;

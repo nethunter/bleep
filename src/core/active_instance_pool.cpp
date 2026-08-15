@@ -18,6 +18,7 @@ const ActiveInstancePool::Slot* ActiveInstancePool::find(
 }
 
 bool ActiveInstancePool::add(InstanceId instanceId, ConnectionOwner owner) {
+  if (instanceId == kInvalidInstanceId) return false;
   Slot* existing = find(instanceId);
   if (existing != nullptr) {
     existing->owners |= ownerBit(owner);
@@ -37,6 +38,7 @@ bool ActiveInstancePool::add(InstanceId instanceId, ConnectionOwner owner) {
 }
 
 void ActiveInstancePool::remove(InstanceId instanceId) {
+  if (instanceId == kInvalidInstanceId) return;
   Slot* slot = find(instanceId);
   if (slot == nullptr) return;
   *slot = {};

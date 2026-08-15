@@ -483,7 +483,11 @@ void handleWifiSave() {
     return;
   }
 
+  // Abandon any in-flight AP-mode scan: the join owns the radio now, and the
+  // loop's scan-completion branch must not overwrite the join status.
   WiFi.scanDelete();
+  portalScanPending = false;
+  portalScanFailed = false;
   std::strncpy(pendingWifiSsid, ssid.c_str(), sizeof(pendingWifiSsid) - 1);
   pendingWifiSsid[sizeof(pendingWifiSsid) - 1] = '\0';
   std::strncpy(pendingWifiPassword, password.c_str(),

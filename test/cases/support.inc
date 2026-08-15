@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/active_instance_pool.h"
 #include "core/ble/ble_central.h"
 #include "support/fake_ble_backend.h"
 #include "core/ble/onboarding_candidates.h"

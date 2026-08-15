@@ -5028,3 +5028,21 @@ Record values with the exact build environment and commit/worktree state.
   hard-reset. Since studio credentials were saved during the preceding live
   test, an AP-mode scan requires forgetting that saved network before final
   on-device verification.
+
+### 2026-08-15: 0.3 refactor review fixes
+
+- Code review of the 0.3 range (`0679bd8..HEAD`) found three issues; all fixed:
+  1. Portal: `handleWifiSave()` now clears `portalScanPending`/`portalScanFailed`
+     alongside `WiFi.scanDelete()`, so a credentials submit during a live AP-mode
+     scan no longer lets the loop's scan-completion branch overwrite the
+     "Joining studio Wi-Fi" status with a stale scan result.
+  2. `ActiveInstancePool::add`/`remove` now early-out on `kInvalidInstanceId`,
+     preventing empty-slot matches from corrupting the capacity accounting if a
+     future caller passes an unvalidated ID.
+  3. `DeviceConfiguration::transact` again restores the previous registry when
+     the mutation itself fails, matching the pre-refactor `DeviceManager::update`
+     rollback semantics instead of depending on every mutation being atomic.
+- Added two native tests: pool invalid-ID guards and transact
+  rollback-on-mutation-failure. Full suite passed 86/86; the full Montserrat
+  `bleep` profile built successfully and uploaded to `/dev/cu.usbserial-211240`
+  with all written-region hashes verified and a hard reset.
