@@ -1115,9 +1115,11 @@ the replacement.
 - Status: Accepted software refactor; target-device behavior gates remain as
   recorded by their protocol ADRs.
 - Persistence: Device schema 2, scene schema 4, mesh schema 3, HA schema 1,
-  and panel-settings schema 1 are the only accepted encodings. One bounded
+  and panel-settings schema 2 are the current encodings. Panel-settings schema
+  1 is retained only to migrate the haptics bit while defaulting the new update
+  channel to stable, as required by ADR-046. One bounded
   little-endian blob codec owns integer, byte, text, checksum, and bounds
-  handling. Golden-byte and old-schema rejection tests protect the boundary.
+  handling. Golden-byte and deliberate old-schema boundary tests protect it.
   No storage is erased automatically.
 - Runtime ownership: `DeviceConfiguration` owns registry persistence and
   transactional mutation; `ActiveInstancePool` owns active slots, connection
@@ -1139,6 +1141,74 @@ the replacement.
   isolated CI profiles, repository-artifact checks, and versioned release
   assets are software gates. They do not promote any open physical behavior,
   coexistence, tactile, reconnect, or endurance claim.
+
+## ADR-045: Firmware updates are signed, dual-slot, and never checked at boot
+
+- Status: Superseded by ADR-046. This records the earlier implemented design.
+- Eligibility: Preserve neutral Home boot and `WIFI_OFF`. Automatic checks run
+  only after ten continuous idle minutes on Home when due. A successful check
+  schedules 24 hours; network failures schedule 1, 6, then 24 hours. Opening
+  **Settings > Firmware update** requests an immediate check. Missing Wi-Fi
+  offers Portal configuration, while active/retained equipment requires the
+  operator to choose **Disconnect & check** or **Later**.
+- Consent: Checks fetch only a manifest and detached signature. One modal per
+  release sequence offers **Install now** or **Later**. Install requires a
+  second confirmation, command idleness, link release, and a USB-power/reboot
+  warning. Stable is default; development is explicit opt-in.
+- Trust: Canonical bounded manifests are signed with ECDSA P-256. Stable and
+  development use different embedded public keys and protected GitHub
+  Environment secrets. The target rejects untrusted keys, wrong channel or
+  target, malformed/oversized metadata, replayed sequences, non-allowlisted
+  payload URLs, bad ESP headers, length mismatches, and SHA-256 mismatches.
+- Storage and rollback: NVS remains `0x9000/0x5000`; OTA metadata is
+  `0xE000/0x2000`; two application slots are `0x1F0000`; coredump is the final
+  64 KiB. CI enforces a `0x1E0000` raw-image ceiling. A new image remains
+  pending until approximately ten seconds of healthy main-loop operation, then
+  is marked valid. A hold-confirmed Settings action can select the prior
+  invalid partition. Existing single-slot panels require the supplied
+  no-erase, NVS-preserving USB migration bundle once.
+- Publication: successful `main` CI replaces the signed public development
+  prerelease. Publishing any non-prerelease GitHub Release triggers stable
+  verification/signing without assigning meaning to its tag format.
+- Gate: host tests and builds do not prove live HTTPS, Wi-Fi teardown,
+  NVS-preserving migration, tamper rejection on target, power-loss rollback,
+  stable/development delivery, ten-cycle endurance, or BLE/HA coexistence.
+
+## ADR-046: Firmware updates use fixed recovery and a post-Home startup check
+
+- Status: Accepted software architecture; hardware acceptance remains open.
+- Scheduling: Finish stores and render Home before network activity. On every
+  configured boot, wait five seconds, then check the selected channel while
+  Home remains eligible. Foreground work defers or cancels the check. Preserve
+  the ten-minute idle schedule, 24-hour successful cadence, Settings check,
+  and 1/6/24-hour network retry sequence. Every updater-owned terminal path
+  returns Wi-Fi to `WIFI_OFF`.
+- Consent: Background work fetches only the signed manifest and detached
+  signature. A newer, non-dismissed sequence offers **Install now** or
+  **Later**. Installation requires a USB/reboot warning and explicit consent
+  before scenes and retained links are released.
+- Storage: Partition schema 2 contains fixed factory recovery at
+  `0x10000/0x100000`, a CRC-protected alternating journal at
+  `0x110000/0x10000`, and main `ota_0` at `0x120000/0x2D0000`; NVS and coredump
+  remain at their established offsets. Raw ceilings are `0xF0000` recovery and
+  `0x2C0000` main. Recovery writes only main; Wi-Fi releases contain no recovery
+  image.
+- Trust and health: Both applications embed separate stable/development P-256
+  public keys and require manifest partition schema 2 plus recovery schema 1.
+  Main persists the exact signed request. Recovery verifies it again, streams
+  and hashes main, selects `ota_0`, and reboots. Main remains pending until its
+  stores, display/touch, Home, and loop survive the ten-second health gate;
+  failure returns to factory recovery.
+- Factory Reset: A continuous three-second hold enters recovery. Recovery
+  downloads and verifies latest stable before erasing NVS. Two alternating
+  CRC-protected journal generations make `FactoryResetRequested`,
+  `ImageVerifiedResetPending`, and `ResetComplete` resumable and idempotent.
+  No networking, signature, image, or hashing failure may erase NVS.
+- Gate: Native tests, simulators, packaging checks, and builds are software
+  evidence only. USB migration/NVS survival, live cancellation and radio
+  teardown, tamper and power-loss boundaries, failed-main fallback,
+  stable/development delivery, coexistence, and ten cycles remain hardware
+  acceptance gates.
 
 ## Open decisions
 

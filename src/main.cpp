@@ -13,6 +13,7 @@
 #include "core/scene_service.h"
 #include "core/system_info.h"
 #include "haptic_feedback.h"
+#include "firmware_update.h"
 #include "ui.h"
 #include "portal_service.h"
 
@@ -327,6 +328,7 @@ void lvTouchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   uint16_t y = 0;
 
   if (touchPresent && readTouchPoint(x, y)) {
+    firmware_update::service().noteUserActivity();
     lastX = x;
     lastY = y;
     data->state = LV_INDEV_STATE_PR;
@@ -394,6 +396,7 @@ void pollButton() {
 
   stablePressed = rawPressed;
   if (stablePressed) {
+    firmware_update::service().noteUserActivity();
     pressStartedMs = now;
     longPressHandled = false;
     homePressHandled = false;
@@ -450,8 +453,9 @@ void setup() {
   studio::devices().begin();
   studio::scenes().begin();
   ui::init();
-  // Paint Home before any operator-requested device activation.
+  // Paint Home before the updater starts its five-second boot grace period.
   lv_timer_handler();
+  firmware_update::service().begin();
   logRuntimeStats("boot");
 }
 
@@ -469,6 +473,11 @@ void loop() {
   studio::devices().loop();
   studio::scenes().loop(now);
   portal::loop();
+  firmware_update::service().setRuntimeIdle(
+      !portal::active() && !studio::scenes().busy() &&
+          studio::devices().activeCount() == 0,
+      ui::showingHome());
+  firmware_update::service().loop();
   const studio::LinkState link = currentLink();
   if (link != lastLink) {
     lastLink = link;

@@ -5,4 +5,5 @@
 #include "cases/ble_cases.inc"
 #include "cases/mesh_light_cases.inc"
 #include "cases/captive_dns_cases.inc"
+#include "cases/firmware_update_cases.inc"
 #include "cases/test_registry.inc"

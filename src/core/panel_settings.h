@@ -6,8 +6,11 @@
 
 namespace studio {
 
+enum class FirmwareUpdateChannel : uint8_t { Stable = 0, Development = 1 };
+
 struct PanelSettings {
   bool hapticEnabled = true;
+  FirmwareUpdateChannel firmwareUpdateChannel = FirmwareUpdateChannel::Stable;
 };
 
 class PanelSettingsStore {
@@ -28,6 +31,7 @@ class PanelSettingsService {
   bool begin();
   const PanelSettings& get() const { return settings_; }
   bool setHapticEnabled(bool enabled);
+  bool setFirmwareUpdateChannel(FirmwareUpdateChannel channel);
 
  private:
   PanelSettingsStore store_;

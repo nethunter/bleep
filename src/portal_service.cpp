@@ -196,16 +196,16 @@ void sendPage(const char* head, const char* body) {
 }
 
 void sendPortalPage() {
-  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->sendHeader("Cache-Control", "no-store");
   server->sendHeader("X-Frame-Options", "DENY");
-  server->send(200, "text/html", "");
-  server->sendContent_P(assets::kHead);
-  server->sendContent_P(assets::kStyle);
-  server->sendContent("<script>window.PORTAL_NONCE='");
-  server->sendContent(portalNonce);
-  server->sendContent("'</script>");
-  server->sendContent_P(assets::kBody);
+  char cookie[72];
+  std::snprintf(cookie, sizeof(cookie),
+                "bleep_nonce=%s; Path=/; SameSite=Strict", portalNonce);
+  server->sendHeader("Set-Cookie", cookie);
+  server->sendHeader("Content-Encoding", "br");
+  server->send_P(200, PSTR("text/html"),
+                 reinterpret_cast<PGM_P>(assets::kPageBrotli),
+                 assets::kPageBrotliSize);
 }
 
 void sendCaptivePortalPage() {

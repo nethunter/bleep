@@ -348,7 +348,8 @@ does not promote unknown state to confirmed. Only HTTP 404 means missing, while
 transport and parse failures remain unknown. The runtime disconnects
 Wi-Fi after its final HA instance is evicted or explicitly unlinked. Merely
 saving HA entities or credentials does not allocate the client or start Wi-Fi;
-outside Portal and active HA ownership the radio is explicitly `WIFI_OFF`.
+outside Portal, active HA ownership, and a bounded updater check the radio is
+explicitly `WIFI_OFF`.
 
 Mixed sequences initialize every physical transport before acquiring any Home
 Assistant target, independent of authored action order. On the ESP32-C3,
@@ -532,9 +533,31 @@ allocation, minimum heap, physical BLE groups, and Wi-Fi mode on the main loop
 without exposing secrets or stable device identifiers.
 
 Factory Reset is deliberately stronger than clearing an individual registry.
-After a three-second hold it cancels work, deactivates transports, erases the
-complete NVS partition (including BLE bonds and mesh identity), and reboots.
-The application partition and installed firmware remain untouched.
+After a three-second hold it cancels work, deactivates transports, journals a
+reset request, and boots fixed recovery. Recovery first downloads and verifies
+the latest signed stable main image. Only after that succeeds does it erase the
+complete NVS partition, including BLE bonds and mesh identity, select main, and
+reboot. Failed networking or verification leaves NVS untouched.
+
+## Signed firmware updates
+
+`FirmwareUpdateService` is a bounded main-loop state machine covering startup
+pending/checking, scheduled, foreground-deferred, connection, manifest check,
+availability, failure, and recovery handoff. Home and stores are rendered
+before its clock starts. On each boot with saved Wi-Fi it checks the selected
+channel after five seconds of eligible idle Home. Foreground activity defers a
+not-yet-started check or cancels an in-progress HTTP request without releasing
+equipment. Ten-minute idle eligibility, 24-hour success cadence, 1/6/24-hour
+network backoff, and Settings-triggered checks remain available afterward.
+
+The updater fetches only the bounded signed manifest and detached signature.
+It is a temporary network owner and returns its station to `WIFI_OFF` on every
+terminal or cancellation path. Confirmed installation persists the exact
+signed request, releases retained links with consent, selects fixed recovery,
+and reboots. Recovery verifies again and streams main into `ota_0`; no second
+full firmware image is retained. See
+[the signed update protocol](protocols/firmware-update.md) for manifest trust,
+stream validation, replay rejection, journal recovery, and partition geometry.
 
 ## Persistence
 
@@ -546,6 +569,7 @@ Versioned persistent records cover:
 - scenes and execution metadata;
 - schema version and compatibility status;
 - panel preferences such as haptic enablement.
+- firmware channel plus installed, available, and dismissed release sequences.
 
 Secrets are masked in UI and logs. Backups exclude keys and credentials unless
 the operator explicitly requests a protected full export.

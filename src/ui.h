@@ -17,6 +17,7 @@ void handleShortPress();
 bool handleLongPress();
 // Safely unwinds all remaining Back paths and returns Home.
 bool handleLongPressToHome();
+bool showingHome();
 void showHome();
 void showSettings();
 void showDevices();
@@ -52,6 +53,9 @@ void simShowWifiSettings();
 void simShowAbout();
 void simShowSystemInfo();
 void simShowFactoryReset();
+void simShowFirmwareUpdate();
+void simShowUpdateConfirmation();
+void simDismissUpdatePrompt();
 void simScrollSettingsToEnd();
 void simScrollAboutToEnd();
 void simSetHapticEnabled(bool enabled);

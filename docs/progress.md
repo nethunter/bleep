@@ -5,7 +5,8 @@ short, factual, and reproducible.
 
 ## Current status
 
-- Current phase: bounded action-camera tranche (ADR-036), beside the
+- Current phase: recovery-based signed firmware-update tranche (ADR-046),
+  beside the bounded action-camera tranche (ADR-036) and
   experimental Aputure Light Phase 4 tranche (ADR-024/ADR-038), existing Scenes/shared-BLE
   work, and remaining hardware gates.
 - Firmware state: Home-first, persistent device registry, retained on-demand Shark,
@@ -428,6 +429,61 @@ short, factual, and reproducible.
   `Site Not Found` edge entry while cache-busted requests served Ble(e)p; a
   post-activation Hosting redeploy invalidated it. `https://bleep.hml.tech/`
   now returns HTTP 200 and the Ble(e)p page without a query string.
+### 2026-08-15: Signed startup checks and fixed recovery firmware updates
+
+- Superseded ADR-045 with ADR-046. Stores and Home now render before the updater
+  starts a five-second grace period. Every configured boot checks the selected
+  channel on eligible idle Home. Foreground activity defers or cancels the
+  request without disconnecting equipment; terminal paths release updater Wi-Fi.
+  Ten-minute idle checks, 24-hour cadence, Settings checks, and 1/6/24-hour
+  network backoff remain.
+- Replaced dual full images with schema-2 fixed recovery, alternating recovery
+  journal, and one large main slot. Main persists the exact signed request and
+  reboots into recovery; recovery verifies again and writes only main. Factory
+  Reset also enters recovery, installs latest signed stable before NVS erasure,
+  and resumes power-loss boundaries using CRC-protected generations.
+- Added `bleep_recovery`, separate `0xF0000`/`0x2C0000` raw ceilings, schema-2
+  manifest/recovery compatibility checks, normal main offset `0x120000`, and a
+  deterministic no-erase USB bundle containing recovery, blank journal, and
+  main while excluding NVS. After rebasing onto `40688db`, final raw outputs
+  measured 936,624 bytes for recovery and 2,112,608 bytes for main.
+- Restored full RGB565+alpha Home/category/About assets, stock Montserrat
+  12/14/16/20, and original Portal logo treatment while retaining Brotli and
+  nonce-cookie security. The rebased modular native suite passed 90/90,
+  including startup deferral
+  and alternating-journal corruption fallback. Packaging tests passed 6/6;
+  `bleep`, `bleep_recovery`, `ui_sim`, and `recovery_sim` built successfully.
+  The complete UI simulator traversal passed, and the Firmware Update panel,
+  prompt/confirmation/reset flows, restored asset screens, and four recovery
+  states were visually inspected for round-panel fit.
+- With explicit worktree approval, flashed the combined bundle through
+  `/dev/cu.usbserial-211240` without a chip erase. Esptool verified every
+  written image. NVS at `0x9000`/`0x5000` was read before and after and remained
+  byte-identical (SHA-256
+  `66667ac381afe48c374b55b8706ebf971a6fa8451760edf7ef03c7015ad30645`).
+  Bounded serial evidence confirmed main boot with `wifi=Off` at 1.014 seconds
+  and again at 31.018 seconds. The physical display, a live signed network
+  check/install, tamper/network/power-loss paths, failed-main fallback,
+  stable/development delivery, ten update cycles, and BLE/HA coexistence remain
+  hardware acceptance gates.
+- Rebase conflict resolution retained main's version-0.3 ownership boundaries,
+  generic Zhiyun UI hooks, modular native-test layout, protocol labs,
+  repository-artifact gate, and immutable versioned-release job. The updater
+  tests now live in their own native case file, panel-settings schema-2 golden
+  bytes and schema-1 haptics migration are covered, repository checks passed,
+  and the rebased `bleep`, `bleep_recovery`, and complete `ui_sim` traversal
+  all passed.
+- With renewed explicit worktree approval, regenerated and reflashed the
+  rebased combined bundle through `/dev/cu.usbserial-211240`, again without a
+  chip erase or any programmed range overlapping NVS. Esptool hash-verified all
+  six written regions and main booted at 1.005 seconds with `wifi=Off`.
+  During the bounded observation Portal subsequently became active with one AP
+  client and the 31.013-second report showed `wifi=Portal`. The before/after
+  NVS images therefore were not byte-identical: 26 byte positions changed,
+  consisting of the page allocation bitmap and one appended Wi-Fi `opmode`
+  entry; existing stored strings remained present. No NVS rollback was
+  attempted. The physical cause of Portal activation and a configured-Wi-Fi
+  startup-check trace remain unverified.
 
 ### 2026-08-12: Owner's guide audit and rebuild
 
