@@ -305,11 +305,14 @@ network runtime and do not consume the four physical BLE link slots.
 Portal suspends scenes and physical links. If studio Wi-Fi is not configured or
 cannot be joined, it performs a bounded asynchronous station scan before
 starting a temporary open SoftAP. The SoftAP-bound administration console offers
-the cached results plus manual SSID/password entry and all local device and
-sequence configuration. The panel's QR code identifies the open setup network.
-While the AP
-is active, wildcard DNS and unknown-path redirects provide best-effort captive
-portal discovery so phones can present the setup page as a sign-on screen.
+the initial cached results, a fresh non-blocking scan on request, manual
+SSID/password entry, and all local device and sequence configuration. HTTP and
+DNS servicing continue while an AP-mode refresh scan is pending. The panel's QR
+code identifies the open setup network.
+While the AP is active, wildcard DNS sends probe hosts to the panel. Known
+Apple, Android, and Windows connectivity-check paths, plus other unknown GET
+paths, receive the non-empty Portal page directly with status 200 so phones can
+recognize the network as captive and present the setup page as a sign-on screen.
 The join is a main-loop state machine, leaving HTTP and LVGL responsive while the
 browser and panel report scanning, connecting, success, timeout, missing SSID,
 or rejected credentials. A successful join saves those credentials, exposes

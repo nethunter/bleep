@@ -15,6 +15,8 @@ does not ship raw packet captures.
 - [Android screen-recording + HCI capture workflow](capture-workflow.md)
 - [Desktop BLE protocol harnesses](desktop-protocol-harness.md) — active
   central/client and macOS peripheral testing
+- [Captive Portal discovery](captive-portal-discovery.md) — SoftAP DNS and
+  phone connectivity-probe behavior
 
 Raw captures were removed before publication because radio traces can contain
 stable addresses, nearby device names, phone/camera identifiers, pairing

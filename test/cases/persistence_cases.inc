@@ -258,6 +258,20 @@ void test_panel_identity_uses_full_hardware_id_and_short_setup_suffix() {
   studio::formatPanelSetupSsid(0, setupSsid);
   TEST_ASSERT_EQUAL_STRING("BLP-000000000000", identity);
   TEST_ASSERT_EQUAL_STRING("Bleep-Setup-00000", setupSsid);
+
+  const uint64_t firstPanel =
+      studio::canonicalPanelHardwareId(0x00002C19C03B0010ULL);
+  const uint64_t secondPanel =
+      studio::canonicalPanelHardwareId(0x0000A8DBC23B0010ULL);
+  TEST_ASSERT_EQUAL_UINT64(0x000010003BC0192CULL, firstPanel);
+  TEST_ASSERT_EQUAL_UINT64(0x000010003BC2DBA8ULL, secondPanel);
+  studio::formatPanelIdentity(firstPanel, identity);
+  studio::formatPanelSetupSsid(firstPanel, setupSsid);
+  studio::formatPanelSetupSsid(secondPanel, otherSetupSsid);
+  TEST_ASSERT_EQUAL_STRING("BLP-10003BC0192C", identity);
+  TEST_ASSERT_EQUAL_STRING("Bleep-Setup-0192C", setupSsid);
+  TEST_ASSERT_EQUAL_STRING("Bleep-Setup-2DBA8", otherSetupSsid);
+  TEST_ASSERT_NOT_EQUAL(0, std::strcmp(setupSsid, otherSetupSsid));
 }
 
 void test_portal_parses_sequence_action_commands_from_json() {

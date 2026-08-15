@@ -83,5 +83,6 @@ int main(int, char**) {
   RUN_TEST(test_zhiyun_light_identity_and_advertisement_match);
   RUN_TEST(test_mesh_no_oob_policy_accepts_x100_static_oob_capability);
   RUN_TEST(test_proxy_transport_prefers_a_zhiyun_qualified_gateway);
+  RUN_TEST(test_captive_dns_accepts_edns_and_handles_query_types);
   return UNITY_END();
 }

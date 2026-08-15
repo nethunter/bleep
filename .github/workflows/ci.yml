@@ -69,6 +69,7 @@ jobs:
     name: publish latest full firmware
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
+      - repository-checks
       - native-tests
       - firmware-build
     runs-on: ubuntu-latest

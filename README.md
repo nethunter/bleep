@@ -327,10 +327,11 @@ without requiring studio Wi-Fi. Devices can be renamed, enabled/disabled, or
 removed; removal is blocked while a sequence references the device. Add
 physical devices on the panel so their pairing flow stays local.
 
-Home Assistant is the only Portal function that requires studio Wi-Fi. The
-nearby-network scan completes before the setup AP opens, avoiding unreliable
-in-AP channel hopping. Choose a result or enter a hidden SSID manually. After
-Ble(e)p joins, note the numeric LAN address, let the setup AP close, and rejoin
+Home Assistant is the only Portal function that requires studio Wi-Fi. An
+initial nearby-network scan completes before the setup AP opens, and **Show
+nearby Wi-Fi** performs a fresh non-blocking scan if networks have changed or
+the initial scan found none. Choose a result or enter a hidden SSID manually.
+After Ble(e)p joins, note the numeric LAN address, let the setup AP close, and rejoin
 the normal local Wi-Fi. Open that address while Portal remains active;
 `http://bleep.local` is a best-effort convenience. The Home Assistant URL starts
 as `http://homeassistant.local:8123`. A saved token is reported only as stored

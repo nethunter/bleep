@@ -4925,3 +4925,106 @@ Record values with the exact build environment and commit/worktree state.
   contact sheets, and inspected the opening pages at full resolution. The final
   render has no clipping, overlap, unexpected blank page, table overflow, or
   awkward opening-page break. No firmware source, build, test, or flash changed.
+
+### 2026-08-15: Release and manual-artifact gate fixes
+
+- Made both rolling and versioned firmware publication depend on the repository
+  artifact check, so neither release path can publish after that gate fails.
+- Extended the repository check to require both maintained manual PDFs and
+  reject byte differences between the source output and website download.
+  Verified the live checkout and isolated pass, mismatch, and missing-file
+  cases; `git diff --check` also passed.
+- Aligned the manual-maintenance README with the accepted scoped-branch workflow
+  in `AGENTS.md`.
+- The full Montserrat `bleep` profile built successfully with 141,476 / 327,680
+  bytes static RAM (43.2%) and 1,934,816 / 3,145,728 bytes flash (61.5%). It
+  uploaded to `/dev/cu.usbserial-211240`; every written-region hash verified and
+  the panel hard-reset. These repository-process changes do not alter firmware
+  runtime behavior; post-reset panel behavior remains operator-unverified.
+
+### 2026-08-15: Captive Portal probe response repair
+
+- Diagnosed an operator-reported failure where joining the temporary Portal AP
+  did not automatically present the phone sign-on page. The AP already supplied
+  wildcard DNS, but phone connectivity probes received only the generic
+  relative redirect used for unknown routes.
+- AP-mode Apple, Android, and Windows probe paths, and all other unknown GET
+  paths, now receive the complete non-empty Portal page with HTTP 200. LAN-mode
+  routing remains unchanged. Added the corresponding protocol note and aligned
+  architecture/device-support documentation, including the AP's open-network
+  status.
+- That first repair did not change the phone result. Source inspection then
+  found that the bundled Arduino DNS server silently rejects requests carrying
+  an EDNS additional record. Replaced it with a bounded Portal-lifetime DNS
+  responder that accepts EDNS-bearing one-question requests, returns the setup
+  address for A/IN, and returns a successful empty answer for unsupported query
+  types. Native fixtures for plain A, EDNS A, EDNS AAAA, and malformed queries
+  passed with the complete 84/84 suite.
+- The repository artifact check and `git diff --check` passed. The final full
+  Montserrat `bleep` profile built with 141,484 / 327,680 bytes static RAM
+  (43.2%) and 1,934,318 / 3,145,728 bytes flash (61.5%).
+- An initial flash attempt was safely rejected after PlatformIO selected
+  `/dev/cu.usbmodem21111201`, identified as `NocFree & ANSI`; it could not
+  connect and wrote no data. After the CrowPanel reappeared, the validated image
+  uploaded explicitly to `/dev/cu.usbserial-211240`, every written-region hash
+  verified, and the panel hard-reset. The later EDNS-compatible image also
+  uploaded to that exact port with all hashes verified and a hard reset.
+  Captive sign-on behavior remains phone-unverified pending a fresh-network
+  test.
+- A later desktop test also could not open `http://192.168.4.1`, proving the
+  symptom was broader than captive-assistant detection. The panel then attached
+  at the configured serial port reported ESP32-C3 MAC `10:00:3b:c0:19:2c`,
+  different from the earlier flashed panel at `10:00:3b:c2:db:a8`. A bounded
+  diagnostic build (141,484 bytes static RAM, 1,934,938 bytes flash) uploaded to
+  the currently attached panel with all hashes verified. Its 60-second serial
+  capture remained at `wifi=Off` with no Portal entry, AP client, DNS, or HTTP
+  event. Next verification must enter Portal on this exact physical panel while
+  capturing; the temporary privacy-safe diagnostics should be removed once the
+  failing layer is identified.
+
+### 2026-08-15: Per-panel setup SSID byte-order repair
+
+- Fixed the eFuse identity adapter after two physical panels both produced the
+  apparent `Bleep-Setup-B001` suffix. Arduino writes the six canonical MAC
+  bytes directly into a little-endian `uint64_t`; masking that raw integer
+  selected the shared Espressif prefix instead of the unique device tail.
+- The identity boundary now converts Arduino's raw value to canonical 48-bit
+  MAC order before formatting either the full panel ID or setup SSID. Host
+  vectors for physical MACs `10:00:3b:c0:19:2c` and `10:00:3b:c2:db:a8`
+  produce distinct `Bleep-Setup-0192C` and `Bleep-Setup-2DBA8` SSIDs. The full
+  native suite passed 84/84.
+- Reworked the round-panel Portal label to show the fixed setup prefix and
+  five-character suffix on deliberate separate lines. The simulator fixture
+  now uses the full-length `Bleep-Setup-0192C` value; the complete `ui_sim`
+  capture run passed and visual inspection of `30_portal.png` found no overlap.
+- The full Montserrat `bleep` profile built successfully with 141,484 / 327,680
+  bytes static RAM (43.2%) and 1,935,128 / 3,145,728 bytes flash (61.5%). The
+  combined identity and layout image uploaded to `/dev/cu.usbserial-211240` on
+  panel MAC `10:00:3b:c0:19:2c`; all written-region hashes verified and the
+  panel hard-reset. The expected SSID is `Bleep-Setup-0192C`; on-panel and
+  client discovery remain operator-verification steps.
+
+### 2026-08-15: Captive confirmation and live Wi-Fi scan restoration
+
+- A live trace on panel `10:00:3b:c0:19:2c` confirmed the corrected Portal path:
+  the AP started at `192.168.4.1`, one client associated, DNS queries received
+  answers, and captive HTTP probes reached the listener. The operator then
+  confirmed that the captive Portal opened and worked correctly. The client
+  model/OS and cross-platform behavior remain unrecorded.
+- Compared the Portal path across the full 0.3 ownership refactor at `6e664f0`.
+  That commit did not modify `portal_service.cpp` or its scan API. The broken
+  scan behavior came from the earlier offline-Portal change: the browser's
+  **Show nearby Wi-Fi** action called a POST endpoint that returned success
+  without starting a scan, then replayed only the cached Portal-entry result.
+  A failed or empty initial scan therefore could never recover.
+- Restored a real bounded asynchronous scan for each browser request. The AP,
+  DNS, HTTP, and LVGL loops remain serviced while scanning; the browser polls
+  until completion, and firmware distinguishes scan failure from a successful
+  zero-network result. Entry-time caching remains available for initial setup.
+- The embedded JavaScript passed `node --check`, the native suite passed 84/84,
+  and the full Montserrat `bleep` profile built with 141,484 / 327,680 bytes
+  static RAM (43.2%) and 1,935,956 / 3,145,728 bytes flash (61.5%). The image
+  uploaded to `/dev/cu.usbserial-211240`; all hashes verified and the panel
+  hard-reset. Since studio credentials were saved during the preceding live
+  test, an AP-mode scan requires forgetting that saved network before final
+  on-device verification.

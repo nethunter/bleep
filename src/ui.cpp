@@ -1102,17 +1102,17 @@ void buildPortal() {
   lv_obj_align(portalQr, LV_ALIGN_TOP_LEFT, 28, 72);
 
   portalSsid = lv_label_create(scrPortal);
-  lv_obj_set_width(portalSsid, 82);
+  lv_obj_set_width(portalSsid, 90);
   lv_obj_set_style_text_align(portalSsid, LV_TEXT_ALIGN_LEFT, 0);
-  lv_obj_set_style_text_font(portalSsid, UI_FONT_14, 0);
+  lv_obj_set_style_text_font(portalSsid, UI_FONT_12, 0);
   lv_obj_set_style_text_color(portalSsid, lv_color_hex(kColText), 0);
-  lv_obj_align(portalSsid, LV_ALIGN_TOP_LEFT, 134, 76);
+  lv_obj_align(portalSsid, LV_ALIGN_TOP_LEFT, 128, 76);
   portalPassword = lv_label_create(scrPortal);
   lv_obj_set_width(portalPassword, 82);
   lv_obj_set_style_text_align(portalPassword, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_set_style_text_font(portalPassword, UI_FONT_14, 0);
   lv_obj_set_style_text_color(portalPassword, lv_color_hex(kColMuted), 0);
-  lv_obj_align(portalPassword, LV_ALIGN_TOP_LEFT, 134, 124);
+  lv_obj_align(portalPassword, LV_ALIGN_TOP_LEFT, 134, 128);
   portalAddress = lv_label_create(scrPortal);
   lv_label_set_text(portalAddress, "http://192.168.4.1");
   lv_obj_set_width(portalAddress, 180);
@@ -1129,7 +1129,15 @@ void refreshPortal() {
   if (scrPortal == nullptr) return;
   lv_label_set_text(portalStatus, portal::statusText());
   char text[64];
-  std::snprintf(text, sizeof(text), "SSID\n%s", portal::ssid());
+  constexpr const char* kSetupPrefix = "Bleep-Setup-";
+  constexpr size_t kSetupPrefixLength = 12;
+  const char* portalSsidValue = portal::ssid();
+  if (std::strncmp(portalSsidValue, kSetupPrefix, kSetupPrefixLength) == 0) {
+    std::snprintf(text, sizeof(text), "SSID\n%s\n%s", kSetupPrefix,
+                  portalSsidValue + kSetupPrefixLength);
+  } else {
+    std::snprintf(text, sizeof(text), "SSID\n%s", portalSsidValue);
+  }
   lv_label_set_text(portalSsid, text);
   std::snprintf(text, sizeof(text), "PASS\n%s", portal::password());
   if (portal::password()[0] == '\0') {

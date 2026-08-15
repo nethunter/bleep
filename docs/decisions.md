@@ -379,7 +379,9 @@ the replacement.
 - Provisioning boundary: First-time Portal setup performs a bounded nearby-network
   scan before creating an open SoftAP. The AP console administers local device
   records and sequences without studio Wi-Fi and may collect studio Wi-Fi
-  credentials for Home Assistant. The panel exposes the setup AP as a standard
+  credentials for Home Assistant. The initial scan is cached, but an explicit
+  browser request starts a fresh non-blocking scan while preserving AP HTTP/DNS
+  service. The panel exposes the setup AP as a standard
   open-network Wi-Fi QR code. Wildcard DNS and HTTP redirects trigger the phone's
   captive-network sign-on UI on a best-effort basis while that AP is active;
   both are destroyed before LAN Portal startup. Manual SSID entry remains

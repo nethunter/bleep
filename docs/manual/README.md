@@ -16,12 +16,13 @@ For a full manual refresh:
 1. Find the last commit that changed `manual.md` or the generated PDF.
 2. Audit every later implementation and documentation change for setup,
    controls, compatibility, safety, recovery, and troubleshooting impact.
-3. Collect and finish those changes on a preparatory branch, rebase it onto
-   `main`, and merge it with `--no-ff`.
-4. Edit the manual only in the primary checkout, on `main`, after that merge.
+3. Complete the implementation, manual source, generated PDF, and synchronized
+   website copy on the same scoped feature branch.
+4. Render and inspect the manual, rebase the branch onto current `main`, rerun
+   the affected artifact checks, and merge it from `main` with `--no-ff`.
 
-If there are no later changes, record that finding and continue on clean
-`main`. A manual refresh is a content audit, not a request to regenerate an
+If there are no later changes, record that finding and continue on the scoped
+branch. A manual refresh is a content audit, not a request to regenerate an
 unchanged PDF.
 
 Keep claims aligned with `README.md`, `docs/device-support.md`, and

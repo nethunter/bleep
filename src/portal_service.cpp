@@ -25,12 +25,12 @@ void stop() { running = false; }
 bool active() { return running; }
 Status status() { return running ? simulatedStatus : Status::Inactive; }
 const char* statusText() { return running ? simulatedMessage : "Portal off"; }
-const char* ssid() { return lan ? "Studio-WiFi" : "Bleep-Setup-SIM"; }
+const char* ssid() { return lan ? "Studio-WiFi" : "Bleep-Setup-0192C"; }
 const char* password() { return ""; }
 const char* url() { return lan ? "http://192.168.1.84" : "http://192.168.4.1"; }
 const char* qrPayload() {
   return lan ? "http://192.168.1.84"
-             : "WIFI:T:nopass;S:Bleep-Setup-SIM;;";
+             : "WIFI:T:nopass;S:Bleep-Setup-0192C;;";
 }
 const char* unitId() { return "BLP-0123456789AB"; }
 SavedWifiSummary savedWifiSummary() {
@@ -58,11 +58,11 @@ void simSetSavedWifi(const char* ssid) {
 #else
 
 #include <ArduinoJson.h>
-#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <esp_system.h>
 
 #include <cstdio>
@@ -77,8 +77,15 @@ void simSetSavedWifi(const char* ssid) {
 #include "core/scene_service.h"
 #include "devices/home_assistant/protocol.h"
 #include "assets/portal_logo.h"
+#include "captive_dns_codec.h"
 #include "portal_assets.h"
 #include "portal_scene_parser.h"
+
+#if ARDUINO_USB_CDC_ON_BOOT
+#define PORTAL_DEBUG_PORT Serial0
+#else
+#define PORTAL_DEBUG_PORT Serial
+#endif
 
 namespace portal {
 namespace {
@@ -97,13 +104,52 @@ struct WifiScanResult {
 };
 
 WebServer* server = nullptr;
-DNSServer* dnsServer = nullptr;
+class CaptiveDnsServer {
+ public:
+  bool start(uint16_t port, IPAddress address) {
+    for (size_t i = 0; i < sizeof(address_); ++i) address_[i] = address[i];
+    return udp_.begin(port) == 1;
+  }
+
+  void stop() { udp_.stop(); }
+
+  void processNextRequest() {
+    const int packetSize = udp_.parsePacket();
+    if (packetSize <= 0) return;
+    const IPAddress remoteAddress = udp_.remoteIP();
+    const uint16_t remotePort = udp_.remotePort();
+    if (packetSize > static_cast<int>(sizeof(request_))) {
+      while (udp_.available()) udp_.read();
+      return;
+    }
+    const int bytesRead = udp_.read(request_, sizeof(request_));
+    if (bytesRead != packetSize) return;
+    const size_t responseLength = dns::buildResponse(
+        request_, static_cast<size_t>(bytesRead), address_, response_,
+        sizeof(response_));
+    PORTAL_DEBUG_PORT.printf("portal dns request=%d response=%u\n", bytesRead,
+                             static_cast<unsigned>(responseLength));
+    if (responseLength == 0 || !udp_.beginPacket(remoteAddress, remotePort)) return;
+    udp_.write(response_, responseLength);
+    udp_.endPacket();
+  }
+
+ private:
+  WiFiUDP udp_;
+  uint8_t address_[4] = {};
+  uint8_t request_[dns::kMaxRequestSize] = {};
+  uint8_t response_[dns::kMaxResponseSize] = {};
+};
+
+CaptiveDnsServer* dnsServer = nullptr;
 Status currentStatus = Status::Inactive;
 uint32_t lastActivity = 0;
 bool lanMode = false;
 bool switchToLanPending = false;
 bool exitPending = false;
 bool setupScanPending = false;
+bool portalScanPending = false;
+bool portalScanFailed = false;
 WifiJoinState wifiJoinState = WifiJoinState::Idle;
 uint32_t wifiJoinStarted = 0;
 uint32_t switchToLanAt = 0;
@@ -119,6 +165,7 @@ char qrPayloadValue[96] = "";
 char portalNonce[17] = "";
 WifiScanResult wifiScanResults[kWifiScanLimit] = {};
 size_t wifiScanCount = 0;
+uint8_t lastSetupClientCount = 0xff;
 
 const char kStyle[] PROGMEM = R"HTML(<style>
 :root{color-scheme:dark;--bg:#05070a;--panel:#12161d;--ink:#f3f4f6;--muted:#8a94a6;--cyan:#35c7f2}
@@ -159,6 +206,12 @@ void sendPortalPage() {
   server->sendContent(portalNonce);
   server->sendContent("'</script>");
   server->sendContent_P(assets::kBody);
+}
+
+void sendCaptivePortalPage() {
+  PORTAL_DEBUG_PORT.println("portal http captive-probe");
+  touch();
+  sendPortalPage();
 }
 
 void sendJson(int status, JsonDocument& doc) {
@@ -489,6 +542,28 @@ void sendWifiStatus() {
   server->send(200, "application/json", body);
 }
 
+void cacheWifiScanResults(int found) {
+  wifiScanCount = 0;
+  if (found > 0) {
+    for (int i = 0; i < found && wifiScanCount < kWifiScanLimit; ++i) {
+      const String candidate = WiFi.SSID(i);
+      if (candidate.length() == 0) continue;
+      bool duplicate = false;
+      for (size_t existing = 0; existing < wifiScanCount; ++existing) {
+        duplicate |= candidate == wifiScanResults[existing].ssid;
+      }
+      if (duplicate) continue;
+      WifiScanResult& result = wifiScanResults[wifiScanCount++];
+      std::strncpy(result.ssid, candidate.c_str(), sizeof(result.ssid) - 1);
+      result.rssi = WiFi.RSSI(i);
+      result.secure = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    }
+  }
+  WiFi.scanDelete();
+  PORTAL_DEBUG_PORT.printf("portal wifi scan found=%d cached=%u\n", found,
+                           static_cast<unsigned>(wifiScanCount));
+}
+
 void startWifiScan() {
   if (!requireStage(false)) return;
   if (!requireMutation()) return;
@@ -497,12 +572,38 @@ void startWifiScan() {
                  "{\"error\":\"Wait for the Wi-Fi connection attempt to finish\"}");
     return;
   }
-  server->send(202, "application/json", "{\"state\":\"complete\"}");
+  if (portalScanPending) {
+    server->send(202, "application/json", "{\"state\":\"scanning\"}");
+    return;
+  }
+  WiFi.scanDelete();
+  const int result = WiFi.scanNetworks(true, true, false, 120);
+  if (result == WIFI_SCAN_FAILED) {
+    server->send(500, "application/json",
+                 "{\"error\":\"Could not start Wi-Fi scan\"}");
+    return;
+  }
+  portalScanPending = true;
+  portalScanFailed = false;
+  setStatus(Status::Testing, "Scanning nearby Wi-Fi");
+  PORTAL_DEBUG_PORT.println("portal wifi scan started");
+  server->send(202, "application/json", "{\"state\":\"scanning\"}");
 }
 
 void sendWifiScan() {
   if (!requireStage(false)) return;
   JsonDocument doc;
+  if (portalScanPending) {
+    doc["state"] = "scanning";
+    sendJson(200, doc);
+    return;
+  }
+  if (portalScanFailed) {
+    doc["state"] = "failed";
+    doc["error"] = "Wi-Fi scan failed. Enter the SSID manually.";
+    sendJson(200, doc);
+    return;
+  }
   JsonArray networks = doc["networks"].to<JsonArray>();
   doc["state"] = "complete";
   for (size_t i = 0; i < wifiScanCount; ++i) {
@@ -919,9 +1020,21 @@ void handleExit() {
 
 void installHandlers() {
   server->on("/", HTTP_GET, [] {
+    PORTAL_DEBUG_PORT.println("portal http root");
     touch();
     sendPortalPage();
   });
+  if (!lanMode) {
+    // Serve a non-empty 200 response for the probes used by the major phone
+    // platforms. A relative redirect is not consistently treated as a captive
+    // result and can leave the sign-on assistant unopened.
+    server->on("/generate_204", HTTP_GET, sendCaptivePortalPage);
+    server->on("/gen_204", HTTP_GET, sendCaptivePortalPage);
+    server->on("/hotspot-detect.html", HTTP_GET, sendCaptivePortalPage);
+    server->on("/library/test/success.html", HTTP_GET, sendCaptivePortalPage);
+    server->on("/connecttest.txt", HTTP_GET, sendCaptivePortalPage);
+    server->on("/ncsi.txt", HTTP_GET, sendCaptivePortalPage);
+  }
   server->on("/wifi", HTTP_POST, handleWifiSave);
   server->on("/api/wifi/status", HTTP_GET, sendWifiStatus);
   server->on("/api/wifi/scan", HTTP_POST, startWifiScan);
@@ -952,6 +1065,11 @@ void installHandlers() {
       return;
     }
     touch();
+    if (!lanMode && server->method() == HTTP_GET) {
+      PORTAL_DEBUG_PORT.println("portal http unknown-get");
+      sendPortalPage();
+      return;
+    }
     server->sendHeader("Location", "/", true);
     server->send(302);
   });
@@ -964,6 +1082,8 @@ bool startServer(IPAddress address) {
   server->collectHeaders(headers, 1);
   installHandlers();
   server->begin();
+  PORTAL_DEBUG_PORT.printf("portal http listening=%s:80\n",
+                           address.toString().c_str());
   return true;
 }
 
@@ -980,9 +1100,9 @@ void destroyServer() {
 }
 
 bool startCaptiveDns(IPAddress address) {
-  dnsServer = new (std::nothrow) DNSServer();
+  dnsServer = new (std::nothrow) CaptiveDnsServer();
   if (dnsServer == nullptr) return false;
-  if (dnsServer->start(53, "*", address)) return true;
+  if (dnsServer->start(53, address)) return true;
   delete dnsServer;
   dnsServer = nullptr;
   return false;
@@ -1005,6 +1125,9 @@ bool startSetupAp() {
     WiFi.softAPdisconnect(true);
     return false;
   }
+  lastSetupClientCount = 0xff;
+  PORTAL_DEBUG_PORT.printf("portal ap ready ip=%s\n",
+                           setupAddress.toString().c_str());
   setStatus(Status::Ready, "AP Portal ready");
   return true;
 }
@@ -1024,23 +1147,7 @@ bool beginSetupScan() {
 void finishSetupScan() {
   const int found = WiFi.scanComplete();
   if (found == WIFI_SCAN_RUNNING) return;
-  wifiScanCount = 0;
-  if (found > 0) {
-    for (int i = 0; i < found && wifiScanCount < kWifiScanLimit; ++i) {
-      const String candidate = WiFi.SSID(i);
-      if (candidate.length() == 0) continue;
-      bool duplicate = false;
-      for (size_t existing = 0; existing < wifiScanCount; ++existing) {
-        duplicate |= candidate == wifiScanResults[existing].ssid;
-      }
-      if (duplicate) continue;
-      WifiScanResult& result = wifiScanResults[wifiScanCount++];
-      std::strncpy(result.ssid, candidate.c_str(), sizeof(result.ssid) - 1);
-      result.rssi = WiFi.RSSI(i);
-      result.secure = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
-    }
-  }
-  WiFi.scanDelete();
+  cacheWifiScanResults(found);
   setupScanPending = false;
   if (!startSetupAp()) {
     WiFi.mode(WIFI_OFF);
@@ -1079,7 +1186,8 @@ bool begin() {
   std::snprintf(portalNonce, sizeof(portalNonce), "%08lX%08lX",
                 static_cast<unsigned long>(esp_random()),
                 static_cast<unsigned long>(esp_random()));
-  const uint64_t chip = ESP.getEfuseMac();
+  const uint64_t chip =
+      studio::canonicalPanelHardwareId(ESP.getEfuseMac());
   unitId();
   studio::formatPanelSetupSsid(chip, apSsid);
 
@@ -1117,6 +1225,24 @@ void loop() {
   }
   if (dnsServer != nullptr) dnsServer->processNextRequest();
   if (server != nullptr) server->handleClient();
+  if (portalScanPending) {
+    const int found = WiFi.scanComplete();
+    if (found != WIFI_SCAN_RUNNING) {
+      cacheWifiScanResults(found);
+      portalScanPending = false;
+      portalScanFailed = found < 0;
+      setStatus(Status::Ready,
+                portalScanFailed ? "Wi-Fi scan failed" : "AP Portal ready");
+    }
+  }
+  if (!lanMode) {
+    const uint8_t clientCount = WiFi.softAPgetStationNum();
+    if (clientCount != lastSetupClientCount) {
+      lastSetupClientCount = clientCount;
+      PORTAL_DEBUG_PORT.printf("portal ap clients=%u\n",
+                               static_cast<unsigned>(clientCount));
+    }
+  }
   if (exitPending) {
     stop();
     return;
@@ -1185,8 +1311,11 @@ void stop() {
   lanMode = false;
   switchToLanPending = false;
   setupScanPending = false;
+  portalScanPending = false;
+  portalScanFailed = false;
   exitPending = false;
   portalNonce[0] = '\0';
+  lastSetupClientCount = 0xff;
   setStatus(Status::Inactive, "Portal off");
 }
 
@@ -1207,7 +1336,8 @@ const char* qrPayload() {
 
 const char* unitId() {
   if (panelIdentity[0] == '\0') {
-    studio::formatPanelIdentity(ESP.getEfuseMac(), panelIdentity);
+    studio::formatPanelIdentity(
+        studio::canonicalPanelHardwareId(ESP.getEfuseMac()), panelIdentity);
   }
   return panelIdentity;
 }

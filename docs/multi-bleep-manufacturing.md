@@ -32,6 +32,11 @@ records, mesh keys, scenes, or Home Assistant state.
 Add one small identity module with host-testable formatting and a target adapter
 for `ESP.getEfuseMac()`.
 
+The adapter reverses the six bytes placed into Arduino's little-endian integer
+before formatting. Formatters receive the canonical 48-bit MAC value; otherwise
+the short suffix would select the shared vendor prefix instead of the unique
+device tail.
+
 It provides:
 
 - the full 48-bit hardware identity;

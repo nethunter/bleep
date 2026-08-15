@@ -13,6 +13,7 @@ ALLOWED_PDFS = {
     "output/pdf/bleep-instruction-manual.pdf",
     "website/downloads/bleep-instruction-manual.pdf",
 }
+MANUAL_PDFS = tuple(sorted(ALLOWED_PDFS))
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 
 
@@ -34,6 +35,18 @@ def main() -> int:
             errors.append(f"tracked temporary artifact: {name}")
         if path.suffix.lower() == ".pdf" and name not in ALLOWED_PDFS:
             errors.append(f"unexpected tracked PDF: {name}")
+
+    missing_manuals = [
+        name
+        for name in MANUAL_PDFS
+        if name not in tracked or not (ROOT / name).is_file()
+    ]
+    for name in missing_manuals:
+        errors.append(f"missing tracked manual PDF: {name}")
+    if not missing_manuals:
+        source_manual, website_manual = (ROOT / name for name in MANUAL_PDFS)
+        if source_manual.read_bytes() != website_manual.read_bytes():
+            errors.append("manual PDF copies differ")
 
     for name in tracked:
         if not name.endswith(".md"):
