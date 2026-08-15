@@ -70,6 +70,61 @@ short, factual, and reproducible.
   verification passes, while the flashed shared embedded path remains open.
 - Last updated: 2026-08-15.
 
+### 2026-08-15: Cold HML Studio connect diagnosis and scan-fallback latency fix
+
+- Debugged slow cold-device connection of the HML Studio sequence (Canon Smart
+  + Tascam X8 + one HA entity) on the flashed panel using a timestamped UART
+  capture (115200, host-side millisecond timestamps alongside the existing
+  `ble_timing`/`ble_event`/`scene` telemetry).
+- Baseline cold run: 15.1 s from sequence open to `all_targets_ready`.
+  Canon reached `protocol_ready` in 2.35 s (1.15 s physical, 0.68 s security,
+  0.44 s GATT discovery, 0.52 s wake-to-session-ready). The Tascam's first
+  direct attempt failed with NimBLE reason 574 after 0.64 s, the panel then
+  waited its 1.5 s retry backoff before scanning, and the AK-BT1 stayed silent
+  for ~7.3 s of active scanning before advertising again; reconnect took 2.30 s
+  plus 1.98 s GATT/session/init for a 14.49 s Tascam total. Deferred HA added
+  only 0.41 s (cached-channel Wi-Fi reconnect, WS auth, subscription). Warm
+  reopen of the sequence was immediate: retained sessions reported
+  `link=connected ready=1` and `all_targets_ready` elapsed 0 ms. The
+  controller-serialized connect/security order (ADR-021) and the physical-
+  before-HA staging (ADR-023) were both confirmed working as designed and are
+  not the bottleneck.
+- Root cause (`Hypothesis`, two captures): after an idle period the first
+  connection establishment toward a just-woken peripheral (AK-BT1 in run one;
+  the EOS R6 Mark II failed twice the same way in run two) dies with HCI
+  574. The failed attempts appear to act as the wake poke; the peripheral then
+  stops advertising for ~7-9 s before it becomes connectable. A central cannot
+  connect before the peripheral advertises, so passive scanning is already the
+  fastest possible recovery detector; the remaining window is peripheral-side.
+- Fix: `BleCentral::scheduleRetry` now skips the 1.5 s backoff when the next
+  retry will fall back to passive advertisement scanning (mirroring
+  `runRetry`'s direct-versus-scan choice). Direct re-attempts keep their
+  1.5 s x failure-count settling backoff, and explicit post-drop reconnect
+  delays are unchanged. Updated the Tascam/Zhiyun one-miss scan-fallback tests
+  and the concurrent retry/watchdog test to the new immediate-fallback timing,
+  including unchanged 4 s burst / 1.5 s pause scan duty afterwards.
+- Verification cold run with the fix: the Canon path failed twice with 574
+  (3.49 s and 0.79 s attempts, 1.5 s/3 s backoffs) before connecting, reaching
+  `protocol_ready` in 12.26 s; the X8 failed once (574 at 1.68 s) and its scan
+  fallback began in the same loop pass, catching the first post-silence
+  advertisement ~6.7 s later and reaching `protocol_ready` in 14.17 s; HA
+  ready 0.41 s later; total to Ready ~14.9 s. A full Start then Stop completed
+  with every step confirmed (HA service result, Canon and Tascam record
+  transitions). The operator perceived the run as noticeably faster; on a
+  run where only the X8 fails, the fix removes the full 1.5 s dead window.
+- Native suite 86/86. Full Montserrat `bleep` profile built at 141,484 /
+  327,680 bytes static RAM (43.2%) and 1,936,040 / 3,145,728 bytes flash
+  (61.5%). Uploaded to `/dev/cu.usbserial-211240` with hash verification and
+  hard reset; NVS preserved. The first upload attempt failed because the
+  background capture still held the port; it succeeded after the capture was
+  stopped.
+- Remaining: cold-connect time is bounded by peripheral establishment
+  failures and their recovery silence, not panel policy. Aggressively faster
+  direct-retry cadence was considered and rejected without A/B evidence —
+  faster pokes could delay a peripheral whose recovery restarts on each failed
+  establishment. Repeat cold runs across different X8/camera idle durations
+  remain the open hardware check.
+
 ### 2026-08-15: Version 0.3.0 ownership and clean-schema refactor
 
 - Replaced five handwritten persistence encoders with one bounded

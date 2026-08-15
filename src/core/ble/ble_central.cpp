@@ -525,8 +525,20 @@ void BleCentral::scheduleRetry(Slot& slot, uint32_t nowMs,
   slot.phase = LinkPhase::WaitingRetry;
   const uint32_t multiplier =
       slot.connectFailures < 4 ? slot.connectFailures : 4;
-  slot.retryAtMs =
-      nowMs + (delayMs != 0 ? delayMs : 1500u * (multiplier ? multiplier : 1));
+  uint32_t delay =
+      delayMs != 0 ? delayMs : 1500u * (multiplier ? multiplier : 1);
+  // The backoff settles a peripheral we are actively poking. When the next
+  // retry can only listen for advertisements, scanning is passive: resume it
+  // immediately instead of adding dead time after a failed attempt. Mirrors
+  // runRetry's direct-versus-scan choice.
+  const bool scanFallback =
+      !(slot.targetKnown &&
+        (slot.policy.alwaysDirect ||
+         slot.connectFailures < slot.policy.directAttemptsBeforeScan));
+  if (delayMs == 0 && scanFallback) {
+    delay = 0;
+  }
+  slot.retryAtMs = nowMs + delay;
 }
 
 void BleCentral::runRetry(LinkHandle link, Slot& slot, uint32_t) {

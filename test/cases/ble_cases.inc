@@ -234,17 +234,25 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   TEST_ASSERT_EQUAL_UINT32(3, backend.connectCalls(secondLink));
 
   // After three failed direct attempts, rediscover the peer rather than
-  // retrying a potentially stale saved address forever.
+  // retrying a potentially stale saved address forever. Passive scanning
+  // resumes immediately; the backoff only settles direct re-attempts.
   backend.emit(failed);
   central.loop(4702);
-  central.loop(9201);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  // The usual 4 s burst / 1.5 s pause cycle still applies after the
+  // immediate fallback.
+  central.loop(8701);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(8702);
   TEST_ASSERT_FALSE(backend.scanRunning());
-  central.loop(9202);
+  central.loop(10201);
+  TEST_ASSERT_FALSE(backend.scanRunning());
+  central.loop(10202);
   TEST_ASSERT_TRUE(backend.scanRunning());
 
   TEST_ASSERT_TRUE(central.requestConnect(
       secondLink, bleAddress("22:33:44:55:66:77")));
-  central.loop(15203);
+  central.loop(16202);
   TEST_ASSERT_TRUE(backend.disconnectCalls(secondLink) > 0);
   central.release(firstLink);
   TEST_ASSERT_FALSE(central.protocolReady(firstLink));
@@ -267,11 +275,12 @@ void test_tascam_reconnect_scans_after_one_direct_failure() {
   failed.type = studio::ble::EventType::ConnectFailed;
   failed.link = link;
   backend.emit(failed);
+  // The single direct attempt is followed by passive scanning immediately:
+  // listening does not disturb the peripheral, so no backoff applies.
   central.loop(1);
-  central.loop(1500);
-  TEST_ASSERT_FALSE(backend.scanRunning());
-  central.loop(1501);
   TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.loop(1501);
   TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
   central.release(link);
 }
@@ -292,11 +301,12 @@ void test_zhiyun_reconnect_scans_after_one_direct_failure() {
   failed.type = studio::ble::EventType::ConnectFailed;
   failed.link = link;
   backend.emit(failed);
+  // The single direct attempt is followed by passive scanning immediately:
+  // listening does not disturb the peripheral, so no backoff applies.
   central.loop(1);
-  central.loop(1500);
-  TEST_ASSERT_FALSE(backend.scanRunning());
-  central.loop(1501);
   TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.loop(1501);
   TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
   central.release(link);
 }
