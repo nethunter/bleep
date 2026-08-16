@@ -13,6 +13,11 @@ enum class RecoveryInstallStep : uint8_t {
   Finish,
 };
 
+inline bool canRunEarlyRecoveryUpdate(bool runningMain,
+                                      bool pendingBootValidation) {
+  return runningMain && !pendingBootValidation;
+}
+
 inline RecoveryInstallStep recoveryInstallStep(
     RecoveryOperation operation, uint64_t targetReleaseSequence,
     uint64_t runningReleaseSequence, bool recoveryMetadataValid,

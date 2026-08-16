@@ -154,6 +154,12 @@ void test_recovery_install_updates_recovery_before_booting_it() {
           RecoveryOperation::ResetComplete, 43, 42, true, true)));
 }
 
+void test_early_recovery_update_preserves_new_main_health_gate() {
+  TEST_ASSERT_TRUE(studio::canRunEarlyRecoveryUpdate(true, false));
+  TEST_ASSERT_FALSE(studio::canRunEarlyRecoveryUpdate(true, true));
+  TEST_ASSERT_FALSE(studio::canRunEarlyRecoveryUpdate(false, false));
+}
+
 void test_recovery_startup_auto_boots_only_clean_valid_main() {
   MemoryRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);

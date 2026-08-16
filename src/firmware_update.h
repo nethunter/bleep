@@ -36,8 +36,11 @@ struct Snapshot {
   char message[64] = "Not checked";
 };
 
+using EarlyRecoveryStatusCallback = void (*)(const Snapshot& status);
+
 class FirmwareUpdateService {
  public:
+  void runEarlyRecoveryUpdate(EarlyRecoveryStatusCallback callback = nullptr);
   void begin();
   void loop();
   void noteUserActivity();

@@ -882,7 +882,8 @@ void refreshRecoveryUpdateOverlay() {
       (current.status == firmware_update::Status::Deferred ||
        current.status == firmware_update::Status::Connecting ||
        current.status == firmware_update::Status::Downloading ||
-       current.status == firmware_update::Status::Verifying);
+       current.status == firmware_update::Status::Verifying ||
+       current.status == firmware_update::Status::RebootPending);
   if (!active) {
     if (recoveryRefreshOverlay != nullptr) lv_obj_del(recoveryRefreshOverlay);
     recoveryRefreshOverlay = nullptr;
@@ -1143,11 +1144,13 @@ void refreshFirmwareUpdate() {
       recoveryProgress[0] != '\0' ? recoveryProgress :
       current.recoveryUpdatePending ? current.message :
       current.updateAvailable ? current.version : current.message;
+  const bool recoveryRetry = current.recoveryUpdatePending &&
+                             current.status == firmware_update::Status::Failed;
   const bool checking = current.status == firmware_update::Status::Connecting ||
                         current.status == firmware_update::Status::Checking ||
                         current.status == firmware_update::Status::Downloading ||
                         current.status == firmware_update::Status::Verifying ||
-                        current.recoveryUpdatePending;
+                        (current.recoveryUpdatePending && !recoveryRetry);
   const char* summaryPrefix = checking ? "Status: " :
       current.updateAvailable ? "Available: " : "Last: ";
   const char* summary = checking ? detail :
@@ -1158,13 +1161,14 @@ void refreshFirmwareUpdate() {
   lv_label_set_text(firmwareUpdateStatus, text);
   if (firmwareUpdateCheck != nullptr) {
     lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0),
+                      recoveryRetry ? "RETRY UPDATE" :
                       current.recoveryUpdatePending ? "PREPARING UPDATE..." :
                       checking ? "CHECKING..." :
                       !current.wifiConfigured ? "CONFIGURE WI-FI" :
                       current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");
     if (checking) lv_obj_add_state(firmwareUpdateCheck, LV_STATE_DISABLED);
     else lv_obj_clear_state(firmwareUpdateCheck, LV_STATE_DISABLED);
-    if (current.updateAvailable || current.recoveryUpdatePending) {
+    if ((current.updateAvailable || current.recoveryUpdatePending) && !recoveryRetry) {
       lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
     }
     else lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);

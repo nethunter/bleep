@@ -1247,10 +1247,13 @@ the replacement.
   hash, and payload URL fields. Recovery verifies and installs main but never
   writes itself; current main owns factory recovery replacement.
 - Ordering: After install consent, current main persists the exact request,
-  writes and validates the release-matched factory recovery, and only then
-  selects it. That updated recovery installs main. The healthy new main clears
-  the completed journal. Factory Reset retains a post-main recovery refresh
-  because it originates inside recovery.
+  explicitly selects its own valid `ota_0`, and restarts. Before normal
+  services initialize, that main boot brings up only display, touch, LVGL, and
+  a bounded progress view; it writes and validates the release-matched factory
+  recovery and only then selects it. That updated recovery installs main. A
+  newly installed main still pending its health gate must skip this early path;
+  the healthy new main clears the completed journal. Factory Reset retains a
+  post-main recovery refresh because it originates inside recovery.
 - Failure boundary: Before factory erasure, failures retry from the intact
   journal with 1/6/24-hour backoff. After erasure begins, power loss can leave
   recovery invalid. Main remains selected when possible, but loss of both usable
@@ -1258,9 +1261,11 @@ the replacement.
   accepted instead of reserving a guardian or second recovery slot. A partial
   recovery image is never deliberately selected. Installed main and recovery
   sequences remain independent for replay protection.
-- UX: Recovery preparation owns a full circular **Preparing update** overlay,
-  blocks foreground interaction, updates only bounded status/progress widgets,
-  and asks the operator to keep USB power connected.
+- UX: The first main instance shows the normal circular restart handoff. The
+  quiet main boot then owns a full circular **Preparing update** view, updates
+  only bounded status/progress widgets, and asks the operator to keep USB power
+  connected. A network or verification failure boots the normal UI with an
+  explicit **Retry update** action; recovery remains unselected.
 - Gate: Packaging signatures/hashes, native tests, simulators, and both target
   builds are software evidence. A real old-recovery-to-new-main-to-new-recovery
   cycle plus power loss during the factory write remain hardware acceptance.
