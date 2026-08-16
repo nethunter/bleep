@@ -5,6 +5,29 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Stable 0.3.4 five-panel baseline
+
+- Published stable `0.3.4` from `c2015d4` through the approval-protected stable
+  environment. Workflow `31945289111` rebuilt native tests, recovery, and main,
+  independently verified the stable signature, and uploaded the signed assets
+  plus NVS-preserving USB migration bundle. Local verification against
+  `keys/ota-stable-public.pem` passed. The stable release sequence is
+  `1786880899`; main SHA-256 is
+  `4a3f08d25a37d1a3bf8400184bea51ba25c7d69d0a0e152093cc9b39ffd6c35a`
+  and recovery SHA-256 is
+  `3de3c8b7d434a4a783218456f582230d35a16632c2b9c4f7e877b5638e669f10`.
+- The combined bundle was flashed without touching NVS to five distinct panels:
+  `10:00:3b:c0:19:2c`, `10:00:3b:c2:db:a8`, `94:a9:90:57:ab:80`,
+  `10:00:3b:c3:6c:18`, and `10:00:3b:c2:e4:dc`. Esptool verified every written
+  segment, and bounded serial checks observed Home boot with `WIFI_OFF` on all
+  five. The fourth panel had no saved Wi-Fi or panel settings before the flash;
+  that empty NVS state was preserved. A replacement cable did not improve the
+  approximately 55-second recovery and 122-second main write times and produced
+  one early reconnect while redundantly reflashing the second panel.
+- The configured project version is now `0.3.4`, so subsequent main builds
+  publish as `0.3.4-dev`. A five-panel recovery-first OTA cycle from the stable
+  baseline is the remaining hardware gate.
+
 ### 2026-08-16: Recovery-first signed installation ordering
 
 - Retained partition schema 2 with fixed factory recovery and one large main
