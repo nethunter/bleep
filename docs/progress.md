@@ -5414,4 +5414,12 @@ Record values with the exact build environment and commit/worktree state.
   captures were visually inspected for circular clipping, hierarchy, button
   fit, and edge clearance. The native suite passed 91/91. The full Montserrat
   `bleep` profile built successfully at 2,003,586 bytes with 144,124 bytes of
-  RAM reported; connected-panel appearance remains the live acceptance gate.
+  RAM reported.
+- Panel `94:a9:90:57:ab:80` received the complete six-region recovery migration
+  over `/dev/cu.usbserial-211240`. All bootloader, partition-table, OTA metadata,
+  recovery, blank-journal, and main-image offsets passed an independent flash
+  digest verification. The NVS partition matched its pre-migration backup
+  byte-for-byte (`ed147392e47b227099fce8adc22f99e5a37098ac003f93ffabcbc02ec9a0e1e6`).
+  A bounded serial trace then confirmed display/touch initialization and main
+  runtime boot with Wi-Fi Off. Appearance of the new prompt on physical hardware
+  remains pending a signed release newer than the installed sequence.
