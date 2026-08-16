@@ -513,6 +513,7 @@ bool saveConnectedWifi() {
   std::strncpy(config.wifiSsid, pendingWifiSsid, sizeof(config.wifiSsid) - 1);
   std::strncpy(config.wifiPassword, pendingWifiPassword,
                sizeof(config.wifiPassword) - 1);
+  config.wifiConfigured = true;
   if (!store.save(config)) {
     return false;
   }
@@ -717,12 +718,12 @@ void handleSave() {
   studio::HomeAssistantConfigStore store(backend);
   studio::HomeAssistantConfig previous;
   if (store.load(previous) == studio::ConfigLoadStatus::Corrupt ||
-      previous.wifiSsid[0] == '\0') {
+      !previous.wifiConfigured || previous.wifiSsid[0] == '\0') {
     server->send(409, "text/plain", "Wi-Fi must be configured first");
     return;
   }
   studio::HomeAssistantConfig config = previous;
-  config.configured = true;
+  config.homeAssistantConfigured = true;
   std::strncpy(config.baseUrl, server->arg("url").c_str(),
                sizeof(config.baseUrl) - 1);
   const String submittedToken = server->arg("token");
@@ -1206,7 +1207,8 @@ bool begin() {
   studio::HomeAssistantConfigStore store(backend);
   studio::HomeAssistantConfig config;
   const studio::ConfigLoadStatus loaded = store.load(config);
-  if (loaded != studio::ConfigLoadStatus::Corrupt && config.wifiSsid[0] != '\0') {
+  if (loaded != studio::ConfigLoadStatus::Corrupt && config.wifiConfigured &&
+      config.wifiSsid[0] != '\0') {
     setStatus(Status::Starting, "Joining studio Wi-Fi");
     if (connectStation(config.wifiSsid, config.wifiPassword, false)) {
       std::strncpy(activeSsid, config.wifiSsid, sizeof(activeSsid) - 1);
@@ -1359,7 +1361,8 @@ SavedWifiSummary savedWifiSummary() {
   studio::HomeAssistantConfigStore store(backend);
   studio::HomeAssistantConfig config;
   const studio::ConfigLoadStatus status = store.load(config);
-  if (status != studio::ConfigLoadStatus::Corrupt && config.wifiSsid[0] != '\0') {
+  if (status != studio::ConfigLoadStatus::Corrupt && config.wifiConfigured &&
+      config.wifiSsid[0] != '\0') {
     summary.configured = true;
     std::strncpy(summary.ssid, config.wifiSsid, sizeof(summary.ssid) - 1);
   }

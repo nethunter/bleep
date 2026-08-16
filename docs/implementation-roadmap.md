@@ -266,6 +266,14 @@ status, persistent haptic enablement, build/support information, sanitized live
 diagnostics, and warned full-NVS Factory Reset. Backup/restore, groups, and the
 remaining repeated-lifecycle and hardware gates remain open.
 
+Implemented local tranche (ADR-047): **Settings > Wi-Fi** now performs an
+explicit bounded visible-network scan, round-panel password entry, association
+and DHCP validation, credential replacement, and Wi-Fi-only forgetting. It
+keeps page entry radio-free, requires consent before releasing retained
+equipment, preserves Home Assistant setup, and retains Portal as the hidden-
+SSID/phone-entry fallback. Physical AP, teardown, and coexistence gates remain
+open.
+
 ## Phase 4: Aputure Light driver
 
 Status: Experimental bounded panel-owned-mesh tranche implemented under

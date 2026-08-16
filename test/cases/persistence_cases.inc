@@ -218,9 +218,17 @@ void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   TEST_ASSERT_TRUE(deviceStore.save(registry));
 
   studio::HomeAssistantConfig config;
-  config.configured = true;
+  config.wifiConfigured = true;
   std::strcpy(config.wifiSsid, "StudioNet");
   std::strcpy(config.wifiPassword, "wifi-secret");
+  TEST_ASSERT_TRUE(secretStore.save(config));
+  studio::HomeAssistantConfig wifiOnly;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(secretStore.load(wifiOnly)));
+  TEST_ASSERT_TRUE(wifiOnly.wifiConfigured);
+  TEST_ASSERT_FALSE(wifiOnly.homeAssistantConfigured);
+
+  config.homeAssistantConfigured = true;
   std::strcpy(config.baseUrl, "http://homeassistant.local:8123");
   std::strcpy(config.token, "long-lived-secret-token");
   TEST_ASSERT_TRUE(secretStore.save(config));
@@ -234,6 +242,48 @@ void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   TEST_ASSERT_EQUAL_STRING(config.wifiSsid, restored.wifiSsid);
   TEST_ASSERT_EQUAL_STRING(config.baseUrl, restored.baseUrl);
   TEST_ASSERT_EQUAL_STRING(config.token, restored.token);
+
+  restored.wifiConfigured = false;
+  restored.wifiSsid[0] = '\0';
+  restored.wifiPassword[0] = '\0';
+  TEST_ASSERT_TRUE(secretStore.save(restored));
+  studio::HomeAssistantConfig forgotten;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(secretStore.load(forgotten)));
+  TEST_ASSERT_FALSE(forgotten.wifiConfigured);
+  TEST_ASSERT_TRUE(forgotten.homeAssistantConfigured);
+  TEST_ASSERT_EQUAL_STRING(config.baseUrl, forgotten.baseUrl);
+  TEST_ASSERT_EQUAL_STRING(config.token, forgotten.token);
+
+  constexpr size_t kV1Size = 4 + 2 + 1 + studio::kWifiSsidCapacity +
+      studio::kWifiPasswordCapacity + studio::kHomeAssistantUrlCapacity +
+      studio::kHomeAssistantTokenCapacity + 4;
+  uint8_t v1[kV1Size] = {};
+  studio::BlobWriter writer(v1, sizeof(v1));
+  const uint8_t magic[] = {'H', 'A', 'C', 'F'};
+  char ssid[studio::kWifiSsidCapacity] = "LegacyNet";
+  char password[studio::kWifiPasswordCapacity] = "legacy-password";
+  char url[studio::kHomeAssistantUrlCapacity] = "http://ha.local:8123";
+  char token[studio::kHomeAssistantTokenCapacity] = "legacy-token";
+  writer.bytes(magic, sizeof(magic));
+  writer.u16(1);
+  writer.u8(1);
+  writer.bytes(ssid, sizeof(ssid));
+  writer.bytes(password, sizeof(password));
+  writer.bytes(url, sizeof(url));
+  writer.bytes(token, sizeof(token));
+  writer.u32(studio::fnv1a(v1, sizeof(v1) - 4));
+  TEST_ASSERT_TRUE(writer.valid());
+  MemoryBackend legacyBackend;
+  legacyBackend.seed(v1, sizeof(v1));
+  studio::HomeAssistantConfig legacy;
+  studio::HomeAssistantConfigStore legacyStore(legacyBackend);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ConfigLoadStatus::Loaded),
+                        static_cast<int>(legacyStore.load(legacy)));
+  TEST_ASSERT_TRUE(legacy.wifiConfigured);
+  TEST_ASSERT_TRUE(legacy.homeAssistantConfigured);
+  TEST_ASSERT_EQUAL_STRING("LegacyNet", legacy.wifiSsid);
+
   secretBackend.corruptLastByte();
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Corrupt),
@@ -241,6 +291,17 @@ void test_home_assistant_config_is_separate_checksummed_and_local_only() {
   TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("https://ha.local"));
   TEST_ASSERT_FALSE(studio::validLocalHomeAssistantUrl("ws://ha.local"));
   TEST_ASSERT_TRUE(studio::validLocalHomeAssistantUrl("http://10.0.0.5:8123"));
+}
+
+void test_wifi_password_validation_accepts_open_psk_and_hex_boundaries() {
+  TEST_ASSERT_TRUE(wifi_configuration::validPassword(false, ""));
+  TEST_ASSERT_FALSE(wifi_configuration::validPassword(false, "unexpected"));
+  TEST_ASSERT_FALSE(wifi_configuration::validPassword(true, "short"));
+  TEST_ASSERT_TRUE(wifi_configuration::validPassword(true, "eight888"));
+  TEST_ASSERT_TRUE(wifi_configuration::validPassword(
+      true, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+  TEST_ASSERT_FALSE(wifi_configuration::validPassword(
+      true, "g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
 }
 
 void test_panel_identity_uses_full_hardware_id_and_short_setup_suffix() {

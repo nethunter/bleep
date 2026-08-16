@@ -214,7 +214,7 @@ bool HomeAssistantClient::connectRuntime() {
   static studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
   if (store.load(config_) != studio::ConfigLoadStatus::Loaded ||
-      !config_.configured) {
+      !config_.homeAssistantConfigured || !config_.wifiConfigured) {
     HA_LOG.println("ha event=config_unavailable");
     return false;
   }

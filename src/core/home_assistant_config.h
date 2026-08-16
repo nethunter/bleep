@@ -13,7 +13,8 @@ constexpr size_t kHomeAssistantUrlCapacity = 96;
 constexpr size_t kHomeAssistantTokenCapacity = 256;
 
 struct HomeAssistantConfig {
-  bool configured = false;
+  bool wifiConfigured = false;
+  bool homeAssistantConfigured = false;
   char wifiSsid[kWifiSsidCapacity] = "";
   char wifiPassword[kWifiPasswordCapacity] = "";
   char baseUrl[kHomeAssistantUrlCapacity] = "";

@@ -289,7 +289,7 @@ bool wifiConfigured(studio::HomeAssistantConfig* output = nullptr) {
   studio::HomeAssistantConfig config;
   const studio::ConfigLoadStatus status = store.load(config);
   const bool configured = status != studio::ConfigLoadStatus::Corrupt &&
-                          config.wifiSsid[0] != '\0';
+                          config.wifiConfigured && config.wifiSsid[0] != '\0';
   snapshot.wifiConfigured = configured;
   if (configured && output != nullptr) *output = config;
   return configured;

@@ -24,6 +24,7 @@
 #include "scene_ui.h"
 #include "sim_runtime.h"
 #include "ui.h"
+#include "wifi_configuration.h"
 #include "ui/picker_shell.h"
 
 namespace {
@@ -244,6 +245,7 @@ int main() {
       studio::devices().rename(record->instanceId, "Slider A");
     }
   }
+  wifi_configuration::service().begin();
   ui::init();
   firmware_update::service().begin();
   ui::showDevices();
@@ -1585,11 +1587,28 @@ int main() {
   if (!capture("31_settings_scrolled")) return 1;
   ui::simShowWifiSettings();
   if (!capture("31a_settings_wifi")) return 1;
-  portal::simSetSavedWifi("");
+  wifi_configuration::service().simSetSaved("");
   ui::showSettings();
   ui::simShowWifiSettings();
   if (!capture("31b_settings_wifi_empty")) return 1;
-  portal::simSetSavedWifi("Studio-WiFi");
+  wifi_configuration::service().simSetSaved("Studio-WiFi");
+  ui::simShowWifiResults();
+  if (!capture("31b1_settings_wifi_results")) return 1;
+  ui::simShowWifiPassword();
+  if (!capture("31b2_settings_wifi_password")) return 1;
+  ui::handleLongPress();
+  ui::simShowWifiConnecting();
+  if (!capture("31b3_settings_wifi_connecting")) return 1;
+  ui::simShowWifiOutcome(false);
+  if (!capture("31b4_settings_wifi_failed")) return 1;
+  ui::simShowWifiOutcome(true);
+  if (!capture("31b5_settings_wifi_success")) return 1;
+  ui::simShowWifiDisconnectConfirmation();
+  if (!capture("31b6_settings_wifi_disconnect")) return 1;
+  ui::handleLongPress();
+  ui::simShowWifiForgetConfirmation();
+  if (!capture("31b7_settings_wifi_forget")) return 1;
+  ui::handleLongPress();
   firmware_update::service().simSetWifiConfigured(false);
   ui::simShowFirmwareUpdate();
   if (!capture("31c_settings_firmware_configure_wifi")) return 1;

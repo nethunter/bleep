@@ -403,7 +403,8 @@ void readyScreen(const char* error = nullptr) {
 bool loadWifi(studio::HomeAssistantConfig& config) {
   studio::PreferencesHomeAssistantBackend backend;
   studio::HomeAssistantConfigStore store(backend);
-  return store.load(config) != studio::ConfigLoadStatus::Corrupt && config.wifiSsid[0];
+  return store.load(config) != studio::ConfigLoadStatus::Corrupt &&
+         config.wifiConfigured && config.wifiSsid[0];
 }
 
 bool connectWifi() {

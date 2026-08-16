@@ -1210,6 +1210,34 @@ the replacement.
   stable/development delivery, coexistence, and ten cycles remain hardware
   acceptance gates.
 
+## ADR-047: Wi-Fi credentials can be configured directly in Settings
+
+- Status: Accepted software tranche; physical association, teardown, and
+  coexistence checks remain open.
+- Radio ownership: Opening **Settings > Wi-Fi** is read-only and keeps
+  `WIFI_OFF`. The panel scans only after **Scan networks** or **Replace
+  network** is pressed. A bounded main-loop service owns scan, association,
+  DHCP validation, persistence, cancellation, and radio teardown; every
+  terminal path returns its radio to `WIFI_OFF`.
+- Consent: If retained equipment is active, scanning requires an explicit
+  **Disconnect & scan** confirmation. Active commands are never interrupted.
+  The panel does not silently release equipment to make room for Wi-Fi.
+- Provisioning: The round UI lists at most 16 visible SSIDs, deduplicated and
+  ordered by signal strength. Open networks connect directly; secured networks
+  use a bounded masked on-screen password editor. Success requires association
+  and a non-zero DHCP address, not public-internet reachability. The existing
+  Portal remains the fallback for hidden SSIDs, easier phone text entry, and
+  Home Assistant configuration.
+- Persistence: **Forget network** removes only SSID/password after a warning;
+  saved Home Assistant URL, token, and entities remain. Wi-Fi readiness and HA
+  readiness are distinct runtime facts, but the HA configuration blob retains
+  schema-1 bytes and size so permanently installed schema-2 recovery images can
+  continue reading credentials. The stored legacy flag remains the HA flag;
+  Wi-Fi readiness is inferred from a non-empty SSID.
+- Gate: Native validation/persistence tests, complete simulator captures, and
+  main/recovery builds do not prove real AP discovery, password entry, DHCP,
+  retained-link release, or repeated heap/radio recovery on hardware.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

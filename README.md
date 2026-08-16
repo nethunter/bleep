@@ -78,12 +78,16 @@ principles:
   controls, and content start rather than maintaining separate screen geometry.
   Removing a saved device or deleting a sequence always opens a named,
   cancellable confirmation before changing stored configuration.
-- A Home-screen Settings cog with radio-free saved-Wi-Fi status, persistent
-  haptic enable/disable, a first-position scrollable About/build page (including
-  commit date), sanitized runtime diagnostics, and a normal Factory Reset menu
-  item that opens a separate warning screen with a red three-second-hold button.
-  Wi-Fi changes still enter the temporary Portal; normal use of Home and
-  Settings leaves the radio off.
+- A Home-screen Settings cog with radio-free saved-Wi-Fi status and direct
+  on-panel setup. **Settings > Wi-Fi** scans only on request, lists visible
+  networks, accepts a masked password on the round keyboard, validates
+  association/DHCP, and turns Wi-Fi off afterward. Replacing Wi-Fi never
+  overwrites the prior credentials unless the connection succeeds; forgetting
+  Wi-Fi preserves Home Assistant setup. Retained equipment requires an explicit
+  **Disconnect & scan** confirmation. The temporary Portal remains available
+  for hidden SSIDs and easier phone text entry. Settings also includes haptic
+  enable/disable, a first-position scrollable About/build page (including
+  commit date), sanitized runtime diagnostics, and a warned Factory Reset.
 - Signed Wi-Fi firmware updates with a Home-first boot. When saved Wi-Fi exists,
   the panel renders Home, waits five seconds, checks the selected channel, and
   returns updater-owned Wi-Fi to `WIFI_OFF`. Foreground work defers or cancels

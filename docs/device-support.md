@@ -42,9 +42,11 @@ when their last owner leaves.
   color, Toggle, arbitrary value actions,
   sensors, covers, climate, media, automations, HA devices, and areas are out of
   scope.
-- Provisioning: the temporary open SoftAP scans nearby networks and collects
-  only studio Wi-Fi, with manual SSID entry for hidden networks and visible
-  connection progress/failure. Its on-panel QR code joins the setup AP, whose
+- Provisioning: **Settings > Wi-Fi** can explicitly scan and join a visible
+  studio network from the panel without configuring Home Assistant. The
+  temporary open SoftAP remains the hidden-SSID and phone-entry path, with
+  manual SSID entry and visible connection progress/failure. Its on-panel QR
+  code joins the setup AP, whose
   scoped wildcard DNS and direct non-empty responses to phone connectivity
   probes provide best-effort sign-on-screen discovery. After joining, the AP
   is reachable at the displayed numeric LAN address only while the panel remains
@@ -544,8 +546,9 @@ It must also pass the dormant-resource checklist:
 - shared transports/repositories use first-user/last-user ownership;
 - callbacks only enqueue compact data or flags, with parsing and mutation on
   the main loop;
-- Wi-Fi starts only for an active network-backed instance or Portal and returns
-  to `WIFI_OFF` after its last owner;
+- Wi-Fi starts only for an active network-backed instance, Portal, bounded
+  updater check, or explicit Settings scan and returns to `WIFI_OFF` after its
+  last owner;
 - the full profile records static RAM plus inactive, configured, active, and
   post-deactivation heap/maximum-allocation measurements.
 
