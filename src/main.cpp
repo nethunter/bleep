@@ -12,6 +12,7 @@
 #include "core/device_manager.h"
 #include "core/scene_service.h"
 #include "core/system_info.h"
+#include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "firmware_update.h"
 #include "wifi_configuration.h"
@@ -458,14 +459,14 @@ void showEarlyRecoveryStatus(const firmware_update::Snapshot& status) {
 
     lv_obj_t* title = lv_label_create(earlyRecoveryScreen);
     lv_label_set_text(title, "PREPARING UPDATE");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(title, UI_FONT_16, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFB347), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 55);
 
     earlyRecoveryStatus = lv_label_create(earlyRecoveryScreen);
     lv_obj_set_width(earlyRecoveryStatus, 176);
     lv_obj_set_style_text_align(earlyRecoveryStatus, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(earlyRecoveryStatus, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(earlyRecoveryStatus, UI_FONT_14, 0);
     lv_obj_set_style_text_color(earlyRecoveryStatus, lv_color_hex(0xF5F7FA), 0);
     lv_obj_align(earlyRecoveryStatus, LV_ALIGN_TOP_MID, 0, 91);
 
@@ -479,7 +480,7 @@ void showEarlyRecoveryStatus(const firmware_update::Snapshot& status) {
 
     lv_obj_t* detail = lv_label_create(earlyRecoveryScreen);
     lv_label_set_text(detail, "Keep USB power connected");
-    lv_obj_set_style_text_font(detail, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(detail, UI_FONT_12, 0);
     lv_obj_set_style_text_color(detail, lv_color_hex(0xAAB2BD), 0);
     lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 157);
   }
