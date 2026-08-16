@@ -1,7 +1,7 @@
 ---
 title: "Ble(e)p Owner's Guide"
 subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
-edition: "0.3.5"
+edition: "0.3.6"
 date: "16 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
@@ -488,6 +488,12 @@ real state, do not press a toggle again without checking first.
   phone says the network has no internet, stay connected and open that address.
 - After Ble(e)p joins the studio network, reconnect your phone or computer to that network and use the address shown on the panel.
 - If `bleep.local` does not work, use the numeric address shown on Ble(e)p.
+
+## Wi-Fi scan fails or finds no networks
+
+- Return to Home, move closer to the access point, and scan again from
+  **Settings > Wi-Fi**.
+- For a hidden network, open Portal and enter the SSID and password yourself.
 
 ## A firmware update does not appear or complete
 

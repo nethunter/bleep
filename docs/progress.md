@@ -5,6 +5,48 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Stable 0.3.6 release preparation
+
+- Audited every commit and the complete diff from immutable stable tag `0.3.5`
+  (`12b97c3`) through `77585cb`. Selected `0.3.6` as the next small,
+  backwards-compatible release: it repairs blocked Wi-Fi scans in Settings and
+  Portal, adds the maintained package prototype and two-up pocket guide, records
+  the post-0.3.5 OTA evidence, and adds the stable-release checklist. It does
+  not change persistence schemas, supported-device claims, or safety behavior.
+- Advanced `custom_firmware_version` and the owner's-guide edition to `0.3.6`.
+  Applied the required Humanizer pass to new owner-facing Wi-Fi recovery text,
+  added matching compact troubleshooting guidance to the pocket guide, rebuilt
+  both manuals, and synchronized the website owner's-guide copy. The two
+  owner's-guide PDFs are 24 pages and byte-identical with SHA-256
+  `e1588b934b5fbde9ca7f36d3f3323cc6a8337d12560e3e03605c2c474ccf2ca8`;
+  the two-page Tabloid pocket guide has SHA-256
+  `4eba8be17c6be3e972a6acc4a2c8849130f82ebc2dc9923e40700f8d896da4aa`.
+- Rendered all 24 owner-guide pages at 120 dpi into a fresh directory and
+  inspected the complete contact sheet plus the changed Wi-Fi and
+  troubleshooting pages 15 and 18-20 at full resolution. The first two renders
+  exposed an orphaned troubleshooting bullet; the final render keeps complete
+  actions together with no clipping, overlap, broken table, stale page, or
+  unreadable figure. Rendered both pocket-guide sides at 144 dpi and inspected
+  the complete sheet plus both pages at full resolution; the two copies,
+  front/reverse panel order, trim/fold marks, QR code, and 50 mm calibration bar
+  remain correct and unclipped.
+- Native tests passed 95/95, firmware-update packaging tests passed 7/7, the
+  repository artifact check passed for 399 tracked files, both generators
+  passed bytecode compilation, and PDF structure/text checks confirmed 24 and
+  2 pages with the required release and calibration text. The full Montserrat
+  `bleep` profile built with 146,308 / 327,680 bytes static RAM and 2,022,416 /
+  2,949,120 bytes flash; the raw 2,164,624-byte main image has SHA-256
+  `702aac5ddc5dc9eb9eeb8ab6ce5755f98b620b78b847b42e64f1cbb38a5a0c46`.
+- The candidate uploaded to configured panel `94:a9:90:57:ab:80` with every
+  written-region hash verified and no NVS region in the upload. Bounded serial
+  observed a normal boot with 145,988 bytes free heap, a 122,868-byte largest
+  block, and `wifi=Off`. The same final Wi-Fi scanner code was already exercised
+  successfully by the operator in both Settings and Portal. Retained-link
+  release, cancellation/failure recovery, repeated scan cycles, physical
+  pocket-guide printing, and the broader recorded device/endurance gates remain
+  open. The immutable `0.3.6` tag, GitHub Release, protected stable workflow,
+  and signed-release asset inspection are still pending.
+
 ### 2026-08-16: Stable-release instruction checklist
 
 - Added a mandatory end-to-end stable-release checklist covering the audited
