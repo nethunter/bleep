@@ -94,7 +94,7 @@ principles:
   the check. Ten-minute idle checks and **Settings > Firmware update** checks
   remain. Checks never download an image; **Install now** hands the exact signed
   request to fixed recovery. The round-safe Firmware page keeps one contextual
-  Check/Install action and an explicit three-second-hold Recovery action visible
+  Check/Install action and an explicit two-second-hold Recovery action visible
   without scrolling; its countdown replaces the screen title where the holding
   finger cannot cover it. Available-release and install-confirmation prompts use
   a nearly full-face circular amber frame rather than a rectangular dialog;
@@ -102,10 +102,10 @@ principles:
   development is opt-in. Recovery
   updates only the progress region while downloading, then holds on an explicit
   success screen until **Restart** is pressed. After installation is confirmed,
-  main restarts into a circular preparation screen with normal services kept
-  dormant, then writes and validates the release's signed recovery image. Only
-  the newly updated recovery is selected to install main. A failed preparation
-  returns to the Firmware page with **Retry update**. This avoids reserving
+  main immediately restarts into a circular preparation screen with normal
+  services kept dormant, then writes and validates the release's signed recovery
+  image. Only the newly updated recovery is selected to install main. A failed
+  preparation returns to the Firmware page with **Retry update**. This avoids reserving
   another full application slot; power loss while factory recovery itself is
   being replaced may require the NVS-preserving USB web recovery flow.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central

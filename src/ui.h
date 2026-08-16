@@ -61,6 +61,8 @@ void simShowSystemInfo();
 void simShowFactoryReset();
 void simShowFirmwareUpdate();
 void simShowUpdateConfirmation();
+void simConfirmFirmwareInstall();
+bool simRecoveryOverlayVisible();
 void simDismissUpdatePrompt();
 void simScrollSettingsToEnd();
 void simScrollAboutToEnd();

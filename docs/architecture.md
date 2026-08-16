@@ -565,9 +565,10 @@ terminal or cancellation path. Teardown disconnects first and stops the radio
 only after a bounded main-loop settling interval, so ESP-IDF's tcpip task cannot
 race driver deinitialization while sending DHCP release. Recovery handoff lets
 the imminent reset stop Wi-Fi. Confirmed installation persists the exact
-signed request and releases retained links with consent. Main first verifies,
-selects its own `ota_0`, and restarts. That boot initializes only the display,
-touch, LVGL, and a circular update-progress view; device runtimes, scenes,
+signed request and releases retained links with consent. Main first verifies
+and selects its own `ota_0`, then restarts immediately without painting an
+intermediate progress overlay. That boot initializes only the display, touch,
+LVGL, and a circular update-progress view; device runtimes, scenes,
 Portal, Home, and normal services remain dormant. It downloads, writes, and
 validates the signed recovery payload in the factory partition, selecting
 recovery only after verification succeeds. A failed attempt falls through to
@@ -587,8 +588,9 @@ failure then requires the NVS-preserving USB web recovery flow. Main and
 recovery release sequences are tracked independently. After main passes its
 health gate, it clears the completed install journal; Factory Reset retains its
 post-main recovery-refresh compatibility path.
-Manual Recovery mode persists a distinct request so fixed recovery remains on
-its menu until the operator explicitly boots main or chooses another action.
+Manual Recovery mode uses a two-second hold and persists a distinct request so
+fixed recovery remains on its menu until the operator explicitly boots main or
+chooses another action.
 Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms
 of continuous release before arming menu input. This prevents touch-controller
 startup from being mistaken for release while the initiating finger is still

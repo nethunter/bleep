@@ -553,11 +553,12 @@ migration, tamper/network/power-loss behavior, fallback, coexistence, and
 endurance remain release blockers rather than completed evidence.
 
 Implemented follow-up (ADR-048): releases also carry a signed recovery payload.
-For normal installation, current main journals the request and restarts into a
-display-only early update mode before normal services initialize. That mode
-writes and validates recovery before selecting it, so the new main is always
-installed by the release-matched recovery without competing with the full
-runtime for heap. A pending-validation main skips this mode. Factory Reset
+For normal installation, current main journals the request and immediately
+restarts into a display-only early update mode before normal services initialize,
+without painting a redundant normal-runtime progress overlay. That mode writes
+and validates recovery before selecting it, so the new main is always installed
+by the release-matched recovery without competing with the full runtime for heap.
+A pending-validation main skips this mode. Factory Reset
 retains a post-main compatibility refresh. Power loss
 during the factory write may require USB web recovery; live interrupted-write
 and complete chained-update evidence remain open gates.

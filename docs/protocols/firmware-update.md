@@ -42,6 +42,11 @@ sequence, invalid ESP header, byte-count mismatch, or SHA-256 mismatch. Main
 persists the exact verified manifest and signature before entering recovery;
 recovery verifies that request again.
 
+After install confirmation, main selects its own `ota_0` and restarts
+immediately. It does not paint a normal-runtime preparation overlay; the first
+progress view belongs to the display-only quiet-main boot that replaces and
+verifies recovery.
+
 HTTPS uses a bounded trust bundle for GitHub and its release CDN (DigiCert
 Global Root G2, USERTrust ECC, and ISRG Root X1), bounded time synchronization,
 fixed buffers, and a GitHub release/CDN redirect allowlist. A missing signed
@@ -96,10 +101,11 @@ failure boundary avoids a guardian or second recovery slot. Factory Reset may
 still refresh recovery after the new main becomes healthy because the reset is
 initiated from recovery itself.
 
-Manual **Recovery mode** writes a distinct `RecoveryModeRequested` journal
-operation before selecting factory recovery. Recovery therefore remains on its
-menu until the operator chooses an action; **Boot firmware** clears that manual
-request before selecting `ota_0`. Recovery ignores touch during a 1.5-second
+Manual **Recovery mode** requires a two-second hold, then writes a distinct
+`RecoveryModeRequested` journal operation before selecting factory recovery.
+Recovery therefore remains on its menu until the operator chooses an action;
+**Boot firmware** clears that manual request before selecting `ota_0`. Recovery
+ignores touch during a 1.5-second
 boot guard and then requires 300 ms of continuous release before arming menu
 input, so touch-controller startup cannot make the initiating hold look like a
 new **Boot firmware** tap. A blank journal from the USB migration automatically

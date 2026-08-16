@@ -1645,7 +1645,11 @@ int main() {
   delay(1001);
   ui::tick();
   if (!capture("31f1_settings_firmware_recovery_hold")) return 1;
-  delay(2000);
+  if (firmware_update::service().simRecoveryRequested()) {
+    std::fprintf(stderr, "firmware Recovery hold triggered before two seconds\n");
+    return 1;
+  }
+  delay(1000);
   ui::tick();
   if (!firmware_update::service().simRecoveryRequested()) {
     std::fprintf(stderr, "firmware Recovery hold did not request recovery\n");
@@ -1653,6 +1657,13 @@ int main() {
   }
   ui::simShowUpdateConfirmation();
   if (!capture("31g_settings_firmware_confirm")) return 1;
+  ui::simConfirmFirmwareInstall();
+  ui::tick();
+  if (ui::simRecoveryOverlayVisible()) {
+    std::fprintf(stderr, "firmware install painted a pre-reboot recovery overlay\n");
+    return 1;
+  }
+  firmware_update::service().simClearRecoveryRefresh();
   ui::showHome();
   ui::showSettings();
   ui::simShowAbout();

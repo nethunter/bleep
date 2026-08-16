@@ -5,6 +5,36 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Immediate quiet-main update handoff
+
+- Removed the redundant normal-runtime cyan preparation overlay and its
+  750-millisecond delay. After confirmation has persisted the signed request
+  and selected the running `ota_0`, main now restarts immediately; the first
+  progress view belongs to quiet main. Simulator coverage confirms that install
+  confirmation cannot paint the removed pre-reboot overlay. Native tests passed
+  95/95, the complete `ui_sim` traversal passed, and the full Montserrat `bleep`
+  build passed at 2,021,930 bytes used flash.
+- On the preceding build, a real development OTA on panel
+  `10:00:3b:c0:19:2c` failed its first TLS handshake safely, returned to main
+  with Wi-Fi off, then completed recovery and main installation after Retry.
+  Main readback exactly matched the signed 2,164,368-byte release payload SHA-256
+  `41954a41066a6390845afeec911954d353b9e4d55c429fd8cdb975a2564b6f15`.
+  The new immediate-restart presentation remains to be observed on hardware.
+
+### 2026-08-16: Two-second manual Recovery hold
+
+- Shortened only the Firmware Update page's manual Recovery-mode hold from
+  three seconds to two. Its title countdown and simulator threshold coverage
+  use the same duration; Factory Reset retains its separate three-second safety
+  hold. Native tests passed 95/95, the complete `ui_sim` traversal passed with
+  the 1.001-second pre-threshold and 2.001-second trigger checks, and the full
+  Montserrat `bleep` build passed at 2,022,072 bytes used flash. A main upload
+  completed with hash verification on the connected panel at
+  `/dev/cu.usbserial-211240`; the chip identified as `10:00:3b:c2:e4:dc`, which
+  was previously catalogued as panel 5 rather than the requested panel 2.
+  Bounded serial observed a normal Home boot with Wi-Fi off, and the monitor was
+  left attached for continued diagnostics.
+
 ### 2026-08-16: Quiet-main recovery preparation before handoff
 
 - Confirmed installation now journals the signed request, explicitly selects

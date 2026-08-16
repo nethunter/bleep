@@ -308,8 +308,6 @@ uint64_t expectedRecoverySequence = 0;
 uint64_t installedRecoverySequence = 0;
 bool recoveryRefreshPending = false;
 bool earlyRecoveryAttemptFailed = false;
-bool recoveryRestartPending = false;
-uint32_t recoveryRestartRequestedAt = 0;
 uint8_t recoveryRefreshFailures = 0;
 uint32_t recoveryRetryAt = 0;
 const esp_partition_t* recoveryWritePartition = nullptr;
@@ -702,10 +700,8 @@ bool restartMainForRecoveryUpdate() {
       esp_ota_set_boot_partition(running) != ESP_OK) {
     return false;
   }
-  recoveryRestartPending = true;
-  recoveryRestartRequestedAt = millis();
-  snapshot.recoveryUpdatePending = true;
-  setMessage(Status::RebootPending, "Restarting update service");
+  cleanupClient();
+  ESP.restart();
   return true;
 }
 
@@ -943,7 +939,6 @@ void FirmwareUpdateService::begin() {
   snapshot = {};
   operationKind = OperationKind::None;
   recoveryRefreshPending = false;
-  recoveryRestartPending = false;
   recoveryRefreshFailures = 0;
   cleanupRecoveryWrite(true);
   loadPersisted();
@@ -982,7 +977,6 @@ void FirmwareUpdateService::runEarlyRecoveryUpdate(
   snapshot = {};
   operationKind = OperationKind::None;
   recoveryRefreshPending = false;
-  recoveryRestartPending = false;
   recoveryRefreshFailures = 0;
   cleanupRecoveryWrite(true);
   loadPersisted();
@@ -1023,14 +1017,6 @@ void FirmwareUpdateService::runEarlyRecoveryUpdate(
 void FirmwareUpdateService::loop() {
   const uint32_t now = millis();
   finishWifiShutdown(now);
-  if (recoveryRestartPending) {
-    if (now - recoveryRestartRequestedAt >= 750) {
-      cleanupClient();
-      recoveryRestartPending = false;
-      ESP.restart();
-    }
-    return;
-  }
   if (bootPending && now - bootValidationStarted >= kBootValidationMs) {
     if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
       studio::PartitionRecoveryJournalBackend backend;

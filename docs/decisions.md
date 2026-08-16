@@ -1261,11 +1261,13 @@ the replacement.
   accepted instead of reserving a guardian or second recovery slot. A partial
   recovery image is never deliberately selected. Installed main and recovery
   sequences remain independent for replay protection.
-- UX: The first main instance shows the normal circular restart handoff. The
-  quiet main boot then owns a full circular **Preparing update** view, updates
-  only bounded status/progress widgets, and asks the operator to keep USB power
-  connected. A network or verification failure boots the normal UI with an
-  explicit **Retry update** action; recovery remains unselected.
+- UX: Confirmation immediately restarts main without painting an intermediate
+  normal-runtime progress overlay. The quiet main boot owns the full circular
+  **Preparing update** view, updates only bounded status/progress widgets, and
+  asks the operator to keep USB power connected. Manual Recovery mode uses a
+  two-second hold. A network or
+  verification failure boots the normal UI with an explicit **Retry update**
+  action; recovery remains unselected.
 - Gate: Packaging signatures/hashes, native tests, simulators, and both target
   builds are software evidence. A real old-recovery-to-new-main-to-new-recovery
   cycle plus power loss during the factory write remain hardware acceptance.
