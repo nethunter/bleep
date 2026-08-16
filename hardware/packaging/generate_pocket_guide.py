@@ -163,6 +163,8 @@ PANELS = {
             "Disconnect, then reopen it. Free a physical link if four are active.<br/><br/>"
             "<b>Scene not Ready:</b> open the failed target, confirm it is enabled, "
             "and resolve its connection first.<br/><br/>"
+            "<b>Wi-Fi scan fails:</b> return Home and retry near the access point. "
+            "Use Portal to type a hidden network name.<br/><br/>"
             "<b>Portal missing:</b> stay on the Portal screen and use the numeric "
             "address shown if bleep.local does not work."
         ),
