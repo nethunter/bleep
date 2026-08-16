@@ -66,6 +66,11 @@ label and is not parsed as a policy input. Development CI derives both the
 compiled firmware version and manifest version from
 `platformio.ini`'s `custom_firmware_version`, appending `-dev`, and carries that
 exact value through the full-firmware artifact into the signing job.
+The `latest` prerelease tag is a stable asset-container reference: CI updates
+the release metadata and replaces its signed assets without force-moving the
+Git tag. The signed manifest's commit and release sequence identify the actual
+development build, avoiding GitHub workflow-token restrictions when a build
+contains workflow-file changes.
 
 ## License
 
