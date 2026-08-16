@@ -10,10 +10,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_PDFS = {
-    "output/pdf/bleep-instruction-manual.pdf",
+    "docs/manual/bleep-instruction-manual.pdf",
+    "hardware/packaging/bleep-packaging-prototype.pdf",
+    "hardware/packaging/bleep-pocket-guide-2up.pdf",
     "website/downloads/bleep-instruction-manual.pdf",
 }
-MANUAL_PDFS = tuple(sorted(ALLOWED_PDFS))
+MANUAL_PDFS = (
+    "docs/manual/bleep-instruction-manual.pdf",
+    "website/downloads/bleep-instruction-manual.pdf",
+)
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 
 

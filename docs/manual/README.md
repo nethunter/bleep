@@ -3,7 +3,7 @@
 The owner-facing source is [`manual.md`](manual.md). Typography, tables, page
 furniture, and PDF rendering live in [`build_manual.py`](build_manual.py), and
 images live in `assets/`. The stable output is
-`output/pdf/bleep-instruction-manual.pdf` at the repository root.
+`docs/manual/bleep-instruction-manual.pdf` at the repository root.
 
 ## Before editing
 
@@ -91,7 +91,7 @@ If `.venv` already exists, run only the `make` command. Copy the finished PDF to
 the website download before committing:
 
 ```sh
-cp ../../output/pdf/bleep-instruction-manual.pdf \
+cp bleep-instruction-manual.pdf \
   ../../website/downloads/bleep-instruction-manual.pdf
 ```
 
@@ -108,9 +108,9 @@ build cannot linger:
 render_dir=../../tmp/pdfs/manual-pages-review-1
 test ! -e "$render_dir"
 mkdir -p "$render_dir"
-pdftoppm -r 120 -png ../../output/pdf/bleep-instruction-manual.pdf \
+pdftoppm -r 120 -png bleep-instruction-manual.pdf \
   "$render_dir/page"
-pdfinfo ../../output/pdf/bleep-instruction-manual.pdf
+pdfinfo bleep-instruction-manual.pdf
 ```
 
 Review all pages, preferably in contact sheets, then inspect changed pages and

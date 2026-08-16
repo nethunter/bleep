@@ -100,6 +100,15 @@ and closing the enclosure.
 Do not charge, use, or enclose a damaged or swollen lithium battery. Prevent
 bare switch terminals and battery leads from contacting the PCB or each other.
 
+## Prototype packaging
+
+The five-unit telescoping-box dielines, folded bridge insert, quick-start card,
+fit test, and two-up accordion pocket guide live in
+[`hardware/packaging/`](packaging/README.md). Print every structural dieline and
+the pocket guide at Actual Size and verify its 50 mm calibration bar before
+cutting. The pocket guide is a 69 x 130 mm insert for the concealed cable bay;
+it is not a substitute for the current full owner's guide.
+
 ## Replace the CrowPanel D1 battery path
 
 The [DIS12824D V1.0 schematic](https://www.elecrow.com/download/product/CrowPanel/ESP32-HMI/1.28-DIS12824D/CrowPanel_ESP32_1.28-inch_V1.0_240507.zip)
