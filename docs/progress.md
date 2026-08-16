@@ -5400,3 +5400,18 @@ Record values with the exact build environment and commit/worktree state.
   main normally. Serial independently observed the recovery handoff, subsequent
   restart, normal main display/touch initialization, Wi-Fi Off, and a responsive
   periodic event after 31 seconds.
+
+### 2026-08-15: Round firmware-update prompt
+
+- A multi-panel hardware review showed that the available-update modal still
+  used a square cyan card that fought the 240x240 circular display. The
+  available-release and install-confirmation states now share a 238-pixel
+  circular warm-black panel with a three-pixel amber ring, amber heading,
+  deep-orange primary action, and equal-width outlined secondary action. The
+  wider heading prevents **Update available** from clipping, while text and
+  controls remain inside the round safe area.
+- The complete `ui_sim` traversal passed. The available and confirmation
+  captures were visually inspected for circular clipping, hierarchy, button
+  fit, and edge clearance. The native suite passed 91/91. The full Montserrat
+  `bleep` profile built successfully at 2,003,586 bytes with 144,124 bytes of
+  RAM reported; connected-panel appearance remains the live acceptance gate.
