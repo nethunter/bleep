@@ -5346,12 +5346,18 @@ Record values with the exact build environment and commit/worktree state.
   `HTTP_CLIENT: Out of buffer` errors, while an external measurement found the
   public GitHub `releases/latest` redirect headers were 4,983 bytes. Both main
   and recovery had configured only 1,024-byte ESP HTTP receive buffers.
-- Main and recovery now use bounded 8,192-byte receive buffers so GitHub can
-  parse its redirect headers before delivering manifest, signature, or payload
-  bytes. The post-fix native suite passed 91/91; `bleep_recovery` and full
-  `bleep` builds passed with unchanged 940,048-byte and 2,143,008-byte images,
-  and the partition/size gate passed. Live network and OTA installation remain
-  open until the broken installed clients receive this bootstrap repair.
+- The initial repair increased only the receive buffer. A recovery-only flash
+  then reached the new client but still logged two `HTTP_CLIENT: Out of buffer`
+  errors. Inspection of the matching ESP-IDF 4.4.7 source located that message
+  in redirected request-line construction: `buffer_size_tx` had independently
+  retained its 512-byte default and could not hold GitHub's long signed asset
+  URL. Main and recovery now set bounded 8,192-byte RX and TX buffers. Stable
+  `0.3.2` contains only the incomplete RX repair and must not be treated as the
+  completed live fix.
+- With both buffers configured, the native suite passed 91/91, recovery built
+  at 940,048 bytes, the full Montserrat main image built at 2,143,008 bytes,
+  and `check_ota_layout.py` accepted both images. A second recovery-only
+  bootstrap flash and signed `0.3.3` publication remain before the live retry.
 - Stable `0.3.2` was built, signed, independently verified, and published from
   commit `1ede374`. The corresponding main CI run passed every build but its
   rolling development publisher downloaded artifacts before checkout; the

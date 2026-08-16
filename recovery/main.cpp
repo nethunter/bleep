@@ -21,7 +21,7 @@
 
 namespace {
 
-constexpr int kHttpReceiveBufferSize = 8192;
+constexpr int kHttpBufferSize = 8192;
 
 constexpr char kStableManifestUrl[] =
     "https://github.com/nethunter/bleep/releases/latest/download/bleep-update.json";
@@ -460,9 +460,11 @@ bool performRequest(const char* url, DownloadContext& context) {
   config.max_redirection_count = 4;
   config.event_handler = onHttpEvent;
   config.user_data = &context;
-  // GitHub release and asset redirects can exceed 5 KiB before any payload
-  // bytes arrive, so this buffer must accommodate their bounded headers.
-  config.buffer_size = kHttpReceiveBufferSize;
+  // GitHub release responses carry large security headers, and asset redirects
+  // use long signed URLs. ESP-IDF configures RX and TX independently; leaving
+  // TX at its 512-byte default makes the redirected request line overflow.
+  config.buffer_size = kHttpBufferSize;
+  config.buffer_size_tx = kHttpBufferSize;
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (client == nullptr) return false;
   const esp_err_t result = esp_http_client_perform(client);
