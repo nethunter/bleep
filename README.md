@@ -101,11 +101,11 @@ principles:
   its primary and secondary actions have equal widths. Stable is default and
   development is opt-in. Recovery
   updates only the progress region while downloading, then holds on an explicit
-  success screen until **Restart** is pressed.
-  Once the new main has run healthily for ten seconds, it uses the same signed
-  release request to refresh fixed recovery. Main stays selected during that
-  write, so a failed or interrupted refresh returns to main and retries without
-  reserving another full application slot.
+  success screen until **Restart** is pressed. After installation is confirmed,
+  main first writes and validates the release's signed recovery image. Only the
+  newly updated recovery is then selected to install main. This avoids reserving
+  another full application slot; power loss while factory recovery itself is
+  being replaced may require the NVS-preserving USB web recovery flow.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and

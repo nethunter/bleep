@@ -128,6 +128,32 @@ void test_recovery_journal_alternates_recovers_and_clears() {
       static_cast<int>(loaded.operation));
 }
 
+void test_recovery_install_updates_recovery_before_booting_it() {
+  using studio::RecoveryInstallStep;
+  using studio::RecoveryOperation;
+
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(RecoveryInstallStep::Reject),
+      static_cast<int>(studio::recoveryInstallStep(
+          RecoveryOperation::InstallRequested, 43, 42, false, false)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(RecoveryInstallStep::WriteRecovery),
+      static_cast<int>(studio::recoveryInstallStep(
+          RecoveryOperation::InstallRequested, 43, 42, true, false)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(RecoveryInstallStep::BootRecovery),
+      static_cast<int>(studio::recoveryInstallStep(
+          RecoveryOperation::InstallRequested, 43, 42, true, true)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(RecoveryInstallStep::Finish),
+      static_cast<int>(studio::recoveryInstallStep(
+          RecoveryOperation::InstallRequested, 43, 43, true, true)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(RecoveryInstallStep::Finish),
+      static_cast<int>(studio::recoveryInstallStep(
+          RecoveryOperation::ResetComplete, 43, 42, true, true)));
+}
+
 void test_recovery_startup_auto_boots_only_clean_valid_main() {
   MemoryRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);

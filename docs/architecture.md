@@ -565,19 +565,22 @@ terminal or cancellation path. Teardown disconnects first and stops the radio
 only after a bounded main-loop settling interval, so ESP-IDF's tcpip task cannot
 race driver deinitialization while sending DHCP release. Recovery handoff lets
 the imminent reset stop Wi-Fi. Confirmed installation persists the exact
-signed request, releases retained links with consent, selects fixed recovery,
-and reboots. Recovery verifies again and streams main into `ota_0`; no second
-full firmware image is retained. See
+signed request and releases retained links with consent. Main first verifies,
+downloads, writes, and validates the signed recovery payload in the factory
+partition. It selects recovery only after that succeeds. The newly updated
+recovery verifies the same request again and streams main into `ota_0`; no
+second full firmware image is retained. See
 [the signed update protocol](protocols/firmware-update.md) for manifest trust,
 stream validation, replay rejection, journal recovery, and partition geometry.
 The bounded encoded journal records use checked `nothrow` heap storage during
 load/save; they are never multiplied on the Arduino loop-task stack.
-After the new main passes its health gate, it re-verifies the same journaled
-manifest and refreshes the non-running fixed recovery partition when the signed
-recovery sequence is newer. Main remains selected while that partition is
-written, and the journal remains intact until verification succeeds, making an
-interrupted recovery refresh resumable without allocating another application
-slot. Main and recovery release sequences are tracked independently.
+If power is lost before the recovery write begins, the intact journal lets main
+resume it. Once the factory partition has been erased, loss of power can leave
+recovery unbootable; main remains selected when possible, but a later main
+failure then requires the NVS-preserving USB web recovery flow. Main and
+recovery release sequences are tracked independently. After main passes its
+health gate, it clears the completed install journal; Factory Reset retains its
+post-main recovery-refresh compatibility path.
 Manual Recovery mode persists a distinct request so fixed recovery remains on
 its menu until the operator explicitly boots main or chooses another action.
 Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms

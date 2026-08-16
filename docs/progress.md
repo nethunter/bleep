@@ -5,6 +5,22 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Recovery-first signed installation ordering
+
+- Retained partition schema 2 with fixed factory recovery and one large main
+  slot; the proposed guardian/`ota_1` layout was not adopted.
+- Normal **Install now** now journals the exact signed request, updates and
+  validates the release-matched factory recovery from current main, then boots
+  that new recovery to install main. A current recovery sequence skips the
+  rewrite. Factory Reset retains its post-main compatibility refresh.
+- The accepted cost is that power loss after factory erasure begins may require
+  the NVS-preserving USB web recovery flow. Native tests passed 94/94 and
+  packaging tests passed 7/7. The full `ui_sim` traversal passed; its circular
+  **Preparing update** capture was visually inspected. Full Montserrat `bleep`
+  and `bleep_recovery` builds passed with 2,161,552-byte and 940,848-byte raw
+  images, within the `0x2C0000`/`0xF0000` ceilings. Interrupted-write and live
+  chained-update checks remain hardware gates.
+
 ### 2026-08-16: Signed recovery refresh after main health
 
 - Extended the canonical signed release with recovery sequence, size, SHA-256,

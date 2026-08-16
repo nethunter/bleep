@@ -9,6 +9,7 @@
 #include "core/firmware_update_policy.h"
 #include "core/home_assistant_config.h"
 #include "core/panel_settings.h"
+#include "core/recovery_install_policy.h"
 #ifndef UI_SIMULATOR
 #include "core/preferences_store.h"
 #endif
@@ -53,7 +54,10 @@ void FirmwareUpdateService::checkNow(bool allowDisconnect) {
 bool FirmwareUpdateService::installAvailable() {
   if (!snapshot.updateAvailable) return false;
   snapshot.status = Status::Downloading;
-  std::strncpy(snapshot.message, "Downloading update",
+  snapshot.updateAvailable = false;
+  snapshot.notificationPending = false;
+  snapshot.recoveryUpdatePending = true;
+  std::strncpy(snapshot.message, "Preparing updated recovery",
                sizeof(snapshot.message) - 1);
   return true;
 }
@@ -579,8 +583,7 @@ RecoveryManifestResult parseRecoveryManifest(
       (document["schema"] | 0) != 1 ||
       (document["partition_schema"] | 0) != 2 ||
       (document["recovery_schema"] | 0) != 1 ||
-      (document["release_sequence"] | 0ULL) != record.releaseSequence ||
-      record.releaseSequence != build_info::kReleaseSequence) {
+      (document["release_sequence"] | 0ULL) != record.releaseSequence) {
     return RecoveryManifestResult::Invalid;
   }
   if (!document["recovery_sequence"].is<uint64_t>()) {
@@ -682,6 +685,8 @@ void startManifestRequest() {
   setMessage(Status::Checking, "Checking for updates");
 }
 
+bool selectRecoveryAndRestart();
+
 bool startRecoveryRequest() {
   const esp_partition_t* recovery = esp_partition_find_first(
       ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "recovery");
@@ -751,15 +756,30 @@ void finishRecoveryRequest() {
   savePersisted();
   studio::PartitionRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);
-  journal.clear();
+  studio::RecoveryRecord record;
+  const bool recordLoaded = journal.load(record);
+  const studio::RecoveryInstallStep nextStep = recordLoaded
+      ? studio::recoveryInstallStep(
+            record.operation, record.releaseSequence,
+            build_info::kReleaseSequence, true, true)
+      : studio::RecoveryInstallStep::Finish;
   recoveryRefreshPending = false;
   snapshot.recoveryUpdatePending = false;
   recoveryRefreshFailures = 0;
   operationKind = OperationKind::None;
   snapshot.progressPercent = 100;
-  recordCheckResult("Firmware and recovery updated");
+  if (nextStep == studio::RecoveryInstallStep::BootRecovery) {
+    recordCheckResult("Recovery updated; firmware pending");
+    setMessage(Status::RebootPending, "Starting updated recovery");
+    if (selectRecoveryAndRestart()) return;
+    releaseWifi();
+    setMessage(Status::Failed, "Recovery handoff failed");
+    return;
+  }
+  journal.clear();
+  recordCheckResult("Recovery updated");
   releaseWifi();
-  setMessage(Status::Idle, "Firmware and recovery updated");
+  setMessage(Status::Idle, "Recovery updated");
 }
 
 void prepareRecoveryRefresh() {
@@ -771,11 +791,29 @@ void prepareRecoveryRefresh() {
   if (record->operation != studio::RecoveryOperation::InstallRequested &&
       record->operation != studio::RecoveryOperation::ResetComplete) return;
   const RecoveryManifestResult result = parseRecoveryManifest(*record);
-  if (result == RecoveryManifestResult::Pending) {
+  const studio::RecoveryInstallStep nextStep = studio::recoveryInstallStep(
+      record->operation, record->releaseSequence, build_info::kReleaseSequence,
+      result != RecoveryManifestResult::Invalid &&
+          result != RecoveryManifestResult::None,
+      result == RecoveryManifestResult::Current);
+  if (nextStep == studio::RecoveryInstallStep::WriteRecovery) {
     recoveryRefreshPending = true;
     recoveryRetryAt = millis();
     snapshot.recoveryUpdatePending = true;
-    setMessage(Status::Deferred, "Finishing recovery update");
+    setMessage(Status::Deferred,
+               record->operation == studio::RecoveryOperation::InstallRequested &&
+                       record->releaseSequence > build_info::kReleaseSequence
+                   ? "Preparing updated recovery"
+                   : "Finishing recovery update");
+    return;
+  }
+  if (nextStep == studio::RecoveryInstallStep::BootRecovery) {
+    snapshot.updateAvailable = false;
+    snapshot.notificationPending = false;
+    setMessage(Status::RebootPending, "Starting recovery");
+    if (!selectRecoveryAndRestart()) {
+      setMessage(Status::Failed, "Recovery handoff failed");
+    }
     return;
   }
   journal.clear();
@@ -1051,7 +1089,35 @@ bool FirmwareUpdateService::installAvailable() {
   std::memcpy(record->manifest, manifest, manifestLength);
   std::memcpy(record->signature, signature, signatureLength);
   if (!journal.save(*record)) return false;
-  return selectRecoveryAndRestart();
+  const RecoveryManifestResult result = parseRecoveryManifest(*record);
+  const studio::RecoveryInstallStep nextStep = studio::recoveryInstallStep(
+      record->operation, record->releaseSequence, build_info::kReleaseSequence,
+      result != RecoveryManifestResult::Invalid &&
+          result != RecoveryManifestResult::None,
+      result == RecoveryManifestResult::Current);
+  if (nextStep == studio::RecoveryInstallStep::Reject) {
+    setMessage(Status::Failed, "Recovery metadata invalid");
+    return false;
+  }
+  snapshot.updateAvailable = false;
+  snapshot.notificationPending = false;
+  if (nextStep == studio::RecoveryInstallStep::BootRecovery) {
+    setMessage(Status::RebootPending, "Starting recovery");
+    if (selectRecoveryAndRestart()) return true;
+    setMessage(Status::Failed, "Recovery handoff failed");
+    return false;
+  }
+  if (nextStep != studio::RecoveryInstallStep::WriteRecovery) {
+    journal.clear();
+    setMessage(Status::Failed, "Update is already installed");
+    return false;
+  }
+  snapshot.recoveryUpdatePending = true;
+  recoveryRefreshPending = true;
+  recoveryRetryAt = millis();
+  recoveryRefreshFailures = 0;
+  setMessage(Status::Deferred, "Preparing updated recovery");
+  return true;
 }
 
 void FirmwareUpdateService::dismissAvailable() {
