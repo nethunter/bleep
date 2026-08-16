@@ -21,7 +21,8 @@ bool render(const char* name, const char* title, const char* detail,
   if (progress >= 0) {
     output << "<rect x='42' y='120' width='156' height='12' rx='4' fill='none' stroke='#777'/>"
               "<rect x='44' y='122' width='" << (progress * 152 / 100)
-           << "' height='8' rx='3' fill='#00d8df'/>";
+           << "' height='8' rx='3' fill='#00d8df'/>"
+              "<text x='120' y='150' font-size='12'>" << progress << "%</text>";
   }
   for (const Button& button : buttons) {
     output << "<rect x='42' y='" << button.y << "' width='156' height='30' rx='8' fill='"
@@ -39,6 +40,8 @@ int main() {
                {{110, "BOOT FIRMWARE", "#006b32"}, {140, "INSTALL STABLE", "#007078"},
                 {170, "FACTORY RESET", "#780000"}});
   ok &= render("recovery_installing", "INSTALLING", "Firmware update", 55, {});
+  ok &= render("recovery_update_successful", "UPDATE SUCCESSFUL", "Ready to restart", -1,
+               {{130, "RESTART", "#006b32"}});
   ok &= render("recovery_factory_reset", "RESETTING", "Erasing saved data", 100, {});
   ok &= render("recovery_no_wifi", "RECOVERY FAILED", "Wi-Fi unavailable", -1,
                {{110, "BOOT FIRMWARE", "#006b32"}, {140, "INSTALL STABLE", "#007078"},

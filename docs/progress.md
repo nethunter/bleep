@@ -5369,3 +5369,34 @@ Record values with the exact build environment and commit/worktree state.
   hash and hard-reset the panel. Main, NVS, OTA metadata, and the recovery
   journal were not written. Serial monitoring resumed at 115200 baud; recovery
   OTA of the signed `0.3.2` main image remains the next live gate.
+
+### 2026-08-15: Recovery OTA completion and stable progress rendering
+
+- The protected stable workflow published signed `0.3.3` from commit
+  `bac74d3`. Independent verification accepted stable release sequence
+  `1786847659`, the 2,143,136-byte main payload, its SHA-256, and signing key
+  `stable-2026-01`.
+- Panel `10:00:3b:c2:db:a8` entered fixed recovery, downloaded the public
+  `0.3.3` payload, verified it, selected `ota_0`, and booted main. Serial then
+  showed normal display/touch initialization, Home runtime boot, Wi-Fi Off,
+  and a responsive periodic event after 31 seconds. This is one successful
+  recovery install cycle; tamper, interruption, power-loss, factory-reset, and
+  ten-cycle acceptance remain open.
+- The live download exposed a full-screen flicker at each five-percent update:
+  the HTTP callback repainted all 240x240 pixels. Recovery now paints the
+  install screen once and modifies only the monotonic progress fill and bounded
+  percentage region. After verified install and boot selection, it remains on
+  **Update successful** (or **Reset successful**) with a separate **Restart**
+  button instead of rebooting immediately.
+- Native tests passed 91/91. `recovery_sim` built and rendered the installing
+  and success states. `bleep_recovery` built at 940,576 bytes and the full
+  Montserrat `bleep` image built at 2,143,008 bytes; the layout checker accepted
+  both below their `0xF0000` and `0x2C0000` ceilings. With explicit approval,
+  only the new recovery image was written at `0x10000` on the same panel and
+  its flash hash verified. Main, NVS, OTA metadata, and journal were not
+  written. The operator then completed a recovery reinstall and confirmed that
+  progress no longer caused full-screen flicker, **Update successful** remained
+  visible, the separate **Restart** action worked, and the panel returned to
+  main normally. Serial independently observed the recovery handoff, subsequent
+  restart, normal main display/touch initialization, Wi-Fi Off, and a responsive
+  periodic event after 31 seconds.

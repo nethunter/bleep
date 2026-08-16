@@ -571,9 +571,10 @@ startup from being mistaken for release while the initiating finger is still
 held over a menu row. Once the bootloader selects factory recovery, a missing,
 empty, or corrupt journal never automatically selects main; recovery stays on
 its menu and **Boot firmware** remains an explicit operator action. Manual
-Recovery mode initially exposes only **Enable controls**; the touch that unlocks
-the menu is consumed, so selecting **Boot firmware** always requires a separate
-second touch.
+During a main-image download, recovery paints the static install view once and
+updates only the progress bar and percentage region. After the image and hash
+verify and `ota_0` is selected, recovery remains on an explicit success screen;
+it reboots only after the operator presses **Restart**.
 
 ## Persistence
 
