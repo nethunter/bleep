@@ -196,16 +196,16 @@ void sendPage(const char* head, const char* body) {
 }
 
 void sendPortalPage() {
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->sendHeader("Cache-Control", "no-store");
   server->sendHeader("X-Frame-Options", "DENY");
-  char cookie[72];
-  std::snprintf(cookie, sizeof(cookie),
-                "bleep_nonce=%s; Path=/; SameSite=Strict", portalNonce);
-  server->sendHeader("Set-Cookie", cookie);
-  server->sendHeader("Content-Encoding", "br");
-  server->send_P(200, PSTR("text/html"),
-                 reinterpret_cast<PGM_P>(assets::kPageBrotli),
-                 assets::kPageBrotliSize);
+  server->send(200, "text/html", "");
+  server->sendContent_P(assets::kHead);
+  server->sendContent_P(assets::kStyle);
+  server->sendContent("<script>window.PORTAL_NONCE='");
+  server->sendContent(portalNonce);
+  server->sendContent("'</script>");
+  server->sendContent_P(assets::kBody);
 }
 
 void sendCaptivePortalPage() {
@@ -1080,7 +1080,10 @@ void installHandlers() {
 }
 
 bool startServer(IPAddress address) {
-  server = new (std::nothrow) WebServer(address, 80);
+  // Binding to the AP address immediately after mode creation can fail before
+  // lwIP publishes that interface. WebServer does not surface bind failure, so
+  // listen on all Portal-owned interfaces and keep the address only for UX.
+  server = new (std::nothrow) WebServer(80);
   if (server == nullptr) return false;
   const char* headers[] = {"X-Portal-Nonce"};
   server->collectHeaders(headers, 1);
@@ -1119,19 +1122,23 @@ bool startSetupAp() {
   switchToLanAt = 0;
   wifiJoinState = WifiJoinState::Idle;
   std::strncpy(wifiJoinMessage, "Ready to connect", sizeof(wifiJoinMessage) - 1);
-  WiFi.mode(WIFI_AP_STA);
+  if (!WiFi.mode(WIFI_AP_STA)) return false;
+  delay(50);
+  const IPAddress setupAddress(192, 168, 4, 1);
+  const IPAddress setupMask(255, 255, 255, 0);
+  if (!WiFi.softAPConfig(setupAddress, setupAddress, setupMask)) return false;
   if (!WiFi.softAP(apSsid)) return false;
   std::strncpy(activeSsid, apSsid, sizeof(activeSsid) - 1);
   std::strncpy(portalUrl, "http://192.168.4.1", sizeof(portalUrl) - 1);
-  const IPAddress setupAddress = WiFi.softAPIP();
-  if (!startServer(setupAddress) || !startCaptiveDns(setupAddress)) {
+  const IPAddress activeAddress = WiFi.softAPIP();
+  if (!startServer(activeAddress) || !startCaptiveDns(activeAddress)) {
     destroyServer();
     WiFi.softAPdisconnect(true);
     return false;
   }
   lastSetupClientCount = 0xff;
   PORTAL_DEBUG_PORT.printf("portal ap ready ip=%s\n",
-                           setupAddress.toString().c_str());
+                           activeAddress.toString().c_str());
   setStatus(Status::Ready, "AP Portal ready");
   return true;
 }

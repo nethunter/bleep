@@ -448,8 +448,8 @@ short, factual, and reproducible.
   main while excluding NVS. After rebasing onto `40688db`, final raw outputs
   measured 936,624 bytes for recovery and 2,112,608 bytes for main.
 - Restored full RGB565+alpha Home/category/About assets, stock Montserrat
-  12/14/16/20, and original Portal logo treatment while retaining Brotli and
-  nonce-cookie security. The rebased modular native suite passed 90/90,
+  12/14/16/20, and original Portal logo treatment. The rebased modular native
+  suite passed 90/90,
   including startup deferral
   and alternating-journal corruption fallback. Packaging tests passed 6/6;
   `bleep`, `bleep_recovery`, `ui_sim`, and `recovery_sim` built successfully.
@@ -484,6 +484,24 @@ short, factual, and reproducible.
   entry; existing stored strings remained present. No NVS rollback was
   attempted. The physical cause of Portal activation and a configured-Wi-Fi
   startup-check trace remain unverified.
+- The first post-rebase operator retry associated with the setup AP but could
+  not open the Portal. Source comparison found that the OTA tranche had
+  replaced main's field-proven streamed captive response and inline mutation
+  nonce from `d56c6c3` with Brotli transport and a cookie nonce. Restored the
+  known-good mainline response and exact current Portal asset while retaining
+  the per-panel SSID, EDNS-capable DNS responder, direct captive-probe routes,
+  asynchronous Wi-Fi scan, nonce validation, and original logo endpoint.
+- A clean retry still reached DNS but returned **connection refused** for
+  `http://192.168.4.1`. The Arduino `WebServer(address, 80)` wrapper silently
+  leaves its socket closed if the address-specific bind races SoftAP interface
+  publication. Changed the Portal listener to wildcard port 80, made AP/STA
+  mode and explicit `192.168.4.1/24` SoftAP configuration mandatory, and added
+  a bounded 50 ms radio-initialization settle before configuration. Rebuilt and
+  flashed only main at `0x120000`; esptool hash verification passed. The next
+  trace recorded successful captive HTTP probes, Portal API traffic, Wi-Fi
+  scan requests, credential submission, and the LAN Portal listening at
+  `192.168.1.15:80`. This closes the reproduced TCP-refusal path; clean retries
+  on additional phone platforms remain open.
 
 ### 2026-08-12: Owner's guide audit and rebuild
 
