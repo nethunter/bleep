@@ -5423,3 +5423,23 @@ Record values with the exact build environment and commit/worktree state.
   A bounded serial trace then confirmed display/touch initialization and main
   runtime boot with Wi-Fi Off. Appearance of the new prompt on physical hardware
   remains pending a signed release newer than the installed sequence.
+
+### 2026-08-15: Automatic clean-migration recovery handoff
+
+- Hardware migration showed that blank OTA metadata booted factory recovery and
+  then waited indefinitely for a manual **Boot firmware** tap even though the
+  packaged journal was blank and `ota_0` was valid. Recovery now distinguishes
+  an erased journal from corrupt or unreadable records. Only an erased journal
+  (or a valid no-op record) plus valid main automatically selects `ota_0`;
+  explicit Recovery Mode, interrupted operations, corrupt journal state, and
+  invalid main remain in recovery.
+- Native coverage now exercises empty, corrupt, explicit-recovery, and invalid-
+  main startup boundaries; 92/92 tests passed. `bleep_recovery` built at
+  940,832 bytes and the full Montserrat main image built at 2,143,392 bytes.
+  The partition checker accepted both below the `0xF0000` and `0x2C0000`
+  ceilings.
+- Only the new recovery image was written to `0x10000` on panel
+  `10:00:3b:c3:6c:18` and independently verified. Rewriting the packaged blank
+  OTA metadata then exercised the first-migration path: without any touch, the
+  panel reached normal main display/touch initialization and reported the main
+  runtime boot with Wi-Fi Off.

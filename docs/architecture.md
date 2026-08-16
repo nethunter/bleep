@@ -568,9 +568,10 @@ its menu until the operator explicitly boots main or chooses another action.
 Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms
 of continuous release before arming menu input. This prevents touch-controller
 startup from being mistaken for release while the initiating finger is still
-held over a menu row. Once the bootloader selects factory recovery, a missing,
-empty, or corrupt journal never automatically selects main; recovery stays on
-its menu and **Boot firmware** remains an explicit operator action. Manual
+held over a menu row. A blank migration journal plus a valid main image causes
+an automatic one-time handoff to `ota_0`; corrupt or unreadable journal state,
+an explicit Recovery Mode request, or invalid main keeps the recovery menu and
+its **Boot firmware** action available.
 During a main-image download, recovery paints the static install view once and
 updates only the progress bar and percentage region. After the image and hash
 verify and `ota_0` is selected, recovery remains on an explicit success screen;

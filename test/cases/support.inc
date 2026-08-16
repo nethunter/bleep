@@ -18,6 +18,7 @@
 #include "core/home_assistant_config.h"
 #include "core/firmware_update_policy.h"
 #include "core/recovery_journal.h"
+#include "core/recovery_startup_policy.h"
 #include "core/recovery_touch_gate.h"
 #include "core/panel_settings.h"
 #include "core/panel_identity.h"

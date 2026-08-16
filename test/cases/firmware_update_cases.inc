@@ -23,6 +23,7 @@ class MemoryRecoveryJournalBackend : public studio::IRecoveryJournalBackend {
   }
 
   void corruptLastWrite() { slots_[lastWritten][24] ^= 0x80; }
+  void corruptEmptyJournal() { slots_[0][0] = 0; }
 
   bool failWrites = false;
   bool failErase = false;
@@ -87,6 +88,9 @@ void test_recovery_journal_alternates_recovers_and_clears() {
   MemoryRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);
   studio::RecoveryRecord loaded;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RecoveryJournalLoadStatus::Empty),
+      static_cast<int>(journal.loadStatus(loaded)));
   TEST_ASSERT_FALSE(journal.load(loaded));
 
   studio::RecoveryRecord first;
@@ -122,6 +126,30 @@ void test_recovery_journal_alternates_recovers_and_clears() {
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RecoveryOperation::RecoveryModeRequested),
       static_cast<int>(loaded.operation));
+}
+
+void test_recovery_startup_auto_boots_only_clean_valid_main() {
+  MemoryRecoveryJournalBackend backend;
+  studio::RecoveryJournal journal(backend);
+  studio::RecoveryRecord record;
+
+  studio::RecoveryJournalLoadStatus status = journal.loadStatus(record);
+  TEST_ASSERT_TRUE(studio::shouldAutoBootMain(status, record, true));
+  TEST_ASSERT_FALSE(studio::shouldAutoBootMain(status, record, false));
+
+  backend.corruptEmptyJournal();
+  status = journal.loadStatus(record);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RecoveryJournalLoadStatus::Corrupt),
+      static_cast<int>(status));
+  TEST_ASSERT_FALSE(studio::shouldAutoBootMain(status, record, true));
+
+  MemoryRecoveryJournalBackend requestedBackend;
+  studio::RecoveryJournal requestedJournal(requestedBackend);
+  record.operation = studio::RecoveryOperation::RecoveryModeRequested;
+  TEST_ASSERT_TRUE(requestedJournal.save(record));
+  status = requestedJournal.loadStatus(record);
+  TEST_ASSERT_FALSE(studio::shouldAutoBootMain(status, record, true));
 }
 
 void test_recovery_touch_requires_a_settled_release_after_reboot() {

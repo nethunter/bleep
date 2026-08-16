@@ -80,8 +80,9 @@ menu until the operator chooses an action; **Boot firmware** clears that manual
 request before selecting `ota_0`. Recovery ignores touch during a 1.5-second
 boot guard and then requires 300 ms of continuous release before arming menu
 input, so touch-controller startup cannot make the initiating hold look like a
-new **Boot firmware** tap. A missing, empty, or corrupt journal leaves recovery
-on its menu rather than automatically selecting valid main. The install view is
+new **Boot firmware** tap. A blank journal from the USB migration automatically
+selects a valid main image and reboots; a corrupt or unreadable journal stays in
+recovery so an interrupted transaction cannot be bypassed. The install view is
 painted once; progress callbacks update only the bounded bar and percentage
 region. After verification and boot selection, recovery shows **Update
 successful** and waits for a separate **Restart** tap instead of rebooting
@@ -108,4 +109,6 @@ the `development` and approval-protected `stable` environments.
 The one-time migration bundle writes bootloader `0x0000`, partition table
 `0x8000`, blank OTA metadata `0xE000`, recovery `0x10000`, blank journal
 `0x110000`, and main `0x120000`. It never writes NVS `0x9000..0xDFFF` and does
-not perform a full-chip erase.
+not perform a full-chip erase. On its first boot, recovery recognizes the blank
+journal, validates `ota_0`, selects it, and continues to main without requiring
+an operator tap.
