@@ -71,6 +71,9 @@ namespace {
 constexpr uint32_t kColBg = 0x05070A;
 constexpr uint32_t kColPanel = 0x12161D;
 constexpr uint32_t kColAccent = 0x35C7F2;
+constexpr uint32_t kColUpdate = 0xF2B84B;
+constexpr uint32_t kColUpdateAction = 0xB96812;
+constexpr uint32_t kColUpdatePanel = 0x17130D;
 constexpr uint32_t kColText = 0xF3F4F6;
 constexpr uint32_t kColMuted = 0x8A94A6;
 constexpr uint32_t kColDanger = 0xF26D6D;
@@ -872,30 +875,45 @@ void buildUpdatePrompt(bool confirmation) {
   closeUpdatePrompt();
   updatePromptConfirming = confirmation;
   updatePrompt = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(updatePrompt, 198, 170);
+  lv_obj_set_size(updatePrompt, 238, 238);
   lv_obj_center(updatePrompt);
-  lv_obj_set_style_bg_color(updatePrompt, lv_color_hex(kColPanel), 0);
-  lv_obj_set_style_border_color(updatePrompt, lv_color_hex(kColAccent), 0);
-  lv_obj_set_style_border_width(updatePrompt, 2, 0);
-  lv_obj_set_style_radius(updatePrompt, 12, 0);
+  lv_obj_set_style_bg_color(updatePrompt, lv_color_hex(kColUpdatePanel), 0);
+  lv_obj_set_style_border_color(updatePrompt, lv_color_hex(kColUpdate), 0);
+  lv_obj_set_style_border_width(updatePrompt, 3, 0);
+  lv_obj_set_style_radius(updatePrompt, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_pad_all(updatePrompt, 0, 0);
   lv_obj_clear_flag(updatePrompt, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t* text = lv_label_create(updatePrompt);
-  lv_obj_set_width(text, 174);
-  lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(text, UI_FONT_14, 0);
-  lv_label_set_text(text, confirmation
-      ? "INSTALL UPDATE?\nDisconnects devices.\nKeep USB power on.\nPanel will reboot."
-      : "FIRMWARE UPDATE AVAILABLE");
-  lv_obj_align(text, LV_ALIGN_TOP_MID, 0, -2);
+
+  lv_obj_t* title = lv_label_create(updatePrompt);
+  lv_obj_set_width(title, 198);
+  lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(kColUpdate), 0);
+  lv_label_set_text(title, confirmation ? "INSTALL UPDATE?" : "UPDATE AVAILABLE");
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 38);
+
+  lv_obj_t* detail = lv_label_create(updatePrompt);
+  lv_obj_set_width(detail, confirmation ? 170 : 154);
+  lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(detail, UI_FONT_12, 0);
+  lv_obj_set_style_text_color(detail, lv_color_hex(kColText), 0);
+  lv_label_set_text(detail, confirmation
+      ? "Disconnects devices.\nKeep USB power on.\nPanel will reboot."
+      : "A signed firmware release\nis ready to install.");
+  lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, confirmation ? 68 : 72);
+
   lv_obj_t* primary = makeButton(updatePrompt,
       confirmation ? "INSTALL" : "INSTALL NOW",
-      confirmation ? onUpdateConfirm : onUpdateInstall, kColAccent);
-  lv_obj_set_size(primary, 122, 30);
-  lv_obj_align(primary, LV_ALIGN_BOTTOM_MID, 0, -32);
+      confirmation ? onUpdateConfirm : onUpdateInstall, kColUpdateAction);
+  lv_obj_set_size(primary, 132, 34);
+  lv_obj_align(primary, LV_ALIGN_BOTTOM_MID, 0, -52);
   lv_obj_t* later = makeButton(updatePrompt,
-      confirmation ? "CANCEL" : "LATER", onUpdateLater, kColPanel);
-  lv_obj_set_size(later, 92, 26);
-  lv_obj_align(later, LV_ALIGN_BOTTOM_MID, 0, 0);
+      confirmation ? "CANCEL" : "LATER", onUpdateLater, kColUpdatePanel);
+  lv_obj_set_size(later, 132, 28);
+  lv_obj_set_style_border_color(later, lv_color_hex(kColUpdate), 0);
+  lv_obj_set_style_border_opa(later, LV_OPA_50, 0);
+  lv_obj_set_style_border_width(later, 1, 0);
+  lv_obj_align(later, LV_ALIGN_BOTTOM_MID, 0, -17);
   lv_obj_move_foreground(updatePrompt);
   if (firmwareUpdateCheck != nullptr) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
   if (firmwareUpdateInstall != nullptr) lv_obj_add_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
