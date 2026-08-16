@@ -5352,3 +5352,14 @@ Record values with the exact build environment and commit/worktree state.
   `bleep` builds passed with unchanged 940,048-byte and 2,143,008-byte images,
   and the partition/size gate passed. Live network and OTA installation remain
   open until the broken installed clients receive this bootstrap repair.
+- Stable `0.3.2` was built, signed, independently verified, and published from
+  commit `1ede374`. The corresponding main CI run passed every build but its
+  rolling development publisher downloaded artifacts before checkout; the
+  checkout clean then removed `release/` and `recovery/`, causing the first
+  `release-sequence.txt` read to fail. The publisher now checks out first and
+  downloads both artifacts afterward.
+- With explicit approval, only the fixed 940,048-byte recovery image was
+  written to `0x10000` on panel `10:00:3b:c2:db:a8`; esptool verified the write
+  hash and hard-reset the panel. Main, NVS, OTA metadata, and the recovery
+  journal were not written. Serial monitoring resumed at 115200 baud; recovery
+  OTA of the signed `0.3.2` main image remains the next live gate.
