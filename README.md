@@ -312,7 +312,9 @@ for main.
 Existing single-slot installations require the release's one-time USB
 migration bundle before Wi-Fi updates can work. The migration writes the
 bootloader, partition table, blank OTA metadata, fixed recovery, blank recovery
-journal, and main application; it does not erase or overlap NVS. See
+journal, and main application; it does not erase or overlap NVS. On the first
+boot, recovery validates and automatically selects main without requiring a
+**Boot firmware** tap. See
 [hardware migration](hardware/README.md#one-time-recovery-firmware-migration).
 
 ## Using the current build

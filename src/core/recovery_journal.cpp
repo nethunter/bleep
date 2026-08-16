@@ -37,31 +37,48 @@ bool valid(const StoredRecord& stored) {
                                 offsetof(StoredRecord, crc));
 }
 
+bool erased(const StoredRecord& stored) {
+  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&stored);
+  for (size_t i = 0; i < sizeof(stored); ++i) {
+    if (bytes[i] != 0xFF) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 static_assert(sizeof(StoredRecord) <= kSlotSize, "recovery journal record too large");
 
-bool RecoveryJournal::load(RecoveryRecord& record) {
+RecoveryJournalLoadStatus RecoveryJournal::loadStatus(RecoveryRecord& record) {
   std::unique_ptr<StoredRecord[]> slots(new (std::nothrow) StoredRecord[2]());
   if (!slots) {
     record = {};
-    return false;
+    return RecoveryJournalLoadStatus::ReadFailed;
   }
-  const bool valid0 = backend_.readSlot(0, reinterpret_cast<uint8_t*>(&slots[0]),
-                                        sizeof(slots[0])) && valid(slots[0]);
-  const bool valid1 = backend_.readSlot(1, reinterpret_cast<uint8_t*>(&slots[1]),
-                                        sizeof(slots[1])) && valid(slots[1]);
+  const bool read0 = backend_.readSlot(0, reinterpret_cast<uint8_t*>(&slots[0]),
+                                       sizeof(slots[0]));
+  const bool read1 = backend_.readSlot(1, reinterpret_cast<uint8_t*>(&slots[1]),
+                                       sizeof(slots[1]));
+  const bool valid0 = read0 && valid(slots[0]);
+  const bool valid1 = read1 && valid(slots[1]);
   if (!valid0 && !valid1) {
     record = {};
     generation_ = 0;
     activeSlot_ = 1;
-    return false;
+    if (!read0 || !read1) return RecoveryJournalLoadStatus::ReadFailed;
+    return erased(slots[0]) && erased(slots[1])
+        ? RecoveryJournalLoadStatus::Empty
+        : RecoveryJournalLoadStatus::Corrupt;
   }
   activeSlot_ = valid1 && (!valid0 || slots[1].generation > slots[0].generation) ? 1 : 0;
   const StoredRecord& selected = slots[activeSlot_];
   generation_ = selected.generation;
   record = selected.record;
-  return true;
+  return RecoveryJournalLoadStatus::Loaded;
+}
+
+bool RecoveryJournal::load(RecoveryRecord& record) {
+  return loadStatus(record) == RecoveryJournalLoadStatus::Loaded;
 }
 
 bool RecoveryJournal::save(const RecoveryRecord& record) {

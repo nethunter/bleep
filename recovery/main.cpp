@@ -16,6 +16,7 @@
 #include "core/partition_recovery_backend.h"
 #include "core/preferences_store.h"
 #include "core/recovery_journal.h"
+#include "core/recovery_startup_policy.h"
 #include "core/recovery_touch_gate.h"
 #include "firmware_update_keys.h"
 
@@ -701,10 +702,12 @@ void bootMain() {
 
 void setup() {
   Serial.begin(115200); initPanel();
-  const bool loaded = journal.load(request);
-  Serial.printf("RECOVERY: journal loaded=%u operation=%u main_valid=%u\n",
-                loaded ? 1U : 0U, static_cast<unsigned>(request.operation),
-                mainValid() ? 1U : 0U);
+  const studio::RecoveryJournalLoadStatus journalStatus = journal.loadStatus(request);
+  const bool loaded = journalStatus == studio::RecoveryJournalLoadStatus::Loaded;
+  const bool validMain = mainValid();
+  Serial.printf("RECOVERY: journal status=%u operation=%u main_valid=%u\n",
+                static_cast<unsigned>(journalStatus),
+                static_cast<unsigned>(request.operation), validMain ? 1U : 0U);
   if (loaded && (request.operation == studio::RecoveryOperation::ImageVerifiedResetPending ||
                  request.operation == studio::RecoveryOperation::ResetComplete)) {
     screen("RESETTING", "Completing reset");
@@ -720,6 +723,9 @@ void setup() {
     if (!installRecord(request, true, true)) readyScreen("Factory reset failed");
   } else if (loaded && request.operation == studio::RecoveryOperation::RecoveryModeRequested) {
     readyScreen();
+  } else if (studio::shouldAutoBootMain(journalStatus, request, validMain)) {
+    Serial.println("RECOVERY: clean journal and valid main; booting firmware");
+    bootMain();
   } else {
     Serial.println("RECOVERY: no actionable request; staying in recovery");
     readyScreen();

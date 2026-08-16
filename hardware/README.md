@@ -174,7 +174,9 @@ esptool `write_flash` without `erase_flash`. It writes the bootloader at
 recovery at `0x10000`, a blank recovery journal at `0x110000`, and main firmware
 at `0x120000`. It does not write or erase NVS at `0x9000/0x5000`, so saved panel
 configuration is intended to survive. Keep USB power connected through the
-first boot and confirm saved configuration before relying on Wi-Fi updates.
+first boot. Recovery should automatically validate and select main; no
+**Boot firmware** tap is required for a clean migration. Confirm saved
+configuration before relying on Wi-Fi updates.
 
 This repository supplies and structurally tests the bundle, but the
 NVS-preserving migration is not considered hardware-proven until a real panel

@@ -17,6 +17,13 @@ enum class RecoveryOperation : uint8_t {
   RecoveryModeRequested = 5,
 };
 
+enum class RecoveryJournalLoadStatus : uint8_t {
+  Loaded,
+  Empty,
+  Corrupt,
+  ReadFailed,
+};
+
 struct RecoveryRecord {
   RecoveryOperation operation = RecoveryOperation::None;
   uint8_t channel = 0;
@@ -39,6 +46,7 @@ class RecoveryJournal {
  public:
   explicit RecoveryJournal(IRecoveryJournalBackend& backend) : backend_(backend) {}
 
+  RecoveryJournalLoadStatus loadStatus(RecoveryRecord& record);
   bool load(RecoveryRecord& record);
   bool save(const RecoveryRecord& record);
   bool clear();
