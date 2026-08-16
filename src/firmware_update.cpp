@@ -769,6 +769,8 @@ void finishRecoveryRequest() {
   operationKind = OperationKind::None;
   snapshot.progressPercent = 100;
   if (nextStep == studio::RecoveryInstallStep::BootRecovery) {
+    Serial.printf("FW_UPDATE: recovery verified sequence=%llu; booting recovery\n",
+                  static_cast<unsigned long long>(installedRecoverySequence));
     recordCheckResult("Recovery updated; firmware pending");
     setMessage(Status::RebootPending, "Starting updated recovery");
     if (selectRecoveryAndRestart()) return;
@@ -1112,6 +1114,9 @@ bool FirmwareUpdateService::installAvailable() {
     setMessage(Status::Failed, "Update is already installed");
     return false;
   }
+  Serial.printf("FW_UPDATE: updating recovery sequence=%llu before main sequence=%llu\n",
+                static_cast<unsigned long long>(expectedRecoverySequence),
+                static_cast<unsigned long long>(snapshot.releaseSequence));
   snapshot.recoveryUpdatePending = true;
   recoveryRefreshPending = true;
   recoveryRetryAt = millis();
