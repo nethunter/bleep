@@ -1,6 +1,8 @@
 #include "core/recovery_journal.h"
 
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace studio {
 namespace {
@@ -30,7 +32,7 @@ bool valid(const StoredRecord& stored) {
       stored.record.manifestLength > kRecoveryManifestCapacity ||
       stored.record.signatureLength > kRecoverySignatureCapacity ||
       static_cast<uint8_t>(stored.record.operation) >
-          static_cast<uint8_t>(RecoveryOperation::ResetComplete)) return false;
+          static_cast<uint8_t>(RecoveryOperation::RecoveryModeRequested)) return false;
   return stored.crc == checksum(reinterpret_cast<const uint8_t*>(&stored),
                                 offsetof(StoredRecord, crc));
 }
@@ -40,7 +42,11 @@ bool valid(const StoredRecord& stored) {
 static_assert(sizeof(StoredRecord) <= kSlotSize, "recovery journal record too large");
 
 bool RecoveryJournal::load(RecoveryRecord& record) {
-  StoredRecord slots[2] = {};
+  std::unique_ptr<StoredRecord[]> slots(new (std::nothrow) StoredRecord[2]());
+  if (!slots) {
+    record = {};
+    return false;
+  }
   const bool valid0 = backend_.readSlot(0, reinterpret_cast<uint8_t*>(&slots[0]),
                                         sizeof(slots[0])) && valid(slots[0]);
   const bool valid1 = backend_.readSlot(1, reinterpret_cast<uint8_t*>(&slots[1]),
@@ -59,19 +65,20 @@ bool RecoveryJournal::load(RecoveryRecord& record) {
 }
 
 bool RecoveryJournal::save(const RecoveryRecord& record) {
-  StoredRecord stored = {};
-  stored.magic = kMagic;
-  stored.version = kVersion;
-  stored.encodedSize = sizeof(StoredRecord);
-  stored.generation = generation_ + 1;
-  stored.record = record;
-  stored.crc = checksum(reinterpret_cast<const uint8_t*>(&stored),
-                        offsetof(StoredRecord, crc));
+  std::unique_ptr<StoredRecord> stored(new (std::nothrow) StoredRecord());
+  if (!stored) return false;
+  stored->magic = kMagic;
+  stored->version = kVersion;
+  stored->encodedSize = sizeof(StoredRecord);
+  stored->generation = generation_ + 1;
+  stored->record = record;
+  stored->crc = checksum(reinterpret_cast<const uint8_t*>(stored.get()),
+                         offsetof(StoredRecord, crc));
   const uint8_t next = activeSlot_ == 0 ? 1 : 0;
-  if (!backend_.writeSlot(next, reinterpret_cast<const uint8_t*>(&stored),
-                          sizeof(stored))) return false;
+  if (!backend_.writeSlot(next, reinterpret_cast<const uint8_t*>(stored.get()),
+                          sizeof(*stored))) return false;
   activeSlot_ = next;
-  generation_ = stored.generation;
+  generation_ = stored->generation;
   return true;
 }
 

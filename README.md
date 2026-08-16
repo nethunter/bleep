@@ -89,7 +89,10 @@ principles:
   returns updater-owned Wi-Fi to `WIFI_OFF`. Foreground work defers or cancels
   the check. Ten-minute idle checks and **Settings > Firmware update** checks
   remain. Checks never download an image; **Install now** hands the exact signed
-  request to fixed recovery. Stable is default and development is opt-in.
+  request to fixed recovery. The round-safe Firmware page keeps one contextual
+  Check/Install action and an explicit three-second-hold Recovery action visible
+  without scrolling; its countdown replaces the screen title where the holding
+  finger cannot cover it. Stable is default and development is opt-in.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and

@@ -1599,6 +1599,13 @@ int main() {
   ui::simShowFirmwareUpdate();
   if (!capture("31d_settings_firmware_disconnect")) return 1;
   firmware_update::service().setRuntimeIdle(true, false);
+  firmware_update::service().simSetRecoveryAvailable(true);
+  firmware_update::service().simSetChecking();
+  ui::simShowFirmwareUpdate();
+  if (!capture("31d1_settings_firmware_checking")) return 1;
+  firmware_update::service().simSetFailure("Network transfer failed");
+  ui::simShowFirmwareUpdate();
+  if (!capture("31d2_settings_firmware_failure")) return 1;
   firmware_update::service().simSetAvailable("0.3.0", 300);
   ui::showHome();
   if (!capture("31e_firmware_available_prompt")) return 1;
@@ -1606,6 +1613,16 @@ int main() {
   firmware_update::service().simSetRecoveryAvailable(true);
   ui::simShowFirmwareUpdate();
   if (!capture("31f_settings_firmware_available")) return 1;
+  ui::simStartFirmwareRecoveryHold();
+  delay(1001);
+  ui::tick();
+  if (!capture("31f1_settings_firmware_recovery_hold")) return 1;
+  delay(2000);
+  ui::tick();
+  if (!firmware_update::service().simRecoveryRequested()) {
+    std::fprintf(stderr, "firmware Recovery hold did not request recovery\n");
+    return 1;
+  }
   ui::simShowUpdateConfirmation();
   if (!capture("31g_settings_firmware_confirm")) return 1;
   ui::showHome();

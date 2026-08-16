@@ -429,6 +429,158 @@ short, factual, and reproducible.
   `Site Not Found` edge entry while cache-busted requests served Ble(e)p; a
   post-activation Hosting redeploy invalidated it. `https://bleep.hml.tech/`
   now returns HTTP 200 and the Ble(e)p page without a query string.
+### 2026-08-15: Firmware Update panel, Recovery affordance, and TLS repair
+
+- A physical-panel report exposed overlapping Firmware Update status/actions,
+  an undiscoverable three-second Recovery hold, and update-check TLS failure.
+  The first repair used a round-safe vertically scrollable control region, compact
+  non-duplicated status text, an explicit `HOLD 3S: RECOVERY` action with a
+  countdown, and actionable recovery handoff failures. GitHub's current
+  Sectigo/USERTrust chain and the release CDN's ISRG chain were added alongside
+  the prior DigiCert root. HTTP 404 now reports `No signed release published`
+  instead of a generic transfer/server failure; as inspected on 2026-08-15,
+  the public `latest` prerelease still contains only the older unsigned
+  `bleep-latest.bin` and checksum, not the new signed manifest assets.
+- Native tests passed 90/90. The complete `ui_sim` traversal passed with the
+  long transfer-failure state, scrolled round-safe Recovery action, and a
+  simulated three-second hold that reached `enterRecovery()`. Full `bleep` and
+  `bleep_recovery` builds passed; raw images measured 2,142,144 and 939,520
+  bytes, within their `0x2C0000` and `0xF0000` ceilings.
+- With existing worktree flash approval, both recovery and main were uploaded
+  to `/dev/cu.usbserial-211240`; esptool hash-verified every write. PlatformIO
+  also rewrote the unchanged bootloader, partition table, and blank OTA
+  metadata during each upload. Neither upload overlapped NVS. A bounded trace
+  showed main at Home with `wifi=Off` at 0.996 seconds and again at 30.998
+  seconds. No updater transport-error diagnostic appeared during the startup
+  window. A read-only NVS capture (SHA-256
+  `3a1815beca92429f20494a51012633a589c2aeacf4bbec48e6fb8aaeaa9b1758`)
+  confirmed that the live startup check persisted `No signed release
+  published`, proving the repaired TLS request reached the currently missing
+  manifest. The corrected physical layout and manual Recovery hold still
+  require operator confirmation.
+- Operator follow-up found that the Firmware page could not be scrolled while
+  the check was active and that the three-second Recovery hold rebooted back to
+  Home. The page no longer depends on scrolling: a fixed contextual slot shows
+  Check while no release is available and Install when one is available, with
+  the Recovery hold always visible. The reboot bug was caused by main writing
+  an empty journal record; recovery treated that as no actionable request and
+  automatically selected valid main. Main now writes the distinct
+  `RecoveryModeRequested` operation, recovery remains on its menu for that
+  operation, and **Boot firmware** clears it before returning to main.
+- The checking, failure, available, and Recovery-hold simulator states passed
+  the complete `ui_sim` traversal. Native tests passed 90/90, including the new
+  journal operation. Full `bleep` and `bleep_recovery` builds passed at raw
+  sizes 2,142,272 and 939,664 bytes, within both ceilings. Both images were
+  reflashed through `/dev/cu.usbserial-211240` with hash verification; the
+  upload ranges again excluded NVS. Main booted Home at 1.003 seconds with
+  `wifi=Off`. The fixed physical Recovery stay/menu remains operator-pending.
+- A second operator attempt still returned to Home. A read-only dump of both
+  recovery-journal slots immediately afterward found them erased, which is
+  consistent with recovery loading `RecoveryModeRequested` and then running
+  the request-clearing **Boot firmware** path. The initiating finger remained
+  on the touchscreen across reset, and recovery had treated that retained touch
+  as a new press. Recovery now requires 200 ms of continuous release before it
+  arms any menu action. The main Firmware page also keeps the red button text
+  fixed and renders its `3 / 2 / 1` countdown in a separate line above the
+  finger.
+- The retained-touch gate has a native boundary test; the full native suite
+  passed 91/91. The complete `ui_sim` traversal passed, including visual capture
+  of `Keep holding: 2s` above the fixed Recovery button. Full `bleep` and
+  `bleep_recovery` builds passed with raw images of 2,142,464 and 940,176 bytes,
+  within the `0x2C0000` and `0xF0000` ceilings. Recovery and main were reflashed
+  in that order to panel MAC `10:00:3b:c2:db:a8` at
+  `/dev/cu.usbserial-211240`; esptool hash-verified every written region and the
+  ranges excluded NVS. A bounded trace confirmed main reached its loop at
+  1.034 seconds with `wifi=Off`. Physical confirmation that the hold now stays
+  in the Recovery menu remains operator-pending.
+- The next physical attempt still returned to Home. Read-only captures after
+  that exact attempt showed OTA sequence 1 selecting `ota_0` and both recovery
+  journal slots erased. This proves recovery ran its explicit **Boot firmware**
+  path; it was not a failed boot selection. The first release gate could arm on
+  the touch controller's temporary no-point readings during initialization,
+  before the controller began reporting the retained finger.
+- Recovery now ignores all touch for 1.5 seconds from its first loop and only
+  arms after a further 300 ms continuous release. The hold countdown moved out
+  of the content area entirely and replaces the screen title (`Hold 3s`,
+  `Hold 2s`, `Hold 1s`). Native tests passed 91/91 and the complete simulator
+  traversal passed with the title countdown visually inspected. Full main and
+  recovery builds passed at raw sizes 2,142,352 and 940,208 bytes, within both
+  ceilings. Recovery and main were reflashed in that order to panel MAC
+  `10:00:3b:c2:db:a8`; every written-region hash verified and NVS was outside
+  the write ranges. Main reached its loop at 1.034 seconds with `wifi=Off`.
+  Physical Recovery-menu confirmation remains operator-pending.
+- Removed recovery's final implicit-main fallback as a second safety boundary.
+  If the journal is missing, empty, corrupt, or otherwise non-actionable after
+  factory recovery has been selected, recovery now stays on its menu. Only an
+  explicit **Boot firmware** action or a completed verified installation can
+  select `ota_0`. The Firmware page's Recovery button now matches the 154-pixel
+  width of its contextual Check/Install button. The final recovery image was
+  940,288 bytes and both final images were hash-verified on panel
+  `10:00:3b:c2:db:a8`; NVS remained outside the write ranges.
+- A live reproduction finally distinguished the reported Home return from a
+  recovery-menu action: main panicked with a load-access fault in
+  `ieee80211_output_do`, called by `dhcp_release_and_stop`, then rebooted main.
+  Recovery never started. The updater used `WiFi.disconnect(true)` immediately
+  followed by `WIFI_OFF`, allowing ESP-IDF's tcpip task to send DHCP release
+  through a driver queue that had already been deinitialized. Updater teardown
+  is now two-phase: disconnect without deinit, then stop the radio from the main
+  loop after a 250 ms settle (bounded to two seconds). Recovery handoff cancels
+  the HTTP client and lets the imminent reset stop Wi-Fi instead of racing the
+  network task. Native tests passed 91/91; the final main image built at
+  2,142,448 bytes and was hash-verified on panel `10:00:3b:c2:db:a8` without an
+  NVS write. A post-flash serial window showed stable Home operation through 61
+  seconds; no new physical Recovery hold occurred during that capture, so the
+  corrected handoff remains operator-verification rather than claimed proof.
+- Because the next operator report still returned Home without a concurrent
+  trace, recovery now has a deterministic two-step manual entry boundary. It
+  initially shows only **Enable controls**; that first post-release touch is
+  consumed before the normal menu (including **Boot firmware**) appears. A
+  retained or spurious startup touch therefore cannot select main. Main also
+  explicitly stops the station DHCP client before requesting disconnect, so a
+  later interface-down event has no DHCP release packet to send through the
+  Wi-Fi driver. Native tests passed 91/91; final main and recovery builds passed
+  at 2,142,480 and 940,432 raw bytes. Both were flashed in recovery-then-main
+  order to panel `10:00:3b:c2:db:a8`, with every written-region hash verified
+  and NVS outside the write ranges.
+- The kept-open serial monitor captured the next exact attempt: `loopTask`
+  reported stack overflow before recovery boot. `enterRecovery()` placed a
+  roughly 1.6 KB request on the loop stack while `RecoveryJournal::load()`
+  simultaneously placed two encoded records there; `save()` added another
+  encoded record. All bounded journal records and updater request/completion
+  records now use checked `nothrow` heap allocations. Allocation failure is
+  actionable and cannot partially select recovery. Native tests passed 91/91;
+  final main and recovery images built at 2,143,008 and 940,560 raw bytes and
+  were hash-verified on panel `10:00:3b:c2:db:a8` without touching NVS. Serial
+  was reattached for the next physical attempt.
+- Independently forced the bootloader's factory fallback by erasing only OTA
+  selection metadata at `0xE000`/`0x2000`; NVS, the recovery journal, and both
+  application images were outside that operation. A diagnostic recovery-only
+  image was then hash-verified at `0x10000`. Kept-open serial evidence reported
+  the running partition at `0x10000` with factory subtype `0`, followed by
+  successful panel-rail, touch, display-controller, and screen initialization.
+  The recovery process remained stable without returning to Home or resetting.
+  This proves the fixed recovery application boots independently on panel
+  `10:00:3b:c2:db:a8`; the on-screen controls and the repaired main-to-recovery
+  handoff still require the next operator interaction.
+- The operator confirmed recovery was running but its screen contained shifting
+  vertical bands. The recovery-only display shim had truncated LovyanGFX's
+  GC9A01 initialization table, programmed RGB565 as `COLMOD=0x05` instead of
+  `0x55`, and reversed the configured MADCTL BGR bit. A diagnostic recovery
+  build using the complete LovyanGFX panel stack rendered perfectly on the
+  physical panel, proving the display was not damaged. The final compact driver
+  now sends the same complete controller table and corrected mode bytes with
+  bounded byte writes, while retaining the small recovery text renderer.
+- Removed the temporary two-step **Enable controls** screen. Recovery now opens
+  its menu directly after the existing boot-time settled-release touch gate.
+  The final recovery-only image was hash-verified at `0x10000` without touching
+  NVS or main. Its temporary doubled 3x5 diagnostic font proved too blocky on
+  hardware and was replaced by a conventional native-resolution 5x7 bitmap
+  font. The resulting image measures 940,048 bytes, below the `0xF0000` ceiling. Native
+  tests passed 91/91, the full Montserrat main build passed at 2,143,008 raw
+  bytes, the partition/size gate passed for both images, and `git diff --check`
+  passed. Final compact-driver appearance remains operator confirmation; the
+  serial process remains stable in recovery.
+
 ### 2026-08-15: Signed startup checks and fixed recovery firmware updates
 
 - Superseded ADR-045 with ADR-046. Stores and Home now render before the updater

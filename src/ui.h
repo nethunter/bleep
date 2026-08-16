@@ -58,6 +58,8 @@ void simShowUpdateConfirmation();
 void simDismissUpdatePrompt();
 void simScrollSettingsToEnd();
 void simScrollAboutToEnd();
+void simStartFirmwareRecoveryHold();
+void simHoldFirmwareRecovery();
 void simSetHapticEnabled(bool enabled);
 void simSetFactoryResetHolding(bool holding);
 bool simShowingHome();

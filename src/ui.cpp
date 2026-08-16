@@ -219,6 +219,8 @@ lv_obj_t* factoryResetButton = nullptr;
 lv_obj_t* factoryResetProgress = nullptr;
 lv_obj_t* factoryResetStatus = nullptr;
 lv_obj_t* firmwareUpdateStatus = nullptr;
+lv_obj_t* firmwareUpdateTitle = nullptr;
+lv_obj_t* firmwareUpdateContent = nullptr;
 lv_obj_t* firmwareUpdateCheck = nullptr;
 lv_obj_t* firmwareUpdateInstall = nullptr;
 lv_obj_t* firmwareUpdateRollback = nullptr;
@@ -736,6 +738,8 @@ void destroySettingsScreen() {
   factoryResetProgress = nullptr;
   factoryResetStatus = nullptr;
   firmwareUpdateStatus = nullptr;
+  firmwareUpdateTitle = nullptr;
+  firmwareUpdateContent = nullptr;
   firmwareUpdateCheck = nullptr;
   firmwareUpdateInstall = nullptr;
   firmwareUpdateRollback = nullptr;
@@ -747,7 +751,8 @@ void destroySettingsScreen() {
   settingsHeaderNeedsRefresh = false;
 }
 
-lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
+lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back,
+                         lv_obj_t** titleLabel = nullptr) {
   scrSettings = lv_obj_create(nullptr);
   styleScreen(scrSettings);
   lv_obj_clear_flag(scrSettings, LV_OBJ_FLAG_SCROLLABLE);
@@ -765,7 +770,9 @@ lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
   header.onBack = back;
   header.panelColor = kColPanel;
   header.textColor = kColText;
-  studio_ui::createRoundPageHeader(settingsHeader, header);
+  const studio_ui::RoundPageHeader created =
+      studio_ui::createRoundPageHeader(settingsHeader, header);
+  if (titleLabel != nullptr) *titleLabel = created.title;
   return scrSettings;
 }
 
@@ -930,12 +937,15 @@ void onUpdateChannelChanged(lv_event_t* event) {
 void onFirmwareRollbackPressed(lv_event_t*) {
   firmwareRollbackHolding = true;
   firmwareRollbackStartedMs = millis();
+  if (firmwareUpdateTitle != nullptr) {
+    lv_label_set_text(firmwareUpdateTitle, "Hold 3s");
+  }
 }
 
 void onFirmwareRollbackReleased(lv_event_t*) {
   firmwareRollbackHolding = false;
-  if (firmwareUpdateRollback != nullptr) {
-    lv_label_set_text(lv_obj_get_child(firmwareUpdateRollback, 0), "RECOVERY");
+  if (firmwareUpdateTitle != nullptr) {
+    lv_label_set_text(firmwareUpdateTitle, "Firmware");
   }
 }
 
@@ -1008,7 +1018,7 @@ void buildSettingsMenu() {
 void refreshFirmwareUpdate() {
   if (firmwareUpdateStatus == nullptr) return;
   const firmware_update::Snapshot current = firmware_update::service().status();
-  char text[220];
+  char text[240];
   const char* channel = studio::panelSettings().get().firmwareUpdateChannel ==
                                 studio::FirmwareUpdateChannel::Development
                             ? "Development"
@@ -1016,19 +1026,33 @@ void refreshFirmwareUpdate() {
   const char* detail = !current.wifiConfigured ? "Configure Wi-Fi" :
       current.disconnectRequired ? "Devices are connected" :
       current.updateAvailable ? current.version : current.message;
-  std::snprintf(text, sizeof(text), "%s  |  %s\n%.12s  |  %s\nLAST  %s\n%s%s",
+  const bool checking = current.status == firmware_update::Status::Connecting ||
+                        current.status == firmware_update::Status::Checking;
+  const char* summaryPrefix = checking ? "Status: " :
+      current.updateAvailable ? "Available: " : "Last: ";
+  const char* summary = checking ? detail :
+      current.updateAvailable ? current.version : current.lastResult;
+  std::snprintf(text, sizeof(text), "%s | %s\n%.12s | %s\n%s%s",
                 build_info::kFirmwareVersion, build_info::kReleaseChannel,
-                build_info::kGitCommit, channel, current.lastResult,
-                current.updateAvailable ? "AVAILABLE  " : "", detail);
+                build_info::kGitCommit, channel, summaryPrefix, summary);
   lv_label_set_text(firmwareUpdateStatus, text);
   if (firmwareUpdateCheck != nullptr) {
-    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0),
+    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0), checking ? "CHECKING..." :
                       !current.wifiConfigured ? "CONFIGURE WI-FI" :
                       current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");
+    if (checking) lv_obj_add_state(firmwareUpdateCheck, LV_STATE_DISABLED);
+    else lv_obj_clear_state(firmwareUpdateCheck, LV_STATE_DISABLED);
+    if (current.updateAvailable) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
   }
   if (firmwareUpdateInstall != nullptr) {
-    if (current.updateAvailable) lv_obj_clear_state(firmwareUpdateInstall, LV_STATE_DISABLED);
-    else lv_obj_add_state(firmwareUpdateInstall, LV_STATE_DISABLED);
+    if (current.updateAvailable) {
+      lv_obj_clear_state(firmwareUpdateInstall, LV_STATE_DISABLED);
+      lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_state(firmwareUpdateInstall, LV_STATE_DISABLED);
+      lv_obj_add_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+    }
   }
   if (firmwareUpdateRollback != nullptr) {
     if (current.recoveryAvailable) {
@@ -1040,23 +1064,38 @@ void refreshFirmwareUpdate() {
 }
 
 void buildFirmwareUpdate() {
-  settingsScreen("Firmware", onSettingsBack);
-  firmwareUpdateStatus = lv_label_create(scrSettings);
-  lv_obj_set_width(firmwareUpdateStatus, 184);
-  lv_obj_set_style_text_align(firmwareUpdateStatus, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(firmwareUpdateStatus, UI_FONT_14, 0);
-  lv_obj_align(firmwareUpdateStatus, LV_ALIGN_TOP_MID, 0, 64);
+  settingsScreen("Firmware", onSettingsBack, &firmwareUpdateTitle);
+  firmwareUpdateContent = lv_obj_create(scrSettings);
+  lv_obj_set_size(firmwareUpdateContent, 198, 174);
+  lv_obj_align(firmwareUpdateContent, LV_ALIGN_BOTTOM_MID, 0, -6);
+  lv_obj_set_style_bg_opa(firmwareUpdateContent, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(firmwareUpdateContent, 0, 0);
+  lv_obj_set_style_pad_left(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_right(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_top(firmwareUpdateContent, 2, 0);
+  lv_obj_set_style_pad_bottom(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_row(firmwareUpdateContent, 4, 0);
+  lv_obj_clear_flag(firmwareUpdateContent, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(firmwareUpdateContent, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_flex_flow(firmwareUpdateContent, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(firmwareUpdateContent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t* channelRow = lv_obj_create(scrSettings);
-  lv_obj_set_size(channelRow, 172, 30);
-  lv_obj_align(channelRow, LV_ALIGN_TOP_MID, 0, 137);
+  firmwareUpdateStatus = lv_label_create(firmwareUpdateContent);
+  lv_obj_set_size(firmwareUpdateStatus, 178, 44);
+  lv_label_set_long_mode(firmwareUpdateStatus, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(firmwareUpdateStatus, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(firmwareUpdateStatus, UI_FONT_12, 0);
+
+  lv_obj_t* channelRow = lv_obj_create(firmwareUpdateContent);
+  lv_obj_set_size(channelRow, 172, 28);
   lv_obj_set_style_bg_opa(channelRow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(channelRow, 0, 0);
   lv_obj_set_style_pad_all(channelRow, 0, 0);
   lv_obj_clear_flag(channelRow, LV_OBJ_FLAG_SCROLLABLE);
   firmwareUpdateChannelLabel = lv_label_create(channelRow);
-  lv_label_set_text(firmwareUpdateChannelLabel, "DEV");
-  lv_obj_set_style_text_font(firmwareUpdateChannelLabel, UI_FONT_14, 0);
+  lv_label_set_text(firmwareUpdateChannelLabel, "STABLE / DEV");
+  lv_obj_set_style_text_font(firmwareUpdateChannelLabel, UI_FONT_12, 0);
   lv_obj_align(firmwareUpdateChannelLabel, LV_ALIGN_LEFT_MID, 2, 0);
   firmwareUpdateChannelToggle = lv_switch_create(channelRow);
   lv_obj_set_size(firmwareUpdateChannelToggle, 42, 22);
@@ -1067,24 +1106,23 @@ void buildFirmwareUpdate() {
   }
   lv_obj_add_event_cb(firmwareUpdateChannelToggle, onUpdateChannelChanged,
                       LV_EVENT_VALUE_CHANGED, nullptr);
-  firmwareUpdateRollback = makeButton(channelRow, "RECOVERY", nullptr, kColDanger);
-  lv_obj_set_size(firmwareUpdateRollback, 70, 22);
+  firmwareUpdateCheck = makeButton(firmwareUpdateContent, "CHECK NOW", onFirmwareCheck,
+                                   kColPanel);
+  lv_obj_set_size(firmwareUpdateCheck, 154, 30);
+  lv_obj_set_style_text_letter_space(lv_obj_get_child(firmwareUpdateCheck, 0), -1, 0);
+  firmwareUpdateInstall = makeButton(firmwareUpdateContent, "INSTALL NOW", onUpdateInstall,
+                                     kColAccent);
+  lv_obj_set_size(firmwareUpdateInstall, 154, 30);
+  firmwareUpdateRollback = makeButton(firmwareUpdateContent, "HOLD 3S: RECOVERY", nullptr,
+                                      kColDanger);
+  lv_obj_set_size(firmwareUpdateRollback, 154, 28);
   lv_obj_set_style_text_font(lv_obj_get_child(firmwareUpdateRollback, 0), UI_FONT_12, 0);
-  lv_obj_center(firmwareUpdateRollback);
   lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackPressed,
                       LV_EVENT_PRESSED, nullptr);
   lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackReleased,
                       LV_EVENT_RELEASED, nullptr);
   lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackReleased,
                       LV_EVENT_PRESS_LOST, nullptr);
-
-  firmwareUpdateCheck = makeButton(scrSettings, "CHECK NOW", onFirmwareCheck, kColPanel);
-  lv_obj_set_size(firmwareUpdateCheck, 154, 30);
-  lv_obj_align(firmwareUpdateCheck, LV_ALIGN_BOTTOM_MID, 0, -39);
-  lv_obj_set_style_text_letter_space(lv_obj_get_child(firmwareUpdateCheck, 0), -1, 0);
-  firmwareUpdateInstall = makeButton(scrSettings, "INSTALL NOW", onUpdateInstall, kColAccent);
-  lv_obj_set_size(firmwareUpdateInstall, 154, 30);
-  lv_obj_align(firmwareUpdateInstall, LV_ALIGN_BOTTOM_MID, 0, -6);
   refreshFirmwareUpdate();
 }
 
@@ -1631,9 +1669,14 @@ void tick() {
   if (screen == Screen::Settings &&
       settingsView == SettingsView::FirmwareUpdate && firmwareRollbackHolding) {
     const uint32_t elapsed = millis() - firmwareRollbackStartedMs;
-    if (firmwareUpdateRollback != nullptr) {
-      lv_label_set_text(lv_obj_get_child(firmwareUpdateRollback, 0),
-                        elapsed >= 3000 ? "REBOOTING" : "HOLD 3S");
+    if (firmwareUpdateTitle != nullptr) {
+      char holdText[16];
+      const uint32_t secondsRemaining = elapsed >= 3000
+          ? 0 : (3000 - elapsed + 999) / 1000;
+      std::snprintf(holdText, sizeof(holdText),
+                    secondsRemaining == 0 ? "Recovery..." : "Hold %lus",
+                    static_cast<unsigned long>(secondsRemaining));
+      lv_label_set_text(firmwareUpdateTitle, holdText);
     }
     if (elapsed >= 3000) {
       firmwareRollbackHolding = false;
@@ -1643,7 +1686,9 @@ void tick() {
       if (!firmware_update::service().enterRecovery()) {
         if (firmwareUpdateRollback != nullptr) {
           lv_obj_clear_state(firmwareUpdateRollback, LV_STATE_DISABLED);
-          lv_label_set_text(lv_obj_get_child(firmwareUpdateRollback, 0), "RECOVERY");
+        }
+        if (firmwareUpdateTitle != nullptr) {
+          lv_label_set_text(firmwareUpdateTitle, "Failed");
         }
         haptic_feedback::request(haptic_feedback::Pattern::Error);
       }
@@ -1905,6 +1950,19 @@ void simScrollAboutToEnd() {
   if (aboutContent != nullptr) {
     lv_obj_scroll_to_y(aboutContent, lv_obj_get_scroll_bottom(aboutContent),
                        LV_ANIM_OFF);
+  }
+}
+
+void simHoldFirmwareRecovery() {
+  if (firmwareUpdateRollback == nullptr) return;
+  lv_event_send(firmwareUpdateRollback, LV_EVENT_PRESSED, nullptr);
+  delay(3001);
+  tick();
+}
+
+void simStartFirmwareRecoveryHold() {
+  if (firmwareUpdateRollback != nullptr) {
+    lv_event_send(firmwareUpdateRollback, LV_EVENT_PRESSED, nullptr);
   }
 }
 

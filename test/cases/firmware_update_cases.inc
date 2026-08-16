@@ -114,4 +114,25 @@ void test_recovery_journal_alternates_recovers_and_clears() {
                         static_cast<int>(loaded.operation));
   TEST_ASSERT_TRUE(journal.clear());
   TEST_ASSERT_FALSE(journal.load(loaded));
+
+  studio::RecoveryRecord recoveryMode;
+  recoveryMode.operation = studio::RecoveryOperation::RecoveryModeRequested;
+  TEST_ASSERT_TRUE(journal.save(recoveryMode));
+  TEST_ASSERT_TRUE(journal.load(loaded));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RecoveryOperation::RecoveryModeRequested),
+      static_cast<int>(loaded.operation));
+}
+
+void test_recovery_touch_requires_a_settled_release_after_reboot() {
+  studio::RecoveryTouchGate gate;
+  TEST_ASSERT_FALSE(gate.update(false, 0));
+  TEST_ASSERT_FALSE(gate.update(false, 1499));
+  TEST_ASSERT_FALSE(gate.update(true, 1500));
+  TEST_ASSERT_FALSE(gate.update(true, 5000));
+  TEST_ASSERT_FALSE(gate.update(false, 5010));
+  TEST_ASSERT_FALSE(gate.update(false, 5309));
+  TEST_ASSERT_TRUE(gate.update(false, 5310));
+  TEST_ASSERT_TRUE(gate.armed());
+  TEST_ASSERT_TRUE(gate.update(true, 5220));
 }

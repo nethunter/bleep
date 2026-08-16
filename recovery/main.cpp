@@ -16,6 +16,7 @@
 #include "core/partition_recovery_backend.h"
 #include "core/preferences_store.h"
 #include "core/recovery_journal.h"
+#include "core/recovery_touch_gate.h"
 #include "firmware_update_keys.h"
 
 namespace {
@@ -46,6 +47,53 @@ Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
 pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
 MrY=
 -----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICjzCCAhWgAwIBAgIQXIuZxVqUxdJxVt7NiYDMJjAKBggqhkjOPQQDAzCBiDEL
+MAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNl
+eSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMT
+JVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMjAx
+MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBiDELMAkGA1UEBhMCVVMxEzARBgNVBAgT
+Ck5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUg
+VVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2VydGlm
+aWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQarFRaqflo
+I+d61SRvU8Za2EurxtW20eZzca7dnNYMYf3boIkDuAUU7FfO7l0/4iGzzvfUinng
+o4N+LZfQYcTxmdwlkWOrfzCjtHDix6EznPO/LlxTsV+zfTJ/ijTjeXmjQjBAMB0G
+A1UdDgQWBBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYwDwYD
+VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMB
+zzuqQhFkoJ2UOQIReVx7Hfpkue4WQrO/isIJxOzksU0CMQDpKmFHjFJKS04YcPbW
+RNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
 )CERT";
 
 namespace board {
@@ -64,120 +112,179 @@ constexpr uint16_t TFT_DARKGREY = 0x7BEF;
 constexpr uint16_t TFT_MAROON = 0x7800;
 constexpr int middle_center = 0;
 
-class Display {
+class RecoveryDisplay {
  public:
   void init() {
-    pinMode(board::lcdDc, OUTPUT); pinMode(board::lcdCs, OUTPUT);
+    pinMode(board::lcdDc, OUTPUT);
+    pinMode(board::lcdCs, OUTPUT);
     digitalWrite(board::lcdCs, HIGH);
     SPI.begin(board::lcdSck, -1, board::lcdMosi, board::lcdCs);
-    command(0xEF); const uint8_t eb[] = {0x14}; command(0xEB, eb, sizeof(eb));
-    command(0xFE); command(0xEF);
-    const uint8_t c84[] = {0x40}; command(0x84, c84, 1);
-    const uint8_t c85[] = {0xFF}; command(0x85, c85, 1); command(0x86, c85, 1);
-    command(0x87, c85, 1); const uint8_t c88[] = {0x0A}; command(0x88, c88, 1);
-    const uint8_t c89[] = {0x21}; command(0x89, c89, 1);
-    const uint8_t c8a[] = {0x00}; command(0x8A, c8a, 1);
-    const uint8_t c8b[] = {0x80}; command(0x8B, c8b, 1);
-    const uint8_t c8c[] = {0x01}; command(0x8C, c8c, 1); command(0x8D, c8c, 1);
-    command(0x8E, c85, 1); command(0x8F, c85, 1);
-    const uint8_t b6[] = {0x00, 0x20}; command(0xB6, b6, sizeof(b6));
-    const uint8_t format = 0x05; command(0x3A, &format, 1);
-    const uint8_t orientation = DISPLAY_RGB_ORDER != 0 ? 0x08 : 0x00;
+
+    static constexpr uint8_t initCommands[] = {
+      0xEF,0, 0xEB,1,0x14, 0xFE,0, 0xEF,0, 0xEB,1,0x14,
+      0x84,1,0x40, 0x85,1,0xFF, 0x86,1,0xFF, 0x87,1,0xFF,
+      0x8E,1,0xFF, 0x8F,1,0xFF, 0x88,1,0x0A, 0x89,1,0x21,
+      0x8A,1,0x00, 0x8B,1,0x80, 0x8C,1,0x01, 0x8D,1,0x01,
+      0xB6,2,0x00,0x20, 0x90,4,0x08,0x08,0x08,0x08,
+      0xBD,1,0x06, 0xBC,1,0x00, 0xFF,3,0x60,0x01,0x04,
+      0xC3,1,0x13, 0xC4,1,0x13, 0xC9,1,0x22, 0xBE,1,0x11,
+      0xE1,2,0x10,0x0E, 0xDF,3,0x21,0x0C,0x02,
+      0xF0,6,0x45,0x09,0x08,0x08,0x26,0x2A,
+      0xF1,6,0x43,0x70,0x72,0x36,0x37,0x6F,
+      0xF2,6,0x45,0x09,0x08,0x08,0x26,0x2A,
+      0xF3,6,0x43,0x70,0x72,0x36,0x37,0x6F,
+      0xED,2,0x1B,0x0B, 0xAE,1,0x77, 0xCD,1,0x63,
+      0x70,9,0x07,0x07,0x04,0x0E,0x0F,0x09,0x07,0x08,0x03,
+      0xE8,1,0x34,
+      0x62,12,0x18,0x0D,0x71,0xED,0x70,0x70,0x18,0x0F,0x71,0xEF,0x70,0x70,
+      0x63,12,0x18,0x11,0x71,0xF1,0x70,0x70,0x18,0x13,0x71,0xF3,0x70,0x70,
+      0x64,7,0x28,0x29,0xF1,0x01,0xF1,0x00,0x07,
+      0x66,10,0x3C,0x00,0xCD,0x67,0x45,0x45,0x10,0x00,0x00,0x00,
+      0x67,10,0x00,0x3C,0x00,0x00,0x00,0x01,0x54,0x10,0x32,0x98,
+      0x74,7,0x10,0x68,0x80,0x00,0x00,0x4E,0x00,
+      0x98,2,0x3E,0x07, 0x35,1,0x00,
+      0x11,0x80,120, 0x29,0, 0xFF,0xFF,
+    };
+    const uint8_t* cursor = initCommands;
+    while (!(cursor[0] == 0xFF && cursor[1] == 0xFF)) {
+      const uint8_t value = *cursor++;
+      uint8_t length = *cursor++;
+      const bool delayed = (length & 0x80U) != 0;
+      length &= 0x7FU;
+      command(value, cursor, length);
+      cursor += length;
+      if (delayed) delay(*cursor++);
+    }
+    const uint8_t pixelFormat = 0x55;
+    command(0x3A, &pixelFormat, 1);
+    const uint8_t orientation = DISPLAY_RGB_ORDER != 0 ? 0x00 : 0x08;
     command(0x36, &orientation, 1);
-    const uint8_t c90[] = {0x08, 0x08, 0x08, 0x08}; command(0x90, c90, sizeof(c90));
-    const uint8_t bd[] = {0x06}; command(0xBD, bd, 1);
-    const uint8_t bc[] = {0x00}; command(0xBC, bc, 1);
-    const uint8_t ff[] = {0x60, 0x01, 0x04}; command(0xFF, ff, sizeof(ff));
-    const uint8_t c3[] = {0x13}; command(0xC3, c3, 1); command(0xC4, c3, 1);
-    const uint8_t c9[] = {0x22}; command(0xC9, c9, 1);
-    const uint8_t be[] = {0x11}; command(0xBE, be, 1);
-    const uint8_t e1[] = {0x10, 0x0E}; command(0xE1, e1, sizeof(e1));
-    const uint8_t df[] = {0x21, 0x0C, 0x02}; command(0xDF, df, sizeof(df));
-    const uint8_t f0[] = {0x45, 0x09, 0x08, 0x08, 0x26, 0x2A}; command(0xF0, f0, sizeof(f0));
-    const uint8_t f1[] = {0x43, 0x70, 0x72, 0x36, 0x37, 0x6F}; command(0xF1, f1, sizeof(f1));
-    command(0xF2, f0, sizeof(f0)); command(0xF3, f1, sizeof(f1));
-    command(0x21); command(0x11); delay(120); command(0x29); delay(20);
+    command(0x21);
   }
   void setRotation(int) {}
   void setTextDatum(int) {}
   void setTextSize(int) {}
   void setFont(const void*) {}
   void setTextColor(uint16_t foreground, uint16_t background) {
-    foreground_ = foreground; background_ = background;
+    foreground_ = foreground;
+    background_ = background;
   }
   void fillScreen(uint16_t color) { fillRect(0, 0, 240, 240, color); }
   void fillRoundRect(int x, int y, int width, int height, int, uint16_t color) {
     fillRect(x, y, width, height, color);
   }
   void drawRoundRect(int x, int y, int width, int height, int, uint16_t color) {
-    fillRect(x, y, width, 1, color); fillRect(x, y + height - 1, width, 1, color);
-    fillRect(x, y, 1, height, color); fillRect(x + width - 1, y, 1, height, color);
+    fillRect(x, y, width, 1, color);
+    fillRect(x, y + height - 1, width, 1, color);
+    fillRect(x, y, 1, height, color);
+    fillRect(x + width - 1, y, 1, height, color);
   }
   void drawString(const char* text, int centerX, int centerY) {
     const int length = static_cast<int>(strlen(text));
-    int x = centerX - length * 4;
-    for (int i = 0; text[i] != '\0'; ++i, x += 8) drawChar(x, centerY - 5, text[i]);
+    int x = centerX - length * 3;
+    for (int i = 0; text[i] != '\0'; ++i, x += 6) drawChar(x, centerY - 4, text[i]);
   }
 
  private:
-  static uint16_t glyph(char value) {
+  static const uint8_t* glyph(char value) {
     if (value >= 'a' && value <= 'z') value -= 'a' - 'A';
-    static constexpr uint16_t letters[] = {
-      0x5F7D,0x7B7B,0x724F,0x7B6B,0x734F,0x7348,0x725F,0x5BED,0x7497,0x2496,
-      0x5BAD,0x492F,0x5FFD,0x5FFD,0x76BB,0x7B48,0x76BF,0x7BAD,0x73B7,0x7492,
-      0x5B7B,0x5B72,0x5FF5,0x5AAD,0x5A92,0x7497};
-    static constexpr uint16_t digits[] = {
-      0x76BB,0x2492,0x72E7,0x72B7,0x5BC9,0x73B7,0x73BF,0x7292,0x7BBF,0x7BB7};
+    static constexpr uint8_t letters[][5] = {
+      {0x7E,0x11,0x11,0x11,0x7E}, {0x7F,0x49,0x49,0x49,0x36},
+      {0x3E,0x41,0x41,0x41,0x22}, {0x7F,0x41,0x41,0x22,0x1C},
+      {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x09,0x01},
+      {0x3E,0x41,0x49,0x49,0x7A}, {0x7F,0x08,0x08,0x08,0x7F},
+      {0x00,0x41,0x7F,0x41,0x00}, {0x20,0x40,0x41,0x3F,0x01},
+      {0x7F,0x08,0x14,0x22,0x41}, {0x7F,0x40,0x40,0x40,0x40},
+      {0x7F,0x02,0x0C,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F},
+      {0x3E,0x41,0x41,0x41,0x3E}, {0x7F,0x09,0x09,0x09,0x06},
+      {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46},
+      {0x46,0x49,0x49,0x49,0x31}, {0x01,0x01,0x7F,0x01,0x01},
+      {0x3F,0x40,0x40,0x40,0x3F}, {0x1F,0x20,0x40,0x20,0x1F},
+      {0x3F,0x40,0x38,0x40,0x3F}, {0x63,0x14,0x08,0x14,0x63},
+      {0x07,0x08,0x70,0x08,0x07}, {0x61,0x51,0x49,0x45,0x43}};
+    static constexpr uint8_t digits[][5] = {
+      {0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00},
+      {0x42,0x61,0x51,0x49,0x46}, {0x21,0x41,0x45,0x4B,0x31},
+      {0x18,0x14,0x12,0x7F,0x10}, {0x27,0x45,0x45,0x45,0x39},
+      {0x3C,0x4A,0x49,0x49,0x30}, {0x01,0x71,0x09,0x05,0x03},
+      {0x36,0x49,0x49,0x49,0x36}, {0x06,0x49,0x49,0x29,0x1E}};
+    static constexpr uint8_t space[] = {0,0,0,0,0};
+    static constexpr uint8_t dash[] = {0x08,0x08,0x08,0x08,0x08};
+    static constexpr uint8_t period[] = {0x00,0x60,0x60,0x00,0x00};
+    static constexpr uint8_t colon[] = {0x00,0x36,0x36,0x00,0x00};
+    static constexpr uint8_t slash[] = {0x20,0x10,0x08,0x04,0x02};
+    static constexpr uint8_t leftParen[] = {0x00,0x1C,0x22,0x41,0x00};
+    static constexpr uint8_t rightParen[] = {0x00,0x41,0x22,0x1C,0x00};
+    static constexpr uint8_t percent[] = {0x63,0x13,0x08,0x64,0x63};
     if (value >= 'A' && value <= 'Z') return letters[value - 'A'];
     if (value >= '0' && value <= '9') return digits[value - '0'];
-    if (value == '-') return 0x01C0;
-    if (value == '(') return 0x2444;
-    if (value == ')') return 0x1112;
-    if (value == '%') return 0x52A5;
-    return 0;
+    if (value == '-') return dash;
+    if (value == '.') return period;
+    if (value == ':') return colon;
+    if (value == '/') return slash;
+    if (value == '(') return leftParen;
+    if (value == ')') return rightParen;
+    if (value == '%') return percent;
+    return space;
   }
   void drawChar(int x, int y, char value) {
-    const uint16_t bits = glyph(value);
-    fillRect(x, y, 6, 10, background_);
-    for (int row = 0; row < 5; ++row) {
-      for (int column = 0; column < 3; ++column) {
-        if ((bits & (1U << (14 - row * 3 - column))) != 0)
-          fillRect(x + column * 2, y + row * 2, 2, 2, foreground_);
+    const uint8_t* columns = glyph(value);
+    fillRect(x, y, 6, 8, background_);
+    for (int column = 0; column < 5; ++column) {
+      for (int row = 0; row < 7; ++row) {
+        if ((columns[column] & (1U << row)) != 0) {
+          fillRect(x + column, y + row, 1, 1, foreground_);
+        }
       }
     }
   }
   void command(uint8_t value, const uint8_t* data = nullptr, size_t length = 0) {
     SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
-    digitalWrite(board::lcdCs, LOW); digitalWrite(board::lcdDc, LOW); SPI.transfer(value);
+    digitalWrite(board::lcdCs, LOW);
+    digitalWrite(board::lcdDc, LOW);
+    SPI.transfer(value);
     digitalWrite(board::lcdDc, HIGH);
-    if (data != nullptr) SPI.writeBytes(data, length);
-    digitalWrite(board::lcdCs, HIGH); SPI.endTransaction();
+    for (size_t i = 0; i < length; ++i) SPI.transfer(data[i]);
+    digitalWrite(board::lcdCs, HIGH);
+    SPI.endTransaction();
   }
   void fillRect(int x, int y, int width, int height, uint16_t color) {
     if (width <= 0 || height <= 0) return;
-    const uint8_t columns[] = {static_cast<uint8_t>(x >> 8), static_cast<uint8_t>(x),
+    const uint8_t columns[] = {
+      static_cast<uint8_t>(x >> 8), static_cast<uint8_t>(x),
       static_cast<uint8_t>((x + width - 1) >> 8), static_cast<uint8_t>(x + width - 1)};
-    const uint8_t rows[] = {static_cast<uint8_t>(y >> 8), static_cast<uint8_t>(y),
+    const uint8_t rows[] = {
+      static_cast<uint8_t>(y >> 8), static_cast<uint8_t>(y),
       static_cast<uint8_t>((y + height - 1) >> 8), static_cast<uint8_t>(y + height - 1)};
-    command(0x2A, columns, sizeof(columns)); command(0x2B, rows, sizeof(rows));
+    command(0x2A, columns, sizeof(columns));
+    command(0x2B, rows, sizeof(rows));
     SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
-    digitalWrite(board::lcdCs, LOW); digitalWrite(board::lcdDc, LOW); SPI.transfer(0x2C);
+    digitalWrite(board::lcdCs, LOW);
+    digitalWrite(board::lcdDc, LOW);
+    SPI.transfer(0x2C);
     digitalWrite(board::lcdDc, HIGH);
-    const uint8_t high = color >> 8, low = color;
-    for (int count = width * height; count > 0; --count) { SPI.transfer(high); SPI.transfer(low); }
-    digitalWrite(board::lcdCs, HIGH); SPI.endTransaction();
+    const uint8_t high = color >> 8;
+    const uint8_t low = color;
+    for (int count = width * height; count > 0; --count) {
+      SPI.transfer(high);
+      SPI.transfer(low);
+    }
+    digitalWrite(board::lcdCs, HIGH);
+    SPI.endTransaction();
   }
+
   uint16_t foreground_ = TFT_WHITE;
   uint16_t background_ = TFT_BLACK;
 };
 
-Display display;
+RecoveryDisplay display;
 uint8_t ioState = 0;
 studio::PartitionRecoveryJournalBackend journalBackend;
 studio::RecoveryJournal journal(journalBackend);
 studio::RecoveryRecord request;
 bool touchDown = false;
 uint32_t factoryHoldStarted = 0;
+studio::RecoveryTouchGate touchGate;
 
 bool i2cWrite(uint8_t address, uint8_t reg, uint8_t value) {
   Wire.beginTransmission(address); Wire.write(reg); Wire.write(value);
@@ -544,6 +651,13 @@ void startStable(bool factoryReset) {
 
 void bootMain() {
   const esp_partition_t* target = mainPartition();
+  Serial.printf("RECOVERY: boot main requested operation=%u\n",
+                static_cast<unsigned>(request.operation));
+  if (request.operation == studio::RecoveryOperation::RecoveryModeRequested &&
+      !journal.clear()) {
+    readyScreen("Could not leave recovery");
+    return;
+  }
   if (target != nullptr && mainValid() && esp_ota_set_boot_partition(target) == ESP_OK) {
     ESP.restart();
   }
@@ -555,6 +669,9 @@ void bootMain() {
 void setup() {
   Serial.begin(115200); initPanel();
   const bool loaded = journal.load(request);
+  Serial.printf("RECOVERY: journal loaded=%u operation=%u main_valid=%u\n",
+                loaded ? 1U : 0U, static_cast<unsigned>(request.operation),
+                mainValid() ? 1U : 0U);
   if (loaded && (request.operation == studio::RecoveryOperation::ImageVerifiedResetPending ||
                  request.operation == studio::RecoveryOperation::ResetComplete)) {
     screen("RESETTING", "Completing reset");
@@ -568,9 +685,10 @@ void setup() {
     if (!installRecord(request, false, false)) readyScreen("Update failed");
   } else if (loaded && request.operation == studio::RecoveryOperation::FactoryResetRequested) {
     if (!installRecord(request, true, true)) readyScreen("Factory reset failed");
-  } else if (!loaded && mainValid()) {
-    bootMain();
+  } else if (loaded && request.operation == studio::RecoveryOperation::RecoveryModeRequested) {
+    readyScreen();
   } else {
+    Serial.println("RECOVERY: no actionable request; staying in recovery");
     readyScreen();
   }
 }
@@ -578,6 +696,10 @@ void setup() {
 void loop() {
   uint16_t x = 0, y = 0;
   const bool touched = readTouch(x, y);
+  if (!touchGate.update(touched, millis())) {
+    delay(10);
+    return;
+  }
   if (touched && !touchDown) {
     touchDown = true;
     const bool retry = request.operation == studio::RecoveryOperation::FactoryResetRequested ||

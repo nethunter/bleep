@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include "core/firmware_update_policy.h"
 #include "core/home_assistant_config.h"
@@ -18,12 +20,14 @@ studio::FirmwareUpdatePolicy policy;
 Snapshot snapshot;
 bool runtimeIdle = true;
 bool automaticEligible = true;
+bool recoveryRequested = false;
 bool factoryResetRequested = false;
 }
 
 void FirmwareUpdateService::begin() {
   policy.begin(0);
   snapshot = {};
+  recoveryRequested = false;
 }
 void FirmwareUpdateService::loop() {}
 void FirmwareUpdateService::noteUserActivity() {}
@@ -59,7 +63,10 @@ void FirmwareUpdateService::dismissAvailable() {
                  sizeof(snapshot.message) - 1);
   }
 }
-bool FirmwareUpdateService::enterRecovery() { return snapshot.recoveryAvailable; }
+bool FirmwareUpdateService::enterRecovery() {
+  recoveryRequested = snapshot.recoveryAvailable;
+  return recoveryRequested;
+}
 bool FirmwareUpdateService::requestFactoryReset() {
   factoryResetRequested = snapshot.recoveryAvailable;
   return factoryResetRequested;
@@ -76,6 +83,26 @@ void FirmwareUpdateService::simSetAvailable(const char* version,
   std::strncpy(snapshot.version, version, sizeof(snapshot.version) - 1);
   std::strncpy(snapshot.message, "Update available", sizeof(snapshot.message) - 1);
 }
+void FirmwareUpdateService::simSetChecking() {
+  snapshot.status = Status::Checking;
+  snapshot.wifiConfigured = true;
+  snapshot.updateAvailable = false;
+  snapshot.notificationPending = false;
+  snapshot.disconnectRequired = false;
+  std::strncpy(snapshot.message, "Checking for updates",
+               sizeof(snapshot.message) - 1);
+}
+void FirmwareUpdateService::simSetFailure(const char* message) {
+  snapshot.status = Status::Failed;
+  snapshot.wifiConfigured = true;
+  snapshot.updateAvailable = false;
+  snapshot.notificationPending = false;
+  snapshot.disconnectRequired = false;
+  std::strncpy(snapshot.lastResult, message, sizeof(snapshot.lastResult) - 1);
+  snapshot.lastResult[sizeof(snapshot.lastResult) - 1] = '\0';
+  std::strncpy(snapshot.message, message, sizeof(snapshot.message) - 1);
+  snapshot.message[sizeof(snapshot.message) - 1] = '\0';
+}
 void FirmwareUpdateService::simSetWifiConfigured(bool configured) {
   snapshot.wifiConfigured = configured;
   if (!configured) {
@@ -86,6 +113,9 @@ void FirmwareUpdateService::simSetWifiConfigured(bool configured) {
 }
 void FirmwareUpdateService::simSetRecoveryAvailable(bool available) {
   snapshot.recoveryAvailable = available;
+}
+bool FirmwareUpdateService::simRecoveryRequested() const {
+  return recoveryRequested;
 }
 bool FirmwareUpdateService::simFactoryResetRequested() const {
   return factoryResetRequested;
@@ -107,6 +137,7 @@ FirmwareUpdateService& service() {
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_http_client.h>
+#include <esp_netif.h>
 #include <esp_ota_ops.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/sha256.h>
@@ -126,13 +157,18 @@ constexpr size_t kMaximumImageSize = 0x2C0000;
 constexpr uint32_t kConnectTimeoutMs = 12000;
 constexpr uint32_t kRequestTimeoutMs = 30000;
 constexpr uint32_t kBootValidationMs = 10000;
+constexpr uint32_t kWifiShutdownSettleMs = 250;
+constexpr uint32_t kWifiShutdownTimeoutMs = 2000;
 constexpr uint32_t kMinimumFreeHeap = 48000;
 constexpr uint32_t kMinimumLargestBlock = 36000;
 constexpr char kStableManifestUrl[] =
     "https://github.com/nethunter/bleep/releases/latest/download/bleep-update.json";
 constexpr char kDevelopmentManifestUrl[] =
     "https://github.com/nethunter/bleep/releases/download/latest/bleep-update.json";
-constexpr char kGithubRootCa[] = R"CERT(-----BEGIN CERTIFICATE-----
+// GitHub and its release CDN currently terminate through different public PKI
+// chains. Keep the bounded roots together so an ordinary certificate rotation
+// cannot strand the updater before it can verify Ble(e)p's own signed manifest.
+constexpr char kUpdateTrustRoots[] = R"CERT(-----BEGIN CERTIFICATE-----
 MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
 d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
@@ -153,6 +189,53 @@ Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
 8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
 pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
 MrY=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICjzCCAhWgAwIBAgIQXIuZxVqUxdJxVt7NiYDMJjAKBggqhkjOPQQDAzCBiDEL
+MAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNl
+eSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMT
+JVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMjAx
+MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBiDELMAkGA1UEBhMCVVMxEzARBgNVBAgT
+Ck5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUg
+VVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2VydGlm
+aWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQarFRaqflo
+I+d61SRvU8Za2EurxtW20eZzca7dnNYMYf3boIkDuAUU7FfO7l0/4iGzzvfUinng
+o4N+LZfQYcTxmdwlkWOrfzCjtHDix6EznPO/LlxTsV+zfTJ/ijTjeXmjQjBAMB0G
+A1UdDgQWBBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYwDwYD
+VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMB
+zzuqQhFkoJ2UOQIReVx7Hfpkue4WQrO/isIJxOzksU0CMQDpKmFHjFJKS04YcPbW
+RNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 -----END CERTIFICATE-----
 )CERT";
 
@@ -175,10 +258,12 @@ Snapshot snapshot;
 bool runtimeIdle = false;
 bool automaticEligible = false;
 bool ownsWifi = false;
+bool wifiShutdownPending = false;
 bool bootPending = false;
 bool timeSyncStarted = false;
 uint32_t bootValidationStarted = 0;
 uint32_t operationStarted = 0;
+uint32_t wifiShutdownStarted = 0;
 esp_http_client_handle_t client = nullptr;
 TransferKind transferKind = TransferKind::None;
 char manifest[kManifestCapacity] = {};
@@ -254,9 +339,22 @@ void cleanupClient() {
 void releaseWifi() {
   cleanupClient();
   if (!ownsWifi) return;
-  WiFi.disconnect(true, false);
-  WiFi.mode(WIFI_OFF);
+  // disconnect(true) can deinitialize the ESP32-C3 driver before the tcpip
+  // task finishes its DHCP release, leaving that task with a dead Wi-Fi queue.
+  esp_netif_t* station = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (station != nullptr) esp_netif_dhcpc_stop(station);
+  WiFi.disconnect(false, false);
   ownsWifi = false;
+  wifiShutdownPending = true;
+  wifiShutdownStarted = millis();
+}
+
+void finishWifiShutdown(uint32_t now) {
+  if (!wifiShutdownPending || now - wifiShutdownStarted < kWifiShutdownSettleMs) return;
+  if (WiFi.status() == WL_CONNECTED &&
+      now - wifiShutdownStarted < kWifiShutdownTimeoutMs) return;
+  WiFi.mode(WIFI_OFF);
+  wifiShutdownPending = false;
 }
 
 void fail(const char* message) {
@@ -289,7 +387,7 @@ bool startTransfer(const char* url, TransferKind kind) {
   cleanupClient();
   esp_http_client_config_t config = {};
   config.url = url;
-  config.cert_pem = kGithubRootCa;
+  config.cert_pem = kUpdateTrustRoots;
   config.user_agent = "Bleep-Firmware-Updater/1";
   config.timeout_ms = 5000;
   config.max_redirection_count = 4;
@@ -455,7 +553,8 @@ void handleCompletedTransfer() {
     return;
   }
   if (code != 200) {
-    fail("Update server error");
+    if (code == 404) fail("No signed release published");
+    else fail("Update server error");
     return;
   }
   if (finished == TransferKind::Manifest) {
@@ -484,6 +583,11 @@ bool selectRecoveryAndRestart() {
   const esp_partition_t* recovery = esp_partition_find_first(
       ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "recovery");
   if (recovery == nullptr || esp_ota_set_boot_partition(recovery) != ESP_OK) return false;
+  // The reset itself stops Wi-Fi. Deinitializing it here can race the tcpip
+  // task while it is still processing disconnect and DHCP events.
+  cleanupClient();
+  ownsWifi = false;
+  wifiShutdownPending = false;
   ESP.restart();
   return true;
 }
@@ -509,14 +613,16 @@ void FirmwareUpdateService::begin() {
 
 void FirmwareUpdateService::loop() {
   const uint32_t now = millis();
+  finishWifiShutdown(now);
   if (bootPending && now - bootValidationStarted >= kBootValidationMs) {
     if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
       studio::PartitionRecoveryJournalBackend backend;
       studio::RecoveryJournal journal(backend);
-      studio::RecoveryRecord completed;
-      if (journal.load(completed) &&
-          completed.releaseSequence > persisted.installedSequence) {
-        persisted.installedSequence = completed.releaseSequence;
+      std::unique_ptr<studio::RecoveryRecord> completed(
+          new (std::nothrow) studio::RecoveryRecord());
+      if (completed && journal.load(*completed) &&
+          completed->releaseSequence > persisted.installedSequence) {
+        persisted.installedSequence = completed->releaseSequence;
         savePersisted();
       }
       journal.clear();
@@ -555,6 +661,8 @@ void FirmwareUpdateService::loop() {
     const esp_err_t result = esp_http_client_perform(client);
     if (result == ESP_OK) handleCompletedTransfer();
     else if (result != ESP_ERR_HTTP_EAGAIN && result != ESP_ERR_HTTP_CONNECTING) {
+      Serial.printf("[fw-update] transfer failed: %s (0x%x)\n",
+                    esp_err_to_name(result), static_cast<unsigned>(result));
       fail("Network transfer failed");
     } else if (now - operationStarted >= kRequestTimeoutMs) {
       fail("Update request timed out");
@@ -601,20 +709,21 @@ void FirmwareUpdateService::checkNow(bool allowDisconnect) {
 bool FirmwareUpdateService::installAvailable() {
   if (!snapshot.updateAvailable || payloadUrl[0] == '\0' ||
       expectedImageSize == 0 || manifestLength == 0 || signatureLength == 0) return false;
-  studio::RecoveryRecord record;
-  record.operation = studio::RecoveryOperation::InstallRequested;
-  record.channel = static_cast<uint8_t>(
-      studio::panelSettings().get().firmwareUpdateChannel);
-  record.releaseSequence = snapshot.releaseSequence;
-  record.manifestLength = manifestLength;
-  record.signatureLength = signatureLength;
-  std::memcpy(record.manifest, manifest, manifestLength);
-  std::memcpy(record.signature, signature, signatureLength);
+  std::unique_ptr<studio::RecoveryRecord> record(
+      new (std::nothrow) studio::RecoveryRecord());
+  if (!record) return false;
   studio::PartitionRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);
-  studio::RecoveryRecord ignored;
-  journal.load(ignored);
-  if (!journal.save(record)) return false;
+  journal.load(*record);
+  record->operation = studio::RecoveryOperation::InstallRequested;
+  record->channel = static_cast<uint8_t>(
+      studio::panelSettings().get().firmwareUpdateChannel);
+  record->releaseSequence = snapshot.releaseSequence;
+  record->manifestLength = manifestLength;
+  record->signatureLength = signatureLength;
+  std::memcpy(record->manifest, manifest, manifestLength);
+  std::memcpy(record->signature, signature, signatureLength);
+  if (!journal.save(*record)) return false;
   return selectRecoveryAndRestart();
 }
 
@@ -629,22 +738,36 @@ void FirmwareUpdateService::dismissAvailable() {
 bool FirmwareUpdateService::enterRecovery() {
   studio::PartitionRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);
-  studio::RecoveryRecord record;
-  journal.load(record);
-  record = {};
-  if (!journal.save(record)) return false;
-  return selectRecoveryAndRestart();
+  std::unique_ptr<studio::RecoveryRecord> record(
+      new (std::nothrow) studio::RecoveryRecord());
+  if (!record) {
+    setMessage(Status::Failed, "Not enough memory for recovery");
+    return false;
+  }
+  journal.load(*record);
+  *record = {};
+  record->operation = studio::RecoveryOperation::RecoveryModeRequested;
+  if (!journal.save(*record)) {
+    setMessage(Status::Failed, "Could not prepare recovery");
+    return false;
+  }
+  setMessage(Status::RebootPending, "Entering recovery");
+  if (selectRecoveryAndRestart()) return true;
+  setMessage(Status::Failed, "Recovery handoff failed");
+  return false;
 }
 
 bool FirmwareUpdateService::requestFactoryReset() {
-  studio::RecoveryRecord record;
-  record.operation = studio::RecoveryOperation::FactoryResetRequested;
-  record.channel = static_cast<uint8_t>(studio::FirmwareUpdateChannel::Stable);
+  std::unique_ptr<studio::RecoveryRecord> record(
+      new (std::nothrow) studio::RecoveryRecord());
+  if (!record) return false;
   studio::PartitionRecoveryJournalBackend backend;
   studio::RecoveryJournal journal(backend);
-  studio::RecoveryRecord ignored;
-  journal.load(ignored);
-  return journal.save(record) && selectRecoveryAndRestart();
+  journal.load(*record);
+  *record = {};
+  record->operation = studio::RecoveryOperation::FactoryResetRequested;
+  record->channel = static_cast<uint8_t>(studio::FirmwareUpdateChannel::Stable);
+  return journal.save(*record) && selectRecoveryAndRestart();
 }
 
 Snapshot FirmwareUpdateService::status() const { return snapshot; }

@@ -41,9 +41,17 @@ sequence, invalid ESP header, byte-count mismatch, or SHA-256 mismatch. Main
 persists the exact verified manifest and signature before entering recovery;
 recovery verifies that request again.
 
-HTTPS uses DigiCert Global Root G2, bounded time synchronization, fixed buffers,
-and a GitHub release/CDN redirect allowlist. Main checks are asynchronous and
-main-loop-owned. Recovery has no AP or upload portal and writes only `ota_0`.
+HTTPS uses a bounded trust bundle for GitHub and its release CDN (DigiCert
+Global Root G2, USERTrust ECC, and ISRG Root X1), bounded time synchronization,
+fixed buffers, and a GitHub release/CDN redirect allowlist. A missing signed
+manifest is reported separately from transport failure. Main checks are
+asynchronous and main-loop-owned. Recovery has no AP or upload portal and
+writes only `ota_0`.
+
+Updater-owned Wi-Fi teardown is two-phase: main requests station disconnect,
+then stops the radio from its loop after a bounded settling window. Recovery
+handoff does not deinitialize the network stack immediately before reset; the
+reset itself returns the radio to its boot state.
 
 ## Recovery journal, install, and health
 
@@ -66,7 +74,20 @@ It then selects `ota_0`. Main clears the journal and marks itself valid only
 after approximately ten seconds of healthy stores, display/touch, Home, and
 main-loop operation. A failed pending main falls back to factory recovery.
 
+Manual **Recovery mode** writes a distinct `RecoveryModeRequested` journal
+operation before selecting factory recovery. Recovery therefore remains on its
+menu until the operator chooses an action; **Boot firmware** clears that manual
+request before selecting `ota_0`. Recovery ignores touch during a 1.5-second
+boot guard and then requires 300 ms of continuous release before arming menu
+input, so touch-controller startup cannot make the initiating hold look like a
+new **Boot firmware** tap. A missing, empty, or corrupt journal leaves recovery
+on its menu rather than automatically selecting valid main. Manual recovery
+first shows **Enable controls** and consumes that touch; **Boot firmware** cannot
+run without a separate subsequent touch.
+
 The journal has two alternating CRC-protected records with generation counters.
+Journal load/save uses checked heap buffers for the bounded encoded records so
+main-loop recovery handoff cannot exhaust the Arduino loop-task stack.
 Factory reset advances through `FactoryResetRequested`,
 `ImageVerifiedResetPending`, and `ResetComplete`. It reads existing Wi-Fi,
 downloads and verifies latest stable, writes main, then and only then erases the

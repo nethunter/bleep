@@ -552,12 +552,28 @@ network backoff, and Settings-triggered checks remain available afterward.
 
 The updater fetches only the bounded signed manifest and detached signature.
 It is a temporary network owner and returns its station to `WIFI_OFF` on every
-terminal or cancellation path. Confirmed installation persists the exact
+terminal or cancellation path. Teardown disconnects first and stops the radio
+only after a bounded main-loop settling interval, so ESP-IDF's tcpip task cannot
+race driver deinitialization while sending DHCP release. Recovery handoff lets
+the imminent reset stop Wi-Fi. Confirmed installation persists the exact
 signed request, releases retained links with consent, selects fixed recovery,
 and reboots. Recovery verifies again and streams main into `ota_0`; no second
 full firmware image is retained. See
 [the signed update protocol](protocols/firmware-update.md) for manifest trust,
 stream validation, replay rejection, journal recovery, and partition geometry.
+The bounded encoded journal records use checked `nothrow` heap storage during
+load/save; they are never multiplied on the Arduino loop-task stack.
+Manual Recovery mode persists a distinct request so fixed recovery remains on
+its menu until the operator explicitly boots main or chooses another action.
+Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms
+of continuous release before arming menu input. This prevents touch-controller
+startup from being mistaken for release while the initiating finger is still
+held over a menu row. Once the bootloader selects factory recovery, a missing,
+empty, or corrupt journal never automatically selects main; recovery stays on
+its menu and **Boot firmware** remains an explicit operator action. Manual
+Recovery mode initially exposes only **Enable controls**; the touch that unlocks
+the menu is consumed, so selecting **Boot firmware** always requires a separate
+second touch.
 
 ## Persistence
 

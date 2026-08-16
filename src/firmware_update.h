@@ -50,8 +50,11 @@ class FirmwareUpdateService {
 
 #ifdef UI_SIMULATOR
   void simSetAvailable(const char* version, uint64_t sequence);
+  void simSetChecking();
+  void simSetFailure(const char* message);
   void simSetWifiConfigured(bool configured);
   void simSetRecoveryAvailable(bool available);
+  bool simRecoveryRequested() const;
   bool simFactoryResetRequested() const;
   void simClearFactoryResetRequested();
 #endif

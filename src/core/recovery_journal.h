@@ -14,6 +14,7 @@ enum class RecoveryOperation : uint8_t {
   FactoryResetRequested = 2,
   ImageVerifiedResetPending = 3,
   ResetComplete = 4,
+  RecoveryModeRequested = 5,
 };
 
 struct RecoveryRecord {
