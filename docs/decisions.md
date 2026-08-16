@@ -1213,8 +1213,9 @@ the replacement.
 
 ## ADR-047: Wi-Fi credentials can be configured directly in Settings
 
-- Status: Accepted software tranche; physical association, teardown, and
-  coexistence checks remain open.
+- Status: Accepted. One-panel visible-network discovery, secured password
+  entry, association, DHCP, persistence, and radio teardown are verified;
+  retained-link coexistence and repeated-cycle checks remain open.
 - Radio ownership: Opening **Settings > Wi-Fi** is read-only and keeps
   `WIFI_OFF`. The panel scans only after **Scan networks** or **Replace
   network** is pressed. A bounded main-loop service owns scan, association,
@@ -1235,9 +1236,10 @@ the replacement.
   schema-1 bytes and size so permanently installed schema-2 recovery images can
   continue reading credentials. The stored legacy flag remains the HA flag;
   Wi-Fi readiness is inferred from a non-empty SSID.
-- Gate: Native validation/persistence tests, complete simulator captures, and
-  main/recovery builds do not prove real AP discovery, password entry, DHCP,
-  retained-link release, or repeated heap/radio recovery on hardware.
+- Gate: Panel `94:a9:90:57:ab:80` discovered 20 APs, displayed the strongest
+  16, completed secured onboarding, and returned to `WIFI_OFF`; the operator
+  also confirmed Portal-mode rescanning. Retained-link release, cancellation,
+  failure recovery, and repeated heap/radio cycles remain hardware gates.
 
 ## ADR-048: Signed releases update fixed recovery before normal main installation
 
