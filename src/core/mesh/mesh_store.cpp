@@ -88,7 +88,7 @@ void encodeNode(BlobWriter& writer, const NodeRecord& node) {
 }  // namespace
 
 ConfigLoadStatus Store::load(StoreData& data) {
-  data = {};
+  data = StoreData{};
   uint8_t blob[kMaxBlobSize] = {};
   const size_t length = backend_.read(blob, sizeof(blob));
   if (length == 0) return ConfigLoadStatus::Missing;
@@ -113,18 +113,18 @@ ConfigLoadStatus Store::load(StoreData& data) {
   if (!checksumReader.u32(storedChecksum) ||
       storedChecksum != fnv1a(blob, length - kChecksumSize) ||
       !decodeNetwork(reader, data.network)) {
-    data = {};
+    data = StoreData{};
     return ConfigLoadStatus::Corrupt;
   }
   data.nodeCount = count;
   for (uint8_t index = 0; index < count; ++index) {
     if (!decodeNode(reader, data.nodes[index])) {
-      data = {};
+      data = StoreData{};
       return ConfigLoadStatus::Corrupt;
     }
   }
   if (reader.position() != length - sizeof(kMagic) - kChecksumSize) {
-    data = {};
+    data = StoreData{};
     return ConfigLoadStatus::Corrupt;
   }
   return ConfigLoadStatus::Loaded;

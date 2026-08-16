@@ -5327,3 +5327,16 @@ Record values with the exact build environment and commit/worktree state.
   rollback-on-mutation-failure. Full suite passed 86/86; the full Montserrat
   `bleep` profile built successfully and uploaded to `/dev/cu.usbserial-211240`
   with all written-region hashes verified and a hard reset.
+
+### 2026-08-15: Stable release compiler portability
+
+- The first protected `0.3.1` stable release run reached its approved signing
+  environment but stopped before signing when the clean Linux native compiler
+  rejected assignment from an untyped empty initializer list in the mesh store.
+  The reset sites now assign an explicit `StoreData{}` value, preserving the
+  same zero-initialization behavior across the local and CI toolchains.
+- The native suite passed 91/91 after the fix. Release-configured local builds
+  also passed for `bleep_recovery` (940,048-byte image) and the full Montserrat
+  `bleep` profile (2,143,008-byte image); `check_ota_layout.py` accepted both
+  against the `0xF0000` recovery and `0x2C0000` main ceilings. No device was
+  flashed during this release repair.
