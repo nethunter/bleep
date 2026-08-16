@@ -247,6 +247,7 @@ char wifiUiMessage[64] = "";
 void closeWifiConfirmation();
 void refreshWifiSettings(bool force = false);
 bool updatePromptConfirming = false;
+constexpr uint32_t kFirmwareRecoveryHoldMs = 2000;
 bool firmwareRollbackHolding = false;
 uint32_t firmwareRollbackStartedMs = 0;
 void closeUpdatePrompt();
@@ -882,8 +883,7 @@ void refreshRecoveryUpdateOverlay() {
       (current.status == firmware_update::Status::Deferred ||
        current.status == firmware_update::Status::Connecting ||
        current.status == firmware_update::Status::Downloading ||
-       current.status == firmware_update::Status::Verifying ||
-       current.status == firmware_update::Status::RebootPending);
+       current.status == firmware_update::Status::Verifying);
   if (!active) {
     if (recoveryRefreshOverlay != nullptr) lv_obj_del(recoveryRefreshOverlay);
     recoveryRefreshOverlay = nullptr;
@@ -1048,7 +1048,7 @@ void onFirmwareRollbackPressed(lv_event_t*) {
   firmwareRollbackHolding = true;
   firmwareRollbackStartedMs = millis();
   if (firmwareUpdateTitle != nullptr) {
-    lv_label_set_text(firmwareUpdateTitle, "Hold 3s");
+    lv_label_set_text(firmwareUpdateTitle, "Hold 2s");
   }
 }
 
@@ -1241,7 +1241,7 @@ void buildFirmwareUpdate() {
   firmwareUpdateInstall = makeButton(firmwareUpdateContent, "INSTALL NOW", onUpdateInstall,
                                      kColAccent);
   lv_obj_set_size(firmwareUpdateInstall, 154, 30);
-  firmwareUpdateRollback = makeButton(firmwareUpdateContent, "HOLD 3S: RECOVERY", nullptr,
+  firmwareUpdateRollback = makeButton(firmwareUpdateContent, "HOLD 2S: RECOVERY", nullptr,
                                       kColDanger);
   lv_obj_set_size(firmwareUpdateRollback, 154, 28);
   lv_obj_set_style_text_font(lv_obj_get_child(firmwareUpdateRollback, 0), UI_FONT_12, 0);
@@ -2028,14 +2028,14 @@ void tick() {
     const uint32_t elapsed = millis() - firmwareRollbackStartedMs;
     if (firmwareUpdateTitle != nullptr) {
       char holdText[16];
-      const uint32_t secondsRemaining = elapsed >= 3000
-          ? 0 : (3000 - elapsed + 999) / 1000;
+      const uint32_t secondsRemaining = elapsed >= kFirmwareRecoveryHoldMs
+          ? 0 : (kFirmwareRecoveryHoldMs - elapsed + 999) / 1000;
       std::snprintf(holdText, sizeof(holdText),
                     secondsRemaining == 0 ? "Recovery..." : "Hold %lus",
                     static_cast<unsigned long>(secondsRemaining));
       lv_label_set_text(firmwareUpdateTitle, holdText);
     }
-    if (elapsed >= 3000) {
+    if (elapsed >= kFirmwareRecoveryHoldMs) {
       firmwareRollbackHolding = false;
       if (firmwareUpdateRollback != nullptr) {
         lv_obj_add_state(firmwareUpdateRollback, LV_STATE_DISABLED);
@@ -2338,6 +2338,8 @@ void simShowSystemInfo() { showSettingsView(SettingsView::SystemInfo); }
 void simShowFactoryReset() { showSettingsView(SettingsView::FactoryReset); }
 void simShowFirmwareUpdate() { showSettingsView(SettingsView::FirmwareUpdate); }
 void simShowUpdateConfirmation() { showInstallConfirmation(); }
+void simConfirmFirmwareInstall() { onUpdateConfirm(nullptr); }
+bool simRecoveryOverlayVisible() { return recoveryRefreshOverlay != nullptr; }
 void simDismissUpdatePrompt() { onUpdateLater(nullptr); }
 
 void simScrollSettingsToEnd() {
