@@ -20,6 +20,16 @@ short, factual, and reproducible.
   and `bleep_recovery` builds passed with 2,161,552-byte and 940,848-byte raw
   images, within the `0x2C0000`/`0xF0000` ceilings. Interrupted-write and live
   chained-update checks remain hardware gates.
+- Development CI run `31944032138` published sequence `1786879211` from merge
+  `ce6d7df`. A device running the preceding main completed the bridge update;
+  serial captured its recovery/main reboots and final `WIFI_OFF` state. Direct
+  flash readback matched both signed release payloads exactly: main SHA-256
+  `7ed991ec6cf2751d5d2561e7bf26405325ebfa6689d42794934ea58eb60e3463`
+  and recovery SHA-256
+  `9b12774bdd8f3b0c3a5045b9bc37262999ed0839b1bddff656ec53e4ab4257b1`.
+  Because that cycle began on the prior ordering, it proves the bridge images,
+  not recovery-first sequencing. A second release from the updated main is the
+  remaining live ordering gate.
 
 ### 2026-08-16: Signed recovery refresh after main health
 

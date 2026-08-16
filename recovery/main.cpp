@@ -633,6 +633,9 @@ bool installRecord(studio::RecoveryRecord& record, bool fetchLatestStable,
   if (!verifyManifest(record, info)) { wifiOff(); return false; }
   if (!fetchLatestStable && (record.releaseSequence == 0 ||
       info.releaseSequence != record.releaseSequence)) { wifiOff(); return false; }
+  Serial.printf("RECOVERY: installing main sequence=%llu factory_reset=%u\n",
+                static_cast<unsigned long long>(info.releaseSequence),
+                factoryReset ? 1U : 0U);
   const size_t expected = info.imageSize;
   const char* url = info.payloadUrl;
   uint8_t expectedSha[32];
