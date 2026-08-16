@@ -1,33 +1,40 @@
 ---
 title: "Ble(e)p Owner's Guide"
 subtitle: "Set up your gear, control a shoot, and build repeatable studio workflows"
-edition: "0.3.0"
-date: "15 August 2026"
+edition: "0.3.5"
+date: "16 August 2026"
 status: "Development hardware - verify before critical work"
 author: "Ble(e)p project"
 ---
 
 # Welcome
 
-Ble(e)p puts the controls you need during a shoot in one small, touch-first remote: sliders, cameras, audio, lights, phones, Home Assistant, and repeatable sequences. Its playful name means **Bluetooth Links Everything, Eventually, Probably**; the practical version is **Bluetooth Low Energy Equipment Panel**.
+Ble(e)p brings your cameras, lights, audio gear, slider, phone, and Home
+Assistant controls together in one small touchscreen remote. You can also save
+common actions as sequences and run them in order. Its playful name means
+**Bluetooth Links Everything, Eventually, Probably**; the practical version is
+**Bluetooth Low Energy Equipment Panel**.
 
 ![Five Ble(e)p enclosure finishes. All five use the same circular interface.](assets/controller-family-line.png){width=6.4}
 
-> Ble(e)p is still in development - the "Eventually, Probably" part is there for a reason. Check exact-model support before critical work, and check the equipment when a result is **Sent**, **Optimistic**, or **Unknown**.
+> Ble(e)p is still in development - the "Eventually, Probably" part is there for a reason. Before an important shoot, check that your exact model is supported. When Ble(e)p says **Sent**, **Optimistic**, or **Unknown**, look at the equipment itself to make sure the action happened.
 
 ## Status words used here
 
 | Label | Meaning |
 | --- | --- |
 | Supported | Verified on the exact model for the listed functions. |
-| Experimental | Available, with important testing still open. |
-| Candidate | Expected to work, but not tested on that exact model. |
-| Research | Under investigation; normal control is unavailable. |
+| Experimental | You can use it, but some situations still need testing. |
+| Candidate | It may work, but this exact model has not been tested. |
+| Research | It is being investigated and cannot be controlled yet. |
 | Later | Not implemented. |
 
 # Quick start
 
-Ble(e)p starts quietly at Home and waits for you; equipment and Wi-Fi stay off until needed.
+Ble(e)p starts at Home and leaves your equipment disconnected until you open a
+device or run a sequence. If you have saved Wi-Fi, it briefly connects about
+five seconds after Home appears to check for a safe, signed update. It turns
+Wi-Fi off again when the check is finished.
 
 1. Open **Devices**.
 2. Open a saved device, or choose **Add device** and follow its pairing steps.
@@ -37,7 +44,9 @@ Ble(e)p starts quietly at Home and waits for you; equipment and Wi-Fi stay off u
 
 ## Action Button
 
-A short press runs the main action shown on the current control screen. Hold for about 700 ms to go Back or cancel; hold for two seconds to return Home. The Action Button does not control power.
+A short press runs the main action on the current screen. Hold it for about
+700 ms to go Back or cancel, or for two seconds to return Home. It is not a
+power button.
 
 ## Action Button by screen
 
@@ -59,7 +68,9 @@ On supported device screens, a short press also selects **Retry** when it is sho
 
 ![Home: Devices, Groups, Scenes, and Portal. The small cog opens Settings.](assets/ui-home.png){width=2.7}
 
-Home keeps the everyday choices close: **Devices** for equipment, **Scenes** for repeatable workflows, **Portal** for browser setup and Home Assistant, and the little cog for Settings. **Groups** is not available yet.
+From Home, choose **Devices** to control equipment, **Scenes** to run saved
+workflows, **Portal** to set up Ble(e)p in a browser, or the cog to open
+Settings. **Groups** is not available yet.
 
 <!-- pagebreak -->
 
@@ -73,20 +84,21 @@ Home keeps the everyday choices close: **Devices** for equipment, **Scenes** for
 4. Put the real device in the exact pairing mode listed in this manual.
 5. Wait for Ble(e)p to finish connecting and show **Ready**.
 
-![The Add device category picker. Device choices are grouped by capability rather than by one long brand list.](assets/ui-add-device.png){width=2.7}
+![The Add device screen groups equipment into simple categories.](assets/ui-add-device.png){width=2.7}
 
 ## Manage a saved device
 
 Open a device's management menu to rename, enable, disable, disconnect, forget/re-pair, or delete it. Disabled devices are hidden from control and sequence lists without being deleted. Remove a device from every sequence before deleting it.
 
-Devices omitted from the installed firmware stay saved but cannot be opened.
+If your installed firmware does not include a saved device type, the entry
+stays saved but cannot be opened.
 
 ## Connection and state labels
 
 | Label or behavior | Meaning |
 | --- | --- |
 | Connecting / Preparing | Ble(e)p is connecting and getting the device ready. |
-| Ready | You can send a command. This does not guarantee that the next physical action will succeed. |
+| Ready | You can send a command. Watch the equipment to make sure the action happens. |
 | Pending | Ble(e)p is waiting for the device to answer. |
 | Confirmed | The device reported the displayed state. |
 | Optimistic / Sent | Ble(e)p sent the command but cannot check the physical result. |
@@ -151,7 +163,10 @@ Ble(e)p appears as **Insta360 Remote (Bleep)** and uses the camera's reported st
 5. On X5, use the on-screen power control to shut down or wake the camera. Wake
    can take up to 60 seconds while Ble(e)p waits for it to reconnect.
 
-The **Insta360 X3**, **X4**, **X4 Air**, and **X5** are supported. X5 has additional verification for recording state, Start/Stop, photo-state feedback, shutdown, and physical wake; retained-session wake reconnect still needs a fresh check. **GO 3** and **GO Ultra** are unverified.
+The **Insta360 X3**, **X4**, **X4 Air**, and **X5** are supported. On X5,
+recording state, Start/Stop, photo-mode feedback, shutdown, and physical wake
+have been tested. Waking the camera after leaving and returning to its control
+screen still needs more testing. **GO 3** and **GO Ultra** are unverified.
 
 ## DJI Osmo
 
@@ -172,12 +187,15 @@ The Sony entry is for research only. It does not save a camera or provide contro
 
 ## Aputure Light
 
-**Aputure Light** adds compatible factory-reset Aputure and amaran fixtures to a private light network. Compatible lights share one Bluetooth connection while remaining independently controllable.
+**Aputure Light** adds compatible, factory-reset Aputure and amaran fixtures.
+Several compatible lights can share one Bluetooth connection while you still
+control each light separately.
 
 1. Factory-reset the light and place it nearby in pairing mode.
 2. Choose **Devices > Add device > Lights > Aputure Light**.
 3. If several compatible fixtures appear, choose the intended name and address suffix.
-4. Leave the light powered while Ble(e)p shows **Connecting**, **Provisioning**, or **Configuring mesh**. The fixture may restart during setup; wait for **Ready**.
+4. Leave the light powered while Ble(e)p sets it up. The light may restart;
+   wait for **Ready**.
 5. Use On/Off, color temperature (CCT), tint, brightness, or RGB color controls as shown.
 6. Check the fixture when a change is shown only as sent.
 
@@ -196,9 +214,13 @@ The **amaran Ray 60c**, **amaran Ace 25c**, **Aputure MC Pro**, and **Aputure MT
 
 ![X60RGB control. The X100 uses the same layout without the RGB tab.](assets/ui-zhiyun-rgb.png){width=2.7}
 
-**MOLUS X100:** power, 2700-6500 K color temperature, and brightness. Normal panel control is tested; power cycling, multiple lights, cold reconnect, and broader coexistence need more testing.
+**MOLUS X100:** power, 2700-6500 K color temperature, and brightness. Everyday
+control is tested. Reconnecting after a power cycle and using several devices
+together need more testing.
 
-**MOLUS X60RGB:** adds hue and saturation. Color output is host-verified; panel use, reconnect, reset recovery, and mixed-light use need more testing.
+**MOLUS X60RGB:** adds hue and saturation. Its color commands have been tested,
+but everyday panel use, reconnecting, recovery after a reset, and use with
+other lights need more testing.
 
 Sidus Link network import is not supported. Aputure and Zhiyun lights share one connection but remain separate controls. Keep a compatible saved Zhiyun fixture powered whenever a Zhiyun target is active; it acts as the shared gateway.
 
@@ -241,9 +263,10 @@ Start/Stop, reconnection, and restored recording state are verified. Battery, me
 
 > Slider movement can damage equipment or injure people. Clear the rail, secure the payload, and test at low speed. Watch the slider until the move is complete.
 
-# Studio Services
+# Connect Wi-Fi and Home Assistant
 
-Portal temporarily pauses device control while you configure Ble(e)p in a browser.
+Portal lets you configure Ble(e)p from a phone or computer. Device control is
+paused while Portal is open.
 
 ## First-time Portal setup
 
@@ -251,11 +274,11 @@ Portal temporarily pauses device control while you configure Ble(e)p in a browse
 2. Scan the QR code or join the open `Bleep-Setup-XXXXX` network matching the panel suffix.
 3. Open the phone's sign-on page, or browse to the numeric setup address on the panel.
 4. Manage devices and sequences directly; studio Wi-Fi is not required.
-5. To use Home Assistant, open **Wi-Fi**, choose a network found during Portal entry or enter a hidden SSID, and supply its password.
+5. To use Home Assistant or configure a hidden network, open **Wi-Fi**, choose a network found during Portal entry or enter its SSID, and supply its password.
 6. After Ble(e)p joins, note the web address shown on its screen. Rejoin the normal studio Wi-Fi on your phone or computer.
 7. Open the displayed address while Ble(e)p remains on the Portal screen. You can also try `http://bleep.local`.
 
-![Portal after LAN handoff. The address exists only while the Portal screen is active.](assets/ui-portal-lan.png){width=2.7}
+![Portal after Ble(e)p joins your normal Wi-Fi. The address works only while the Portal screen is open.](assets/ui-portal-lan.png){width=2.7}
 
 Pair new physical equipment on Ble(e)p itself. Choose **Finish & Exit** in the browser or Exit on the panel when finished.
 
@@ -271,22 +294,28 @@ Supported entities: lights, switches, input booleans, buttons, scenes, and scrip
 
 Home Assistant can be Ready while an entity still shows **Unknown**. A successful command means Home Assistant accepted it; check the target if you need to confirm that something physically changed.
 
-> The setup AP is open and Portal traffic is not encrypted. Use it only in a controlled location and use LAN handoff only on a trusted studio network.
+> The `Bleep-Setup` network is open, and Portal traffic is not encrypted. Use it only in a controlled place. Connect Portal to your normal Wi-Fi only when you trust that network.
 
 # Build repeatable workflows
 
-A **scene** or **sequence** runs saved actions and waits in order across several devices.
+A **scene**, also called a **sequence**, runs a saved list of actions and waits
+across one or more devices.
 
 ## Create a scene on the panel
 
 1. Open **Scenes** and select **Add sequence**.
 2. Build the **Start** list with **Add step**. Choose a target, action, and any parameters. For a light, **Set look + On** combines its color, brightness, and power-on in one step.
 3. Add Wait steps where needed. New waits start at 200 ms; the included Press Record example uses 500 ms.
-4. Select the header arrow to review the generated **Stop** list. It reverses Start order and adds the matching Stop action where one is known.
-5. Optional: choose **Customize Stop** to copy the generated list into an independently editable Stop list.
+4. Select the arrow in the header to review the automatic **Stop** list. Ble(e)p
+   reverses the Start order and adds a matching Stop action where it can.
+5. Optional: choose **Customize Stop** if you want to edit that Stop list
+   yourself.
 6. Use the checkmark, enter a name, and save.
 
-Editing Start updates the generated Stop preview. New light looks start at 5600 K, 50% brightness, neutral tint, and full RGB saturation. Changes preview on the selected fixture. **Set look + On** adds one **Turn Off** to generated Stop.
+When you change Start, Ble(e)p updates the automatic Stop preview. New light
+looks begin at 5600 K, 50% brightness, neutral tint, and full RGB saturation.
+You can preview changes on the selected light. **Set look + On** adds one
+**Turn Off** action to Stop.
 
 **Use generated Stop** replaces a custom Stop list after confirmation. You can edit and reorder existing steps; unavailable-device steps can still be deleted from a custom Stop list.
 
@@ -300,7 +329,9 @@ Editing Start updates the generated Stop preview. New light looks start at 5600 
 
 ![A prepared multi-device sequence. The circular equipment shortcuts show readiness and open individual controls.](assets/ui-scene-ready.png){width=2.7}
 
-Opening scene Settings cancels preparation, but not an active Start, armed recording, Stop, or failed Start that may need cleanup.
+Opening scene Settings cancels preparation. It does not interrupt a Start or
+Stop already in progress, an armed recording, or a failed Start that may still
+need cleanup.
 
 ## Action behavior to understand
 
@@ -308,7 +339,7 @@ Opening scene Settings cancels preparation, but not an active Start, armed recor
 | --- | --- |
 | Canon Trigger | Record Trigger; Ble(e)p cannot tell whether recording started or stopped. |
 | Canon Smart, DJI, Tascam, GoPro | Separate Start and Stop actions. Confirmation varies by device. |
-| Insta360 | Separate state-aware Start and Stop actions. Start can run from the fresh connection's provisional video-idle state; Stop still requires camera-confirmed recording. |
+| Insta360 | Separate Start and Stop actions. Start is available after a fresh video-mode connection; Stop appears after the camera confirms it is recording. |
 | Phone Camera | Sends a volume-up command; Ble(e)p cannot see what the camera app did. |
 | Lights and Home Assistant switches | Separate On/Off. A light's Set look + On applies its stored CCT or RGB look and turns on that fixture; generated Stop adds one Turn Off. |
 | Home Assistant button | Press. |
@@ -319,13 +350,74 @@ Opening scene Settings cancels preparation, but not an active Start, armed recor
 
 # Personalize, diagnose, and reset
 
-Open the Home cog for version information, Wi-Fi, haptics, diagnostics, and Factory Reset.
+Open the Home cog for version information, Wi-Fi, firmware updates, haptics,
+diagnostics, and Factory Reset.
 
-![Settings includes About, Wi-Fi status, haptics, system information, and Factory Reset.](assets/ui-settings.png){width=2.7}
+![Settings includes About, Wi-Fi, Firmware update, haptics, system information, and Factory Reset.](assets/ui-settings.png){width=2.7}
+
+## Connect Wi-Fi from the panel
+
+Opening **Settings > Wi-Fi** does not connect by itself. To join or replace a
+visible network:
+
+1. Choose **Scan networks** or **Replace network**.
+2. If Ble(e)p is keeping equipment connected, confirm **Disconnect & scan**.
+   An active command must finish first.
+3. Select the network. Enter its password on the masked round keyboard when
+   required.
+4. Wait for Ble(e)p to connect. It saves the network only after the connection
+   succeeds, then turns Wi-Fi off again.
+
+![Visible networks are listed by signal strength after an explicit scan.](assets/ui-wifi-networks.png){width=2.7}
+
+Use Portal for a hidden SSID, easier phone-based text entry, or Home Assistant
+setup. **Forget network** removes only the saved SSID and password; it preserves
+Home Assistant settings.
+
+## Install a firmware update
+
+Stable releases are selected by default. You can opt into Development builds,
+but they may not have been tested as thoroughly on real hardware.
+
+With saved Wi-Fi, Ble(e)p checks your selected Stable or Development channel
+about five seconds after Home appears. If you are already using a device,
+scene, command, or Portal, it waits until Ble(e)p is idle. You can also choose
+**Settings > Firmware update > Check now**. A check downloads only the update
+details, not the firmware itself, and turns Wi-Fi off when finished.
+
+![A newer signed release uses a round amber prompt with equal Install now and Later actions.](assets/ui-firmware-update.png){width=2.7}
+
+To install:
+
+1. Keep Ble(e)p connected to reliable USB power.
+2. Choose **Install now**, review the reboot warning, and confirm.
+3. Leave power connected while the amber **Preparing update** screen appears
+   and Ble(e)p installs the update. It will restart more than once.
+4. Wait for **Update successful**, then choose **Restart**. Ble(e)p returns to
+   Home after validating the new firmware.
+
+**Later** dismisses that release's popup but leaves it available on the
+Firmware Update page. A newer release may prompt again. If preparation fails,
+return to the Firmware Update page and choose **Retry update**. Do not remove
+power during recovery or installation.
+
+Older Ble(e)p installations need a one-time USB upgrade before Wi-Fi updates
+will work. This upgrade keeps saved settings. See the Advanced section.
+
+## Enter Recovery mode
+
+On **Settings > Firmware update**, hold **Recovery mode** continuously for two
+seconds. Recovery can retry the requested update, install the latest stable
+release, start the installed firmware when it is still usable, or run Factory
+Reset. Use it after an interrupted update or when Ble(e)p cannot start normally.
 
 ## Factory Reset
 
-Factory Reset requires a three-second hold. It removes saved devices and pairings, scenes, Wi-Fi, Home Assistant links, light setup, and preferences, then restarts Ble(e)p. It does not remove the installed software.
+Factory Reset requires a continuous three-second hold and working saved Wi-Fi.
+Ble(e)p first downloads and checks the latest stable firmware. It erases your
+saved devices and pairings, scenes, Wi-Fi, Home Assistant links, light setup,
+and preferences only after that download is ready. If the network or download
+fails, your saved setup is left untouched.
 
 # Device compatibility matrix
 
@@ -337,20 +429,20 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 | Canon EOS R6 - Trigger | Candidate | Intended movie trigger | Exact model untested. |
 | Canon EOS R6 Mark III - Smart | Supported | Start/Stop, confirmation, wake, power-down | No additional camera controls. |
 | Canon EOS R6 Mark II - Smart | Supported | Start/Stop and confirmation | No additional camera controls. |
-| GoPro MAX2 | Supported | Start/Stop, confirmation, Sleep/wake | Broader coexistence untested. |
+| GoPro MAX2 | Supported | Start/Stop, confirmation, Sleep/wake | Use alongside several other devices needs more testing. |
 | Other Open GoPro models | Candidate | Intended Start/Stop and state | No model-specific result. |
 | Google Pixel 9 | Experimental | Volume-up shutter and reconnect | Capture cannot be confirmed. |
 | Other phones | Candidate | Volume-up shutter | Phone and camera-app combinations untested. |
-| Insta360 X3 / X4 / X4 Air | Supported | GPS Remote camera control | Reconnect, power, and coexistence coverage incomplete. |
-| Insta360 X5 | Supported | State-aware Start/Stop, shutdown, wake | Retained-session wake reconnect needs recheck. |
+| Insta360 X3 / X4 / X4 Air | Supported | GPS Remote camera control | Reconnect, power, and use alongside other devices need more testing. |
+| Insta360 X5 | Supported | Start/Stop, shutdown, wake | Wake after leaving and reopening its screen needs more testing. |
 | Insta360 GO 3 | Candidate | Intended GPS Remote control | Exact model untested. |
 | Insta360 GO Ultra | Research | None | GPS Remote compatibility unknown. |
 | DJI Osmo Action 5 Pro / Osmo 360 | Supported | Four-digit pairing, Start/Stop, confirmation | Reconnect and two-camera use need testing. |
 | Sony RMT-P1BT cameras | Research | None | Pairing and control unavailable. |
 | Tascam Portacapture X8 + AK-BT1 | Supported | Start/Stop and confirmed state | No battery or media status. |
 | Home Assistant local entities | Experimental | Up to four supported entities | Power-only lights and switches; no cloud sign-in. |
-| amaran Ray 60c | Supported | Aputure Light power and looks | Recovery, isolation, and soak gates open. |
-| amaran Ace 25c / Aputure MC Pro | Supported | Setup, identity, RGB power and looks | Isolation, confirmation, fallback, and soak gates open. |
+| amaran Ray 60c | Supported | Aputure Light power and looks | Long sessions and recovery after failures need more testing. |
+| amaran Ace 25c / Aputure MC Pro | Supported | Setup, identity, RGB power and looks | Confirmation, recovery, and long sessions need more testing. |
 | Aputure MT Pro | Supported | Setup, power, and looks | Currently labelled MC Pro. |
 | amaran Pano 60c / Pano 120c | Candidate | Intended Aputure Light controls | Exact models untested. |
 | Zhiyun MOLUS X100 | Experimental | Power, CCT, brightness, saved state | Cold reconnect, multi-light use, and recovery need testing. |
@@ -378,7 +470,9 @@ Compatibility is intentionally exact. A similar model is not automatically suppo
 
 ## A command says Sent, Optimistic, or Unknown
 
-This is expected when the integration cannot read physical state. Check the camera display, recorder, light output, phone app, or slider directly. Do not repeat a toggle blindly when the real state is uncertain.
+Some equipment cannot tell Ble(e)p what happened. Check the camera display,
+recorder, light output, phone app, or slider directly. If you do not know the
+real state, do not press a toggle again without checking first.
 
 ## A scene cannot reach Ready
 
@@ -393,15 +487,33 @@ This is expected when the integration cannot read physical state. Check the came
 
 - Keep Ble(e)p on the Portal screen. Leaving it closes Portal.
 - During first setup, join the `Bleep-Setup-XXXXX` network matching the panel suffix. If the sign-on page does not appear, use the numeric setup address.
+- On the setup network, `http://192.168.4.1` opens Portal directly. If the
+  phone says the network has no internet, stay connected and open that address.
 - After Ble(e)p joins the studio network, reconnect your phone or computer to that network and use the address shown on the panel.
 - If `bleep.local` does not work, use the numeric address shown on Ble(e)p.
+
+## A firmware update does not appear or complete
+
+- Confirm **Settings > Wi-Fi** shows the intended saved network, and confirm the
+  Firmware Update page is using the intended Stable or Development channel.
+- Finish active device commands, leave Portal, and return Home before checking
+  again. Ble(e)p never disconnects active equipment silently for an update.
+- Keep USB power connected. If **Preparing update** returns to the Firmware
+  Update page, choose **Retry update**. After an interrupted installation,
+  enter Recovery mode and retry the requested update.
+- An older installation cannot update over Wi-Fi until it receives the one-time
+  USB upgrade described in the Advanced section.
 
 # Work safely
 
 - Secure cameras, sliders, lights, cables, and recorders before sending commands.
-- Observe real hardware for movement, recording, power, and light-output confirmation whenever state is optimistic or unknown.
-- Use Portal only in a controlled location and its LAN handoff only on a trusted network; traffic is not encrypted.
+- Watch the equipment itself for movement, recording, power, and light changes
+  whenever Ble(e)p says **Optimistic** or **Unknown**.
+- Use Portal only in a controlled place, and connect it only to Wi-Fi you trust;
+  Portal traffic is not encrypted.
 - Treat saved Wi-Fi details, Home Assistant tokens, pairing information, and device identities as private. Factory Reset removes them from Ble(e)p.
+- Keep reliable USB power connected throughout firmware preparation, recovery,
+  installation, and the final success confirmation.
 - This project is independent and is not endorsed by iFootage, Canon, GoPro, Insta360, DJI, Sony, Tascam, Aputure, amaran, Zhiyun, Deity, Espressif, Elecrow, or Home Assistant.
 
 <!-- pagebreak -->
@@ -511,6 +623,33 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run -e bleep -t upload
 ```
 
-The configured upload port is `/dev/cu.usbserial-211240`; do not guess another port if it is absent. Version 0.3.0 accepts only the current device, scene, and mesh storage schemas. It does not migrate former Amaran driver IDs, the old `amaran_mesh` key, or older development schemas. Before installing it over firmware from before the clean-storage baseline, run Factory Reset from the currently installed firmware. Reset destroys saved configuration and bonds, not the application image; the firmware never erases them automatically.
+The configured upload port is `/dev/cu.usbserial-211240`; do not guess another
+port if it is absent. A normal PlatformIO upload writes main at `0x120000` and
+assumes the recovery partition layout already exists.
+
+### One-time recovery migration
+
+An installation using the former single-application layout must receive the
+release's combined USB migration once. Download and verify
+`bleep-usb-migration.zip` from a trusted stable release, extract it, then run:
+
+```sh
+cd bleep-usb-migration
+./migrate.sh /dev/cu.usbserial-211240
+```
+
+Use the actual enumerated port. The script writes the bootloader, schema-2
+partition table, blank OTA metadata, fixed recovery, blank recovery journal,
+and main without a full-chip erase. It deliberately excludes NVS at
+`0x9000/0x5000`, so current saved configuration can survive. Keep USB power
+connected through the first boot; recovery automatically validates and selects
+main without a **Boot firmware** tap. Back up important configuration and
+confirm it afterward.
+
+Version 0.3.5 accepts the current device, scene, mesh, Home Assistant, and panel
+settings schemas. It does not migrate former Amaran driver IDs, the old
+`amaran_mesh` key, or older development schemas. Before upgrading a build from
+before the clean-storage baseline, use Factory Reset in the currently installed
+firmware and expect saved configuration and bonds to be removed.
 
 Build success is not proof of panel behavior, peripheral compatibility, browser behavior, tactile feel, or endurance. Record those separately and retain exact-model confidence labels.

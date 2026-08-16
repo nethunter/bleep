@@ -31,6 +31,12 @@ history and verification detail belong in `docs/progress.md`.
 
 ## Writing standard
 
+Use the **Humanizer** skill whenever you write or revise the owner's guide.
+Every chapter except **Advanced: developers and builders** must speak to the
+person using Ble(e)p, not to an engineer or firmware developer. Explain what
+the reader will see, what to do next, and what can go wrong in familiar words.
+Keep implementation details in the Advanced chapter.
+
 Write for someone using Ble(e)p during a shoot. Keep a sentence when it helps
 the reader:
 
