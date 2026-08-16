@@ -5452,3 +5452,16 @@ Record values with the exact build environment and commit/worktree state.
   NVS bytes differed only after normal firmware page bookkeeping. Without any
   touch, a bounded trace confirmed normal main display/touch initialization and
   runtime boot with Wi-Fi Off.
+
+### 2026-08-16: Development OTA version identity
+
+- The rolling development publisher no longer stamps every signed manifest as
+  the stale `0.2.0-dev`. CI reads `custom_firmware_version` from
+  `platformio.ini`, appends `-dev`, compiles that value into the full firmware,
+  stores it alongside the release sequence artifact, and uses the same value
+  when signing the development manifest. The packaging test now asserts the
+  manifest version explicitly.
+- All six firmware-update packaging tests and the repository artifact check
+  passed, and the updated workflow parsed successfully. A full Montserrat build
+  using the development CI identity completed at 2,003,724 bytes; inspection of
+  the ELF confirmed the embedded `0.3.0-dev` version and `development` channel.

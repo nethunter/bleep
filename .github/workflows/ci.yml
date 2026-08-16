@@ -58,8 +58,11 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Set development build identity
         run: |
+          configured_version="$(sed -n 's/^custom_firmware_version = //p' platformio.ini)"
+          test -n "$configured_version"
           echo "BLEEP_RELEASE_SEQUENCE=$(date -u +%s)" >> "$GITHUB_ENV"
           echo "BLEEP_RELEASE_CHANNEL=development" >> "$GITHUB_ENV"
+          echo "BLEEP_FIRMWARE_VERSION=${configured_version}-dev" >> "$GITHUB_ENV"
       - run: python -m platformio run -e ${{ matrix.environment }}
       - name: Check OTA geometry and image ceiling
         if: matrix.environment == 'bleep'
@@ -68,6 +71,7 @@ jobs:
             --partitions partitions/bleep_recovery.csv \
             --firmware .pio/build/bleep/firmware.bin
           printf '%s' "$BLEEP_RELEASE_SEQUENCE" > .pio/build/bleep/release-sequence.txt
+          printf '%s' "$BLEEP_FIRMWARE_VERSION" > .pio/build/bleep/firmware-version.txt
       - name: Stage full firmware for release
         if: matrix.environment == 'bleep'
         uses: actions/upload-artifact@v4
@@ -78,6 +82,7 @@ jobs:
             .pio/build/bleep/bootloader.bin
             .pio/build/bleep/partitions.bin
             .pio/build/bleep/release-sequence.txt
+            .pio/build/bleep/firmware-version.txt
           if-no-files-found: error
           retention-days: 1
 
@@ -138,11 +143,12 @@ jobs:
           BLEEP_OTA_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
         run: |
           sequence=$(cat release/release-sequence.txt)
+          version=$(cat release/firmware-version.txt)
           python scripts/package_firmware_update.py \
             --firmware release/firmware.bin \
             --output-dir signed-release \
             --channel development \
-            --version 0.2.0-dev \
+            --version "$version" \
             --commit "$GITHUB_SHA" \
             --release-sequence "$sequence" \
             --release-ref latest \
