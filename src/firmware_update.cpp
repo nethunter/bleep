@@ -153,6 +153,7 @@ namespace {
 
 constexpr size_t kManifestCapacity = 1536;
 constexpr size_t kSignatureCapacity = 80;
+constexpr int kHttpReceiveBufferSize = 8192;
 constexpr size_t kMaximumImageSize = 0x2C0000;
 constexpr uint32_t kConnectTimeoutMs = 12000;
 constexpr uint32_t kRequestTimeoutMs = 30000;
@@ -393,7 +394,10 @@ bool startTransfer(const char* url, TransferKind kind) {
   config.max_redirection_count = 4;
   config.event_handler = onHttpEvent;
   config.is_async = true;
-  config.buffer_size = 1024;
+  // GitHub release redirects currently carry roughly 5 KiB of security and
+  // cookie headers. ESP-IDF parses those headers in this receive buffer before
+  // delivering the small signed body to onHttpEvent().
+  config.buffer_size = kHttpReceiveBufferSize;
   transferKind = kind;
   client = esp_http_client_init(&config);
   operationStarted = millis();

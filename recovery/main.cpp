@@ -21,6 +21,8 @@
 
 namespace {
 
+constexpr int kHttpReceiveBufferSize = 8192;
+
 constexpr char kStableManifestUrl[] =
     "https://github.com/nethunter/bleep/releases/latest/download/bleep-update.json";
 constexpr size_t kMaximumImageSize = 0x2C0000;
@@ -458,7 +460,9 @@ bool performRequest(const char* url, DownloadContext& context) {
   config.max_redirection_count = 4;
   config.event_handler = onHttpEvent;
   config.user_data = &context;
-  config.buffer_size = 1024;
+  // GitHub release and asset redirects can exceed 5 KiB before any payload
+  // bytes arrive, so this buffer must accommodate their bounded headers.
+  config.buffer_size = kHttpReceiveBufferSize;
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (client == nullptr) return false;
   const esp_err_t result = esp_http_client_perform(client);

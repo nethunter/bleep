@@ -5340,3 +5340,15 @@ Record values with the exact build environment and commit/worktree state.
   `bleep` profile (2,143,008-byte image); `check_ota_layout.py` accepted both
   against the `0xF0000` recovery and `0x2C0000` main ceilings. No device was
   flashed during this release repair.
+- The corrected protected workflow built, signed, independently verified, and
+  published the `0.3.1` stable assets. The first live Settings check on panel
+  `10:00:3b:c2:db:a8` then timed out. Its attached serial trace showed repeated
+  `HTTP_CLIENT: Out of buffer` errors, while an external measurement found the
+  public GitHub `releases/latest` redirect headers were 4,983 bytes. Both main
+  and recovery had configured only 1,024-byte ESP HTTP receive buffers.
+- Main and recovery now use bounded 8,192-byte receive buffers so GitHub can
+  parse its redirect headers before delivering manifest, signature, or payload
+  bytes. The post-fix native suite passed 91/91; `bleep_recovery` and full
+  `bleep` builds passed with unchanged 940,048-byte and 2,143,008-byte images,
+  and the partition/size gate passed. Live network and OTA installation remain
+  open until the broken installed clients receive this bootstrap repair.
