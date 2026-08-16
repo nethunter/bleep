@@ -1,0 +1,68 @@
+name: Signed stable firmware
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-stable:
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    environment: stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Build and verify release
+        env:
+          BLEEP_RELEASE_CHANNEL: stable
+          BLEEP_FIRMWARE_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          sequence=$(date -u +%s)
+          echo "BLEEP_RELEASE_SEQUENCE=$sequence" >> "$GITHUB_ENV"
+          BLEEP_RELEASE_SEQUENCE="$sequence" python -m platformio test -e native
+          BLEEP_RELEASE_SEQUENCE="$sequence" python -m platformio run -e bleep_recovery
+          BLEEP_RELEASE_SEQUENCE="$sequence" python -m platformio run -e bleep
+          python scripts/check_ota_layout.py \
+            --partitions partitions/bleep_recovery.csv \
+            --firmware .pio/build/bleep/firmware.bin \
+            --recovery .pio/build/bleep_recovery/firmware.bin
+      - name: Sign and independently verify assets
+        env:
+          BLEEP_OTA_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
+        run: |
+          python scripts/package_firmware_update.py \
+            --firmware .pio/build/bleep/firmware.bin \
+            --output-dir signed-release \
+            --channel stable \
+            --version "${{ github.event.release.tag_name }}" \
+            --commit "$GITHUB_SHA" \
+            --release-sequence "$BLEEP_RELEASE_SEQUENCE" \
+            --release-ref "${{ github.event.release.tag_name }}" \
+            --key-id stable-2026-01
+          python scripts/verify_firmware_update.py \
+            --manifest signed-release/bleep-update.json \
+            --signature signed-release/bleep-update.sig \
+            --firmware signed-release/bleep-update.bin \
+            --public-key keys/ota-stable-public.pem
+          cp .pio/build/bleep/bootloader.bin signed-release/bleep-usb-bootloader.bin
+          cp .pio/build/bleep/partitions.bin signed-release/bleep-usb-partitions.bin
+          cp .pio/build/bleep_recovery/firmware.bin signed-release/bleep-usb-recovery.bin
+          python scripts/package_usb_migration.py \
+            --firmware .pio/build/bleep/firmware.bin \
+            --recovery .pio/build/bleep_recovery/firmware.bin \
+            --bootloader .pio/build/bleep/bootloader.bin \
+            --partitions .pio/build/bleep/partitions.bin \
+            --output signed-release/bleep-usb-migration.zip
+      - name: Upload signed stable assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" signed-release/* --clobber

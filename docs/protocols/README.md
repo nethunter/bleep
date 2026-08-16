@@ -17,6 +17,8 @@ does not ship raw packet captures.
   central/client and macOS peripheral testing
 - [Captive Portal discovery](captive-portal-discovery.md) — SoftAP DNS and
   phone connectivity-probe behavior
+- [Signed firmware update protocol](firmware-update.md) — manifest, signature,
+  replay, target, payload, boot-validation, and rollback rules
 
 Raw captures were removed before publication because radio traces can contain
 stable addresses, nearby device names, phone/camera identifiers, pairing

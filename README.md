@@ -84,6 +84,15 @@ principles:
   item that opens a separate warning screen with a red three-second-hold button.
   Wi-Fi changes still enter the temporary Portal; normal use of Home and
   Settings leaves the radio off.
+- Signed Wi-Fi firmware updates with a Home-first boot. When saved Wi-Fi exists,
+  the panel renders Home, waits five seconds, checks the selected channel, and
+  returns updater-owned Wi-Fi to `WIFI_OFF`. Foreground work defers or cancels
+  the check. Ten-minute idle checks and **Settings > Firmware update** checks
+  remain. Checks never download an image; **Install now** hands the exact signed
+  request to fixed recovery. The round-safe Firmware page keeps one contextual
+  Check/Install action and an explicit three-second-hold Recovery action visible
+  without scrolling; its countdown replaces the screen title where the holding
+  finger cannot cover it. Stable is default and development is opt-in.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and
@@ -252,7 +261,8 @@ The clean-storage boundary introduced during `0.2.0-dev` remains in 0.3.0: the
 firmware does not migrate former Amaran driver IDs, the `amaran_mesh` NVS key,
 or pre-current device/scene/mesh schemas. Before flashing over an older
 development build, use **Settings > Factory Reset** on the currently installed
-firmware. The reset clears saved configuration; it does not erase firmware.
+firmware. Recovery first verifies latest stable, then clears saved configuration
+and installs that stable main image.
 
 ```sh
 python3 -m venv .venv
@@ -273,11 +283,12 @@ Build an isolated profile locally only when diagnosing a profile-specific
 failure.
 
 After native tests and all firmware profiles pass on a push to `main`, GitHub
-Actions also updates the **Latest development firmware** prerelease with the
-full Montserrat `bleep` application image and its SHA-256 checksum. The
-image is a development snapshot, flashes at offset `0x10000`, and preserves the
-panel's existing NVS configuration partition; it has not necessarily passed
-the physical hardware release gates.
+Actions updates the **Latest development firmware** prerelease with a canonical
+manifest, ECDSA P-256 signature, full Montserrat image, independent verification,
+and an NVS-preserving USB migration bundle. Publishing a normal GitHub Release
+performs the stable-channel build and signing job; it does not require a tag
+naming convention. Development snapshots have not necessarily passed the
+physical hardware release gates.
 
 To render the UI on a desktop, install ImageMagick and run:
 
@@ -287,9 +298,17 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 ```
 
 Generated screenshots are written to `sim/screenshots/` and are intentionally
-ignored by Git. The firmware uses the `huge_app.csv` single-app partition
-layout because BLE, LVGL, and LovyanGFX exceed the default application
-partition.
+ignored by Git. Partition schema 2 keeps NVS at `0x9000/0x5000`, OTA metadata
+at `0xE000/0x2000`, fixed recovery at `0x10000/0x100000`, its journal at
+`0x110000/0x10000`, main firmware at `0x120000/0x2D0000`, and coredump in the
+final 64 KiB. CI enforces raw ceilings of `0xF0000` for recovery and `0x2C0000`
+for main.
+
+Existing single-slot installations require the release's one-time USB
+migration bundle before Wi-Fi updates can work. The migration writes the
+bootloader, partition table, blank OTA metadata, fixed recovery, blank recovery
+journal, and main application; it does not erase or overlap NVS. See
+[hardware migration](hardware/README.md#one-time-recovery-firmware-migration).
 
 ## Using the current build
 

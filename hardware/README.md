@@ -156,5 +156,30 @@ battery-endurance gate.
 
 ## Firmware and pin details
 
+### One-time recovery firmware migration
+
+Firmware installed with the earlier single-application partition table cannot
+perform a safe Wi-Fi update. Download `bleep-usb-migration.zip` from a trusted
+release, verify its release provenance, extract it, connect the panel by USB,
+and run:
+
+```sh
+cd bleep-usb-migration
+./migrate.sh /dev/cu.usbserial-211240
+```
+
+Use the actual enumerated port; never guess a different device. The script uses
+esptool `write_flash` without `erase_flash`. It writes the bootloader at
+`0x0000`, partition table at `0x8000`, blank OTA metadata at `0xE000`, fixed
+recovery at `0x10000`, a blank recovery journal at `0x110000`, and main firmware
+at `0x120000`. It does not write or erase NVS at `0x9000/0x5000`, so saved panel
+configuration is intended to survive. Keep USB power connected through the
+first boot and confirm saved configuration before relying on Wi-Fi updates.
+
+This repository supplies and structurally tests the bundle, but the
+NVS-preserving migration is not considered hardware-proven until a real panel
+has been backed up, migrated, booted, and checked for retained settings. Do not
+use a full-chip erase for this migration.
+
 Build, flashing, firmware behavior, and the complete CrowPanel pin assumptions
 are documented in the [project README](../README.md#hardware).

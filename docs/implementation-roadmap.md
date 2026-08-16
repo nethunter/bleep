@@ -523,6 +523,9 @@ Work:
 - long-running Wi-Fi/Bluetooth coexistence tests;
 - safety validation for physical movement and recording state;
 - documentation and recovery procedures.
+- signed stable/development Wi-Fi checks, fixed recovery, NVS-preserving
+  schema-2 migration, boot validation, replay protection, factory-reset
+  journaling, and release signing controls.
 
 Completion gate:
 
@@ -530,3 +533,13 @@ Completion gate:
 - relevant profiles flash and pass hardware checks;
 - memory headroom and known limitations are recorded;
 - no unsupported protocol behavior is presented as confirmed.
+- recovery/main raw images remain at or below `0xF0000`/`0x2C0000`; signed-object,
+  interrupted-transfer, migration, power-loss, fallback, ten-cycle, and
+  BLE/HA coexistence hardware gates pass.
+
+Implemented tranche (ADR-046): post-Home startup/idle/Settings checks, signed
+canonical manifests, explicit recovery handoff, fixed recovery plus one large
+main slot, transactional factory reset journal, boot health gate, recovery UI,
+packaging tests, and protected-environment workflows are implemented. Physical
+migration, tamper/network/power-loss behavior, fallback, coexistence, and
+endurance remain release blockers rather than completed evidence.

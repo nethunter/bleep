@@ -29,6 +29,11 @@ int main(int, char**) {
   RUN_TEST(test_panel_identity_uses_full_hardware_id_and_short_setup_suffix);
   RUN_TEST(test_portal_parses_sequence_action_commands_from_json);
   RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
+  RUN_TEST(test_firmware_update_policy_checks_five_seconds_after_idle_home);
+  RUN_TEST(test_firmware_update_policy_defers_startup_for_foreground_then_resumes);
+  RUN_TEST(test_firmware_update_policy_immediate_daily_and_retry_scheduling);
+  RUN_TEST(test_recovery_journal_alternates_recovers_and_clears);
+  RUN_TEST(test_recovery_touch_requires_a_settled_release_after_reboot);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);

@@ -7,7 +7,6 @@
 
 #include "Arduino.h"
 #include "core/device_manager.h"
-#include "core/factory_reset.h"
 #include "core/scene_service.h"
 #include "devices/canon_ble/ui.h"
 #include "devices/canon_trigger/ui.h"
@@ -19,6 +18,7 @@
 #include "devices/aputure_light/ui.h"
 #include "devices/aputure_light/runtime.h"
 #include "devices/zhiyun_light/ui.h"
+#include "firmware_update.h"
 #include "haptic_feedback.h"
 #include "portal_service.h"
 #include "scene_ui.h"
@@ -245,6 +245,7 @@ int main() {
     }
   }
   ui::init();
+  firmware_update::service().begin();
   ui::showDevices();
   if (!capture("00_devices_unpaged")) {
     return 1;
@@ -1589,12 +1590,49 @@ int main() {
   ui::simShowWifiSettings();
   if (!capture("31b_settings_wifi_empty")) return 1;
   portal::simSetSavedWifi("Studio-WiFi");
+  firmware_update::service().simSetWifiConfigured(false);
+  ui::simShowFirmwareUpdate();
+  if (!capture("31c_settings_firmware_configure_wifi")) return 1;
+  firmware_update::service().setRuntimeIdle(false, false);
+  firmware_update::service().simSetWifiConfigured(true);
+  firmware_update::service().checkNow();
+  ui::simShowFirmwareUpdate();
+  if (!capture("31d_settings_firmware_disconnect")) return 1;
+  firmware_update::service().setRuntimeIdle(true, false);
+  firmware_update::service().simSetRecoveryAvailable(true);
+  firmware_update::service().simSetChecking();
+  ui::simShowFirmwareUpdate();
+  if (!capture("31d1_settings_firmware_checking")) return 1;
+  firmware_update::service().simSetFailure("Network transfer failed");
+  ui::simShowFirmwareUpdate();
+  if (!capture("31d2_settings_firmware_failure")) return 1;
+  firmware_update::service().simSetAvailable("0.3.0", 300);
+  ui::showHome();
+  if (!capture("31e_firmware_available_prompt")) return 1;
+  ui::simDismissUpdatePrompt();
+  firmware_update::service().simSetRecoveryAvailable(true);
+  ui::simShowFirmwareUpdate();
+  if (!capture("31f_settings_firmware_available")) return 1;
+  ui::simStartFirmwareRecoveryHold();
+  delay(1001);
+  ui::tick();
+  if (!capture("31f1_settings_firmware_recovery_hold")) return 1;
+  delay(2000);
+  ui::tick();
+  if (!firmware_update::service().simRecoveryRequested()) {
+    std::fprintf(stderr, "firmware Recovery hold did not request recovery\n");
+    return 1;
+  }
+  ui::simShowUpdateConfirmation();
+  if (!capture("31g_settings_firmware_confirm")) return 1;
+  ui::showHome();
+  ui::showSettings();
   ui::simShowAbout();
-  if (!capture("31c_settings_about")) return 1;
+  if (!capture("31h_settings_about")) return 1;
   ui::simScrollAboutToEnd();
-  if (!capture("31c_settings_about_scrolled")) return 1;
+  if (!capture("31i_settings_about_scrolled")) return 1;
   ui::simShowSystemInfo();
-  if (!capture("31d_settings_system")) return 1;
+  if (!capture("31j_settings_system")) return 1;
 
   ui::simSetHapticEnabled(false);
   gHapticStateCount = 0;
@@ -1605,21 +1643,21 @@ int main() {
   }
   ui::simSetHapticEnabled(true);
 
-  studio::factory_reset::clearSimulatedResetCount();
+  firmware_update::service().simClearFactoryResetRequested();
   ui::showSettings();
   pump(20);
   ui::simShowFactoryReset();
-  if (!capture("31e_settings_factory_reset")) return 1;
+  if (!capture("31k_settings_factory_reset")) return 1;
   ui::simSetFactoryResetHolding(true);
   pump(2999);
-  if (studio::factory_reset::simulatedResetCount() != 0) {
+  if (firmware_update::service().simFactoryResetRequested()) {
     std::fprintf(stderr, "Factory reset triggered before the hold completed\n");
     return 1;
   }
   ui::simSetFactoryResetHolding(false);
   ui::simSetFactoryResetHolding(true);
   pump(3001);
-  if (studio::factory_reset::simulatedResetCount() != 1) {
+  if (!firmware_update::service().simFactoryResetRequested()) {
     std::fprintf(stderr, "Factory reset did not trigger exactly once\n");
     return 1;
   }

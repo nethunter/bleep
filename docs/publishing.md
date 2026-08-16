@@ -22,8 +22,8 @@ that must be made by the future GitHub owner.
 
 ## GitHub settings
 
-- [ ] Create the GitHub repository and add it as this checkout's remote; no Git
-  remote is currently configured.
+- [x] The public repository and `origin` remote are configured for
+  `nethunter/bleep`.
 - [ ] Add a short description and topics such as `esp32`, `lvgl`, `bluetooth`,
   `remote-control`, `camera`, `studio`, and `platformio`.
 - [ ] Enable Issues, Discussions, and private vulnerability reporting.
@@ -37,6 +37,32 @@ that must be made by the future GitHub owner.
   physical smoke test pass. The rolling **Latest development firmware**
   prerelease is an automated CI snapshot and must remain clearly labeled as
   hardware-unverified.
+
+## Signed firmware environments
+
+Repository code contains only the two public P-256 keys under `keys/`. Configure
+the matching private key as an `OTA_SIGNING_PRIVATE_KEY` secret in each GitHub
+Environment:
+
+- `development` signs the rolling public `latest` prerelease after every
+  successful `main` CI matrix;
+- `stable` signs a published non-prerelease GitHub Release and should require
+  environment reviewer approval.
+
+Do not reuse a key between environments, place a private key in repository or
+artifact storage, or make signing continue when the secret is missing. Rotate
+a channel by embedding a newly identified public key first, shipping that trust
+anchor through an already trusted release, and only then switching its
+environment secret. The manifest key IDs currently accepted by firmware are
+`stable-2026-01` and `development-2026-01`.
+
+Both workflows build recovery and main independently, enforce their
+`0xF0000`/`0x2C0000` raw ceilings and schema-2 geometry, package a canonical
+manifest with `recovery_schema: 1` and detached ECDSA signature, independently
+verify it, and upload a one-time USB migration bundle. Wi-Fi releases contain
+only main; recovery changes ship through the USB bundle. Release sequences are
+monotonically increasing UTC epoch seconds; tag text is only the stable version
+label and is not parsed as a policy input.
 
 ## License
 

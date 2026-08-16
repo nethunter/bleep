@@ -14,6 +14,13 @@ network assistants. It does not describe the later station-mode Portal handoff.
 - **Observed:** the reporting client associated, issued DNS and captive HTTP
   probes, and opened the Portal automatically after the corrected per-panel
   SSID image was flashed. Other supported phone platforms remain unchecked.
+- **Observed correction:** a later recovery-layout image associated and
+  answered DNS but refused TCP connections to `192.168.4.1:80`. The Portal had
+  bound its server to the SoftAP address immediately after mode creation;
+  Arduino's server wrapper silently returns from a failed `bind()` without
+  exposing status. Binding port 80 on all Portal-owned interfaces, explicitly
+  configuring `192.168.4.1/24`, and allowing a bounded 50 ms mode-settle period
+  restored captive HTTP requests and the subsequent LAN handoff.
 
 ## Discovery flow
 
@@ -55,6 +62,11 @@ retain the normal redirect to `/`.
   DNS answers, and repeated captive HTTP probes. The operator then confirmed
   that the Portal opened and worked correctly. The exact phone model and OS
   version were not recorded, so this is not cross-platform evidence.
+- **Observed:** after the address-bind correction, serial recorded repeated
+  captive-probe handlers, unknown-GET fallback, Wi-Fi scan API activity, and a
+  successful transition to the LAN Portal at `192.168.1.15:80`. This proves the
+  reproduced phone reached and mutated the Portal, but does not identify the
+  phone model or establish cross-platform behavior.
 
 ## Verification still required
 

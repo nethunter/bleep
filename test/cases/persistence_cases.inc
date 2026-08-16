@@ -5,7 +5,8 @@ void test_persistence_golden_bytes_and_current_schema_boundary() {
   panel.hapticEnabled = true;
   TEST_ASSERT_TRUE(panelStore.save(panel));
   const uint8_t expectedPanel[] = {
-      0x50, 0x53, 0x45, 0x54, 0x01, 0x00, 0x01, 0x4f, 0x52, 0xbb, 0xd8};
+      0x50, 0x53, 0x45, 0x54, 0x02, 0x00,
+      0x01, 0x00, 0xbe, 0x5a, 0x62, 0x22};
   TEST_ASSERT_EQUAL_UINT32(sizeof(expectedPanel), panelBackend.length());
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedPanel, panelBackend.data(),
                                 sizeof(expectedPanel));
@@ -317,17 +318,41 @@ void test_panel_settings_default_round_trip_corruption_and_rollback() {
       static_cast<int>(store.load(settings)));
   TEST_ASSERT_TRUE(settings.hapticEnabled);
 
+  const uint8_t v1Panel[] = {
+      0x50, 0x53, 0x45, 0x54, 0x01, 0x00, 0x00, 0xbc, 0x50, 0xbb, 0xd7};
+  MemoryBackend v1Backend;
+  v1Backend.seed(v1Panel, sizeof(v1Panel));
+  studio::PanelSettingsStore v1Store(v1Backend);
+  studio::PanelSettings migrated;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::ConfigLoadStatus::Loaded),
+      static_cast<int>(v1Store.load(migrated)));
+  TEST_ASSERT_FALSE(migrated.hapticEnabled);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::FirmwareUpdateChannel::Stable),
+                        static_cast<int>(migrated.firmwareUpdateChannel));
+
   studio::PanelSettingsService service(backend);
   TEST_ASSERT_TRUE(service.begin());
   TEST_ASSERT_TRUE(service.get().hapticEnabled);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::FirmwareUpdateChannel::Stable),
+      static_cast<int>(service.get().firmwareUpdateChannel));
   TEST_ASSERT_TRUE(service.setHapticEnabled(false));
   TEST_ASSERT_FALSE(service.get().hapticEnabled);
+  TEST_ASSERT_TRUE(service.setFirmwareUpdateChannel(
+      studio::FirmwareUpdateChannel::Development));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::FirmwareUpdateChannel::Development),
+      static_cast<int>(service.get().firmwareUpdateChannel));
 
   studio::PanelSettings restored;
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::ConfigLoadStatus::Loaded),
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_FALSE(restored.hapticEnabled);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::FirmwareUpdateChannel::Development),
+      static_cast<int>(restored.firmwareUpdateChannel));
 
   backend.failWrites = true;
   TEST_ASSERT_FALSE(service.setHapticEnabled(true));
@@ -338,6 +363,8 @@ void test_panel_settings_default_round_trip_corruption_and_rollback() {
       static_cast<int>(studio::ConfigLoadStatus::Corrupt),
       static_cast<int>(store.load(restored)));
   TEST_ASSERT_TRUE(restored.hapticEnabled);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::FirmwareUpdateChannel::Stable),
+                        static_cast<int>(restored.firmwareUpdateChannel));
 }
 
  void test_home_assistant_profiles_protocol_capacity_and_scene_validation() {

@@ -11,8 +11,8 @@
 #include "assets/about_logo.h"
 #include "build_info.h"
 #include "core/device_manager.h"
-#include "core/factory_reset.h"
 #include "core/panel_settings.h"
+#include "firmware_update.h"
 #include "core/driver_catalog.h"
 #include "core/scene_service.h"
 #include "core/system_info.h"
@@ -195,15 +195,22 @@ void hideDeviceUis() {
 }
 
 enum class Screen : uint8_t { Home, Devices, Portal, Settings };
-enum class SettingsView : uint8_t { Menu, Wifi, About, SystemInfo, FactoryReset };
+enum class SettingsView : uint8_t {
+  Menu,
+  Wifi,
+  FirmwareUpdate,
+  About,
+  SystemInfo,
+  FactoryReset,
+};
 
 Screen screen = Screen::Home;
 lv_obj_t* scrHome = nullptr;
 lv_obj_t* scrDevices = nullptr;
 lv_obj_t* scrPortal = nullptr;
 lv_obj_t* scrSettings = nullptr;
-lv_obj_t* settingsScreens[5] = {};
-lv_obj_t* settingsHeaders[5] = {};
+lv_obj_t* settingsScreens[6] = {};
+lv_obj_t* settingsHeaders[6] = {};
 lv_obj_t* settingsHeader = nullptr;
 lv_obj_t* settingsMenuList = nullptr;
 lv_obj_t* aboutContent = nullptr;
@@ -211,6 +218,19 @@ lv_obj_t* systemInfoLabel = nullptr;
 lv_obj_t* factoryResetButton = nullptr;
 lv_obj_t* factoryResetProgress = nullptr;
 lv_obj_t* factoryResetStatus = nullptr;
+lv_obj_t* firmwareUpdateStatus = nullptr;
+lv_obj_t* firmwareUpdateTitle = nullptr;
+lv_obj_t* firmwareUpdateContent = nullptr;
+lv_obj_t* firmwareUpdateCheck = nullptr;
+lv_obj_t* firmwareUpdateInstall = nullptr;
+lv_obj_t* firmwareUpdateRollback = nullptr;
+lv_obj_t* firmwareUpdateChannelLabel = nullptr;
+lv_obj_t* firmwareUpdateChannelToggle = nullptr;
+lv_obj_t* updatePrompt = nullptr;
+bool updatePromptConfirming = false;
+bool firmwareRollbackHolding = false;
+uint32_t firmwareRollbackStartedMs = 0;
+void closeUpdatePrompt();
 SettingsView settingsView = SettingsView::Menu;
 bool factoryResetHolding = false;
 bool factoryResetTriggered = false;
@@ -698,6 +718,7 @@ void onDefaultRenameCancel() {
 }
 
 void destroySettingsScreen() {
+  closeUpdatePrompt();
   if (scrSettings != nullptr && lv_scr_act() == scrSettings && scrHome != nullptr) {
     lv_scr_load(scrHome);
   }
@@ -716,12 +737,22 @@ void destroySettingsScreen() {
   factoryResetButton = nullptr;
   factoryResetProgress = nullptr;
   factoryResetStatus = nullptr;
+  firmwareUpdateStatus = nullptr;
+  firmwareUpdateTitle = nullptr;
+  firmwareUpdateContent = nullptr;
+  firmwareUpdateCheck = nullptr;
+  firmwareUpdateInstall = nullptr;
+  firmwareUpdateRollback = nullptr;
+  firmwareUpdateChannelLabel = nullptr;
+  firmwareUpdateChannelToggle = nullptr;
+  firmwareRollbackHolding = false;
   factoryResetHolding = false;
   factoryResetTriggered = false;
   settingsHeaderNeedsRefresh = false;
 }
 
-lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
+lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back,
+                         lv_obj_t** titleLabel = nullptr) {
   scrSettings = lv_obj_create(nullptr);
   styleScreen(scrSettings);
   lv_obj_clear_flag(scrSettings, LV_OBJ_FLAG_SCROLLABLE);
@@ -739,7 +770,9 @@ lv_obj_t* settingsScreen(const char* title, lv_event_cb_t back) {
   header.onBack = back;
   header.panelColor = kColPanel;
   header.textColor = kColText;
-  studio_ui::createRoundPageHeader(settingsHeader, header);
+  const studio_ui::RoundPageHeader created =
+      studio_ui::createRoundPageHeader(settingsHeader, header);
+  if (titleLabel != nullptr) *titleLabel = created.title;
   return scrSettings;
 }
 
@@ -775,12 +808,20 @@ lv_obj_t* settingsRow(lv_obj_t* parent, const char* title, const char* detail,
 void showSettingsView(SettingsView view);
 
 void onSettingsBack(lv_event_t*) {
+  closeUpdatePrompt();
   haptic_feedback::request(haptic_feedback::Pattern::Back);
   if (settingsView == SettingsView::Menu) showHome();
   else showSettingsView(SettingsView::Menu);
 }
 
 void onWifiSettings(lv_event_t*) { showSettingsView(SettingsView::Wifi); }
+void refreshFirmwareUpdate();
+
+void onFirmwareUpdate(lv_event_t*) {
+  showSettingsView(SettingsView::FirmwareUpdate);
+  firmware_update::service().checkNow();
+  refreshFirmwareUpdate();
+}
 void onAbout(lv_event_t*) { showSettingsView(SettingsView::About); }
 void onSystemInfo(lv_event_t*) { showSettingsView(SettingsView::SystemInfo); }
 void onFactoryReset(lv_event_t*) { showSettingsView(SettingsView::FactoryReset); }
@@ -788,6 +829,124 @@ void onFactoryReset(lv_event_t*) { showSettingsView(SettingsView::FactoryReset);
 void onConfigureWifi(lv_event_t*) {
   destroySettingsScreen();
   showPortal();
+}
+
+void closeUpdatePrompt() {
+  if (updatePrompt != nullptr) {
+    lv_obj_del(updatePrompt);
+    updatePrompt = nullptr;
+  }
+  if (firmwareUpdateCheck != nullptr) lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+  if (firmwareUpdateInstall != nullptr) lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+  updatePromptConfirming = false;
+}
+
+void onUpdateLater(lv_event_t*) {
+  if (!updatePromptConfirming) firmware_update::service().dismissAvailable();
+  closeUpdatePrompt();
+  refreshFirmwareUpdate();
+}
+
+void onUpdateConfirm(lv_event_t*) {
+  studio::scenes().cancel();
+  studio::devices().deactivateAll();
+  firmware_update::service().setRuntimeIdle(true, false);
+  if (!firmware_update::service().installAvailable()) {
+    haptic_feedback::request(haptic_feedback::Pattern::Error);
+  }
+  closeUpdatePrompt();
+  refreshFirmwareUpdate();
+}
+
+void showInstallConfirmation();
+
+void onUpdateInstall(lv_event_t*) {
+  if (settingsView != SettingsView::FirmwareUpdate) {
+    showSettingsView(SettingsView::FirmwareUpdate);
+  }
+  closeUpdatePrompt();
+  showInstallConfirmation();
+}
+
+void buildUpdatePrompt(bool confirmation) {
+  closeUpdatePrompt();
+  updatePromptConfirming = confirmation;
+  updatePrompt = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(updatePrompt, 198, 170);
+  lv_obj_center(updatePrompt);
+  lv_obj_set_style_bg_color(updatePrompt, lv_color_hex(kColPanel), 0);
+  lv_obj_set_style_border_color(updatePrompt, lv_color_hex(kColAccent), 0);
+  lv_obj_set_style_border_width(updatePrompt, 2, 0);
+  lv_obj_set_style_radius(updatePrompt, 12, 0);
+  lv_obj_clear_flag(updatePrompt, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* text = lv_label_create(updatePrompt);
+  lv_obj_set_width(text, 174);
+  lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(text, UI_FONT_14, 0);
+  lv_label_set_text(text, confirmation
+      ? "INSTALL UPDATE?\nDisconnects devices.\nKeep USB power on.\nPanel will reboot."
+      : "FIRMWARE UPDATE AVAILABLE");
+  lv_obj_align(text, LV_ALIGN_TOP_MID, 0, -2);
+  lv_obj_t* primary = makeButton(updatePrompt,
+      confirmation ? "INSTALL" : "INSTALL NOW",
+      confirmation ? onUpdateConfirm : onUpdateInstall, kColAccent);
+  lv_obj_set_size(primary, 122, 30);
+  lv_obj_align(primary, LV_ALIGN_BOTTOM_MID, 0, -32);
+  lv_obj_t* later = makeButton(updatePrompt,
+      confirmation ? "CANCEL" : "LATER", onUpdateLater, kColPanel);
+  lv_obj_set_size(later, 92, 26);
+  lv_obj_align(later, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_move_foreground(updatePrompt);
+  if (firmwareUpdateCheck != nullptr) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+  if (firmwareUpdateInstall != nullptr) lv_obj_add_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+}
+
+void showInstallConfirmation() { buildUpdatePrompt(true); }
+
+void onFirmwareCheck(lv_event_t*) {
+  const firmware_update::Snapshot current = firmware_update::service().status();
+  if (!current.wifiConfigured) {
+    onConfigureWifi(nullptr);
+    return;
+  }
+  if (current.disconnectRequired) {
+    studio::scenes().cancel();
+    studio::devices().deactivateAll();
+    firmware_update::service().setRuntimeIdle(true, false);
+    firmware_update::service().checkNow(true);
+  } else {
+    firmware_update::service().checkNow();
+  }
+  refreshFirmwareUpdate();
+}
+
+void onUpdateChannelChanged(lv_event_t* event) {
+  lv_obj_t* toggle = lv_event_get_target(event);
+  const studio::FirmwareUpdateChannel requested =
+      lv_obj_has_state(toggle, LV_STATE_CHECKED)
+          ? studio::FirmwareUpdateChannel::Development
+          : studio::FirmwareUpdateChannel::Stable;
+  if (!studio::panelSettings().setFirmwareUpdateChannel(requested)) {
+    haptic_feedback::request(haptic_feedback::Pattern::Error);
+    return;
+  }
+  firmware_update::service().checkNow();
+  refreshFirmwareUpdate();
+}
+
+void onFirmwareRollbackPressed(lv_event_t*) {
+  firmwareRollbackHolding = true;
+  firmwareRollbackStartedMs = millis();
+  if (firmwareUpdateTitle != nullptr) {
+    lv_label_set_text(firmwareUpdateTitle, "Hold 3s");
+  }
+}
+
+void onFirmwareRollbackReleased(lv_event_t*) {
+  firmwareRollbackHolding = false;
+  if (firmwareUpdateTitle != nullptr) {
+    lv_label_set_text(firmwareUpdateTitle, "Firmware");
+  }
 }
 
 void onHapticChanged(lv_event_t* event) {
@@ -843,6 +1002,7 @@ void buildSettingsMenu() {
   lv_obj_add_event_cb(list, onSettingsContentScrolled, LV_EVENT_SCROLL, nullptr);
   settingsRow(list, "About", nullptr, onAbout);
   settingsRow(list, "Wi-Fi", nullptr, onWifiSettings);
+  settingsRow(list, "Firmware update", nullptr, onFirmwareUpdate);
   lv_obj_t* haptic = settingsRow(list, "Haptic feedback", nullptr, nullptr);
   lv_obj_t* toggle = lv_switch_create(haptic);
   lv_obj_set_size(toggle, 42, 22);
@@ -853,6 +1013,117 @@ void buildSettingsMenu() {
   lv_obj_add_event_cb(toggle, onHapticChanged, LV_EVENT_VALUE_CHANGED, nullptr);
   settingsRow(list, "System info", nullptr, onSystemInfo);
   settingsRow(list, "Factory reset", nullptr, onFactoryReset);
+}
+
+void refreshFirmwareUpdate() {
+  if (firmwareUpdateStatus == nullptr) return;
+  const firmware_update::Snapshot current = firmware_update::service().status();
+  char text[240];
+  const char* channel = studio::panelSettings().get().firmwareUpdateChannel ==
+                                studio::FirmwareUpdateChannel::Development
+                            ? "Development"
+                            : "Stable";
+  const char* detail = !current.wifiConfigured ? "Configure Wi-Fi" :
+      current.disconnectRequired ? "Devices are connected" :
+      current.updateAvailable ? current.version : current.message;
+  const bool checking = current.status == firmware_update::Status::Connecting ||
+                        current.status == firmware_update::Status::Checking;
+  const char* summaryPrefix = checking ? "Status: " :
+      current.updateAvailable ? "Available: " : "Last: ";
+  const char* summary = checking ? detail :
+      current.updateAvailable ? current.version : current.lastResult;
+  std::snprintf(text, sizeof(text), "%s | %s\n%.12s | %s\n%s%s",
+                build_info::kFirmwareVersion, build_info::kReleaseChannel,
+                build_info::kGitCommit, channel, summaryPrefix, summary);
+  lv_label_set_text(firmwareUpdateStatus, text);
+  if (firmwareUpdateCheck != nullptr) {
+    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0), checking ? "CHECKING..." :
+                      !current.wifiConfigured ? "CONFIGURE WI-FI" :
+                      current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");
+    if (checking) lv_obj_add_state(firmwareUpdateCheck, LV_STATE_DISABLED);
+    else lv_obj_clear_state(firmwareUpdateCheck, LV_STATE_DISABLED);
+    if (current.updateAvailable) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (firmwareUpdateInstall != nullptr) {
+    if (current.updateAvailable) {
+      lv_obj_clear_state(firmwareUpdateInstall, LV_STATE_DISABLED);
+      lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_state(firmwareUpdateInstall, LV_STATE_DISABLED);
+      lv_obj_add_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (firmwareUpdateRollback != nullptr) {
+    if (current.recoveryAvailable) {
+      lv_obj_clear_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
+void buildFirmwareUpdate() {
+  settingsScreen("Firmware", onSettingsBack, &firmwareUpdateTitle);
+  firmwareUpdateContent = lv_obj_create(scrSettings);
+  lv_obj_set_size(firmwareUpdateContent, 198, 174);
+  lv_obj_align(firmwareUpdateContent, LV_ALIGN_BOTTOM_MID, 0, -6);
+  lv_obj_set_style_bg_opa(firmwareUpdateContent, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(firmwareUpdateContent, 0, 0);
+  lv_obj_set_style_pad_left(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_right(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_top(firmwareUpdateContent, 2, 0);
+  lv_obj_set_style_pad_bottom(firmwareUpdateContent, 6, 0);
+  lv_obj_set_style_pad_row(firmwareUpdateContent, 4, 0);
+  lv_obj_clear_flag(firmwareUpdateContent, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(firmwareUpdateContent, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_flex_flow(firmwareUpdateContent, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(firmwareUpdateContent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  firmwareUpdateStatus = lv_label_create(firmwareUpdateContent);
+  lv_obj_set_size(firmwareUpdateStatus, 178, 44);
+  lv_label_set_long_mode(firmwareUpdateStatus, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(firmwareUpdateStatus, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(firmwareUpdateStatus, UI_FONT_12, 0);
+
+  lv_obj_t* channelRow = lv_obj_create(firmwareUpdateContent);
+  lv_obj_set_size(channelRow, 172, 28);
+  lv_obj_set_style_bg_opa(channelRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(channelRow, 0, 0);
+  lv_obj_set_style_pad_all(channelRow, 0, 0);
+  lv_obj_clear_flag(channelRow, LV_OBJ_FLAG_SCROLLABLE);
+  firmwareUpdateChannelLabel = lv_label_create(channelRow);
+  lv_label_set_text(firmwareUpdateChannelLabel, "STABLE / DEV");
+  lv_obj_set_style_text_font(firmwareUpdateChannelLabel, UI_FONT_12, 0);
+  lv_obj_align(firmwareUpdateChannelLabel, LV_ALIGN_LEFT_MID, 2, 0);
+  firmwareUpdateChannelToggle = lv_switch_create(channelRow);
+  lv_obj_set_size(firmwareUpdateChannelToggle, 42, 22);
+  lv_obj_align(firmwareUpdateChannelToggle, LV_ALIGN_RIGHT_MID, -2, 0);
+  if (studio::panelSettings().get().firmwareUpdateChannel ==
+      studio::FirmwareUpdateChannel::Development) {
+    lv_obj_add_state(firmwareUpdateChannelToggle, LV_STATE_CHECKED);
+  }
+  lv_obj_add_event_cb(firmwareUpdateChannelToggle, onUpdateChannelChanged,
+                      LV_EVENT_VALUE_CHANGED, nullptr);
+  firmwareUpdateCheck = makeButton(firmwareUpdateContent, "CHECK NOW", onFirmwareCheck,
+                                   kColPanel);
+  lv_obj_set_size(firmwareUpdateCheck, 154, 30);
+  lv_obj_set_style_text_letter_space(lv_obj_get_child(firmwareUpdateCheck, 0), -1, 0);
+  firmwareUpdateInstall = makeButton(firmwareUpdateContent, "INSTALL NOW", onUpdateInstall,
+                                     kColAccent);
+  lv_obj_set_size(firmwareUpdateInstall, 154, 30);
+  firmwareUpdateRollback = makeButton(firmwareUpdateContent, "HOLD 3S: RECOVERY", nullptr,
+                                      kColDanger);
+  lv_obj_set_size(firmwareUpdateRollback, 154, 28);
+  lv_obj_set_style_text_font(lv_obj_get_child(firmwareUpdateRollback, 0), UI_FONT_12, 0);
+  lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackPressed,
+                      LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackReleased,
+                      LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(firmwareUpdateRollback, onFirmwareRollbackReleased,
+                      LV_EVENT_PRESS_LOST, nullptr);
+  refreshFirmwareUpdate();
 }
 
 void buildWifiSettings() {
@@ -951,13 +1222,13 @@ void buildSystemInfo() {
 }
 
 void buildFactoryReset() {
-  settingsScreen("Factory reset", onSettingsBack);
+  settingsScreen("Reset", onSettingsBack);
   lv_obj_t* warning = lv_label_create(scrSettings);
   lv_label_set_text(warning,
-      "ERASE ALL SAVED DATA?\nDevices + scenes + networks\nBLE bonds + haptics + mesh keys\nReset mesh lights manually\nFirmware stays / cannot undo");
+      "RESET + REINSTALL STABLE?\nRecovery verifies firmware\nbefore erasing saved data\nWi-Fi + USB power required\nCannot be undone");
   lv_obj_set_width(warning, 220);
   lv_obj_set_style_text_align(warning, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(warning, UI_FONT_14, 0);
+  lv_obj_set_style_text_font(warning, UI_FONT_12, 0);
   lv_obj_set_style_text_line_space(warning, -2, 0);
   lv_obj_set_style_text_color(warning, lv_color_hex(kColText), 0);
   lv_obj_align(warning, LV_ALIGN_TOP_MID, 0, 60);
@@ -995,6 +1266,7 @@ void showSettingsView(SettingsView view) {
     switch (view) {
       case SettingsView::Menu: buildSettingsMenu(); break;
       case SettingsView::Wifi: buildWifiSettings(); break;
+      case SettingsView::FirmwareUpdate: buildFirmwareUpdate(); break;
       case SettingsView::About: buildAbout(); break;
       case SettingsView::SystemInfo: buildSystemInfo(); break;
       case SettingsView::FactoryReset: buildFactoryReset(); break;
@@ -1351,6 +1623,10 @@ void monitorHapticConnections() {
 void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
+  const firmware_update::Snapshot update = firmware_update::service().status();
+  if (screen == Screen::Home && update.notificationPending && updatePrompt == nullptr) {
+    buildUpdatePrompt(false);
+  }
   const DeviceUiHooks* activeUi = activeDeviceUi();
   if (activeUi != nullptr) {
     if (activeUi->tick != nullptr) activeUi->tick();
@@ -1377,18 +1653,43 @@ void tick() {
     if (elapsed >= 3000) {
       factoryResetTriggered = true;
       factoryResetHolding = false;
-      lv_label_set_text(factoryResetStatus, "Erasing saved data...");
+      lv_label_set_text(factoryResetStatus, "Entering recovery...");
       lv_obj_add_state(factoryResetButton, LV_STATE_DISABLED);
       studio::scenes().cancel();
       if (portal::active()) portal::stop();
       studio::devices().deactivateAll();
-      haptic_feedback::setEnabled(false);
-      if (!studio::factory_reset::eraseAndRestart()) {
+      if (!firmware_update::service().requestFactoryReset()) {
         factoryResetTriggered = false;
         lv_label_set_text(factoryResetStatus, "Reset failed");
         lv_obj_clear_state(factoryResetButton, LV_STATE_DISABLED);
-        haptic_feedback::setEnabled(
-            studio::panelSettings().get().hapticEnabled);
+        haptic_feedback::request(haptic_feedback::Pattern::Error);
+      }
+    }
+  }
+  if (screen == Screen::Settings &&
+      settingsView == SettingsView::FirmwareUpdate && firmwareRollbackHolding) {
+    const uint32_t elapsed = millis() - firmwareRollbackStartedMs;
+    if (firmwareUpdateTitle != nullptr) {
+      char holdText[16];
+      const uint32_t secondsRemaining = elapsed >= 3000
+          ? 0 : (3000 - elapsed + 999) / 1000;
+      std::snprintf(holdText, sizeof(holdText),
+                    secondsRemaining == 0 ? "Recovery..." : "Hold %lus",
+                    static_cast<unsigned long>(secondsRemaining));
+      lv_label_set_text(firmwareUpdateTitle, holdText);
+    }
+    if (elapsed >= 3000) {
+      firmwareRollbackHolding = false;
+      if (firmwareUpdateRollback != nullptr) {
+        lv_obj_add_state(firmwareUpdateRollback, LV_STATE_DISABLED);
+      }
+      if (!firmware_update::service().enterRecovery()) {
+        if (firmwareUpdateRollback != nullptr) {
+          lv_obj_clear_state(firmwareUpdateRollback, LV_STATE_DISABLED);
+        }
+        if (firmwareUpdateTitle != nullptr) {
+          lv_label_set_text(firmwareUpdateTitle, "Failed");
+        }
         haptic_feedback::request(haptic_feedback::Pattern::Error);
       }
     }
@@ -1403,10 +1704,14 @@ void tick() {
   } else if (screen == Screen::Settings &&
              settingsView == SettingsView::SystemInfo) {
     refreshSystemInfo();
+  } else if (screen == Screen::Settings &&
+             settingsView == SettingsView::FirmwareUpdate) {
+    refreshFirmwareUpdate();
   }
 }
 
 void handleShortPress() {
+  firmware_update::service().noteUserActivity();
   const DeviceUiHooks* activeUi = activeDeviceUi();
   if (activeUi != nullptr) {
     if (activeUi->shortPress != nullptr) activeUi->shortPress();
@@ -1459,6 +1764,8 @@ bool handleLongPressToHome() {
   }
   return handled;
 }
+
+bool showingHome() { return screen == Screen::Home && lv_scr_act() == scrHome; }
 
 void showHome() {
   hideDeviceUis();
@@ -1628,6 +1935,9 @@ void simShowWifiSettings() { showSettingsView(SettingsView::Wifi); }
 void simShowAbout() { showSettingsView(SettingsView::About); }
 void simShowSystemInfo() { showSettingsView(SettingsView::SystemInfo); }
 void simShowFactoryReset() { showSettingsView(SettingsView::FactoryReset); }
+void simShowFirmwareUpdate() { showSettingsView(SettingsView::FirmwareUpdate); }
+void simShowUpdateConfirmation() { showInstallConfirmation(); }
+void simDismissUpdatePrompt() { onUpdateLater(nullptr); }
 
 void simScrollSettingsToEnd() {
   if (settingsMenuList != nullptr) {
@@ -1640,6 +1950,19 @@ void simScrollAboutToEnd() {
   if (aboutContent != nullptr) {
     lv_obj_scroll_to_y(aboutContent, lv_obj_get_scroll_bottom(aboutContent),
                        LV_ANIM_OFF);
+  }
+}
+
+void simHoldFirmwareRecovery() {
+  if (firmwareUpdateRollback == nullptr) return;
+  lv_event_send(firmwareUpdateRollback, LV_EVENT_PRESSED, nullptr);
+  delay(3001);
+  tick();
+}
+
+void simStartFirmwareRecoveryHold() {
+  if (firmwareUpdateRollback != nullptr) {
+    lv_event_send(firmwareUpdateRollback, LV_EVENT_PRESSED, nullptr);
   }
 }
 

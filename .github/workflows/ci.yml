@@ -27,6 +27,7 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m platformio test -e native
       - run: python tools/run_protocol_labs.py
+      - run: python scripts/test_firmware_update_tools.py
 
   firmware-build:
     name: firmware-build (${{ matrix.environment }})
@@ -55,13 +56,50 @@ jobs:
           python-version: "3.x"
           cache: pip
       - run: python -m pip install -r requirements.txt
+      - name: Set development build identity
+        run: |
+          echo "BLEEP_RELEASE_SEQUENCE=$(date -u +%s)" >> "$GITHUB_ENV"
+          echo "BLEEP_RELEASE_CHANNEL=development" >> "$GITHUB_ENV"
       - run: python -m platformio run -e ${{ matrix.environment }}
+      - name: Check OTA geometry and image ceiling
+        if: matrix.environment == 'bleep'
+        run: |
+          python scripts/check_ota_layout.py \
+            --partitions partitions/bleep_recovery.csv \
+            --firmware .pio/build/bleep/firmware.bin
+          printf '%s' "$BLEEP_RELEASE_SEQUENCE" > .pio/build/bleep/release-sequence.txt
       - name: Stage full firmware for release
         if: matrix.environment == 'bleep'
         uses: actions/upload-artifact@v4
         with:
           name: full-firmware
-          path: .pio/build/bleep/firmware.bin
+          path: |
+            .pio/build/bleep/firmware.bin
+            .pio/build/bleep/bootloader.bin
+            .pio/build/bleep/partitions.bin
+            .pio/build/bleep/release-sequence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  recovery-build:
+    name: recovery-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m platformio run -e bleep_recovery
+      - run: |
+          python scripts/check_ota_layout.py \
+            --partitions partitions/bleep_recovery.csv \
+            --recovery .pio/build/bleep_recovery/firmware.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovery-firmware
+          path: .pio/build/bleep_recovery/firmware.bin
           if-no-files-found: error
           retention-days: 1
 
@@ -72,9 +110,11 @@ jobs:
       - repository-checks
       - native-tests
       - firmware-build
+      - recovery-build
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    environment: development
     concurrency:
       group: latest-firmware-release
       cancel-in-progress: false
@@ -83,11 +123,48 @@ jobs:
         with:
           name: full-firmware
           path: release
-      - name: Prepare release assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: recovery-firmware
+          path: recovery
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Prepare signed release assets
+        env:
+          BLEEP_OTA_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
         run: |
-          mv release/firmware.bin release/bleep-latest.bin
-          cd release
-          sha256sum bleep-latest.bin > bleep-latest.sha256
+          sequence=$(cat release/release-sequence.txt)
+          python scripts/package_firmware_update.py \
+            --firmware release/firmware.bin \
+            --output-dir signed-release \
+            --channel development \
+            --version 0.2.0-dev \
+            --commit "$GITHUB_SHA" \
+            --release-sequence "$sequence" \
+            --release-ref latest \
+            --key-id development-2026-01
+          python scripts/verify_firmware_update.py \
+            --manifest signed-release/bleep-update.json \
+            --signature signed-release/bleep-update.sig \
+            --firmware signed-release/bleep-update.bin \
+            --public-key keys/ota-development-public.pem
+          cp release/bootloader.bin signed-release/bleep-usb-bootloader.bin
+          cp release/partitions.bin signed-release/bleep-usb-partitions.bin
+          cp recovery/firmware.bin signed-release/bleep-usb-recovery.bin
+          python scripts/check_ota_layout.py \
+            --partitions partitions/bleep_recovery.csv \
+            --firmware release/firmware.bin \
+            --recovery recovery/firmware.bin
+          python scripts/package_usb_migration.py \
+            --firmware release/firmware.bin \
+            --recovery recovery/firmware.bin \
+            --bootloader release/bootloader.bin \
+            --partitions release/partitions.bin \
+            --output signed-release/bleep-usb-migration.zip
       - name: Publish rolling development release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,7 +172,7 @@ jobs:
         run: |
           tag=latest
           title="Latest development firmware"
-          notes="Automated development build of the full bleep profile from commit ${GITHUB_SHA}. This prerelease has passed CI, but it is not a substitute for the physical hardware release gates. The application image flashes at offset 0x10000 and preserves the existing NVS configuration partition."
+          notes="Automated development build of the full bleep profile from commit ${GITHUB_SHA}. This prerelease has passed CI, but it is not a substitute for the physical hardware release gates. Normal main uploads flash at 0x120000. The USB migration bundle installs fixed recovery plus main while preserving NVS."
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh api \
@@ -115,7 +192,7 @@ jobs:
               --prerelease
           fi
 
-          gh release upload "$tag" release/* --clobber
+          gh release upload "$tag" signed-release/* --clobber
 
   publish-versioned-release:
     name: publish versioned release
