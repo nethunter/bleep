@@ -5,6 +5,20 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Five-panel 0.3.5 stable-candidate baseline
+
+- Promoted the configured firmware version from `0.3.4` to `0.3.5` after the
+  two-second manual Recovery hold and immediate quiet-main handoff passed native
+  tests 95/95, firmware-update packaging tests 7/7, the complete `ui_sim`
+  traversal, and a full Montserrat `bleep` build at 2,021,930 bytes used flash.
+- Flashed the signed `c33a713` development USB migration bundle to five distinct
+  panels while excluding NVS: `10:00:3b:c0:19:2c`, `10:00:3b:c2:e4:dc`,
+  `94:a9:90:57:ab:80`, `10:00:3b:c2:db:a8`, and `10:00:3b:c3:6c:18`.
+  Esptool hash-verified every written segment and bounded serial confirmed main
+  boot with Wi-Fi off on all five. Panel `10:00:3b:c3:6c:18` retained its
+  previously empty NVS. Stable signing and a five-panel OTA cycle remain the
+  release gates.
+
 ### 2026-08-16: Immediate quiet-main update handoff
 
 - Removed the redundant normal-runtime cyan preparation overlay and its
