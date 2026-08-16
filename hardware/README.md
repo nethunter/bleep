@@ -178,10 +178,11 @@ first boot. Recovery should automatically validate and select main; no
 **Boot firmware** tap is required for a clean migration. Confirm saved
 configuration before relying on Wi-Fi updates.
 
-This repository supplies and structurally tests the bundle, but the
-NVS-preserving migration is not considered hardware-proven until a real panel
-has been backed up, migrated, booted, and checked for retained settings. Do not
-use a full-chip erase for this migration.
+The NVS-preserving bundle has been hash-verified and exercised on five distinct
+panels. All five booted main firmware after migration without a manual recovery
+selection, and settings remained intact where previously configured. Continue
+to back up important configuration, confirm it after migration, and never use a
+full-chip erase for this procedure.
 
 Build, flashing, firmware behavior, and the complete CrowPanel pin assumptions
 are documented in the [project README](../README.md#hardware).

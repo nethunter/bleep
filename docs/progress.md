@@ -5,6 +5,31 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Stable 0.3.5 signed release and first production OTA
+
+- Merged and pushed `0.3.5` at `12b97c3`. Main CI run `31955977392` passed
+  native tests, recovery, the full firmware/profile matrix, and development
+  publication. Approval-protected stable workflow `31956164604` rebuilt,
+  signed, independently verified, and published the non-prerelease `0.3.5`
+  assets. Local verification against `keys/ota-stable-public.pem` also passed.
+  Stable sequence `1786894728` carries main SHA-256
+  `495a2d7fd62447760213cc3983ac7d95d8fe14feca558453c4b5642650e1eca8`
+  and recovery SHA-256
+  `3de3c8b7d434a4a783218456f582230d35a16632c2b9c4f7e877b5638e669f10`.
+- Panel `10:00:3b:c2:e4:dc` completed the stable Wi-Fi update from the signed
+  development USB baseline. Serial captured the immediate main restart,
+  quiet-main recovery replacement, recovery boot, main installation, final
+  healthy Home boot, and updater-owned Wi-Fi returning to `WIFI_OFF`. The
+  49.6-second operator recording was visually inspected: the amber circular
+  preparation view, recovery progress, explicit **Update successful** / Restart
+  confirmation, and return to Home were smooth, with no cyan pre-reboot overlay
+  or visible progress flicker. ESP-IDF emitted noisy nonblocking TLS read logs
+  during the successful transfer; no crash, retry, or boot loop occurred.
+- The signed development migration bundle was already hash-verified on all five
+  panels with NVS excluded from every write. The other four panels were not
+  observed installing stable `0.3.5` over Wi-Fi, so this session records one
+  production OTA smoke test rather than a five-panel OTA result.
+
 ### 2026-08-16: Five-panel 0.3.5 stable-candidate baseline
 
 - Promoted the configured firmware version from `0.3.4` to `0.3.5` after the
