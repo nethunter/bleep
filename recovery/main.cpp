@@ -285,6 +285,7 @@ studio::PartitionRecoveryJournalBackend journalBackend;
 studio::RecoveryJournal journal(journalBackend);
 studio::RecoveryRecord request;
 bool touchDown = false;
+bool restartPending = false;
 uint32_t factoryHoldStarted = 0;
 studio::RecoveryTouchGate touchGate;
 
@@ -344,6 +345,30 @@ void screen(const char* title, const char* detail = nullptr, int progress = -1) 
     display.drawRoundRect(42, 120, 156, 12, 4, TFT_DARKGREY);
     display.fillRoundRect(44, 122, progress * 152 / 100, 8, 3, TFT_CYAN);
   }
+}
+
+void updateProgress(int progress) {
+  if (progress < 0) progress = 0;
+  if (progress > 100) progress = 100;
+  const int width = progress * 152 / 100;
+  if (width > 0) display.fillRoundRect(44, 122, width, 8, 3, TFT_CYAN);
+
+  char percentage[8];
+  snprintf(percentage, sizeof(percentage), "%d%%", progress);
+  display.fillRoundRect(90, 140, 60, 12, 0, TFT_BLACK);
+  display.setTextColor(TFT_WHITE, TFT_BLACK);
+  display.drawString(percentage, 120, 146);
+}
+
+void completionScreen(bool factoryReset) {
+  screen(factoryReset ? "RESET SUCCESSFUL" : "UPDATE SUCCESSFUL",
+         "Ready to restart");
+  button(130, "RESTART", TFT_DARKGREEN);
+  restartPending = true;
+  touchDown = false;
+  factoryHoldStarted = 0;
+  Serial.printf("RECOVERY: %s complete; waiting for restart confirmation\n",
+                factoryReset ? "factory reset" : "update");
 }
 
 const esp_partition_t* mainPartition() {
@@ -441,8 +466,7 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
     const int progress = static_cast<int>(context->received * 100 / context->expected);
     if (progress >= context->lastProgress + 5 || progress == 100) {
       context->lastProgress = progress;
-      screen("INSTALLING", context->factoryReset ? "Factory reset" : "Firmware update",
-             progress);
+      updateProgress(progress);
     }
   } else {
     memcpy(context->output + context->received, bytes, length);
@@ -627,6 +651,9 @@ bool installRecord(studio::RecoveryRecord& record, bool fetchLatestStable,
   context.sha = &sha;
   context.expected = expected;
   context.factoryReset = factoryReset;
+  context.lastProgress = 0;
+  screen("INSTALLING", factoryReset ? "Factory reset" : "Firmware update", 0);
+  updateProgress(0);
   const bool valid = performRequest(url, context);
   uint8_t digest[32]; mbedtls_sha256_finish_ret(&sha, digest); mbedtls_sha256_free(&sha);
   wifiOff();
@@ -642,7 +669,7 @@ bool installRecord(studio::RecoveryRecord& record, bool fetchLatestStable,
     if (!journal.save(record)) return false;
   }
   if (esp_ota_set_boot_partition(target) != ESP_OK) return false;
-  screen("COMPLETE", "Restarting"); delay(300); ESP.restart();
+  completionScreen(factoryReset);
   return true;
 }
 
@@ -703,6 +730,20 @@ void loop() {
   uint16_t x = 0, y = 0;
   const bool touched = readTouch(x, y);
   if (!touchGate.update(touched, millis())) {
+    delay(10);
+    return;
+  }
+  if (restartPending) {
+    if (touched && !touchDown) {
+      touchDown = true;
+      if (y >= 130 && y < 156) {
+        screen("RESTARTING", "Starting firmware");
+        delay(150);
+        ESP.restart();
+      }
+    } else if (!touched) {
+      touchDown = false;
+    }
     delay(10);
     return;
   }

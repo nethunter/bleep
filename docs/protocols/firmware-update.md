@@ -81,9 +81,12 @@ request before selecting `ota_0`. Recovery ignores touch during a 1.5-second
 boot guard and then requires 300 ms of continuous release before arming menu
 input, so touch-controller startup cannot make the initiating hold look like a
 new **Boot firmware** tap. A missing, empty, or corrupt journal leaves recovery
-on its menu rather than automatically selecting valid main. Manual recovery
-first shows **Enable controls** and consumes that touch; **Boot firmware** cannot
-run without a separate subsequent touch.
+on its menu rather than automatically selecting valid main. The install view is
+painted once; progress callbacks update only the bounded bar and percentage
+region. After verification and boot selection, recovery shows **Update
+successful** and waits for a separate **Restart** tap instead of rebooting
+immediately. Factory Reset uses the same confirmation boundary after its
+verified image install and transactional NVS erase complete.
 
 The journal has two alternating CRC-protected records with generation counters.
 Journal load/save uses checked heap buffers for the bounded encoded records so

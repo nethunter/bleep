@@ -92,7 +92,9 @@ principles:
   request to fixed recovery. The round-safe Firmware page keeps one contextual
   Check/Install action and an explicit three-second-hold Recovery action visible
   without scrolling; its countdown replaces the screen title where the holding
-  finger cannot cover it. Stable is default and development is opt-in.
+  finger cannot cover it. Stable is default and development is opt-in. Recovery
+  updates only the progress region while downloading, then holds on an explicit
+  success screen until **Restart** is pressed.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and
