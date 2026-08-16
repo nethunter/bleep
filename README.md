@@ -102,6 +102,10 @@ principles:
   development is opt-in. Recovery
   updates only the progress region while downloading, then holds on an explicit
   success screen until **Restart** is pressed.
+  Once the new main has run healthily for ten seconds, it uses the same signed
+  release request to refresh fixed recovery. Main stays selected during that
+  write, so a failed or interrupted refresh returns to main and retries without
+  reserving another full application slot.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central
   camera/light links and the Phone Camera HID peripheral share that runtime. Up to
   four physical BLE transport groups stay connected across navigation and
@@ -293,7 +297,7 @@ failure.
 
 After native tests and all firmware profiles pass on a push to `main`, GitHub
 Actions updates the **Latest development firmware** prerelease with a canonical
-manifest, ECDSA P-256 signature, full Montserrat image, independent verification,
+manifest, ECDSA P-256 signature, full Montserrat and recovery images, independent verification,
 and an NVS-preserving USB migration bundle. Its displayed and manifest version
 is the configured project version with `-dev` appended. Publishing a normal GitHub Release
 performs the stable-channel build and signing job; it does not require a tag

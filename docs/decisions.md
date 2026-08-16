@@ -1238,6 +1238,29 @@ the replacement.
   main/recovery builds do not prove real AP discovery, password entry, DHCP,
   retained-link release, or repeated heap/radio recovery on hardware.
 
+## ADR-048: Signed releases refresh fixed recovery after main is healthy
+
+- Status: Accepted software tranche; interrupted-write and live OTA acceptance
+  remain open.
+- Compatibility: Keep manifest schema 1 and add signed recovery sequence, size,
+  hash, and payload URL fields. Existing fixed recovery ignores those additions,
+  verifies and installs main exactly as before, and never writes itself.
+- Ordering: The new main must pass its approximately ten-second health gate
+  before it re-verifies the exact journaled manifest and writes the non-running
+  factory recovery partition. The recovery journal is cleared only after that
+  refresh succeeds or the signed release legitimately has no recovery payload.
+- Failure boundary: Main remains selected throughout the recovery write. Power
+  loss or transfer failure therefore returns to main, which retries from the
+  intact journal with 1/6/24-hour network backoff. A partial recovery image is
+  never selected. Installed main and recovery release sequences are persisted
+  independently for replay protection.
+- UX: Recovery refresh owns a full circular **Finishing update** overlay, blocks
+  foreground interaction, updates only its bounded status/progress widgets, and
+  asks the operator to keep USB power connected.
+- Gate: Packaging signatures/hashes, native tests, simulators, and both target
+  builds are software evidence. A real old-recovery-to-new-main-to-new-recovery
+  cycle plus power loss during the factory write remain hardware acceptance.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

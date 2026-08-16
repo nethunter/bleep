@@ -551,3 +551,9 @@ main slot, transactional factory reset journal, boot health gate, recovery UI,
 packaging tests, and protected-environment workflows are implemented. Physical
 migration, tamper/network/power-loss behavior, fallback, coexistence, and
 endurance remain release blockers rather than completed evidence.
+
+Implemented follow-up (ADR-048): releases also carry a signed recovery payload.
+After newly installed main passes its health gate, it refreshes the non-running
+factory partition and clears the existing journal only after verification.
+Compatibility with older fixed recovery is preserved; live interrupted-write
+and complete chained-update evidence remain open gates.

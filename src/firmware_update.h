@@ -27,6 +27,7 @@ struct Snapshot {
   bool notificationPending = false;
   bool disconnectRequired = false;
   bool recoveryAvailable = true;
+  bool recoveryUpdatePending = false;
   uint8_t progressPercent = 0;
   uint64_t releaseSequence = 0;
   uint64_t lastCheckEpoch = 0;
@@ -54,6 +55,8 @@ class FirmwareUpdateService {
   void simSetFailure(const char* message);
   void simSetWifiConfigured(bool configured);
   void simSetRecoveryAvailable(bool available);
+  void simSetRecoveryRefresh(uint8_t progressPercent);
+  void simClearRecoveryRefresh();
   bool simRecoveryRequested() const;
   bool simFactoryResetRequested() const;
   void simClearFactoryResetRequested();

@@ -30,7 +30,8 @@ a newer sequence prompts again after reboot.
 The manifest is compact sorted UTF-8 JSON with a trailing newline. It contains
 `schema`, `channel`, `release_sequence`, `version`, `commit`, `hardware`,
 `profile`, `partition_schema`, `recovery_schema`, `image_size`, `sha256`,
-`payload_url`, and `key_id`. ECDSA P-256 signs the exact bytes using SHA-256.
+`payload_url`, `recovery_sequence`, `recovery_image_size`, `recovery_sha256`,
+`recovery_payload_url`, and `key_id`. ECDSA P-256 signs the exact bytes using SHA-256.
 Stable and development have separate embedded public keys and protected GitHub
 Environments.
 
@@ -70,9 +71,20 @@ Raw ceilings are `0xF0000` for recovery and `0x2C0000` for main. Confirmed
 installation cancels commands, releases retained links, warns about USB power,
 journals the signed request, selects factory recovery, and reboots. Recovery
 downloads, validates, and hashes main; failure leaves boot selection unchanged.
-It then selects `ota_0`. Main clears the journal and marks itself valid only
-after approximately ten seconds of healthy stores, display/touch, Home, and
-main-loop operation. A failed pending main falls back to factory recovery.
+It then selects `ota_0`. Main marks itself valid only after approximately ten
+seconds of healthy stores, display/touch, Home, and main-loop operation. It then
+re-verifies the journaled signed manifest and, when that release contains a
+newer recovery image, streams it into the non-running factory partition before
+clearing the journal. A failed pending main falls back to factory recovery.
+
+This ordering lets an already-installed recovery ignore the added manifest
+fields and install the new main first. Main remains the selected boot image
+while recovery is rewritten, so interrupted recovery writes return to main and
+resume from the intact journal. Main validates the recovery ESP header, bounded
+byte count, SHA-256, and application descriptor before recording its independent
+installed recovery sequence. It never selects a partial recovery image. Releases
+without the optional recovery fields remain compatible and simply finish after
+the main health gate.
 
 Manual **Recovery mode** writes a distinct `RecoveryModeRequested` journal
 operation before selecting factory recovery. Recovery therefore remains on its
@@ -104,7 +116,10 @@ recovery.
 Successful `main` CI signs and replaces the `latest` development prerelease.
 Publishing a non-prerelease GitHub Release builds and signs stable without
 interpreting tag format. Private keys are `OTA_SIGNING_PRIVATE_KEY` secrets in
-the `development` and approval-protected `stable` environments.
+the `development` and approval-protected `stable` environments. Each signed
+release publishes `bleep-update.bin` for main and `bleep-recovery.bin` for the
+fixed recovery refresh; both hashes, sizes, and URLs are covered by the same
+canonical signature.
 
 The one-time migration bundle writes bootloader `0x0000`, partition table
 `0x8000`, blank OTA metadata `0xE000`, recovery `0x10000`, blank journal

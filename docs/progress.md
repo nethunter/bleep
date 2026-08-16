@@ -5,6 +5,27 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Signed recovery refresh after main health
+
+- Extended the canonical signed release with recovery sequence, size, SHA-256,
+  and payload URL while preserving manifest schema 1 compatibility. Development
+  and stable publishing now include and independently verify
+  `bleep-recovery.bin`; packaging tests cover deterministic bounded manifests,
+  recovery hashing, and tampering.
+- Newly installed main now passes its ten-second health gate, re-verifies the
+  exact journaled request, and streams a newer recovery into the non-running
+  factory partition. Main remains selected and the journal remains intact until
+  recovery validation succeeds, so interruption returns to main for a bounded
+  retry rather than selecting a partial factory image. Installed main and
+  recovery sequences are persisted independently.
+- Added a full circular **Finishing update** overlay with bounded progress
+  updates and foreground input suppression. Native tests passed 93/93; packaging
+  tests passed 7/7; the complete `ui_sim` traversal passed and its recovery
+  refresh capture was visually inspected. `bleep_recovery` passed at 41,564
+  bytes RAM and 922,150 bytes flash. The full Montserrat `bleep` build passed
+  at 146,260 bytes RAM and 2,018,866 bytes flash. A chained update and power
+  loss during recovery replacement remain hardware-unverified.
+
 ### 2026-08-16: Direct on-panel Wi-Fi configuration
 
 - Added ADR-047 and a bounded main-loop Wi-Fi configuration service. Opening

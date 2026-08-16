@@ -1625,6 +1625,11 @@ int main() {
   firmware_update::service().simSetFailure("Network transfer failed");
   ui::simShowFirmwareUpdate();
   if (!capture("31d2_settings_firmware_failure")) return 1;
+  firmware_update::service().simSetRecoveryRefresh(63);
+  ui::tick();
+  if (!capture("31d3_recovery_refresh")) return 1;
+  firmware_update::service().simClearRecoveryRefresh();
+  ui::tick();
   firmware_update::service().simSetAvailable("0.3.0", 300);
   ui::showHome();
   if (!capture("31e_firmware_available_prompt")) return 1;

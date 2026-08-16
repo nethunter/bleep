@@ -38,7 +38,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     ))
     self.output = self.root / "release"
     self.recovery = self.root / "recovery.bin"
-    self.recovery.write_bytes(b"recovery")
+    self.recovery.write_bytes(b"\xE9recovery")
     self.bootloader = self.root / "bootloader.bin"
     self.bootloader.write_bytes(b"bootloader")
     self.partitions = self.root / "partitions.bin"
@@ -53,6 +53,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     subprocess.run([
         sys.executable, str(ROOT / "scripts/package_firmware_update.py"),
         "--firmware", str(self.firmware),
+        "--recovery", str(self.recovery),
         "--output-dir", str(self.output),
         "--channel", "development",
         "--version", "0.3.0-dev",
@@ -69,6 +70,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
         "--manifest", str(self.output / "bleep-update.json"),
         "--signature", str(self.output / "bleep-update.sig"),
         "--firmware", str(self.output / "bleep-update.bin"),
+        "--recovery", str(self.output / "bleep-recovery.bin"),
         "--public-key", str(self.public_key),
     ], check=False, capture_output=True)
     self.assertEqual(expect_success, result.returncode == 0, result.stderr.decode())
@@ -82,6 +84,10 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     self.assertEqual(1234, document["release_sequence"])
     self.assertEqual(2, document["partition_schema"])
     self.assertEqual(1, document["recovery_schema"])
+    self.assertEqual(1234, document["recovery_sequence"])
+    self.assertEqual(len(self.recovery.read_bytes()),
+                     document["recovery_image_size"])
+    self.assertLessEqual(len(encoded), 1536)
     self.assertEqual(len(self.firmware.read_bytes()), document["image_size"])
     first = encoded
     self.package()
@@ -98,6 +104,12 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     self.package()
     manifest = self.output / "bleep-update.json"
     manifest.write_bytes(manifest.read_bytes().replace(b"development", b"stable"))
+    self.verify(False)
+
+  def test_tampered_recovery_is_rejected(self) -> None:
+    self.package()
+    with (self.output / "bleep-recovery.bin").open("ab") as target:
+      target.write(b"tamper")
     self.verify(False)
 
   def test_wrong_public_key_is_rejected(self) -> None:

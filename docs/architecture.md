@@ -572,6 +572,12 @@ full firmware image is retained. See
 stream validation, replay rejection, journal recovery, and partition geometry.
 The bounded encoded journal records use checked `nothrow` heap storage during
 load/save; they are never multiplied on the Arduino loop-task stack.
+After the new main passes its health gate, it re-verifies the same journaled
+manifest and refreshes the non-running fixed recovery partition when the signed
+recovery sequence is newer. Main remains selected while that partition is
+written, and the journal remains intact until verification succeeds, making an
+interrupted recovery refresh resumable without allocating another application
+slot. Main and recovery release sequences are tracked independently.
 Manual Recovery mode persists a distinct request so fixed recovery remains on
 its menu until the operator explicitly boots main or chooses another action.
 Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms

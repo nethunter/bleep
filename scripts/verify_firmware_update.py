@@ -18,12 +18,14 @@ def main() -> int:
   parser.add_argument("--manifest", type=Path, required=True)
   parser.add_argument("--signature", type=Path, required=True)
   parser.add_argument("--firmware", type=Path, required=True)
+  parser.add_argument("--recovery", type=Path, required=True)
   parser.add_argument("--public-key", type=Path, required=True)
   args = parser.parse_args()
 
   encoded = args.manifest.read_bytes()
   signature = args.signature.read_bytes()
   firmware = args.firmware.read_bytes()
+  recovery = args.recovery.read_bytes()
   public_key = serialization.load_pem_public_key(args.public_key.read_bytes())
   if not isinstance(public_key, ec.EllipticCurvePublicKey) or not isinstance(
       public_key.curve, ec.SECP256R1):
@@ -37,6 +39,12 @@ def main() -> int:
     raise SystemExit("firmware length does not match manifest")
   if manifest["sha256"] != hashlib.sha256(firmware).hexdigest():
     raise SystemExit("firmware hash does not match manifest")
+  if manifest["recovery_image_size"] != len(recovery):
+    raise SystemExit("recovery length does not match manifest")
+  if manifest["recovery_sha256"] != hashlib.sha256(recovery).hexdigest():
+    raise SystemExit("recovery hash does not match manifest")
+  if manifest["recovery_sequence"] <= 0:
+    raise SystemExit("invalid recovery sequence")
   if (manifest["schema"] != 1 or manifest["partition_schema"] != 2 or
       manifest["recovery_schema"] != 1):
     raise SystemExit("unsupported manifest schema")

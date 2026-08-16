@@ -232,6 +232,9 @@ lv_obj_t* firmwareUpdateRollback = nullptr;
 lv_obj_t* firmwareUpdateChannelLabel = nullptr;
 lv_obj_t* firmwareUpdateChannelToggle = nullptr;
 lv_obj_t* updatePrompt = nullptr;
+lv_obj_t* recoveryRefreshOverlay = nullptr;
+lv_obj_t* recoveryRefreshStatus = nullptr;
+lv_obj_t* recoveryRefreshProgress = nullptr;
 lv_obj_t* wifiContent = nullptr;
 lv_obj_t* wifiConfirm = nullptr;
 wifi_configuration::Status wifiRenderedStatus = wifi_configuration::Status::Idle;
@@ -873,6 +876,65 @@ void closeUpdatePrompt() {
   updatePromptConfirming = false;
 }
 
+void refreshRecoveryUpdateOverlay() {
+  const firmware_update::Snapshot current = firmware_update::service().status();
+  const bool active = current.recoveryUpdatePending &&
+      (current.status == firmware_update::Status::Deferred ||
+       current.status == firmware_update::Status::Connecting ||
+       current.status == firmware_update::Status::Downloading ||
+       current.status == firmware_update::Status::Verifying);
+  if (!active) {
+    if (recoveryRefreshOverlay != nullptr) lv_obj_del(recoveryRefreshOverlay);
+    recoveryRefreshOverlay = nullptr;
+    recoveryRefreshStatus = nullptr;
+    recoveryRefreshProgress = nullptr;
+    return;
+  }
+  if (recoveryRefreshOverlay == nullptr) {
+    recoveryRefreshOverlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(recoveryRefreshOverlay, 238, 238);
+    lv_obj_center(recoveryRefreshOverlay);
+    lv_obj_set_style_radius(recoveryRefreshOverlay, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(recoveryRefreshOverlay, lv_color_hex(kColBg), 0);
+    lv_obj_set_style_border_color(recoveryRefreshOverlay, lv_color_hex(kColAccent), 0);
+    lv_obj_set_style_border_width(recoveryRefreshOverlay, 2, 0);
+    lv_obj_set_style_pad_all(recoveryRefreshOverlay, 0, 0);
+    lv_obj_clear_flag(recoveryRefreshOverlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* title = lv_label_create(recoveryRefreshOverlay);
+    lv_label_set_text(title, "FINISHING UPDATE");
+    lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 55);
+    recoveryRefreshStatus = lv_label_create(recoveryRefreshOverlay);
+    lv_obj_set_width(recoveryRefreshStatus, 176);
+    lv_obj_set_style_text_align(recoveryRefreshStatus, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(recoveryRefreshStatus, UI_FONT_14, 0);
+    lv_obj_align(recoveryRefreshStatus, LV_ALIGN_TOP_MID, 0, 91);
+    recoveryRefreshProgress = lv_bar_create(recoveryRefreshOverlay);
+    lv_obj_set_size(recoveryRefreshProgress, 150, 8);
+    lv_obj_align(recoveryRefreshProgress, LV_ALIGN_TOP_MID, 0, 133);
+    lv_bar_set_range(recoveryRefreshProgress, 0, 100);
+    lv_obj_set_style_bg_color(recoveryRefreshProgress, lv_color_hex(kColPanel), 0);
+    lv_obj_set_style_bg_color(recoveryRefreshProgress, lv_color_hex(kColAccent),
+                              LV_PART_INDICATOR);
+    lv_obj_t* detail = lv_label_create(recoveryRefreshOverlay);
+    lv_label_set_text(detail, "Keep USB power connected");
+    lv_obj_set_style_text_font(detail, UI_FONT_12, 0);
+    lv_obj_set_style_text_color(detail, lv_color_hex(kColMuted), 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 157);
+  }
+  char status[48];
+  if (current.status == firmware_update::Status::Downloading) {
+    std::snprintf(status, sizeof(status), "Updating recovery\n%u%%",
+                  current.progressPercent);
+  } else if (current.status == firmware_update::Status::Connecting) {
+    std::snprintf(status, sizeof(status), "Connecting to Wi-Fi");
+  } else {
+    std::snprintf(status, sizeof(status), "Preparing recovery");
+  }
+  lv_label_set_text(recoveryRefreshStatus, status);
+  lv_bar_set_value(recoveryRefreshProgress, current.progressPercent, LV_ANIM_OFF);
+}
+
 void onUpdateLater(lv_event_t*) {
   if (!updatePromptConfirming) firmware_update::service().dismissAvailable();
   closeUpdatePrompt();
@@ -1070,11 +1132,22 @@ void refreshFirmwareUpdate() {
                                 studio::FirmwareUpdateChannel::Development
                             ? "Development"
                             : "Stable";
+  char recoveryProgress[48] = {};
+  if (current.recoveryUpdatePending &&
+      current.status == firmware_update::Status::Downloading) {
+    std::snprintf(recoveryProgress, sizeof(recoveryProgress),
+                  "Updating recovery: %u%%", current.progressPercent);
+  }
   const char* detail = !current.wifiConfigured ? "Configure Wi-Fi" :
       current.disconnectRequired ? "Devices are connected" :
+      recoveryProgress[0] != '\0' ? recoveryProgress :
+      current.recoveryUpdatePending ? current.message :
       current.updateAvailable ? current.version : current.message;
   const bool checking = current.status == firmware_update::Status::Connecting ||
-                        current.status == firmware_update::Status::Checking;
+                        current.status == firmware_update::Status::Checking ||
+                        current.status == firmware_update::Status::Downloading ||
+                        current.status == firmware_update::Status::Verifying ||
+                        current.recoveryUpdatePending;
   const char* summaryPrefix = checking ? "Status: " :
       current.updateAvailable ? "Available: " : "Last: ";
   const char* summary = checking ? detail :
@@ -1084,16 +1157,20 @@ void refreshFirmwareUpdate() {
                 build_info::kGitCommit, channel, summaryPrefix, summary);
   lv_label_set_text(firmwareUpdateStatus, text);
   if (firmwareUpdateCheck != nullptr) {
-    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0), checking ? "CHECKING..." :
+    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0),
+                      current.recoveryUpdatePending ? "FINISHING UPDATE..." :
+                      checking ? "CHECKING..." :
                       !current.wifiConfigured ? "CONFIGURE WI-FI" :
                       current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");
     if (checking) lv_obj_add_state(firmwareUpdateCheck, LV_STATE_DISABLED);
     else lv_obj_clear_state(firmwareUpdateCheck, LV_STATE_DISABLED);
-    if (current.updateAvailable) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    if (current.updateAvailable || current.recoveryUpdatePending) {
+      lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    }
     else lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
   }
   if (firmwareUpdateInstall != nullptr) {
-    if (current.updateAvailable) {
+    if (current.updateAvailable && !current.recoveryUpdatePending) {
       lv_obj_clear_state(firmwareUpdateInstall, LV_STATE_DISABLED);
       lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -1102,7 +1179,7 @@ void refreshFirmwareUpdate() {
     }
   }
   if (firmwareUpdateRollback != nullptr) {
-    if (current.recoveryAvailable) {
+    if (current.recoveryAvailable && !current.recoveryUpdatePending) {
       lv_obj_clear_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
@@ -1898,7 +1975,9 @@ void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
   const firmware_update::Snapshot update = firmware_update::service().status();
-  if (screen == Screen::Home && update.notificationPending && updatePrompt == nullptr) {
+  refreshRecoveryUpdateOverlay();
+  if (screen == Screen::Home && update.notificationPending && updatePrompt == nullptr &&
+      recoveryRefreshOverlay == nullptr) {
     buildUpdatePrompt(false);
   }
   const DeviceUiHooks* activeUi = activeDeviceUi();
@@ -2000,6 +2079,7 @@ void handleShortPress() {
 }
 
 bool handleLongPress() {
+  if (recoveryRefreshOverlay != nullptr) return true;
   const DeviceUiHooks* activeUi = activeDeviceUi();
   if (activeUi != nullptr) {
     if (activeUi->longPress != nullptr) activeUi->longPress();
