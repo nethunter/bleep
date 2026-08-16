@@ -33,8 +33,8 @@ that must be made by the future GitHub owner.
   hosting plan makes them available.
 - [ ] Confirm private vulnerability reporting is enabled and the instructions
   in `SECURITY.md` match the repository's Security interface.
-- [ ] Add a first production release only after a tagged firmware build and
-  physical smoke test pass. The rolling **Latest development firmware**
+- [x] Stable `0.3.5` was published after the signed build and physical OTA
+  smoke test passed. The rolling **Latest development firmware**
   prerelease is an automated CI snapshot and must remain clearly labeled as
   hardware-unverified.
 
@@ -60,7 +60,8 @@ Both workflows build recovery and main independently, enforce their
 `0xF0000`/`0x2C0000` raw ceilings and schema-2 geometry, package a canonical
 manifest with `recovery_schema: 1` and detached ECDSA signature, independently
 verify it, and upload a one-time USB migration bundle. Wi-Fi releases contain
-only main; recovery changes ship through the USB bundle. Release sequences are
+both signed main and recovery payloads; normal installation updates and verifies
+recovery before recovery installs main. Release sequences are
 monotonically increasing UTC epoch seconds; tag text is only the stable version
 label and is not parsed as a policy input. Development CI derives both the
 compiled firmware version and manifest version from
