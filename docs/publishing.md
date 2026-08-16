@@ -3,6 +3,93 @@
 This checklist separates repository preparation from the account-level choices
 that must be made by the future GitHub owner.
 
+## Stable release checklist
+
+Use this checklist for every stable release. A stable release is complete only
+after its immutable Git tag exists remotely and the approval-protected
+`stable` workflow has built, signed, verified, and uploaded the release assets.
+
+### 1. Establish the release range
+
+- Fetch the current remote state and identify the most recent stable release
+  tag. Confirm that the tag resolves to the commit published as that stable
+  release; do not infer the baseline from `platformio.ini`, a branch name, or a
+  development prerelease.
+- Review every commit and the complete diff from that tag to the proposed
+  release commit. Treat this Git range as the changelog source. Summarize new
+  behavior, fixes, exact-model compatibility changes, setup or persistence
+  migrations, safety changes, and still-open limitations in the release notes.
+- If the prior stable release has no immutable Git tag, stop and repair the
+  release-history gap before continuing. Every stable release, including the
+  new one, must be traceable to a pushed Git tag.
+
+### 2. Choose and apply the version
+
+- Update `custom_firmware_version` in `platformio.ini`.
+- For small changes that keep existing workflows and stored data compatible,
+  advance to the next minor version. Reserve a major-version bump for a massive
+  breaking release that deliberately invalidates important user workflows,
+  compatibility, or stored data. Do not choose a different version policy
+  without explicit user direction.
+- Use the repository's established tag shape and make the stable tag match the
+  configured firmware version exactly after any established prefix is removed.
+  The release workflows reject a versioned tag that disagrees with
+  `custom_firmware_version`.
+
+### 3. Refresh both manuals
+
+- Follow `docs/manual/README.md` for the full owner's guide. Find its previous
+  source/PDF update, audit every later repository change, and update all
+  relevant setup, controls, compatibility, safety, recovery, and
+  troubleshooting guidance.
+- Use the Humanizer skill for the writing pass. Every chapter except
+  **Advanced: developers and builders** must sound like it was written for the
+  person using Ble(e)p during a shoot: direct, familiar, and free of unnecessary
+  implementation language or technical jargon.
+- Rebuild the full PDF, copy it to the website download, compare checksums,
+  render every page into a fresh directory, and visually inspect the complete
+  manual plus changed or dense pages at full resolution.
+- Update the compact package-insert manual tracked by Codex task
+  `019ffb0c-362e-7262-89e1-3768c285453e`. Until that work is integrated, read
+  the task handoff and synchronize it into the release branch. Once integrated,
+  its maintained source is `hardware/packaging/generate_pocket_guide.py` and its
+  generated artifact is `hardware/packaging/bleep-pocket-guide-2up.pdf`.
+  Reconcile its setup, update, controls, safety, troubleshooting, compatibility,
+  and full-manual link with the refreshed owner's guide. Regenerate it, render
+  both duplex pages, check panel order and scale, and visually inspect it before
+  release.
+
+### 4. Verify and prepare the release commit
+
+- Run all gates required by the changed code and documentation, including
+  native tests when applicable, repository artifact checks, the complete manual
+  render review, the insert-manual render review, and the full Montserrat
+  `bleep` build. Keep software/build evidence separate from any required live
+  hardware acceptance results.
+- Record the exact release range, selected version and rationale, release-note
+  summary, checks, measurements, hardware evidence, manual render inspection,
+  and remaining limitations in `docs/progress.md`.
+- Rebase the scoped release branch onto current `main`, rerun affected gates,
+  and merge it from `main` with `--no-ff`. Confirm the release commit is the
+  intended clean, reviewed state before pushing.
+
+### 5. Push, tag, promote, and wait
+
+- Push the release commit to `main`. Create the immutable version tag at that
+  exact commit and push the tag. Confirm both the remote branch and remote tag
+  resolve to the intended commits.
+- Publish or promote the matching non-prerelease GitHub Release with the audited
+  release notes. Approve the protected `stable` environment when prompted.
+- Wait for the `stable` workflow to finish. Success requires the stable job to
+  rebuild recovery and main, sign and independently verify the canonical
+  release, and upload all stable and NVS-preserving USB migration assets.
+  Queued, awaiting approval, in progress, cancelled, skipped, or failed does not
+  count as released.
+- Inspect the finished release and workflow rather than relying on the green
+  summary alone: verify the expected version, commit, tag, manifest, signatures,
+  recovery and main payloads, USB bundle, checksums, and owner's-guide asset.
+  Record the run and immutable artifact evidence in `docs/progress.md`.
+
 ## Repository checks
 
 - [x] Public README explains the vision, current behavior, limitations,

@@ -5,6 +5,20 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Stable-release instruction checklist
+
+- Added a mandatory end-to-end stable-release checklist covering the audited
+  Git range from the previous stable tag, minor-versus-major version selection,
+  the full owner's guide and compact package-insert manual, release verification,
+  the pushed release commit and immutable tag, GitHub promotion, and waiting for
+  the protected `stable` workflow to succeed. The manual step requires the
+  Humanizer skill and keeps every chapter except **Advanced: developers and
+  builders** user-facing and free of unnecessary technical jargon.
+- Recorded task `019ffb0c-362e-7262-89e1-3768c285453e` as the temporary handoff
+  for the still-unmerged package-insert generator and PDF. This was an
+  instructions-only change; firmware, manuals, generated PDFs, Git tags,
+  remotes, releases, and hardware were not changed or exercised.
+
 ### 2026-08-16: Live Wi-Fi scan failure diagnosis
 
 - The operator confirmed that manual Wi-Fi entry through the Portal works, but

@@ -99,6 +99,39 @@ Follow these rules while building:
   the current `main`, rerun the affected artifact checks, and merge it from
   `main` with `--no-ff` following the repository merge policy below.
 
+## Stable releases
+
+Treat a stable release as a coordinated release tranche, not as a GitHub button
+press. Follow the complete checklist in `docs/publishing.md` and do not declare
+the release complete until the protected `stable` workflow succeeds.
+
+- Start from the most recent stable Git tag and review every later commit and
+  diff. Use that range as the release changelog, and turn it into release notes
+  that cover user-visible changes, compatibility, setup or migration work,
+  safety, fixes, and known limitations. If the previous stable release is not
+  represented by an immutable Git tag, stop and repair that release-history
+  gap before choosing a version.
+- Increment `custom_firmware_version` in `platformio.ini`. Use the next minor
+  version for small, backwards-compatible changes and the next major version
+  only for a massive breaking release. Do not invent a different bump or tag
+  format without explicit user direction.
+- A stable release explicitly authorizes a full owner's-guide refresh. Follow
+  `docs/manual/README.md`: audit from the last manual/PDF update, use the
+  Humanizer skill, and keep every chapter except **Advanced: developers and
+  builders** user-facing and free of unnecessary technical jargon. Rebuild,
+  render, visually inspect, and synchronize the website PDF.
+- Update the compact package-insert manual as part of the same release. Until
+  its work is merged into the repository, task
+  `019ffb0c-362e-7262-89e1-3768c285453e` is the source handoff. Once present,
+  update its generator and generated PDF under `hardware/packaging/`, keep it
+  consistent with the full owner's guide, and render and inspect both duplex
+  pages before release.
+- After all release gates pass, rebase and merge according to the policy below,
+  push the release commit, create and push the matching immutable Git tag, and
+  publish or promote the non-prerelease GitHub Release. Wait for the
+  approval-protected `stable` build/sign/upload workflow to finish successfully;
+  queued, awaiting-approval, in-progress, cancelled, or failed is not released.
+
 ## Conventions
 
 - C++17, two-space indentation, `namespace`-scoped code. Match the existing
