@@ -553,7 +553,8 @@ migration, tamper/network/power-loss behavior, fallback, coexistence, and
 endurance remain release blockers rather than completed evidence.
 
 Implemented follow-up (ADR-048): releases also carry a signed recovery payload.
-After newly installed main passes its health gate, it refreshes the non-running
-factory partition and clears the existing journal only after verification.
-Compatibility with older fixed recovery is preserved; live interrupted-write
+For normal installation, current main writes and validates that payload before
+selecting recovery, so the new main is always installed by the release-matched
+recovery. Factory Reset retains a post-main compatibility refresh. Power loss
+during the factory write may require USB web recovery; live interrupted-write
 and complete chained-update evidence remain open gates.

@@ -69,22 +69,26 @@ Partition schema 2 is:
 
 Raw ceilings are `0xF0000` for recovery and `0x2C0000` for main. Confirmed
 installation cancels commands, releases retained links, warns about USB power,
-journals the signed request, selects factory recovery, and reboots. Recovery
-downloads, validates, and hashes main; failure leaves boot selection unchanged.
-It then selects `ota_0`. Main marks itself valid only after approximately ten
-seconds of healthy stores, display/touch, Home, and main-loop operation. It then
-re-verifies the journaled signed manifest and, when that release contains a
-newer recovery image, streams it into the non-running factory partition before
-clearing the journal. A failed pending main falls back to factory recovery.
+and journals the signed request. Main first downloads the release's signed
+recovery payload into the non-running factory partition while checking the ESP
+header, bounded byte count, SHA-256, and application descriptor. It records the
+independent recovery sequence and selects factory recovery only after the
+written image validates. If the recovery sequence is already installed, this
+write is skipped.
 
-This ordering lets an already-installed recovery ignore the added manifest
-fields and install the new main first. Main remains the selected boot image
-while recovery is rewritten, so interrupted recovery writes return to main and
-resume from the intact journal. Main validates the recovery ESP header, bounded
-byte count, SHA-256, and application descriptor before recording its independent
-installed recovery sequence. It never selects a partial recovery image. Releases
-without the optional recovery fields remain compatible and simply finish after
-the main health gate.
+The newly updated recovery verifies the exact journaled request again, then
+downloads, validates, and hashes main before selecting `ota_0`. Main marks
+itself valid only after approximately ten seconds of healthy stores,
+display/touch, Home, and main-loop operation, then clears the completed install
+journal. A failed pending main falls back to the newly installed recovery.
+
+Power loss before factory erasure leaves the signed journal available for a
+retry from main. Power loss or flash failure after erasure begins can leave the
+factory image unusable. Main remains selected when still valid, but if it cannot
+boot, recovery requires the NVS-preserving USB web flash flow. This accepted
+failure boundary avoids a guardian or second recovery slot. Factory Reset may
+still refresh recovery after the new main becomes healthy because the reset is
+initiated from recovery itself.
 
 Manual **Recovery mode** writes a distinct `RecoveryModeRequested` journal
 operation before selecting factory recovery. Recovery therefore remains on its

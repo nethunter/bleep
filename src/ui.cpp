@@ -901,7 +901,7 @@ void refreshRecoveryUpdateOverlay() {
     lv_obj_set_style_pad_all(recoveryRefreshOverlay, 0, 0);
     lv_obj_clear_flag(recoveryRefreshOverlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t* title = lv_label_create(recoveryRefreshOverlay);
-    lv_label_set_text(title, "FINISHING UPDATE");
+    lv_label_set_text(title, "PREPARING UPDATE");
     lv_obj_set_style_text_font(title, UI_FONT_16, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 55);
     recoveryRefreshStatus = lv_label_create(recoveryRefreshOverlay);
@@ -1158,7 +1158,7 @@ void refreshFirmwareUpdate() {
   lv_label_set_text(firmwareUpdateStatus, text);
   if (firmwareUpdateCheck != nullptr) {
     lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0),
-                      current.recoveryUpdatePending ? "FINISHING UPDATE..." :
+                      current.recoveryUpdatePending ? "PREPARING UPDATE..." :
                       checking ? "CHECKING..." :
                       !current.wifiConfigured ? "CONFIGURE WI-FI" :
                       current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");

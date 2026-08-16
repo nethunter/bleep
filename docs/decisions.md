@@ -1191,12 +1191,13 @@ the replacement.
   `0x10000/0x100000`, a CRC-protected alternating journal at
   `0x110000/0x10000`, and main `ota_0` at `0x120000/0x2D0000`; NVS and coredump
   remain at their established offsets. Raw ceilings are `0xF0000` recovery and
-  `0x2C0000` main. Recovery writes only main; Wi-Fi releases contain no recovery
-  image.
+  `0x2C0000` main. Recovery writes only main; current main alone may replace the
+  non-running factory recovery image under ADR-048.
 - Trust and health: Both applications embed separate stable/development P-256
   public keys and require manifest partition schema 2 plus recovery schema 1.
-  Main persists the exact signed request. Recovery verifies it again, streams
-  and hashes main, selects `ota_0`, and reboots. Main remains pending until its
+  Main persists the exact signed request and applies ADR-048's recovery-first
+  ordering. Recovery verifies the request again, streams and hashes main,
+  selects `ota_0`, and reboots. Main remains pending until its
   stores, display/touch, Home, and loop survive the ten-second health gate;
   failure returns to factory recovery.
 - Factory Reset: A continuous three-second hold enters recovery. Recovery
@@ -1238,25 +1239,28 @@ the replacement.
   main/recovery builds do not prove real AP discovery, password entry, DHCP,
   retained-link release, or repeated heap/radio recovery on hardware.
 
-## ADR-048: Signed releases refresh fixed recovery after main is healthy
+## ADR-048: Signed releases update fixed recovery before normal main installation
 
 - Status: Accepted software tranche; interrupted-write and live OTA acceptance
   remain open.
-- Compatibility: Keep manifest schema 1 and add signed recovery sequence, size,
-  hash, and payload URL fields. Existing fixed recovery ignores those additions,
-  verifies and installs main exactly as before, and never writes itself.
-- Ordering: The new main must pass its approximately ten-second health gate
-  before it re-verifies the exact journaled manifest and writes the non-running
-  factory recovery partition. The recovery journal is cleared only after that
-  refresh succeeds or the signed release legitimately has no recovery payload.
-- Failure boundary: Main remains selected throughout the recovery write. Power
-  loss or transfer failure therefore returns to main, which retries from the
-  intact journal with 1/6/24-hour network backoff. A partial recovery image is
-  never selected. Installed main and recovery release sequences are persisted
-  independently for replay protection.
-- UX: Recovery refresh owns a full circular **Finishing update** overlay, blocks
-  foreground interaction, updates only its bounded status/progress widgets, and
-  asks the operator to keep USB power connected.
+- Compatibility: Keep manifest schema 1 and its signed recovery sequence, size,
+  hash, and payload URL fields. Recovery verifies and installs main but never
+  writes itself; current main owns factory recovery replacement.
+- Ordering: After install consent, current main persists the exact request,
+  writes and validates the release-matched factory recovery, and only then
+  selects it. That updated recovery installs main. The healthy new main clears
+  the completed journal. Factory Reset retains a post-main recovery refresh
+  because it originates inside recovery.
+- Failure boundary: Before factory erasure, failures retry from the intact
+  journal with 1/6/24-hour backoff. After erasure begins, power loss can leave
+  recovery invalid. Main remains selected when possible, but loss of both usable
+  applications requires the NVS-preserving USB web flash flow. This risk is
+  accepted instead of reserving a guardian or second recovery slot. A partial
+  recovery image is never deliberately selected. Installed main and recovery
+  sequences remain independent for replay protection.
+- UX: Recovery preparation owns a full circular **Preparing update** overlay,
+  blocks foreground interaction, updates only bounded status/progress widgets,
+  and asks the operator to keep USB power connected.
 - Gate: Packaging signatures/hashes, native tests, simulators, and both target
   builds are software evidence. A real old-recovery-to-new-main-to-new-recovery
   cycle plus power loss during the factory write remain hardware acceptance.
