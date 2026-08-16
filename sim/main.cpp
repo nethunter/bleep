@@ -1628,6 +1628,10 @@ int main() {
   firmware_update::service().simSetRecoveryRefresh(63);
   ui::tick();
   if (!capture("31d3_recovery_refresh")) return 1;
+  firmware_update::service().simSetFailure("Recovery transfer failed");
+  simAdvanceMillis(500);
+  ui::tick();
+  if (!capture("31d4_recovery_retry")) return 1;
   firmware_update::service().simClearRecoveryRefresh();
   ui::tick();
   firmware_update::service().simSetAvailable("0.3.0", 300);

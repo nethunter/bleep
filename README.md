@@ -102,8 +102,10 @@ principles:
   development is opt-in. Recovery
   updates only the progress region while downloading, then holds on an explicit
   success screen until **Restart** is pressed. After installation is confirmed,
-  main first writes and validates the release's signed recovery image. Only the
-  newly updated recovery is then selected to install main. This avoids reserving
+  main restarts into a circular preparation screen with normal services kept
+  dormant, then writes and validates the release's signed recovery image. Only
+  the newly updated recovery is selected to install main. A failed preparation
+  returns to the Firmware page with **Retry update**. This avoids reserving
   another full application slot; power loss while factory recovery itself is
   being replaced may require the NVS-preserving USB web recovery flow.
 - On-demand Bluetooth LE connections through one shared NimBLE host. Central

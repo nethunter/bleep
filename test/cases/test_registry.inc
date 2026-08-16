@@ -35,6 +35,7 @@ int main(int, char**) {
   RUN_TEST(test_firmware_update_policy_immediate_daily_and_retry_scheduling);
   RUN_TEST(test_recovery_journal_alternates_recovers_and_clears);
   RUN_TEST(test_recovery_install_updates_recovery_before_booting_it);
+  RUN_TEST(test_early_recovery_update_preserves_new_main_health_gate);
   RUN_TEST(test_recovery_startup_auto_boots_only_clean_valid_main);
   RUN_TEST(test_recovery_touch_requires_a_settled_release_after_reboot);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);

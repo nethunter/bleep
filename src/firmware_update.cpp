@@ -31,6 +31,7 @@ void FirmwareUpdateService::begin() {
   snapshot = {};
   recoveryRequested = false;
 }
+void FirmwareUpdateService::runEarlyRecoveryUpdate(EarlyRecoveryStatusCallback) {}
 void FirmwareUpdateService::loop() {}
 void FirmwareUpdateService::noteUserActivity() {}
 void FirmwareUpdateService::setRuntimeIdle(bool idle, bool eligible) {
@@ -53,11 +54,11 @@ void FirmwareUpdateService::checkNow(bool allowDisconnect) {
 }
 bool FirmwareUpdateService::installAvailable() {
   if (!snapshot.updateAvailable) return false;
-  snapshot.status = Status::Downloading;
+  snapshot.status = Status::RebootPending;
   snapshot.updateAvailable = false;
   snapshot.notificationPending = false;
   snapshot.recoveryUpdatePending = true;
-  std::strncpy(snapshot.message, "Preparing updated recovery",
+  std::strncpy(snapshot.message, "Restarting update service",
                sizeof(snapshot.message) - 1);
   return true;
 }
@@ -171,7 +172,9 @@ namespace {
 
 constexpr size_t kManifestCapacity = 1536;
 constexpr size_t kSignatureCapacity = 80;
-constexpr int kHttpBufferSize = 8192;
+constexpr int kCheckReceiveBufferSize = 4096;
+constexpr int kCheckTransmitBufferSize = 2048;
+constexpr int kRecoveryHttpBufferSize = 8192;
 constexpr size_t kMaximumImageSize = 0x2C0000;
 constexpr size_t kMaximumRecoveryImageSize = 0xF0000;
 constexpr uint32_t kConnectTimeoutMs = 12000;
@@ -304,6 +307,9 @@ uint8_t expectedRecoverySha[32] = {};
 uint64_t expectedRecoverySequence = 0;
 uint64_t installedRecoverySequence = 0;
 bool recoveryRefreshPending = false;
+bool earlyRecoveryAttemptFailed = false;
+bool recoveryRestartPending = false;
+uint32_t recoveryRestartRequestedAt = 0;
 uint8_t recoveryRefreshFailures = 0;
 uint32_t recoveryRetryAt = 0;
 const esp_partition_t* recoveryWritePartition = nullptr;
@@ -484,8 +490,11 @@ bool startTransfer(const char* url, TransferKind kind) {
   // GitHub release responses carry large security headers, and asset redirects
   // use long signed URLs. ESP-IDF configures RX and TX independently; leaving
   // TX at its 512-byte default makes the redirected request line overflow.
-  config.buffer_size = kHttpBufferSize;
-  config.buffer_size_tx = kHttpBufferSize;
+  const bool recoveryPayload = kind == TransferKind::RecoveryImage;
+  config.buffer_size = recoveryPayload ? kRecoveryHttpBufferSize
+                                       : kCheckReceiveBufferSize;
+  config.buffer_size_tx = recoveryPayload ? kRecoveryHttpBufferSize
+                                          : kCheckTransmitBufferSize;
   transferKind = kind;
   client = esp_http_client_init(&config);
   operationStarted = millis();
@@ -686,6 +695,19 @@ void startManifestRequest() {
 }
 
 bool selectRecoveryAndRestart();
+
+bool restartMainForRecoveryUpdate() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  if (running == nullptr || running->subtype != ESP_PARTITION_SUBTYPE_APP_OTA_0 ||
+      esp_ota_set_boot_partition(running) != ESP_OK) {
+    return false;
+  }
+  recoveryRestartPending = true;
+  recoveryRestartRequestedAt = millis();
+  snapshot.recoveryUpdatePending = true;
+  setMessage(Status::RebootPending, "Restarting update service");
+  return true;
+}
 
 bool startRecoveryRequest() {
   const esp_partition_t* recovery = esp_partition_find_first(
@@ -915,10 +937,13 @@ bool recoveryPartitionValid() {
 }  // namespace
 
 void FirmwareUpdateService::begin() {
+  const bool preserveEarlyFailure = earlyRecoveryAttemptFailed;
+  const Snapshot earlyFailure = snapshot;
   policy.begin(millis());
   snapshot = {};
   operationKind = OperationKind::None;
   recoveryRefreshPending = false;
+  recoveryRestartPending = false;
   recoveryRefreshFailures = 0;
   cleanupRecoveryWrite(true);
   loadPersisted();
@@ -930,12 +955,82 @@ void FirmwareUpdateService::begin() {
                 state == ESP_OTA_IMG_PENDING_VERIFY;
   bootValidationStarted = millis();
   snapshot.recoveryAvailable = recoveryPartitionValid();
+  if (preserveEarlyFailure) {
+    snapshot = earlyFailure;
+    snapshot.recoveryUpdatePending = true;
+    wifiConfigured();
+    return;
+  }
   if (!bootPending) prepareRecoveryRefresh();
+}
+
+void FirmwareUpdateService::runEarlyRecoveryUpdate(
+    EarlyRecoveryStatusCallback callback) {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t imageState = ESP_OTA_IMG_UNDEFINED;
+  const bool runningMain = running != nullptr &&
+                           running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0;
+  const bool pendingBootValidation = runningMain &&
+      esp_ota_get_state_partition(running, &imageState) == ESP_OK &&
+      imageState == ESP_OTA_IMG_PENDING_VERIFY;
+  if (!studio::canRunEarlyRecoveryUpdate(runningMain,
+                                         pendingBootValidation)) {
+    return;
+  }
+
+  policy.begin(millis());
+  snapshot = {};
+  operationKind = OperationKind::None;
+  recoveryRefreshPending = false;
+  recoveryRestartPending = false;
+  recoveryRefreshFailures = 0;
+  cleanupRecoveryWrite(true);
+  loadPersisted();
+  wifiConfigured();
+  snapshot.recoveryAvailable = recoveryPartitionValid();
+  runtimeIdle = true;
+  automaticEligible = false;
+  prepareRecoveryRefresh();
+  if (!recoveryRefreshPending) return;
+
+  if (callback != nullptr) callback(snapshot);
+  Serial.printf("FW_UPDATE: minimal recovery updater starting; free_heap=%u max_alloc=%u\n",
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+  while (recoveryRefreshPending || client != nullptr ||
+         operationKind == OperationKind::RecoveryRefresh) {
+    loop();
+    if (callback != nullptr) callback(snapshot);
+    if (snapshot.status == Status::Failed) {
+      earlyRecoveryAttemptFailed = true;
+      while (wifiShutdownPending && millis() - wifiShutdownStarted <
+                 kWifiShutdownTimeoutMs) {
+        finishWifiShutdown(millis());
+        delay(5);
+      }
+      Serial.printf("FW_UPDATE: minimal recovery updater failed: %s; free_heap=%u "
+                    "min_free_heap=%u\n",
+                    snapshot.message,
+                    static_cast<unsigned>(ESP.getFreeHeap()),
+                    static_cast<unsigned>(ESP.getMinFreeHeap()));
+      return;
+    }
+    delay(5);
+  }
 }
 
 void FirmwareUpdateService::loop() {
   const uint32_t now = millis();
   finishWifiShutdown(now);
+  if (recoveryRestartPending) {
+    if (now - recoveryRestartRequestedAt >= 750) {
+      cleanupClient();
+      recoveryRestartPending = false;
+      ESP.restart();
+    }
+    return;
+  }
   if (bootPending && now - bootValidationStarted >= kBootValidationMs) {
     if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
       studio::PartitionRecoveryJournalBackend backend;
@@ -1020,7 +1115,7 @@ void FirmwareUpdateService::loop() {
       heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) >= kMinimumLargestBlock;
   if (recoveryRefreshPending) {
     snapshot.recoveryUpdatePending = true;
-    if (!bootPending && runtimeIdle && heapSafe &&
+    if (!earlyRecoveryAttemptFailed && !bootPending && runtimeIdle && heapSafe &&
         static_cast<int32_t>(now - recoveryRetryAt) >= 0) {
       operationKind = OperationKind::RecoveryRefresh;
       if (!beginWifi()) {
@@ -1064,9 +1159,10 @@ void FirmwareUpdateService::checkNow(bool allowDisconnect) {
     setMessage(Status::Deferred, "Disconnect devices to check");
     return;
   }
-  if (recoveryRefreshPending) {
-    recoveryRetryAt = millis();
-    setMessage(Status::Deferred, "Recovery update queued");
+  if (recoveryRefreshPending || earlyRecoveryAttemptFailed) {
+    if (!restartMainForRecoveryUpdate()) {
+      setMessage(Status::Failed, "Could not restart update service");
+    }
     return;
   }
   snapshot.disconnectRequired = false;
@@ -1119,10 +1215,12 @@ bool FirmwareUpdateService::installAvailable() {
                 static_cast<unsigned long long>(snapshot.releaseSequence));
   snapshot.recoveryUpdatePending = true;
   recoveryRefreshPending = true;
-  recoveryRetryAt = millis();
   recoveryRefreshFailures = 0;
-  setMessage(Status::Deferred, "Preparing updated recovery");
-  return true;
+  Serial.printf("FW_UPDATE: restarting into minimal updater for recovery sequence=%llu\n",
+                static_cast<unsigned long long>(expectedRecoverySequence));
+  if (restartMainForRecoveryUpdate()) return true;
+  setMessage(Status::Failed, "Could not restart update service");
+  return false;
 }
 
 void FirmwareUpdateService::dismissAvailable() {

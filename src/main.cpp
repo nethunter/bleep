@@ -431,6 +431,80 @@ void setupLvgl() {
   }
 }
 
+lv_obj_t* earlyRecoveryScreen = nullptr;
+lv_obj_t* earlyRecoveryStatus = nullptr;
+lv_obj_t* earlyRecoveryProgress = nullptr;
+uint32_t earlyRecoveryUiTickMs = 0;
+firmware_update::Status earlyRecoveryLastStatus = firmware_update::Status::Idle;
+uint8_t earlyRecoveryLastProgress = 0xff;
+bool earlyRecoveryStatusShown = false;
+
+void showEarlyRecoveryStatus(const firmware_update::Snapshot& status) {
+  const uint32_t now = millis();
+  if (earlyRecoveryUiTickMs == 0) earlyRecoveryUiTickMs = now;
+  lv_tick_inc(now - earlyRecoveryUiTickMs);
+  earlyRecoveryUiTickMs = now;
+
+  if (earlyRecoveryScreen == nullptr) {
+    earlyRecoveryScreen = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(earlyRecoveryScreen, 238, 238);
+    lv_obj_center(earlyRecoveryScreen);
+    lv_obj_set_style_radius(earlyRecoveryScreen, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(earlyRecoveryScreen, lv_color_hex(0x080B0F), 0);
+    lv_obj_set_style_border_color(earlyRecoveryScreen, lv_color_hex(0xFF9F1C), 0);
+    lv_obj_set_style_border_width(earlyRecoveryScreen, 2, 0);
+    lv_obj_set_style_pad_all(earlyRecoveryScreen, 0, 0);
+    lv_obj_clear_flag(earlyRecoveryScreen, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(earlyRecoveryScreen);
+    lv_label_set_text(title, "PREPARING UPDATE");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFB347), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 55);
+
+    earlyRecoveryStatus = lv_label_create(earlyRecoveryScreen);
+    lv_obj_set_width(earlyRecoveryStatus, 176);
+    lv_obj_set_style_text_align(earlyRecoveryStatus, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(earlyRecoveryStatus, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(earlyRecoveryStatus, lv_color_hex(0xF5F7FA), 0);
+    lv_obj_align(earlyRecoveryStatus, LV_ALIGN_TOP_MID, 0, 91);
+
+    earlyRecoveryProgress = lv_bar_create(earlyRecoveryScreen);
+    lv_obj_set_size(earlyRecoveryProgress, 150, 8);
+    lv_obj_align(earlyRecoveryProgress, LV_ALIGN_TOP_MID, 0, 133);
+    lv_bar_set_range(earlyRecoveryProgress, 0, 100);
+    lv_obj_set_style_bg_color(earlyRecoveryProgress, lv_color_hex(0x252B33), 0);
+    lv_obj_set_style_bg_color(earlyRecoveryProgress, lv_color_hex(0xFF7A00),
+                              LV_PART_INDICATOR);
+
+    lv_obj_t* detail = lv_label_create(earlyRecoveryScreen);
+    lv_label_set_text(detail, "Keep USB power connected");
+    lv_obj_set_style_text_font(detail, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(detail, lv_color_hex(0xAAB2BD), 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 157);
+  }
+
+  if (!earlyRecoveryStatusShown || status.status != earlyRecoveryLastStatus ||
+      status.progressPercent != earlyRecoveryLastProgress) {
+    char message[48];
+    if (status.status == firmware_update::Status::Downloading) {
+      std::snprintf(message, sizeof(message), "Updating recovery\n%u%%",
+                    status.progressPercent);
+    } else if (status.status == firmware_update::Status::Failed) {
+      std::snprintf(message, sizeof(message),
+                    "Update paused\nReturning to firmware");
+    } else {
+      std::snprintf(message, sizeof(message), "Connecting to Wi-Fi");
+    }
+    lv_label_set_text(earlyRecoveryStatus, message);
+    lv_bar_set_value(earlyRecoveryProgress, status.progressPercent, LV_ANIM_OFF);
+    earlyRecoveryLastStatus = status.status;
+    earlyRecoveryLastProgress = status.progressPercent;
+    earlyRecoveryStatusShown = true;
+  }
+  lv_timer_handler();
+}
+
 void setup() {
   DEBUG_PORT.begin(115200);
   delay(100);
@@ -450,6 +524,20 @@ void setup() {
 
   touchPresent = initTouch();
   setupLvgl();
+
+  // A journaled recovery replacement runs with only display, touch, LVGL, and
+  // this bounded progress screen initialized. BLE, devices, scenes, Portal,
+  // Home, and the rest of the UI remain dormant so TLS and flash verification
+  // retain a large contiguous heap. Recovery is selected only after its image
+  // verifies; a recoverable failure falls through to the normal firmware UI.
+  firmware_update::service().runEarlyRecoveryUpdate(showEarlyRecoveryStatus);
+  if (earlyRecoveryScreen != nullptr) {
+    lv_obj_del(earlyRecoveryScreen);
+    earlyRecoveryScreen = nullptr;
+    earlyRecoveryStatus = nullptr;
+    earlyRecoveryProgress = nullptr;
+    earlyRecoveryStatusShown = false;
+  }
 
   studio::devices().begin();
   studio::scenes().begin();

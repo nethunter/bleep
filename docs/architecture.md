@@ -566,16 +566,22 @@ only after a bounded main-loop settling interval, so ESP-IDF's tcpip task cannot
 race driver deinitialization while sending DHCP release. Recovery handoff lets
 the imminent reset stop Wi-Fi. Confirmed installation persists the exact
 signed request and releases retained links with consent. Main first verifies,
-downloads, writes, and validates the signed recovery payload in the factory
-partition. It selects recovery only after that succeeds. The newly updated
+selects its own `ota_0`, and restarts. That boot initializes only the display,
+touch, LVGL, and a circular update-progress view; device runtimes, scenes,
+Portal, Home, and normal services remain dormant. It downloads, writes, and
+validates the signed recovery payload in the factory partition, selecting
+recovery only after verification succeeds. A failed attempt falls through to
+the normal main UI with a retry action. A newly installed main that remains
+pending its ten-second health gate skips this early path. The newly updated
 recovery verifies the same request again and streams main into `ota_0`; no
 second full firmware image is retained. See
 [the signed update protocol](protocols/firmware-update.md) for manifest trust,
 stream validation, replay rejection, journal recovery, and partition geometry.
 The bounded encoded journal records use checked `nothrow` heap storage during
 load/save; they are never multiplied on the Arduino loop-task stack.
-If power is lost before the recovery write begins, the intact journal lets main
-resume it. Once the factory partition has been erased, loss of power can leave
+If power is lost before the recovery write begins, the intact journal makes the
+next valid main boot resume it before normal services. Once the factory
+partition has been erased, loss of power can leave
 recovery unbootable; main remains selected when possible, but a later main
 failure then requires the NVS-preserving USB web recovery flow. Main and
 recovery release sequences are tracked independently. After main passes its

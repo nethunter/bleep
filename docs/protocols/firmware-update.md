@@ -69,12 +69,15 @@ Partition schema 2 is:
 
 Raw ceilings are `0xF0000` for recovery and `0x2C0000` for main. Confirmed
 installation cancels commands, releases retained links, warns about USB power,
-and journals the signed request. Main first downloads the release's signed
-recovery payload into the non-running factory partition while checking the ESP
-header, bounded byte count, SHA-256, and application descriptor. It records the
-independent recovery sequence and selects factory recovery only after the
-written image validates. If the recovery sequence is already installed, this
-write is skipped.
+and journals the signed request. Main selects its own valid `ota_0` and
+restarts. Before normal services initialize, that boot creates a circular
+progress UI with only display, touch, and LVGL active, then downloads the
+release's signed recovery payload into the non-running factory partition while
+checking the ESP header, bounded byte count, SHA-256, and application
+descriptor. Device runtimes, scenes, Portal, Home, and normal Settings remain
+dormant during this transfer. It records the independent recovery sequence and
+selects factory recovery only after the written image validates. If the
+recovery sequence is already installed, this write is skipped.
 
 The newly updated recovery verifies the exact journaled request again, then
 downloads, validates, and hashes main before selecting `ota_0`. Main marks
@@ -82,8 +85,11 @@ itself valid only after approximately ten seconds of healthy stores,
 display/touch, Home, and main-loop operation, then clears the completed install
 journal. A failed pending main falls back to the newly installed recovery.
 
-Power loss before factory erasure leaves the signed journal available for a
-retry from main. Power loss or flash failure after erasure begins can leave the
+Power loss before factory erasure leaves the signed journal available for the
+next valid main boot to resume. A transfer or verification failure returns to
+the normal main UI with **Retry update** and leaves recovery unselected. A newly
+installed main still pending its ten-second health gate never runs the early
+recovery replacement. Power loss or flash failure after erasure begins can leave the
 factory image unusable. Main remains selected when still valid, but if it cannot
 boot, recovery requires the NVS-preserving USB web flash flow. This accepted
 failure boundary avoids a guardian or second recovery slot. Factory Reset may

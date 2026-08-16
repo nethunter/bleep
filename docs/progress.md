@@ -5,6 +5,28 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Quiet-main recovery preparation before handoff
+
+- Confirmed installation now journals the signed request, explicitly selects
+  the valid running `ota_0`, and restarts into an early preparation path. That
+  boot initializes display, touch, LVGL, and a circular progress view, while
+  leaving devices, BLE, scenes, Portal, Home, and normal services dormant. It
+  writes and validates the signed recovery image before selecting recovery;
+  failure returns to the normal Firmware page with **Retry update**.
+- A main image still pending its ten-second boot health gate skips the early
+  path, preventing recovery work from masking an unhealthy new main. Manifest
+  checks use bounded 4096-byte RX/2048-byte TX buffers while the early recovery
+  payload transfer retains the known-working 8192-byte RX/TX pair.
+- Native tests passed 95/95, packaging tests passed 7/7, OTA geometry accepted
+  both images, and the complete `ui_sim` traversal passed. The full Montserrat
+  main image is 2,164,192 bytes raw and fixed recovery is 940,944 bytes raw,
+  within the `0x2C0000`/`0xF0000` ceilings. The retry capture was visually
+  inspected. Main alone was hash-verified at `0x120000` on panel
+  `10:00:3b:c2:e4:dc`, preserving every other partition; bounded serial then
+  observed normal boot with 141,544 bytes free heap. The signed chained
+  main-to-main-to-recovery-to-main flow and its physical progress UI still need
+  a newer development release and remain hardware-unverified.
+
 ### 2026-08-16: Stable 0.3.4 five-panel baseline
 
 - Published stable `0.3.4` from `c2015d4` through the approval-protected stable
