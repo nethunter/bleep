@@ -290,7 +290,8 @@ failure.
 After native tests and all firmware profiles pass on a push to `main`, GitHub
 Actions updates the **Latest development firmware** prerelease with a canonical
 manifest, ECDSA P-256 signature, full Montserrat image, independent verification,
-and an NVS-preserving USB migration bundle. Publishing a normal GitHub Release
+and an NVS-preserving USB migration bundle. Its displayed and manifest version
+is the configured project version with `-dev` appended. Publishing a normal GitHub Release
 performs the stable-channel build and signing job; it does not require a tag
 naming convention. Development snapshots have not necessarily passed the
 physical hardware release gates.

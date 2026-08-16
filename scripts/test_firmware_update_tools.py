@@ -55,7 +55,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
         "--firmware", str(self.firmware),
         "--output-dir", str(self.output),
         "--channel", "development",
-        "--version", "0.2.0-dev",
+        "--version", "0.3.0-dev",
         "--commit", "0123456789abcdef",
         "--release-sequence", "1234",
         "--release-ref", "latest",
@@ -78,6 +78,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     encoded = (self.output / "bleep-update.json").read_bytes()
     self.assertTrue(encoded.endswith(b"\n"))
     document = json.loads(encoded)
+    self.assertEqual("0.3.0-dev", document["version"])
     self.assertEqual(1234, document["release_sequence"])
     self.assertEqual(2, document["partition_schema"])
     self.assertEqual(1, document["recovery_schema"])

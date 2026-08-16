@@ -62,7 +62,10 @@ manifest with `recovery_schema: 1` and detached ECDSA signature, independently
 verify it, and upload a one-time USB migration bundle. Wi-Fi releases contain
 only main; recovery changes ship through the USB bundle. Release sequences are
 monotonically increasing UTC epoch seconds; tag text is only the stable version
-label and is not parsed as a policy input.
+label and is not parsed as a policy input. Development CI derives both the
+compiled firmware version and manifest version from
+`platformio.ini`'s `custom_firmware_version`, appending `-dev`, and carries that
+exact value through the full-firmware artifact into the signing job.
 
 ## License
 
