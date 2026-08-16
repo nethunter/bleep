@@ -1,5 +1,7 @@
 #include "wifi_configuration.h"
 
+#include "wifi_scan.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -10,6 +12,12 @@
 #include <esp_heap_caps.h>
 
 #include "core/preferences_store.h"
+
+#if ARDUINO_USB_CDC_ON_BOOT
+#define WIFI_CONFIGURATION_DEBUG_PORT Serial0
+#else
+#define WIFI_CONFIGURATION_DEBUG_PORT Serial
+#endif
 #endif
 
 namespace wifi_configuration {
@@ -174,7 +182,7 @@ bool WifiConfigurationService::connect(size_t networkIndex, const char* password
 }
 
 void WifiConfigurationService::beginStop(Status finalStatus, const char* message) {
-  WiFi.scanDelete();
+  wifi_scan::cancel();
   WiFi.disconnect(false, false);
   afterStop_ = finalStatus;
   std::strncpy(afterStopMessage_, message != nullptr ? message : "",
@@ -220,9 +228,14 @@ void WifiConfigurationService::loop() {
       return;
     }
     WiFi.mode(WIFI_STA);
-    WiFi.scanDelete();
-    const int started = WiFi.scanNetworks(true, true, false, 120);
-    if (started == WIFI_SCAN_FAILED) {
+    const bool started = wifi_scan::start();
+    WIFI_CONFIGURATION_DEBUG_PORT.printf(
+        "wifi config scan started=%u free_heap=%u max_alloc=%u\n",
+        static_cast<unsigned>(started),
+        static_cast<unsigned>(ESP.getFreeHeap()),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+    if (!started) {
       beginStop(Status::Failed, "Could not start Wi-Fi scan");
       return;
     }
@@ -231,7 +244,7 @@ void WifiConfigurationService::loop() {
     return;
   }
   if (snapshot_.status == Status::Scanning) {
-    const int found = WiFi.scanComplete();
+    const int found = wifi_scan::complete();
     if (found == WIFI_SCAN_RUNNING) {
       if (now - stateStarted_ >= kScanTimeoutMs) {
         beginStop(Status::Failed, "Wi-Fi scan timed out");
@@ -239,6 +252,9 @@ void WifiConfigurationService::loop() {
       return;
     }
     if (found < 0) {
+      WIFI_CONFIGURATION_DEBUG_PORT.printf(
+          "wifi config scan result=%d elapsed_ms=%u\n", found,
+          static_cast<unsigned>(now - stateStarted_));
       beginStop(Status::Failed, "Wi-Fi scan failed");
       return;
     }
@@ -264,6 +280,10 @@ void WifiConfigurationService::loop() {
       if (snapshot_.networkCount < kMaximumNetworks) ++snapshot_.networkCount;
     }
     WiFi.scanDelete();
+    WIFI_CONFIGURATION_DEBUG_PORT.printf(
+        "wifi config scan result=%d cached=%u elapsed_ms=%u\n", found,
+        static_cast<unsigned>(snapshot_.networkCount),
+        static_cast<unsigned>(now - stateStarted_));
     setStatus(snapshot_.networkCount > 0 ? Status::Results : Status::Failed,
               snapshot_.networkCount > 0 ? "Select a network" : "No networks found");
     if (snapshot_.networkCount == 0) beginStop(Status::Failed, "No networks found");

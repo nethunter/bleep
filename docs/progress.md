@@ -5,6 +5,40 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Live Wi-Fi scan failure diagnosis
+
+- The operator confirmed that manual Wi-Fi entry through the Portal works, but
+  nearby-network scanning fails in both **Settings > Wi-Fi** and the Portal.
+  On the connected panel, Settings reported **Wi-Fi scan failed** after the
+  asynchronous scan started; boot diagnostics showed 145,908 bytes free and a
+  122,868-byte largest block, excluding the service's memory guard as the
+  failure source.
+- A first diagnostic build restored the default 300 ms per-channel dwell and
+  was hash-verified on panel `94:a9:90:57:ab:80`, preserving NVS. The retry
+  still failed exactly when Arduino's six-second internal watchdog expired;
+  diagnostics showed the scan had started with 101,032 bytes free and an
+  81,908-byte largest block, but no scan-done event arrived.
+- Source inspection then found that the bundled Arduino-ESP32 2.0.17 scan
+  wrapper does not initialize `wifi_scan_config_t::home_chan_dwell_time`.
+  ESP-IDF documents that a blocked scan emits no scan-done event. Replaced both
+  callers with one bounded wrapper that zero-initializes the complete ESP-IDF
+  scan configuration, limits callback work to raw flags, and returns result
+  handling to the main loop.
+- The native suite passed 95/95. The 146,308-byte-RAM, 2,022,424-byte-flash
+  diagnostic image uploaded to `/dev/cu.usbserial-211240` on panel
+  `94:a9:90:57:ab:80`; every written-region hash verified and NVS was excluded.
+  Its Settings scan completed in 3,030 ms, found 20 APs, and cached the strongest
+  16. The operator confirmed that selection, password entry, and onboarding
+  worked perfectly; bounded serial later recorded 128,608 bytes free, a
+  53,236-byte largest block, and `wifi=Off`.
+- Routed Portal join/exit cancellation through the same scanner cleanup. The
+  final full Montserrat build passed at 146,308 bytes static RAM and 2,022,416
+  bytes used flash and was hash-verified on the same panel with NVS excluded.
+  That final cleanup does not alter the live-verified Settings path, but it was
+  not followed by another Settings scan. The operator subsequently confirmed
+  that Portal-mode rescanning also worked perfectly. Cancellation/failure
+  paths, retained-link release, and repeated cycles remain unverified.
+
 ### 2026-08-16: Owner's guide 0.3.5 audit and rebuild
 
 - Audited every repository change after the previous manual/PDF commit

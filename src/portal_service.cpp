@@ -80,6 +80,7 @@ void simSetSavedWifi(const char* ssid) {
 #include "captive_dns_codec.h"
 #include "portal_assets.h"
 #include "portal_scene_parser.h"
+#include "wifi_scan.h"
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define PORTAL_DEBUG_PORT Serial0
@@ -485,7 +486,7 @@ void handleWifiSave() {
 
   // Abandon any in-flight AP-mode scan: the join owns the radio now, and the
   // loop's scan-completion branch must not overwrite the join status.
-  WiFi.scanDelete();
+  wifi_scan::cancel();
   portalScanPending = false;
   portalScanFailed = false;
   std::strncpy(pendingWifiSsid, ssid.c_str(), sizeof(pendingWifiSsid) - 1);
@@ -581,9 +582,7 @@ void startWifiScan() {
     server->send(202, "application/json", "{\"state\":\"scanning\"}");
     return;
   }
-  WiFi.scanDelete();
-  const int result = WiFi.scanNetworks(true, true, false, 120);
-  if (result == WIFI_SCAN_FAILED) {
+  if (!wifi_scan::start()) {
     server->send(500, "application/json",
                  "{\"error\":\"Could not start Wi-Fi scan\"}");
     return;
@@ -1148,16 +1147,14 @@ bool beginSetupScan() {
   setupScanPending = false;
   wifiScanCount = 0;
   WiFi.mode(WIFI_STA);
-  WiFi.scanDelete();
-  const int result = WiFi.scanNetworks(true, true, false, 120);
-  if (result == WIFI_SCAN_FAILED) return false;
+  if (!wifi_scan::start()) return false;
   setupScanPending = true;
   setStatus(Status::Starting, "Scanning studio Wi-Fi");
   return true;
 }
 
 void finishSetupScan() {
-  const int found = WiFi.scanComplete();
+  const int found = wifi_scan::complete();
   if (found == WIFI_SCAN_RUNNING) return;
   cacheWifiScanResults(found);
   setupScanPending = false;
@@ -1239,7 +1236,7 @@ void loop() {
   if (dnsServer != nullptr) dnsServer->processNextRequest();
   if (server != nullptr) server->handleClient();
   if (portalScanPending) {
-    const int found = WiFi.scanComplete();
+    const int found = wifi_scan::complete();
     if (found != WIFI_SCAN_RUNNING) {
       cacheWifiScanResults(found);
       portalScanPending = false;
@@ -1317,6 +1314,7 @@ void loop() {
 void stop() {
   if (currentStatus == Status::Inactive) return;
   destroyServer();
+  wifi_scan::cancel();
   WiFi.disconnect(true, false);
   WiFi.softAPdisconnect(true);
   MDNS.end();
