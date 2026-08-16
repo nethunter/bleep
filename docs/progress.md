@@ -12,9 +12,10 @@ short, factual, and reproducible.
   troubleshooting impact. Updated the guide from edition `0.3.0` to `0.3.5`
   for the post-Home signed update check, direct Settings Wi-Fi setup, stable and
   development channels, the recovery-first install flow, two-second Recovery
-  hold, transactional Factory Reset, captive-portal fallback, and the one-time
-  NVS-preserving USB migration. Replaced the Settings figure and added current
-  Wi-Fi network and amber update-prompt simulator figures.
+  hold, transactional Factory Reset, and captive-portal fallback. Replaced the
+  Settings figure and added current Wi-Fi network and amber update-prompt
+  simulator figures. Omitted the legacy non-OTA migration path because every
+  distributed Ble(e)p starts from the OTA-capable partition layout.
 - Applied the Humanizer writing pass to every owner-facing chapter while
   preserving exact safety and compatibility limits; the developer appendix
   remains technical. Added this audience boundary and required Humanizer use to
@@ -22,14 +23,15 @@ short, factual, and reproducible.
 - Rebuilt `output/pdf/bleep-instruction-manual.pdf` and synchronized
   `website/downloads/bleep-instruction-manual.pdf`; both are 24 pages and have
   SHA-256
-  `a5cf900d3134f89a84f89f214107b88924adceb26cd23f2da5b8d93bce3c7308`.
+  `3aefa0db63920b90230fa04401e2b5bceddaabe4dbaf2281635003967980ab00`.
   Rendered all pages at 120 DPI into a fresh directory, inspected both complete
-  contact sheets, and inspected rendered page images 3-5, 11-12, 14-18, and 23
-  at full resolution. The first render exposed multi-box callouts caused by
-  manually wrapped blockquotes; those were repaired, rebuilt, and rerendered.
-  The final render has no clipping, overlap, broken table, stale page, or
-  unreadable figure. This was a manual-only update; firmware was not rebuilt or
-  flashed.
+  contact sheets, and inspected rendered page images 2-5, 11-12, 14-18, and
+  23-24 at full resolution. The first render exposed multi-box callouts caused
+  by manually wrapped blockquotes; those were repaired, rebuilt, and
+  rerendered. A final rebuild after removing the legacy migration instructions
+  also passed complete contact-sheet and affected-page inspection. The final
+  render has no clipping, overlap, broken table, stale page, or unreadable
+  figure. This was a manual-only update; firmware was not rebuilt or flashed.
 
 ### 2026-08-16: Stable 0.3.5 signed release and first production OTA
 

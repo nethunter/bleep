@@ -401,9 +401,6 @@ Firmware Update page. A newer release may prompt again. If preparation fails,
 return to the Firmware Update page and choose **Retry update**. Do not remove
 power during recovery or installation.
 
-Older Ble(e)p installations need a one-time USB upgrade before Wi-Fi updates
-will work. This upgrade keeps saved settings. See the Advanced section.
-
 ## Enter Recovery mode
 
 On **Settings > Firmware update**, hold **Recovery mode** continuously for two
@@ -501,8 +498,6 @@ real state, do not press a toggle again without checking first.
 - Keep USB power connected. If **Preparing update** returns to the Firmware
   Update page, choose **Retry update**. After an interrupted installation,
   enter Recovery mode and retry the requested update.
-- An older installation cannot update over Wi-Fi until it receives the one-time
-  USB upgrade described in the Advanced section.
 
 # Work safely
 
@@ -626,30 +621,5 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" ./.venv/bin/python -m platformio run
 The configured upload port is `/dev/cu.usbserial-211240`; do not guess another
 port if it is absent. A normal PlatformIO upload writes main at `0x120000` and
 assumes the recovery partition layout already exists.
-
-### One-time recovery migration
-
-An installation using the former single-application layout must receive the
-release's combined USB migration once. Download and verify
-`bleep-usb-migration.zip` from a trusted stable release, extract it, then run:
-
-```sh
-cd bleep-usb-migration
-./migrate.sh /dev/cu.usbserial-211240
-```
-
-Use the actual enumerated port. The script writes the bootloader, schema-2
-partition table, blank OTA metadata, fixed recovery, blank recovery journal,
-and main without a full-chip erase. It deliberately excludes NVS at
-`0x9000/0x5000`, so current saved configuration can survive. Keep USB power
-connected through the first boot; recovery automatically validates and selects
-main without a **Boot firmware** tap. Back up important configuration and
-confirm it afterward.
-
-Version 0.3.5 accepts the current device, scene, mesh, Home Assistant, and panel
-settings schemas. It does not migrate former Amaran driver IDs, the old
-`amaran_mesh` key, or older development schemas. Before upgrading a build from
-before the clean-storage baseline, use Factory Reset in the currently installed
-firmware and expect saved configuration and bonds to be removed.
 
 Build success is not proof of panel behavior, peripheral compatibility, browser behavior, tactile feel, or endurance. Record those separately and retain exact-model confidence labels.
