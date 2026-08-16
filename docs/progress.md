@@ -5465,3 +5465,9 @@ Record values with the exact build environment and commit/worktree state.
   passed, and the updated workflow parsed successfully. A full Montserrat build
   using the development CI identity completed at 2,003,724 bytes; inspection of
   the ELF confirmed the embedded `0.3.0-dev` version and `development` channel.
+- The preceding live publisher built and signed successfully but GitHub denied
+  its forced `latest` tag-ref update with HTTP 403 because the target history
+  contained workflow-file changes. The rolling prerelease now keeps `latest`
+  as a stable asset-container tag and replaces its metadata and signed assets
+  without moving the ref. Manifest commit and monotonic release sequence remain
+  authoritative for device update identity.

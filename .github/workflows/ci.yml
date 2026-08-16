@@ -181,11 +181,6 @@ jobs:
           notes="Automated development build of the full bleep profile from commit ${GITHUB_SHA}. This prerelease has passed CI, but it is not a substitute for the physical hardware release gates. Normal main uploads flash at 0x120000. The USB migration bundle installs fixed recovery plus main while preserving NVS."
 
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh api \
-              --method PATCH \
-              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
-              -f sha="$GITHUB_SHA" \
-              -F force=true
             gh release edit "$tag" \
               --title "$title" \
               --notes "$notes" \
