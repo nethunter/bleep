@@ -39,7 +39,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = Path(__file__).with_name("manual.md")
-DEFAULT_OUTPUT = ROOT / "output" / "pdf" / "bleep-instruction-manual.pdf"
+DEFAULT_OUTPUT = Path(__file__).with_name("bleep-instruction-manual.pdf")
 
 INK = colors.HexColor("#15202B")
 MUTED = colors.HexColor("#5F6B76")

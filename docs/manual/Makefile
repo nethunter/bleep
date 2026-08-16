@@ -1,5 +1,5 @@
 PYTHON ?= python3
-OUTPUT ?= ../../output/pdf/bleep-instruction-manual.pdf
+OUTPUT ?= bleep-instruction-manual.pdf
 
 .PHONY: pdf clean
 

@@ -219,7 +219,7 @@ jobs:
           configured="$(sed -n 's/^custom_firmware_version = //p' platformio.ini)"
           test "$version" = "$configured"
           mv release/firmware.bin "release/bleep-${version}.bin"
-          cp output/pdf/bleep-instruction-manual.pdf release/
+          cp docs/manual/bleep-instruction-manual.pdf release/
           cd release
           sha256sum * > "bleep-${version}.sha256"
       - name: Publish immutable release

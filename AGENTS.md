@@ -77,11 +77,11 @@ Follow these rules while building:
   changes.
 - Adding a device to the support list is a coordinated documentation change:
   update the public website, `docs/manual/manual.md` (and rebuild and visually
-  inspect `output/pdf/bleep-instruction-manual.pdf`), and the relevant files
+  inspect `docs/manual/bleep-instruction-manual.pdf`), and the relevant files
   under `docs/`, including `docs/device-support.md`, in the same task. This is
   an explicit exception to the manual-update restriction below.
 - Do not update `docs/manual/manual.md` or rebuild
-  `output/pdf/bleep-instruction-manual.pdf` unless the user explicitly asks for
+  `docs/manual/bleep-instruction-manual.pdf` unless the user explicitly asks for
   a manual update. When requested, render and inspect the affected PDF pages
   before handoff. Keep `hardware/README.md` aligned when hardware or assembly
   guidance changes.

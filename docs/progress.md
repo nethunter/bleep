@@ -32,7 +32,70 @@ short, factual, and reproducible.
   also passed complete contact-sheet and affected-page inspection. The final
   render has no clipping, overlap, broken table, stale page, or unreadable
   figure. This was a manual-only update; firmware was not rebuilt or flashed.
+### 2026-08-16: Pocket-guide first-use firmware update
 
+- Removed the generated `output/` hierarchy. The owner-guide PDF now lives
+  beside its source under `docs/manual/`; both packaging PDFs now live beside
+  their generators under `hardware/packaging/`. Updated the generator defaults,
+  manual build instructions, release workflow, artifact allowlist, and agent
+  guidance to use the permanent locations. Historical progress entries retain
+  their original paths because they describe earlier repository states.
+- Rebased the detached packaging worktree from `104704e` onto local `main` at
+  `bea4a83`, preserving the pre-existing manual source/PDF and all packaging
+  assets. Reapplied the packaging progress notes on top of the current signed
+  OTA history rather than replacing that history with the older worktree copy.
+- Revised the first pocket-guide instruction panel so a recipient connects USB
+  power, configures trusted Wi-Fi, checks **Settings > Firmware update**,
+  installs the available stable release, keeps USB power connected through the
+  quiet-main/recovery handoff, and presses **Restart** at **Update successful**
+  before pairing equipment. Hidden networks point to Portal; routine first-use
+  setup does not direct the recipient into manual Recovery mode.
+- Removed the stale `0.2.0-dev` pocket-guide footer and described the same
+  first-use flow in the packaging README. Regenerated the two-page 17 x 11 inch
+  PDF, confirmed all required update labels through `pypdf`, and rendered both
+  pages at 144 dpi. Full-resolution inspection found both copies identical,
+  readable, unclipped, and correctly ordered, with the 50 mm Actual Size label
+  still clear of its rule. Physical duplex registration, folding, fit, and a
+  printed first-use walk-through remain open.
+- The generator passed Python bytecode compilation. The required full
+  Montserrat `bleep` profile built successfully with 146,292 / 327,680 bytes
+  RAM and 2,022,618 / 2,949,120 bytes flash. No firmware behavior changed, so
+  host protocol tests and a worktree flash were not needed.
+
+### 2026-08-16: Two-up packaging pocket guide
+
+- Added a reproducible two-page Tabloid PDF for a 12-panel accordion pocket
+  guide. Each duplex sheet yields two identical 69 x 130 mm guides; three
+  sheets produce five presentation copies plus one registration/fold spare.
+  The compact guide covers startup, device management, cameras, lights, audio,
+  motion, scenes, Portal/Home Assistant, status labels, troubleshooting,
+  safety, Factory Reset, and a QR link to the full owner's guide.
+- Kept all artwork inside office-printer-safe margins and added magenta trim
+  borders, cyan fold ticks, panel numbers, explicit front/reverse reading
+  order, and a 50 mm Actual Size calibration bar. Documented duplex short-edge
+  printing on 11 x 17 inch, 32 lb matte text paper and the glue-free accordion
+  fold sequence under `hardware/packaging/`.
+- Initial 144 dpi rendering and `pypdf` validation confirmed two 17 x 11 inch
+  pages, matching two-up copies, correct reverse-panel order, clear QR artwork,
+  and every required section. After a print review exposed the calibration
+  label touching its rule, the center gutter was increased to 6 mm and the
+  label was separated from the line; the corrected render passed inspection.
+
+### 2026-08-13: Five-unit packaging prototype
+
+- Added a full-scale, regenerable packaging prototype for one assembled
+  controller, one 140 x 75 mm quick-start card, and one folded USB-C cable. The
+  two-piece telescoping box has a nominal 155 x 90 x 45 mm interior, a lid with
+  2.5 mm nominal per-side clearance before material compensation, and a folded
+  bridge insert that creates a 17 mm cable bay beneath the controller.
+- Revised the visual direction to the requested warm-white telescoping box:
+  centered Ble(e)p identity, `Studio Controller` label, cropped multicolor edge
+  accents, and a white insert. The six-page Letter PDF contains the concept,
+  separate lid/base dielines, insert template, duplex card artwork, and a fit,
+  inert-drop, compression, and handling test protocol.
+- Rendered and reviewed all six final pages at 144 dpi. PDF structure validation
+  found six extractable pages with visible cut/fold conventions and unclipped
+  dielines. Physical paperboard fit and drop checks remain open.
 ### 2026-08-16: Stable 0.3.5 signed release and first production OTA
 
 - Merged and pushed `0.3.5` at `12b97c3`. Main CI run `31955977392` passed
@@ -280,7 +343,7 @@ short, factual, and reproducible.
   nodes persist an ordinal routing selector and attach `0xFEE9` to the mesh
   proxy connection. X100 is panel-live-verified; X60RGB host-originated optical
   verification passes, while the flashed shared embedded path remains open.
-- Last updated: 2026-08-15.
+- Last updated: 2026-08-16.
 
 ### 2026-08-15: Cold HML Studio connect diagnosis and scan-fallback latency fix
 
