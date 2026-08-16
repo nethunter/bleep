@@ -5443,3 +5443,12 @@ Record values with the exact build environment and commit/worktree state.
   OTA metadata then exercised the first-migration path: without any touch, the
   panel reached normal main display/touch initialization and reported the main
   runtime boot with Wi-Fi Off.
+- Panel `10:00:3b:c0:19:2c` then received the regenerated complete migration
+  bundle. Bootloader, partition table, recovery, blank journal, and main passed
+  independent post-boot digest verification. OTA metadata correctly differed
+  from the packaged blank after recovery selected `ota_0`; its original write
+  had passed esptool verification. Pre/post NVS dumps both passed CRC integrity
+  and retained the same Wi-Fi, device, scene, mesh, HA, and BLE-bond keys. Raw
+  NVS bytes differed only after normal firmware page bookkeeping. Without any
+  touch, a bounded trace confirmed normal main display/touch initialization and
+  runtime boot with Wi-Fi Off.
