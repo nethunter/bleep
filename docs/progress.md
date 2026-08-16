@@ -5,6 +5,49 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Signed recovery refresh after main health
+
+- Extended the canonical signed release with recovery sequence, size, SHA-256,
+  and payload URL while preserving manifest schema 1 compatibility. Development
+  and stable publishing now include and independently verify
+  `bleep-recovery.bin`; packaging tests cover deterministic bounded manifests,
+  recovery hashing, and tampering.
+- Newly installed main now passes its ten-second health gate, re-verifies the
+  exact journaled request, and streams a newer recovery into the non-running
+  factory partition. Main remains selected and the journal remains intact until
+  recovery validation succeeds, so interruption returns to main for a bounded
+  retry rather than selecting a partial factory image. Installed main and
+  recovery sequences are persisted independently.
+- Added a full circular **Finishing update** overlay with bounded progress
+  updates and foreground input suppression. Native tests passed 93/93; packaging
+  tests passed 7/7; the complete `ui_sim` traversal passed and its recovery
+  refresh capture was visually inspected. `bleep_recovery` passed at 41,564
+  bytes RAM and 922,150 bytes flash. The full Montserrat `bleep` build passed
+  at 146,260 bytes RAM and 2,018,866 bytes flash. A chained update and power
+  loss during recovery replacement remain hardware-unverified.
+
+### 2026-08-16: Direct on-panel Wi-Fi configuration
+
+- Added ADR-047 and a bounded main-loop Wi-Fi configuration service. Opening
+  the Wi-Fi page remains radio-free; explicit scanning lists up to 16 visible,
+  deduplicated networks by RSSI. Secured networks use a masked round keyboard,
+  and credentials persist only after association plus a non-zero DHCP address.
+  Scan, connection, cancellation, failure, and success paths return the owned
+  radio to `WIFI_OFF`.
+- Retained equipment now requires **Disconnect & scan** confirmation, while an
+  active command blocks scanning. **Forget network** removes SSID/password but
+  preserves Home Assistant configuration. Portal remains available for hidden
+  SSIDs and phone entry. The runtime splits Wi-Fi-configured from HA-configured
+  state while deliberately retaining the schema-1 HA blob bytes for fixed-
+  recovery compatibility.
+- Native tests passed 93/93. The complete `ui_sim` traversal passed; the empty,
+  results, masked-password, connecting, failure, success, disconnect, and
+  forget captures were visually inspected at 240x240. The full Montserrat
+  `bleep` build passed at 145,740 bytes RAM and 2,013,794 bytes flash. The fixed
+  `bleep_recovery` compatibility build passed at 41,564 bytes RAM and 922,150
+  bytes flash. Real AP discovery, touch password entry, DHCP, radio teardown,
+  retained-link release, and repeated hardware cycles remain unverified.
+
 - Current phase: recovery-based signed firmware-update tranche (ADR-046),
   beside the bounded action-camera tranche (ADR-036) and
   experimental Aputure Light Phase 4 tranche (ADR-024/ADR-038), existing Scenes/shared-BLE

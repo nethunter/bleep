@@ -14,6 +14,7 @@
 #include "core/system_info.h"
 #include "haptic_feedback.h"
 #include "firmware_update.h"
+#include "wifi_configuration.h"
 #include "ui.h"
 #include "portal_service.h"
 
@@ -452,6 +453,7 @@ void setup() {
 
   studio::devices().begin();
   studio::scenes().begin();
+  wifi_configuration::service().begin();
   ui::init();
   // Paint Home before the updater starts its five-second boot grace period.
   lv_timer_handler();
@@ -475,9 +477,11 @@ void loop() {
   portal::loop();
   firmware_update::service().setRuntimeIdle(
       !portal::active() && !studio::scenes().busy() &&
-          studio::devices().activeCount() == 0,
+          studio::devices().activeCount() == 0 &&
+          !wifi_configuration::service().active(),
       ui::showingHome());
   firmware_update::service().loop();
+  wifi_configuration::service().loop();
   const studio::LinkState link = currentLink();
   if (link != lastLink) {
     lastLink = link;

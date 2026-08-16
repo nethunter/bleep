@@ -55,17 +55,18 @@ ConfigLoadStatus HomeAssistantConfigStore::load(HomeAssistantConfig& config) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
-  uint8_t configured = 0;
-  if (!reader.u8(configured) || configured > 1 ||
+  uint8_t homeAssistantConfigured = 0;
+  if (!reader.u8(homeAssistantConfigured) || homeAssistantConfigured > 1 ||
       !reader.text(config.wifiSsid) || !reader.text(config.wifiPassword) ||
       !reader.text(config.baseUrl) || !reader.text(config.token)) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
-  config.configured = configured != 0;
-  if (config.configured &&
-      (config.wifiSsid[0] == '\0' || config.token[0] == '\0' ||
-       !validLocalHomeAssistantUrl(config.baseUrl))) {
+  config.wifiConfigured = config.wifiSsid[0] != '\0';
+  config.homeAssistantConfigured = homeAssistantConfigured != 0;
+  if ((config.wifiConfigured && config.wifiSsid[0] == '\0') ||
+      (config.homeAssistantConfigured &&
+       (config.token[0] == '\0' || !validLocalHomeAssistantUrl(config.baseUrl)))) {
     config = {};
     return ConfigLoadStatus::Corrupt;
   }
@@ -73,16 +74,16 @@ ConfigLoadStatus HomeAssistantConfigStore::load(HomeAssistantConfig& config) {
 }
 
 bool HomeAssistantConfigStore::save(const HomeAssistantConfig& config) {
-  if (config.configured &&
-      (config.wifiSsid[0] == '\0' || config.token[0] == '\0' ||
-       !validLocalHomeAssistantUrl(config.baseUrl))) {
+  if ((config.wifiConfigured && config.wifiSsid[0] == '\0') ||
+      (config.homeAssistantConfigured &&
+       (config.token[0] == '\0' || !validLocalHomeAssistantUrl(config.baseUrl)))) {
     return false;
   }
   uint8_t bytes[kEncodedSize] = {};
   BlobWriter writer(bytes, sizeof(bytes));
   writer.bytes(kMagic, sizeof(kMagic));
   writer.u16(kVersion);
-  writer.u8(config.configured ? 1 : 0);
+  writer.u8(config.homeAssistantConfigured ? 1 : 0);
   writer.bytes(config.wifiSsid, sizeof(config.wifiSsid));
   writer.bytes(config.wifiPassword, sizeof(config.wifiPassword));
   writer.bytes(config.baseUrl, sizeof(config.baseUrl));

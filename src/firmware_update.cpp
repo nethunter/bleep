@@ -1,5 +1,6 @@
 #include "firmware_update.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -114,6 +115,17 @@ void FirmwareUpdateService::simSetWifiConfigured(bool configured) {
 void FirmwareUpdateService::simSetRecoveryAvailable(bool available) {
   snapshot.recoveryAvailable = available;
 }
+void FirmwareUpdateService::simSetRecoveryRefresh(uint8_t progressPercent) {
+  snapshot.status = Status::Downloading;
+  snapshot.recoveryUpdatePending = true;
+  snapshot.progressPercent = progressPercent;
+  std::strncpy(snapshot.message, "Updating recovery", sizeof(snapshot.message) - 1);
+}
+void FirmwareUpdateService::simClearRecoveryRefresh() {
+  snapshot.status = Status::Idle;
+  snapshot.recoveryUpdatePending = false;
+  snapshot.progressPercent = 0;
+}
 bool FirmwareUpdateService::simRecoveryRequested() const {
   return recoveryRequested;
 }
@@ -137,8 +149,10 @@ FirmwareUpdateService& service() {
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_http_client.h>
+#include <esp_image_format.h>
 #include <esp_netif.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/sha256.h>
 #include <time.h>
@@ -155,8 +169,10 @@ constexpr size_t kManifestCapacity = 1536;
 constexpr size_t kSignatureCapacity = 80;
 constexpr int kHttpBufferSize = 8192;
 constexpr size_t kMaximumImageSize = 0x2C0000;
+constexpr size_t kMaximumRecoveryImageSize = 0xF0000;
 constexpr uint32_t kConnectTimeoutMs = 12000;
 constexpr uint32_t kRequestTimeoutMs = 30000;
+constexpr uint32_t kRecoveryRequestTimeoutMs = 120000;
 constexpr uint32_t kBootValidationMs = 10000;
 constexpr uint32_t kWifiShutdownSettleMs = 250;
 constexpr uint32_t kWifiShutdownTimeoutMs = 2000;
@@ -240,8 +256,10 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 -----END CERTIFICATE-----
 )CERT";
 
-enum class TransferKind : uint8_t { None, Manifest, Signature };
+enum class TransferKind : uint8_t { None, Manifest, Signature, RecoveryImage };
 enum class ManifestResult : uint8_t { Invalid, Current, Available };
+enum class OperationKind : uint8_t { None, Check, RecoveryRefresh };
+enum class RecoveryManifestResult : uint8_t { None, Invalid, Current, Pending };
 
 struct PersistedState {
   uint32_t magic = 0x46575550;
@@ -267,6 +285,7 @@ uint32_t operationStarted = 0;
 uint32_t wifiShutdownStarted = 0;
 esp_http_client_handle_t client = nullptr;
 TransferKind transferKind = TransferKind::None;
+OperationKind operationKind = OperationKind::None;
 char manifest[kManifestCapacity] = {};
 size_t manifestLength = 0;
 uint8_t signature[kSignatureCapacity] = {};
@@ -275,6 +294,19 @@ char signatureUrl[256] = {};
 char payloadUrl[320] = {};
 size_t expectedImageSize = 0;
 uint8_t expectedSha[32] = {};
+char recoveryPayloadUrl[320] = {};
+size_t expectedRecoveryImageSize = 0;
+uint8_t expectedRecoverySha[32] = {};
+uint64_t expectedRecoverySequence = 0;
+uint64_t installedRecoverySequence = 0;
+bool recoveryRefreshPending = false;
+uint8_t recoveryRefreshFailures = 0;
+uint32_t recoveryRetryAt = 0;
+const esp_partition_t* recoveryWritePartition = nullptr;
+bool recoveryOtaActive = false;
+size_t recoveryBytesWritten = 0;
+mbedtls_sha256_context recoveryShaContext;
+bool recoveryShaActive = false;
 PersistedState persisted;
 
 void setMessage(Status status, const char* message) {
@@ -289,7 +321,7 @@ bool wifiConfigured(studio::HomeAssistantConfig* output = nullptr) {
   studio::HomeAssistantConfig config;
   const studio::ConfigLoadStatus status = store.load(config);
   const bool configured = status != studio::ConfigLoadStatus::Corrupt &&
-                          config.wifiSsid[0] != '\0';
+                          config.wifiConfigured && config.wifiSsid[0] != '\0';
   snapshot.wifiConfigured = configured;
   if (configured && output != nullptr) *output = config;
   return configured;
@@ -299,6 +331,7 @@ void savePersisted() {
   Preferences preferences;
   if (!preferences.begin("studio", false)) return;
   preferences.putBytes("fw_update", &persisted, sizeof(persisted));
+  preferences.putULong64("fw_rec_seq", installedRecoverySequence);
   preferences.end();
 }
 
@@ -314,6 +347,7 @@ void loadPersisted() {
     std::strncpy(snapshot.lastResult, persisted.lastResult,
                  sizeof(snapshot.lastResult) - 1);
   }
+  installedRecoverySequence = preferences.getULong64("fw_rec_seq", 0);
   preferences.end();
 }
 
@@ -335,6 +369,17 @@ void cleanupClient() {
     client = nullptr;
   }
   transferKind = TransferKind::None;
+}
+
+void cleanupRecoveryWrite(bool abortWrite) {
+  (void)abortWrite;
+  recoveryWritePartition = nullptr;
+  recoveryOtaActive = false;
+  if (recoveryShaActive) {
+    mbedtls_sha256_free(&recoveryShaContext);
+    recoveryShaActive = false;
+  }
+  recoveryBytesWritten = 0;
 }
 
 void releaseWifi() {
@@ -363,7 +408,33 @@ void fail(const char* message) {
   timeSyncStarted = false;
   releaseWifi();
   policy.checked(millis(), false);
+  operationKind = OperationKind::None;
   if (checkFailure) recordCheckResult(message);
+  setMessage(Status::Failed, message);
+}
+
+void scheduleRecoveryRetry(const char* message, bool retryable) {
+  const bool recoveryWasBeingWritten = recoveryOtaActive;
+  cleanupClient();
+  cleanupRecoveryWrite(true);
+  if (recoveryWasBeingWritten) snapshot.recoveryAvailable = false;
+  releaseWifi();
+  operationKind = OperationKind::None;
+  if (retryable) {
+    static constexpr uint32_t delays[] = {
+        60UL * 60UL * 1000UL,
+        6UL * 60UL * 60UL * 1000UL,
+        24UL * 60UL * 60UL * 1000UL,
+    };
+    const size_t index = std::min<size_t>(recoveryRefreshFailures,
+                                          sizeof(delays) / sizeof(delays[0]) - 1);
+    recoveryRetryAt = millis() + delays[index];
+    if (recoveryRefreshFailures < 0xff) ++recoveryRefreshFailures;
+  } else {
+    recoveryRefreshPending = false;
+    snapshot.recoveryUpdatePending = false;
+  }
+  recordCheckResult(message);
   setMessage(Status::Failed, message);
 }
 
@@ -380,6 +451,18 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
     if (signatureLength + length > sizeof(signature)) return ESP_FAIL;
     std::memcpy(signature + signatureLength, bytes, length);
     signatureLength += length;
+  } else if (transferKind == TransferKind::RecoveryImage) {
+    if (!recoveryOtaActive || recoveryBytesWritten + length > expectedRecoveryImageSize ||
+        (recoveryBytesWritten == 0 && bytes[0] != 0xE9) ||
+        mbedtls_sha256_update_ret(&recoveryShaContext, bytes, length) != 0 ||
+        recoveryWritePartition == nullptr ||
+        esp_partition_write(recoveryWritePartition, recoveryBytesWritten,
+                            bytes, length) != ESP_OK) {
+      return ESP_FAIL;
+    }
+    recoveryBytesWritten += length;
+    snapshot.progressPercent = static_cast<uint8_t>(
+        std::min<size_t>(99, recoveryBytesWritten * 100 / expectedRecoveryImageSize));
   }
   return ESP_OK;
 }
@@ -452,6 +535,72 @@ bool verifyManifest(const char* publicKey) {
       : parsed;
   mbedtls_pk_free(&key);
   return verified == 0;
+}
+
+const char* channelName(uint8_t channel) {
+  return channel == static_cast<uint8_t>(studio::FirmwareUpdateChannel::Development)
+      ? "development" : "stable";
+}
+
+const char* channelKeyId(uint8_t channel) {
+  return channel == static_cast<uint8_t>(studio::FirmwareUpdateChannel::Development)
+      ? firmware_update_keys::kDevelopmentKeyId : firmware_update_keys::kStableKeyId;
+}
+
+const char* channelPublicKey(uint8_t channel) {
+  return channel == static_cast<uint8_t>(studio::FirmwareUpdateChannel::Development)
+      ? firmware_update_keys::kDevelopmentPublicKey
+      : firmware_update_keys::kStablePublicKey;
+}
+
+RecoveryManifestResult parseRecoveryManifest(
+    const studio::RecoveryRecord& record) {
+  if (record.manifestLength == 0 || record.manifestLength >= sizeof(manifest) ||
+      record.signatureLength == 0 || record.signatureLength > sizeof(signature) ||
+      record.channel > static_cast<uint8_t>(studio::FirmwareUpdateChannel::Development)) {
+    return RecoveryManifestResult::None;
+  }
+  std::memcpy(manifest, record.manifest, record.manifestLength);
+  manifestLength = record.manifestLength;
+  manifest[manifestLength] = '\0';
+  std::memcpy(signature, record.signature, record.signatureLength);
+  signatureLength = record.signatureLength;
+  if (!verifyManifest(channelPublicKey(record.channel))) {
+    return RecoveryManifestResult::Invalid;
+  }
+  JsonDocument document;
+  if (deserializeJson(document, manifest, manifestLength) != DeserializationError::Ok) {
+    return RecoveryManifestResult::Invalid;
+  }
+  if (std::strcmp(document["channel"] | "", channelName(record.channel)) != 0 ||
+      std::strcmp(document["key_id"] | "", channelKeyId(record.channel)) != 0 ||
+      std::strcmp(document["hardware"] | "", build_info::kHardware) != 0 ||
+      std::strcmp(document["profile"] | "", "bleep") != 0 ||
+      (document["schema"] | 0) != 1 ||
+      (document["partition_schema"] | 0) != 2 ||
+      (document["recovery_schema"] | 0) != 1 ||
+      (document["release_sequence"] | 0ULL) != record.releaseSequence ||
+      record.releaseSequence != build_info::kReleaseSequence) {
+    return RecoveryManifestResult::Invalid;
+  }
+  if (!document["recovery_sequence"].is<uint64_t>()) {
+    return RecoveryManifestResult::None;
+  }
+  const uint64_t sequence = document["recovery_sequence"] | 0ULL;
+  const size_t imageSize = document["recovery_image_size"] | 0U;
+  const char* url = document["recovery_payload_url"] | "";
+  if (sequence == 0 || imageSize == 0 || imageSize > kMaximumRecoveryImageSize ||
+      std::strncmp(url, "https://github.com/nethunter/bleep/releases/download/",
+                   std::strlen("https://github.com/nethunter/bleep/releases/download/")) != 0 ||
+      !decodeSha(document["recovery_sha256"] | "", expectedRecoverySha)) {
+    return RecoveryManifestResult::Invalid;
+  }
+  if (sequence <= installedRecoverySequence) return RecoveryManifestResult::Current;
+  expectedRecoverySequence = sequence;
+  expectedRecoveryImageSize = imageSize;
+  std::strncpy(recoveryPayloadUrl, url, sizeof(recoveryPayloadUrl) - 1);
+  recoveryPayloadUrl[sizeof(recoveryPayloadUrl) - 1] = '\0';
+  return RecoveryManifestResult::Pending;
 }
 
 ManifestResult parseVerifiedManifest() {
@@ -533,6 +682,110 @@ void startManifestRequest() {
   setMessage(Status::Checking, "Checking for updates");
 }
 
+bool startRecoveryRequest() {
+  const esp_partition_t* recovery = esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "recovery");
+  if (recovery == nullptr || recovery == esp_ota_get_running_partition() ||
+      expectedRecoveryImageSize == 0 ||
+      expectedRecoveryImageSize > recovery->size) return false;
+  cleanupRecoveryWrite(true);
+  if (!startTransfer(recoveryPayloadUrl, TransferKind::RecoveryImage)) return false;
+  constexpr size_t kFlashSectorSize = 4096;
+  const size_t eraseSize = (expectedRecoveryImageSize + kFlashSectorSize - 1) &
+                           ~(kFlashSectorSize - 1);
+  if (eraseSize > recovery->size ||
+      esp_partition_erase_range(recovery, 0, eraseSize) != ESP_OK) {
+    cleanupClient();
+    return false;
+  }
+  recoveryWritePartition = recovery;
+  recoveryOtaActive = true;
+  mbedtls_sha256_init(&recoveryShaContext);
+  recoveryShaActive = true;
+  if (mbedtls_sha256_starts_ret(&recoveryShaContext, 0) != 0) {
+    cleanupClient();
+    cleanupRecoveryWrite(true);
+    return false;
+  }
+  recoveryBytesWritten = 0;
+  snapshot.progressPercent = 0;
+  setMessage(Status::Downloading, "Updating recovery");
+  return true;
+}
+
+void finishRecoveryRequest() {
+  uint8_t digest[32] = {};
+  if (!recoveryOtaActive || recoveryBytesWritten != expectedRecoveryImageSize ||
+      !recoveryShaActive ||
+      mbedtls_sha256_finish_ret(&recoveryShaContext, digest) != 0 ||
+      std::memcmp(digest, expectedRecoverySha, sizeof(digest)) != 0) {
+    scheduleRecoveryRetry("Recovery image verification failed", false);
+    return;
+  }
+  mbedtls_sha256_free(&recoveryShaContext);
+  recoveryShaActive = false;
+  const esp_partition_t* recovery = recoveryWritePartition;
+  recoveryWritePartition = nullptr;
+  recoveryOtaActive = false;
+  esp_image_metadata_t metadata = {};
+  const esp_partition_pos_t position = {
+      recovery == nullptr ? 0U : recovery->address,
+      recovery == nullptr ? 0U : recovery->size,
+  };
+  if (recovery == nullptr ||
+      esp_image_verify(ESP_IMAGE_VERIFY, &position, &metadata) != ESP_OK) {
+    recoveryBytesWritten = 0;
+    snapshot.recoveryAvailable = false;
+    scheduleRecoveryRetry("Recovery image was not bootable", false);
+    return;
+  }
+  recoveryBytesWritten = 0;
+  esp_app_desc_t description = {};
+  if (esp_ota_get_partition_description(recovery, &description) != ESP_OK) {
+    snapshot.recoveryAvailable = false;
+    scheduleRecoveryRetry("Recovery validation failed", false);
+    return;
+  }
+  installedRecoverySequence = expectedRecoverySequence;
+  snapshot.recoveryAvailable = true;
+  savePersisted();
+  studio::PartitionRecoveryJournalBackend backend;
+  studio::RecoveryJournal journal(backend);
+  journal.clear();
+  recoveryRefreshPending = false;
+  snapshot.recoveryUpdatePending = false;
+  recoveryRefreshFailures = 0;
+  operationKind = OperationKind::None;
+  snapshot.progressPercent = 100;
+  recordCheckResult("Firmware and recovery updated");
+  releaseWifi();
+  setMessage(Status::Idle, "Firmware and recovery updated");
+}
+
+void prepareRecoveryRefresh() {
+  studio::PartitionRecoveryJournalBackend backend;
+  studio::RecoveryJournal journal(backend);
+  std::unique_ptr<studio::RecoveryRecord> record(
+      new (std::nothrow) studio::RecoveryRecord());
+  if (!record || !journal.load(*record)) return;
+  if (record->operation != studio::RecoveryOperation::InstallRequested &&
+      record->operation != studio::RecoveryOperation::ResetComplete) return;
+  const RecoveryManifestResult result = parseRecoveryManifest(*record);
+  if (result == RecoveryManifestResult::Pending) {
+    recoveryRefreshPending = true;
+    recoveryRetryAt = millis();
+    snapshot.recoveryUpdatePending = true;
+    setMessage(Status::Deferred, "Finishing recovery update");
+    return;
+  }
+  journal.clear();
+  snapshot.recoveryUpdatePending = false;
+  if (result == RecoveryManifestResult::Invalid) {
+    recordCheckResult("Recovery metadata invalid");
+    setMessage(Status::Failed, "Recovery metadata invalid");
+  }
+}
+
 void finishCheck() {
   snapshot.updateAvailable = true;
   persisted.availableSequence = snapshot.releaseSequence;
@@ -542,6 +795,7 @@ void finishCheck() {
   snapshot.disconnectRequired = false;
   policy.checked(millis(), true);
   releaseWifi();
+  operationKind = OperationKind::None;
   setMessage(Status::Available, "Update available");
 }
 
@@ -554,15 +808,27 @@ void handleCompletedTransfer() {
       allowedEffectiveUrl(effectiveUrl);
   cleanupClient();
   if (!allowed) {
-    fail("Update redirect was not allowed");
+    if (finished == TransferKind::RecoveryImage) {
+      scheduleRecoveryRetry("Recovery redirect was not allowed", false);
+    } else {
+      fail("Update redirect was not allowed");
+    }
     return;
   }
   if (code != 200) {
-    if (code == 404) fail("No signed release published");
-    else fail("Update server error");
+    if (finished == TransferKind::RecoveryImage) {
+      scheduleRecoveryRetry(code == 404 ? "Recovery image was not published"
+                                         : "Recovery server error", true);
+    } else if (code == 404) {
+      fail("No signed release published");
+    } else {
+      fail("Update server error");
+    }
     return;
   }
-  if (finished == TransferKind::Manifest) {
+  if (finished == TransferKind::RecoveryImage) {
+    finishRecoveryRequest();
+  } else if (finished == TransferKind::Manifest) {
     if (!startTransfer(signatureUrl, TransferKind::Signature)) {
       fail("Could not fetch signature");
     }
@@ -577,6 +843,7 @@ void handleCompletedTransfer() {
       recordCheckResult("Firmware is up to date");
       policy.checked(millis(), true);
       releaseWifi();
+      operationKind = OperationKind::None;
       setMessage(Status::Idle, "Firmware is up to date");
       return;
     }
@@ -597,11 +864,23 @@ bool selectRecoveryAndRestart() {
   return true;
 }
 
+bool recoveryPartitionValid() {
+  const esp_partition_t* recovery = esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "recovery");
+  esp_app_desc_t description = {};
+  return recovery != nullptr &&
+         esp_ota_get_partition_description(recovery, &description) == ESP_OK;
+}
+
 }  // namespace
 
 void FirmwareUpdateService::begin() {
   policy.begin(millis());
   snapshot = {};
+  operationKind = OperationKind::None;
+  recoveryRefreshPending = false;
+  recoveryRefreshFailures = 0;
+  cleanupRecoveryWrite(true);
   loadPersisted();
   wifiConfigured();
   const esp_partition_t* running = esp_ota_get_running_partition();
@@ -610,10 +889,8 @@ void FirmwareUpdateService::begin() {
                 esp_ota_get_state_partition(running, &state) == ESP_OK &&
                 state == ESP_OTA_IMG_PENDING_VERIFY;
   bootValidationStarted = millis();
-  snapshot.recoveryAvailable =
-      esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-                               ESP_PARTITION_SUBTYPE_APP_FACTORY,
-                               "recovery") != nullptr;
+  snapshot.recoveryAvailable = recoveryPartitionValid();
+  if (!bootPending) prepareRecoveryRefresh();
 }
 
 void FirmwareUpdateService::loop() {
@@ -630,11 +907,15 @@ void FirmwareUpdateService::loop() {
         persisted.installedSequence = completed->releaseSequence;
         savePersisted();
       }
-      journal.clear();
       bootPending = false;
+      prepareRecoveryRefresh();
     }
   }
   if (snapshot.status == Status::Connecting) {
+    if (operationKind == OperationKind::RecoveryRefresh && !runtimeIdle) {
+      scheduleRecoveryRetry("Recovery update deferred", true);
+      return;
+    }
     if (WiFi.status() == WL_CONNECTED) {
       if (!timeSyncStarted) {
         configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -650,16 +931,27 @@ void FirmwareUpdateService::loop() {
         return;
       }
       timeSyncStarted = false;
-      startManifestRequest();
+      if (operationKind == OperationKind::RecoveryRefresh) {
+        if (!startRecoveryRequest()) {
+          scheduleRecoveryRetry("Could not start recovery update", true);
+        }
+      } else {
+        startManifestRequest();
+      }
     } else if (now - operationStarted >= kConnectTimeoutMs) {
-      fail("Wi-Fi connection timed out");
+      if (operationKind == OperationKind::RecoveryRefresh) {
+        scheduleRecoveryRetry("Recovery Wi-Fi timed out", true);
+      } else {
+        fail("Wi-Fi connection timed out");
+      }
     }
     return;
   }
   if (client != nullptr) {
-    if (!runtimeIdle) {
+    if (!runtimeIdle && operationKind != OperationKind::RecoveryRefresh) {
       policy.deferStartup();
       releaseWifi();
+      operationKind = OperationKind::None;
       setMessage(Status::Deferred, "Update check deferred");
       return;
     }
@@ -668,24 +960,49 @@ void FirmwareUpdateService::loop() {
     else if (result != ESP_ERR_HTTP_EAGAIN && result != ESP_ERR_HTTP_CONNECTING) {
       Serial.printf("[fw-update] transfer failed: %s (0x%x)\n",
                     esp_err_to_name(result), static_cast<unsigned>(result));
-      fail("Network transfer failed");
-    } else if (now - operationStarted >= kRequestTimeoutMs) {
-      fail("Update request timed out");
+      if (operationKind == OperationKind::RecoveryRefresh) {
+        scheduleRecoveryRetry("Recovery transfer failed", true);
+      } else {
+        fail("Network transfer failed");
+      }
+    } else if (now - operationStarted >=
+               (operationKind == OperationKind::RecoveryRefresh
+                    ? kRecoveryRequestTimeoutMs : kRequestTimeoutMs)) {
+      if (operationKind == OperationKind::RecoveryRefresh) {
+        scheduleRecoveryRetry("Recovery request timed out", true);
+      } else {
+        fail("Update request timed out");
+      }
+    }
+    return;
+  }
+  const bool heapSafe = ESP.getFreeHeap() >= kMinimumFreeHeap &&
+      heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) >= kMinimumLargestBlock;
+  if (recoveryRefreshPending) {
+    snapshot.recoveryUpdatePending = true;
+    if (!bootPending && runtimeIdle && heapSafe &&
+        static_cast<int32_t>(now - recoveryRetryAt) >= 0) {
+      operationKind = OperationKind::RecoveryRefresh;
+      if (!beginWifi()) {
+        scheduleRecoveryRetry("Recovery Wi-Fi unavailable", true);
+      }
     }
     return;
   }
   if (snapshot.status == Status::Available ||
       snapshot.status == Status::RebootPending) return;
   if (!runtimeIdle) policy.deferStartup();
-  const bool heapSafe = ESP.getFreeHeap() >= kMinimumFreeHeap &&
-      heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) >= kMinimumLargestBlock;
   if (policy.immediateRequested() && runtimeIdle && !heapSafe) {
     setMessage(Status::Deferred, "Waiting for available memory");
   }
   const bool checkEligible = runtimeIdle && heapSafe &&
       (automaticEligible || policy.immediateRequested());
   if (policy.shouldCheck(now, checkEligible, snapshot.wifiConfigured)) {
-    if (!beginWifi()) policy.checked(now, false);
+    operationKind = OperationKind::Check;
+    if (!beginWifi()) {
+      operationKind = OperationKind::None;
+      policy.checked(now, false);
+    }
   }
 }
 
@@ -705,6 +1022,11 @@ void FirmwareUpdateService::checkNow(bool allowDisconnect) {
   if (!runtimeIdle && !allowDisconnect) {
     snapshot.disconnectRequired = true;
     setMessage(Status::Deferred, "Disconnect devices to check");
+    return;
+  }
+  if (recoveryRefreshPending) {
+    recoveryRetryAt = millis();
+    setMessage(Status::Deferred, "Recovery update queued");
     return;
   }
   snapshot.disconnectRequired = false;

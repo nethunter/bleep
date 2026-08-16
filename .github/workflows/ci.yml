@@ -146,6 +146,7 @@ jobs:
           version=$(cat release/firmware-version.txt)
           python scripts/package_firmware_update.py \
             --firmware release/firmware.bin \
+            --recovery recovery/firmware.bin \
             --output-dir signed-release \
             --channel development \
             --version "$version" \
@@ -157,6 +158,7 @@ jobs:
             --manifest signed-release/bleep-update.json \
             --signature signed-release/bleep-update.sig \
             --firmware signed-release/bleep-update.bin \
+            --recovery signed-release/bleep-recovery.bin \
             --public-key keys/ota-development-public.pem
           cp release/bootloader.bin signed-release/bleep-usb-bootloader.bin
           cp release/partitions.bin signed-release/bleep-usb-partitions.bin

@@ -22,7 +22,9 @@
 #include "ui/rename_prompt.h"
 #include "ui/round_page.h"
 #include "ui/title_marquee.h"
+#include "ui/wifi_password_prompt.h"
 #include "portal_service.h"
+#include "wifi_configuration.h"
 #if CONFIG_DRIVER_CANON_BLE
 #include "devices/canon_ble/ui.h"
 #endif
@@ -230,6 +232,20 @@ lv_obj_t* firmwareUpdateRollback = nullptr;
 lv_obj_t* firmwareUpdateChannelLabel = nullptr;
 lv_obj_t* firmwareUpdateChannelToggle = nullptr;
 lv_obj_t* updatePrompt = nullptr;
+lv_obj_t* recoveryRefreshOverlay = nullptr;
+lv_obj_t* recoveryRefreshStatus = nullptr;
+lv_obj_t* recoveryRefreshProgress = nullptr;
+lv_obj_t* wifiContent = nullptr;
+lv_obj_t* wifiConfirm = nullptr;
+wifi_configuration::Status wifiRenderedStatus = wifi_configuration::Status::Idle;
+size_t wifiRenderedNetworkCount = static_cast<size_t>(-1);
+bool wifiRenderedConfigured = false;
+size_t wifiSelectedNetwork = 0;
+enum class WifiConfirmation : uint8_t { None, Scan, Forget };
+WifiConfirmation wifiConfirmation = WifiConfirmation::None;
+char wifiUiMessage[64] = "";
+void closeWifiConfirmation();
+void refreshWifiSettings(bool force = false);
 bool updatePromptConfirming = false;
 bool firmwareRollbackHolding = false;
 uint32_t firmwareRollbackStartedMs = 0;
@@ -722,6 +738,8 @@ void onDefaultRenameCancel() {
 
 void destroySettingsScreen() {
   closeUpdatePrompt();
+  studio_ui::wifi_password_prompt::close();
+  closeWifiConfirmation();
   if (scrSettings != nullptr && lv_scr_act() == scrSettings && scrHome != nullptr) {
     lv_scr_load(scrHome);
   }
@@ -748,6 +766,7 @@ void destroySettingsScreen() {
   firmwareUpdateRollback = nullptr;
   firmwareUpdateChannelLabel = nullptr;
   firmwareUpdateChannelToggle = nullptr;
+  wifiContent = nullptr;
   firmwareRollbackHolding = false;
   factoryResetHolding = false;
   factoryResetTriggered = false;
@@ -812,12 +831,23 @@ void showSettingsView(SettingsView view);
 
 void onSettingsBack(lv_event_t*) {
   closeUpdatePrompt();
+  if (settingsView == SettingsView::Wifi) {
+    studio_ui::wifi_password_prompt::close();
+    if (wifiConfirm != nullptr) {
+      lv_obj_del(wifiConfirm);
+      wifiConfirm = nullptr;
+    }
+    wifi_configuration::service().cancel();
+  }
   haptic_feedback::request(haptic_feedback::Pattern::Back);
   if (settingsView == SettingsView::Menu) showHome();
   else showSettingsView(SettingsView::Menu);
 }
 
-void onWifiSettings(lv_event_t*) { showSettingsView(SettingsView::Wifi); }
+void onWifiSettings(lv_event_t*) {
+  wifiUiMessage[0] = '\0';
+  showSettingsView(SettingsView::Wifi);
+}
 void refreshFirmwareUpdate();
 
 void onFirmwareUpdate(lv_event_t*) {
@@ -830,6 +860,8 @@ void onSystemInfo(lv_event_t*) { showSettingsView(SettingsView::SystemInfo); }
 void onFactoryReset(lv_event_t*) { showSettingsView(SettingsView::FactoryReset); }
 
 void onConfigureWifi(lv_event_t*) {
+  studio_ui::wifi_password_prompt::close();
+  wifi_configuration::service().cancel();
   destroySettingsScreen();
   showPortal();
 }
@@ -842,6 +874,65 @@ void closeUpdatePrompt() {
   if (firmwareUpdateCheck != nullptr) lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
   if (firmwareUpdateInstall != nullptr) lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
   updatePromptConfirming = false;
+}
+
+void refreshRecoveryUpdateOverlay() {
+  const firmware_update::Snapshot current = firmware_update::service().status();
+  const bool active = current.recoveryUpdatePending &&
+      (current.status == firmware_update::Status::Deferred ||
+       current.status == firmware_update::Status::Connecting ||
+       current.status == firmware_update::Status::Downloading ||
+       current.status == firmware_update::Status::Verifying);
+  if (!active) {
+    if (recoveryRefreshOverlay != nullptr) lv_obj_del(recoveryRefreshOverlay);
+    recoveryRefreshOverlay = nullptr;
+    recoveryRefreshStatus = nullptr;
+    recoveryRefreshProgress = nullptr;
+    return;
+  }
+  if (recoveryRefreshOverlay == nullptr) {
+    recoveryRefreshOverlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(recoveryRefreshOverlay, 238, 238);
+    lv_obj_center(recoveryRefreshOverlay);
+    lv_obj_set_style_radius(recoveryRefreshOverlay, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(recoveryRefreshOverlay, lv_color_hex(kColBg), 0);
+    lv_obj_set_style_border_color(recoveryRefreshOverlay, lv_color_hex(kColAccent), 0);
+    lv_obj_set_style_border_width(recoveryRefreshOverlay, 2, 0);
+    lv_obj_set_style_pad_all(recoveryRefreshOverlay, 0, 0);
+    lv_obj_clear_flag(recoveryRefreshOverlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* title = lv_label_create(recoveryRefreshOverlay);
+    lv_label_set_text(title, "FINISHING UPDATE");
+    lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 55);
+    recoveryRefreshStatus = lv_label_create(recoveryRefreshOverlay);
+    lv_obj_set_width(recoveryRefreshStatus, 176);
+    lv_obj_set_style_text_align(recoveryRefreshStatus, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(recoveryRefreshStatus, UI_FONT_14, 0);
+    lv_obj_align(recoveryRefreshStatus, LV_ALIGN_TOP_MID, 0, 91);
+    recoveryRefreshProgress = lv_bar_create(recoveryRefreshOverlay);
+    lv_obj_set_size(recoveryRefreshProgress, 150, 8);
+    lv_obj_align(recoveryRefreshProgress, LV_ALIGN_TOP_MID, 0, 133);
+    lv_bar_set_range(recoveryRefreshProgress, 0, 100);
+    lv_obj_set_style_bg_color(recoveryRefreshProgress, lv_color_hex(kColPanel), 0);
+    lv_obj_set_style_bg_color(recoveryRefreshProgress, lv_color_hex(kColAccent),
+                              LV_PART_INDICATOR);
+    lv_obj_t* detail = lv_label_create(recoveryRefreshOverlay);
+    lv_label_set_text(detail, "Keep USB power connected");
+    lv_obj_set_style_text_font(detail, UI_FONT_12, 0);
+    lv_obj_set_style_text_color(detail, lv_color_hex(kColMuted), 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 157);
+  }
+  char status[48];
+  if (current.status == firmware_update::Status::Downloading) {
+    std::snprintf(status, sizeof(status), "Updating recovery\n%u%%",
+                  current.progressPercent);
+  } else if (current.status == firmware_update::Status::Connecting) {
+    std::snprintf(status, sizeof(status), "Connecting to Wi-Fi");
+  } else {
+    std::snprintf(status, sizeof(status), "Preparing recovery");
+  }
+  lv_label_set_text(recoveryRefreshStatus, status);
+  lv_bar_set_value(recoveryRefreshProgress, current.progressPercent, LV_ANIM_OFF);
 }
 
 void onUpdateLater(lv_event_t*) {
@@ -1041,11 +1132,22 @@ void refreshFirmwareUpdate() {
                                 studio::FirmwareUpdateChannel::Development
                             ? "Development"
                             : "Stable";
+  char recoveryProgress[48] = {};
+  if (current.recoveryUpdatePending &&
+      current.status == firmware_update::Status::Downloading) {
+    std::snprintf(recoveryProgress, sizeof(recoveryProgress),
+                  "Updating recovery: %u%%", current.progressPercent);
+  }
   const char* detail = !current.wifiConfigured ? "Configure Wi-Fi" :
       current.disconnectRequired ? "Devices are connected" :
+      recoveryProgress[0] != '\0' ? recoveryProgress :
+      current.recoveryUpdatePending ? current.message :
       current.updateAvailable ? current.version : current.message;
   const bool checking = current.status == firmware_update::Status::Connecting ||
-                        current.status == firmware_update::Status::Checking;
+                        current.status == firmware_update::Status::Checking ||
+                        current.status == firmware_update::Status::Downloading ||
+                        current.status == firmware_update::Status::Verifying ||
+                        current.recoveryUpdatePending;
   const char* summaryPrefix = checking ? "Status: " :
       current.updateAvailable ? "Available: " : "Last: ";
   const char* summary = checking ? detail :
@@ -1055,16 +1157,20 @@ void refreshFirmwareUpdate() {
                 build_info::kGitCommit, channel, summaryPrefix, summary);
   lv_label_set_text(firmwareUpdateStatus, text);
   if (firmwareUpdateCheck != nullptr) {
-    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0), checking ? "CHECKING..." :
+    lv_label_set_text(lv_obj_get_child(firmwareUpdateCheck, 0),
+                      current.recoveryUpdatePending ? "FINISHING UPDATE..." :
+                      checking ? "CHECKING..." :
                       !current.wifiConfigured ? "CONFIGURE WI-FI" :
                       current.disconnectRequired ? "DISCONNECT & CHECK" : "CHECK NOW");
     if (checking) lv_obj_add_state(firmwareUpdateCheck, LV_STATE_DISABLED);
     else lv_obj_clear_state(firmwareUpdateCheck, LV_STATE_DISABLED);
-    if (current.updateAvailable) lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    if (current.updateAvailable || current.recoveryUpdatePending) {
+      lv_obj_add_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
+    }
     else lv_obj_clear_flag(firmwareUpdateCheck, LV_OBJ_FLAG_HIDDEN);
   }
   if (firmwareUpdateInstall != nullptr) {
-    if (current.updateAvailable) {
+    if (current.updateAvailable && !current.recoveryUpdatePending) {
       lv_obj_clear_state(firmwareUpdateInstall, LV_STATE_DISABLED);
       lv_obj_clear_flag(firmwareUpdateInstall, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -1073,7 +1179,7 @@ void refreshFirmwareUpdate() {
     }
   }
   if (firmwareUpdateRollback != nullptr) {
-    if (current.recoveryAvailable) {
+    if (current.recoveryAvailable && !current.recoveryUpdatePending) {
       lv_obj_clear_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(firmwareUpdateRollback, LV_OBJ_FLAG_HIDDEN);
@@ -1144,29 +1250,255 @@ void buildFirmwareUpdate() {
   refreshFirmwareUpdate();
 }
 
+void closeWifiConfirmation() {
+  if (wifiConfirm != nullptr) {
+    lv_obj_del(wifiConfirm);
+    wifiConfirm = nullptr;
+  }
+  wifiConfirmation = WifiConfirmation::None;
+}
+
+void startWifiScan(bool disconnect) {
+  if (studio::scenes().busy()) {
+    std::strncpy(wifiUiMessage, "Wait for the active command to finish",
+                 sizeof(wifiUiMessage) - 1);
+    refreshWifiSettings(true);
+    return;
+  }
+  if (studio::devices().activeCount() > 0 && !disconnect) {
+    wifiConfirmation = WifiConfirmation::Scan;
+    return;
+  }
+  if (disconnect) {
+    studio::scenes().cancel();
+    studio::devices().deactivateAll();
+  }
+  wifiUiMessage[0] = '\0';
+  if (!wifi_configuration::service().requestScan()) {
+    std::strncpy(wifiUiMessage, "Wi-Fi is already busy", sizeof(wifiUiMessage) - 1);
+  }
+  refreshWifiSettings(true);
+}
+
+void onWifiConfirmCancel(lv_event_t*) { closeWifiConfirmation(); }
+
+void onWifiConfirmAccept(lv_event_t*) {
+  const WifiConfirmation requested = wifiConfirmation;
+  closeWifiConfirmation();
+  if (requested == WifiConfirmation::Scan) {
+    startWifiScan(true);
+  } else if (requested == WifiConfirmation::Forget) {
+    if (studio::scenes().busy()) {
+      std::strncpy(wifiUiMessage, "Wait for the active command to finish",
+                   sizeof(wifiUiMessage) - 1);
+    } else {
+      studio::scenes().cancel();
+      studio::devices().deactivateAll();
+      if (!wifi_configuration::service().forget()) {
+        std::strncpy(wifiUiMessage, "Could not forget saved network",
+                     sizeof(wifiUiMessage) - 1);
+        haptic_feedback::request(haptic_feedback::Pattern::Error);
+      } else {
+        wifiUiMessage[0] = '\0';
+      }
+    }
+    refreshWifiSettings(true);
+  }
+}
+
+void showWifiConfirmation(WifiConfirmation confirmation) {
+  closeWifiConfirmation();
+  wifiConfirmation = confirmation;
+  wifiConfirm = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(wifiConfirm, 238, 238);
+  lv_obj_center(wifiConfirm);
+  lv_obj_set_style_radius(wifiConfirm, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(wifiConfirm, lv_color_hex(kColBg), 0);
+  lv_obj_set_style_border_color(wifiConfirm,
+                                lv_color_hex(confirmation == WifiConfirmation::Forget
+                                                 ? kColDanger : kColAccent), 0);
+  lv_obj_set_style_border_width(wifiConfirm, 2, 0);
+  lv_obj_set_style_pad_all(wifiConfirm, 0, 0);
+  lv_obj_clear_flag(wifiConfirm, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* title = lv_label_create(wifiConfirm);
+  lv_obj_set_width(title, 180);
+  lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(title, UI_FONT_16, 0);
+  lv_label_set_text(title, confirmation == WifiConfirmation::Forget
+                               ? "FORGET WI-FI?" : "DISCONNECT & SCAN?");
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
+  lv_obj_t* detail = lv_label_create(wifiConfirm);
+  lv_obj_set_width(detail, 170);
+  lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(detail, UI_FONT_12, 0);
+  lv_label_set_text(detail, confirmation == WifiConfirmation::Forget
+      ? "Removes the saved network.\nHome Assistant setup is kept."
+      : "Releases retained equipment\nconnections before scanning.");
+  lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 76);
+  lv_obj_t* accept = makeButton(wifiConfirm,
+      confirmation == WifiConfirmation::Forget ? "FORGET" : "DISCONNECT & SCAN",
+      onWifiConfirmAccept,
+      confirmation == WifiConfirmation::Forget ? kColDanger : kColAccent);
+  lv_obj_set_size(accept, 150, 34);
+  lv_obj_align(accept, LV_ALIGN_BOTTOM_MID, 0, -51);
+  lv_obj_t* cancel = makeButton(wifiConfirm, "CANCEL", onWifiConfirmCancel, kColPanel);
+  lv_obj_set_size(cancel, 150, 30);
+  lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -16);
+}
+
+void onWifiScan(lv_event_t*) {
+  if (studio::devices().activeCount() > 0) {
+    showWifiConfirmation(WifiConfirmation::Scan);
+  } else {
+    startWifiScan(false);
+  }
+}
+
+void onWifiCancel(lv_event_t*) {
+  wifi_configuration::service().cancel();
+  wifiUiMessage[0] = '\0';
+  refreshWifiSettings(true);
+}
+
+void onWifiForget(lv_event_t*) { showWifiConfirmation(WifiConfirmation::Forget); }
+
+void onWifiPasswordCancel() { refreshWifiSettings(true); }
+
+void onWifiPasswordDone(const char* password) {
+  const wifi_configuration::Network* network =
+      wifi_configuration::service().network(wifiSelectedNetwork);
+  if (network == nullptr ||
+      !wifi_configuration::validPassword(network->secure, password) ||
+      !wifi_configuration::service().connect(wifiSelectedNetwork, password)) {
+    std::strncpy(wifiUiMessage, "Password must be 8-63 characters",
+                 sizeof(wifiUiMessage) - 1);
+    haptic_feedback::request(haptic_feedback::Pattern::Error);
+  } else {
+    wifiUiMessage[0] = '\0';
+  }
+  refreshWifiSettings(true);
+}
+
+void onWifiNetwork(lv_event_t* event) {
+  const uintptr_t encoded = reinterpret_cast<uintptr_t>(lv_event_get_user_data(event));
+  if (encoded == 0) return;
+  wifiSelectedNetwork = static_cast<size_t>(encoded - 1);
+  const wifi_configuration::Network* network =
+      wifi_configuration::service().network(wifiSelectedNetwork);
+  if (network == nullptr) return;
+  wifiUiMessage[0] = '\0';
+  if (!network->secure) {
+    wifi_configuration::service().connect(wifiSelectedNetwork, "");
+    refreshWifiSettings(true);
+    return;
+  }
+  studio_ui::wifi_password_prompt::show(network->ssid, onWifiPasswordDone,
+                                         onWifiPasswordCancel);
+}
+
+lv_obj_t* wifiText(const char* text, const lv_font_t* font, uint32_t color,
+                   lv_coord_t y, lv_coord_t width = 178) {
+  lv_obj_t* label = lv_label_create(wifiContent);
+  lv_obj_set_width(label, width);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(label, font, 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(color), 0);
+  lv_label_set_text(label, text);
+  lv_obj_align(label, LV_ALIGN_TOP_MID, 0, y);
+  return label;
+}
+
+void refreshWifiSettings(bool force) {
+  if (wifiContent == nullptr) return;
+  const wifi_configuration::Snapshot& current = wifi_configuration::service().snapshot();
+  if (!force && current.status == wifiRenderedStatus &&
+      current.networkCount == wifiRenderedNetworkCount &&
+      current.configured == wifiRenderedConfigured) return;
+  wifiRenderedStatus = current.status;
+  wifiRenderedNetworkCount = current.networkCount;
+  wifiRenderedConfigured = current.configured;
+  lv_obj_clean(wifiContent);
+
+  if (current.status == wifi_configuration::Status::Results) {
+    wifiText(wifiUiMessage[0] != '\0' ? wifiUiMessage : "SELECT A NETWORK",
+             UI_FONT_12, wifiUiMessage[0] != '\0' ? kColDanger : kColAccent, 0);
+    lv_obj_t* list = lv_obj_create(wifiContent);
+    lv_obj_set_size(list, 184, 140);
+    lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 2, 0);
+    lv_obj_set_style_pad_row(list, 3, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
+    for (size_t i = 0; i < current.networkCount; ++i) {
+      const wifi_configuration::Network* network = wifi_configuration::service().network(i);
+      if (network == nullptr) continue;
+      char detail[24];
+      std::snprintf(detail, sizeof(detail), "%s  %ld dBm",
+                    network->secure ? "SECURE" : "OPEN",
+                    static_cast<long>(network->rssi));
+      lv_obj_t* row = settingsRow(list, network->ssid, detail, nullptr);
+      lv_obj_add_event_cb(row, onWifiNetwork, LV_EVENT_CLICKED,
+                          reinterpret_cast<void*>(i + 1));
+    }
+    return;
+  }
+
+  const bool working = current.status == wifi_configuration::Status::WaitingForRelease ||
+      current.status == wifi_configuration::Status::Scanning ||
+      current.status == wifi_configuration::Status::Connecting ||
+      current.status == wifi_configuration::Status::Saving ||
+      current.status == wifi_configuration::Status::Stopping;
+  if (working) {
+    wifiText(current.status == wifi_configuration::Status::Scanning ? "SCANNING" :
+             current.status == wifi_configuration::Status::Connecting ? "CONNECTING" :
+             current.status == wifi_configuration::Status::Saving ? "SAVING" : "PREPARING",
+             UI_FONT_16, kColAccent, 32);
+    wifiText(current.message, UI_FONT_12, kColText, 66);
+    lv_obj_t* cancel = makeButton(wifiContent, "CANCEL", onWifiCancel, kColPanel);
+    lv_obj_set_size(cancel, 150, 32);
+    lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -18);
+    return;
+  }
+
+  const char* headline = wifiUiMessage[0] != '\0' ? wifiUiMessage :
+      current.status == wifi_configuration::Status::Failed ||
+              current.status == wifi_configuration::Status::Succeeded
+          ? current.message : current.configured ? "SAVED NETWORK" : "NOT CONFIGURED";
+  const uint32_t headlineColor = wifiUiMessage[0] != '\0' ||
+      current.status == wifi_configuration::Status::Failed ? kColDanger :
+      current.configured ? kColAccent : kColMuted;
+  wifiText(headline, UI_FONT_14, headlineColor, 0);
+  wifiText(current.configured ? current.savedSsid : "Radio off",
+           UI_FONT_12, kColText, 30);
+  lv_obj_t* scan = makeButton(wifiContent,
+      current.configured ? "REPLACE NETWORK" : "SCAN NETWORKS", onWifiScan, kColAccent);
+  lv_obj_set_size(scan, 148, 32);
+  lv_obj_align(scan, LV_ALIGN_TOP_MID, 0, 54);
+  lv_obj_t* phone = makeButton(wifiContent, "SET UP WITH PHONE", onConfigureWifi, kColPanel);
+  lv_obj_set_size(phone, 148, 30);
+  lv_obj_align(phone, LV_ALIGN_TOP_MID, 0, 89);
+  if (current.configured) {
+    lv_obj_t* forget = makeButton(wifiContent, "FORGET NETWORK", onWifiForget, kColDanger);
+    lv_obj_set_size(forget, 148, 28);
+    lv_obj_align(forget, LV_ALIGN_TOP_MID, 0, 122);
+  }
+}
+
 void buildWifiSettings() {
   settingsScreen("Wi-Fi", onSettingsBack);
-  const portal::SavedWifiSummary saved = portal::savedWifiSummary();
-  lv_obj_t* status = lv_label_create(scrSettings);
-  lv_obj_set_width(status, 176);
-  lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(status, UI_FONT_16, 0);
-  lv_obj_set_style_text_color(status, lv_color_hex(saved.configured ? kColAccent
-                                                                    : kColMuted), 0);
-  lv_label_set_text(status, saved.configured ? "SAVED NETWORK\nRADIO OFF"
-                                              : "NOT CONFIGURED");
-  lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 72);
-  lv_obj_t* ssid = lv_label_create(scrSettings);
-  lv_obj_set_width(ssid, 174);
-  lv_label_set_long_mode(ssid, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(ssid, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(ssid, UI_FONT_14, 0);
-  lv_label_set_text(ssid, saved.configured ? saved.ssid : "No studio Wi-Fi saved");
-  lv_obj_align(ssid, LV_ALIGN_TOP_MID, 0, 122);
-  lv_obj_t* configure =
-      makeButton(scrSettings, "OPEN PORTAL", onConfigureWifi, kColAccent);
-  lv_obj_set_size(configure, 158, 34);
-  lv_obj_align(configure, LV_ALIGN_BOTTOM_MID, 0, -38);
+  wifiContent = lv_obj_create(scrSettings);
+  lv_obj_set_size(wifiContent, 198, 174);
+  lv_obj_align(wifiContent, LV_ALIGN_BOTTOM_MID, 0, -5);
+  lv_obj_set_style_bg_opa(wifiContent, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(wifiContent, 0, 0);
+  lv_obj_set_style_pad_all(wifiContent, 0, 0);
+  lv_obj_clear_flag(wifiContent, LV_OBJ_FLAG_SCROLLABLE);
+  wifiRenderedNetworkCount = static_cast<size_t>(-1);
+  refreshWifiSettings(true);
 }
 
 void buildAbout() {
@@ -1295,6 +1627,7 @@ void showSettingsView(SettingsView view) {
     scrSettings = settingsScreens[index];
     settingsHeader = settingsHeaders[index];
   }
+  if (view == SettingsView::Wifi) refreshWifiSettings(true);
   lv_obj_move_foreground(settingsHeader);
   lv_scr_load(scrSettings);
   lv_obj_invalidate(scrSettings);
@@ -1642,7 +1975,9 @@ void tick() {
   monitorHapticErrors();
   monitorHapticConnections();
   const firmware_update::Snapshot update = firmware_update::service().status();
-  if (screen == Screen::Home && update.notificationPending && updatePrompt == nullptr) {
+  refreshRecoveryUpdateOverlay();
+  if (screen == Screen::Home && update.notificationPending && updatePrompt == nullptr &&
+      recoveryRefreshOverlay == nullptr) {
     buildUpdatePrompt(false);
   }
   const DeviceUiHooks* activeUi = activeDeviceUi();
@@ -1725,6 +2060,8 @@ void tick() {
   } else if (screen == Screen::Settings &&
              settingsView == SettingsView::FirmwareUpdate) {
     refreshFirmwareUpdate();
+  } else if (screen == Screen::Settings && settingsView == SettingsView::Wifi) {
+    refreshWifiSettings();
   }
 }
 
@@ -1742,6 +2079,7 @@ void handleShortPress() {
 }
 
 bool handleLongPress() {
+  if (recoveryRefreshOverlay != nullptr) return true;
   const DeviceUiHooks* activeUi = activeDeviceUi();
   if (activeUi != nullptr) {
     if (activeUi->longPress != nullptr) activeUi->longPress();
@@ -1756,6 +2094,13 @@ bool handleLongPress() {
   }
   if (studio_ui::rename_prompt::active()) {
     studio_ui::rename_prompt::cancel();
+    return true;
+  } else if (studio_ui::wifi_password_prompt::active()) {
+    studio_ui::wifi_password_prompt::close();
+    refreshWifiSettings(true);
+    return true;
+  } else if (wifiConfirm != nullptr) {
+    closeWifiConfirmation();
     return true;
   } else if (deviceModal != nullptr) {
     closeDeviceModal();
@@ -1950,6 +2295,40 @@ void simRequestManagedDisconnect() { onDisconnect(nullptr); }
 void simRequestManagedRemove() { onRemove(nullptr); }
 
 void simShowWifiSettings() { showSettingsView(SettingsView::Wifi); }
+void simShowWifiResults() {
+  wifi_configuration::service().simSetResults();
+  showSettingsView(SettingsView::Wifi);
+  refreshWifiSettings(true);
+}
+void simShowWifiPassword() {
+  wifi_configuration::service().simSetResults();
+  showSettingsView(SettingsView::Wifi);
+  wifiSelectedNetwork = 0;
+  const wifi_configuration::Network* network = wifi_configuration::service().network(0);
+  studio_ui::wifi_password_prompt::show(
+      network != nullptr ? network->ssid : "Studio-WiFi", onWifiPasswordDone,
+      onWifiPasswordCancel);
+}
+void simShowWifiConnecting() {
+  wifi_configuration::service().simSetConnecting("Studio-WiFi");
+  showSettingsView(SettingsView::Wifi);
+  refreshWifiSettings(true);
+}
+void simShowWifiOutcome(bool success) {
+  wifi_configuration::service().simSetOutcome(
+      success, success ? "Wi-Fi connected and saved"
+                       : "Connection failed; previous network kept");
+  showSettingsView(SettingsView::Wifi);
+  refreshWifiSettings(true);
+}
+void simShowWifiDisconnectConfirmation() {
+  showSettingsView(SettingsView::Wifi);
+  showWifiConfirmation(WifiConfirmation::Scan);
+}
+void simShowWifiForgetConfirmation() {
+  showSettingsView(SettingsView::Wifi);
+  showWifiConfirmation(WifiConfirmation::Forget);
+}
 void simShowAbout() { showSettingsView(SettingsView::About); }
 void simShowSystemInfo() { showSettingsView(SettingsView::SystemInfo); }
 void simShowFactoryReset() { showSettingsView(SettingsView::FactoryReset); }

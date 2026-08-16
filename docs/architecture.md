@@ -517,9 +517,18 @@ only for the lifetime of the active Portal screen.
 
 Home adds a cog without replacing Devices, Groups, Scenes, or Portal. Settings
 and its Wi-Fi, About, System Info, and Factory Reset views are created on entry
-and destroyed on exit. The Wi-Fi view reads only the saved SSID and accurately
-labels the normal state as radio-off; configuration transfers to dedicated
-Portal mode before any network resources start.
+and destroyed on exit. The Wi-Fi view reads the saved SSID and labels the
+normal state as radio-off without starting the radio. An explicit scan
+allocates a bounded main-loop Wi-Fi configuration service, lists at most 16
+visible deduplicated SSIDs by signal strength, and associates only after the
+operator selects a network and enters any required password. A non-zero DHCP
+address is the success boundary; internet access is not required. The service
+saves only a successful replacement and returns Wi-Fi to off after success,
+failure, timeout, or cancellation. Retained equipment requires a separate
+**Disconnect & scan** confirmation, while an active command blocks scanning.
+The Portal remains available from this page for hidden SSIDs, phone-based text
+entry, and Home Assistant configuration. **Forget network** clears only Wi-Fi
+credentials and preserves Home Assistant URL, token, and entity records.
 
 About is the first Settings item. The menu and About body scroll independently
 within round-safe page regions, while Factory Reset remains a distinct top-level
@@ -563,6 +572,12 @@ full firmware image is retained. See
 stream validation, replay rejection, journal recovery, and partition geometry.
 The bounded encoded journal records use checked `nothrow` heap storage during
 load/save; they are never multiplied on the Arduino loop-task stack.
+After the new main passes its health gate, it re-verifies the same journaled
+manifest and refreshes the non-running fixed recovery partition when the signed
+recovery sequence is newer. Main remains selected while that partition is
+written, and the journal remains intact until verification succeeds, making an
+interrupted recovery refresh resumable without allocating another application
+slot. Main and recovery release sequences are tracked independently.
 Manual Recovery mode persists a distinct request so fixed recovery remains on
 its menu until the operator explicitly boots main or chooses another action.
 Recovery ignores all touch during a 1.5-second boot guard, then requires 300 ms

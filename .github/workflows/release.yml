@@ -41,6 +41,7 @@ jobs:
         run: |
           python scripts/package_firmware_update.py \
             --firmware .pio/build/bleep/firmware.bin \
+            --recovery .pio/build/bleep_recovery/firmware.bin \
             --output-dir signed-release \
             --channel stable \
             --version "${{ github.event.release.tag_name }}" \
@@ -52,6 +53,7 @@ jobs:
             --manifest signed-release/bleep-update.json \
             --signature signed-release/bleep-update.sig \
             --firmware signed-release/bleep-update.bin \
+            --recovery signed-release/bleep-recovery.bin \
             --public-key keys/ota-stable-public.pem
           cp .pio/build/bleep/bootloader.bin signed-release/bleep-usb-bootloader.bin
           cp .pio/build/bleep/partitions.bin signed-release/bleep-usb-partitions.bin

@@ -26,6 +26,7 @@ int main(int, char**) {
   RUN_TEST(test_config_round_trip_preserves_dormant_records_and_detects_corruption);
   RUN_TEST(test_config_round_trip_at_twenty_four_record_capacity);
   RUN_TEST(test_home_assistant_config_is_separate_checksummed_and_local_only);
+  RUN_TEST(test_wifi_password_validation_accepts_open_psk_and_hex_boundaries);
   RUN_TEST(test_panel_identity_uses_full_hardware_id_and_short_setup_suffix);
   RUN_TEST(test_portal_parses_sequence_action_commands_from_json);
   RUN_TEST(test_panel_settings_default_round_trip_corruption_and_rollback);
