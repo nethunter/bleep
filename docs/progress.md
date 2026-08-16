@@ -5,6 +5,35 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-08-16: Stable 0.3.6 signed release
+
+- Merged the release preparation with explicit merge commit `f72a9df`, pushed
+  `main`, and created and pushed the established lightweight tag `0.3.6` at
+  that exact commit. Main CI run `31962707459` passed repository checks, 95/95
+  native tests, protocol labs, firmware-update tests, recovery, the full
+  firmware profile matrix, OTA geometry, and development publication.
+- Published the non-draft, non-prerelease GitHub Release **Ble(e)p 0.3.6** and
+  approved only its protected `stable` deployment. Stable workflow run
+  `31962900690` completed successfully at `f72a9df`: it rebuilt the release,
+  signed and independently verified the assets, and uploaded them with release
+  sequence `1786902791`.
+- Downloaded every published asset and independently verified the stable
+  signature, manifest schemas, exact release commit and version, file sizes,
+  and SHA-256 hashes. The 2,164,784-byte main image is
+  `8269be0b73312f568280b78d08ce1c21a7fa69a14f7e10cebe87d7368ef6e57c`;
+  the 940,992-byte recovery image is
+  `3de3c8b7d434a4a783218456f582230d35a16632c2b9c4f7e877b5638e669f10`.
+  The USB migration archive's internal hashes also match its manifest, and its
+  write map omits the preserved NVS region at `0x9000` with size `0x5000`.
+- The stable workflow did not attach the owner's guide, so uploaded the already
+  rendered and inspected byte-identical guide separately. GitHub reports its
+  SHA-256 as
+  `e1588b934b5fbde9ca7f36d3f3323cc6a8337d12560e3e03605c2c474ccf2ca8`,
+  matching the repository and website copies. The published release now has
+  the signed OTA pair, recovery and USB migration assets, and owner's guide.
+  The release candidate was hash-verified on the panel before tagging; a
+  separate OTA installation of the final signed stable asset was not run.
+
 ### 2026-08-16: Stable 0.3.6 release preparation
 
 - Audited every commit and the complete diff from immutable stable tag `0.3.5`
