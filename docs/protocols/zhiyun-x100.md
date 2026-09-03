@@ -276,8 +276,14 @@ Saved Zhiyun fixtures now persist their member selector in mesh-store schema 2
 and attach to the panel-owned mesh runtime's one retained gateway client.
 `0xFEE9` notifications fan out to each logical session, whose unique sequence,
 command, and selector correlation owns its state. PB-GATT onboarding remains a
-temporary direct connection. Same-model selector allocation and concurrent
-multi-Zhiyun behavior still require hardware verification.
+temporary direct connection; after a newly provisioned record is committed,
+its next ownership acquisition migrates that live onboarding session onto the
+shared gateway. A saved fixture accepted while already advertising `0x1828`
+has no panel-owned mesh node and therefore remains direct. It can be moved onto
+the panel-owned mesh without changing its instance or scene references by
+clearing pairing, Bluetooth-resetting the fixture, and selecting its `0x1827`
+candidate from the reopened saved entry. Same-model selector allocation and
+concurrent multi-Zhiyun behavior still require hardware verification.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,

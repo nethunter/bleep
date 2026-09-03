@@ -42,6 +42,46 @@ const ZhiyunLightDriver::Session* ZhiyunLightDriver::find(
   return nullptr;
 }
 
+bool ZhiyunLightDriver::migrateToSharedGateway(
+    Session& session, const DeviceRecord& record) {
+  if (session.sharedGateway || !record.paired ||
+      !studio::mesh::repository().begin() ||
+      studio::mesh::findNode(studio::mesh::repository().data(),
+                             record.instanceId) == nullptr) {
+    return false;
+  }
+
+  // Onboarding owns a temporary direct GATT link. Once that record is saved,
+  // the next owner must join the panel-owned mesh bearer instead of retaining
+  // a second physical connection beside the shared Aputure/Zhiyun transport.
+  session.client.deactivate();
+  if (!session.client.activateShared(
+          record.instanceId, record.bleAddress, record.bleAddressType,
+          record.bleName[0] != '\0' ? record.bleName : record.displayName,
+          record.paired)) {
+    return session.client.activate(
+        record.instanceId, record.bleAddress, record.bleAddressType,
+        record.bleName[0] != '\0' ? record.bleName : record.displayName,
+        record.paired);
+  }
+
+  aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
+  if (gateway == nullptr || !gateway->acquireGateway(record)) {
+    session.client.deactivate();
+    aputure_light::releaseRuntimeIfIdle();
+    return session.client.activate(
+        record.instanceId, record.bleAddress, record.bleAddressType,
+        record.bleName[0] != '\0' ? record.bleName : record.displayName,
+        record.paired);
+  }
+
+  session.sharedGateway = true;
+  session.gatewayAttached = false;
+  session.gatewayGeneration = 0xffffffffu;
+  session.gatewayAttachRetryAt = 0;
+  return true;
+}
+
 bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
   if (find(record.instanceId) != nullptr) return true;
   if (!repositoryHeld_) {
@@ -130,6 +170,13 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
 bool ZhiyunLightDriver::resume(const DeviceRecord& record) {
   Session* session = find(record.instanceId);
   if (session == nullptr) return false;
+  session->record = record;
+  if (!session->sharedGateway && record.paired &&
+      studio::mesh::repository().begin() &&
+      studio::mesh::findNode(studio::mesh::repository().data(),
+                             record.instanceId) != nullptr) {
+    return migrateToSharedGateway(*session, record);
+  }
   if (session->sharedGateway) {
     aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
     return gateway != nullptr && gateway->acquireGateway(record);
@@ -393,6 +440,7 @@ bool ZhiyunLightDriver::consumePairingUpdate(InstanceId instanceId,
                  sizeof(record.displayName) - 1);
     record.displayName[sizeof(record.displayName) - 1] = '\0';
   }
+  session->record = record;
   return true;
 }
 

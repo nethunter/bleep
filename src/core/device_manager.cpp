@@ -237,9 +237,12 @@ bool DeviceManager::onboardingCandidate(
 
 bool DeviceManager::selectOnboardingCandidate(InstanceId instanceId,
                                               uint32_t token) {
-  if (!isPendingAdd(instanceId) || token == 0) return false;
   const DeviceRecord* record = find(instanceId);
-  DeviceDriver* driver = record != nullptr ? driverFor(record->driverId) : nullptr;
+  if (record == nullptr || record->paired || !isActive(instanceId) ||
+      token == 0) {
+    return false;
+  }
+  DeviceDriver* driver = driverFor(record->driverId);
   return driver != nullptr &&
          driver->selectOnboardingCandidate(instanceId, token);
 }

@@ -52,6 +52,7 @@ class ZhiyunLightDriver : public DeviceDriver {
 
   Session* find(InstanceId instanceId);
   const Session* find(InstanceId instanceId) const;
+  bool migrateToSharedGateway(Session& session, const DeviceRecord& record);
   Session* sessions_[kMaxSessions] = {};
   size_t sessionCount_ = 0;
   bool repositoryHeld_ = false;

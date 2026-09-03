@@ -346,7 +346,11 @@ does not leave an unpaired record behind. Pairing mode matters:
   X60RGB. Factory-reset and previously provisioned fixtures are accepted.
   Ble(e)p matches the product-qualified `PL105_` or `X104_`/`plx104` identity,
   provisions `0x1827` when needed, then rediscovers `0x1828` and opens the
-  direct control service. Repeat Add light for every fixture.
+  control service. Repeat Add light for every fixture. A previously provisioned
+  fixture can work over a temporary direct link but will not share the panel's
+  mesh range. To move it onto the panel-owned mesh without breaking scene
+  references, use **Forget** rather than Remove, Bluetooth-reset the fixture,
+  reopen its saved entry, and select the factory-reset candidate.
 
 When adding another Canon camera in either mode, Ble(e)p ignores Canon bodies
 that are already saved or bonded to it, including cameras advertising from
@@ -354,6 +358,9 @@ Bluetooth standby. After pairing, known `EOSR6m2_...` and `EOSR6m3_...`
 identities are shown as **Canon EOS R6 Mark II** and **Canon EOS R6 Mark III**.
 **Retry** stays locked to the saved body; use **Forget** before deliberately
 pairing that entry to a different camera.
+For any saved unpaired device, reopening its entry makes the discovered
+candidate rows selectable while preserving the existing device and scene
+references.
 
 Open **Portal** from Home and join the open temporary `Bleep-Setup-XXXXX`
 network by scanning the on-panel QR code or selecting the SSID whose

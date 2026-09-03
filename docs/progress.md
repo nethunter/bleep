@@ -5,6 +5,31 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-03: Zhiyun repair and shared-scene handoff
+
+- Diagnosed a MOLUS X100 that paired and worked nearby but could not reliably
+  join the **Desk** scene at its shooting position. The saved X100 had been
+  accepted as an already-provisioned `0x1828` fixture, so it had no node in the
+  panel-owned mesh and retained an independent direct BLE link while the X60RGB
+  used the shared mesh gateway.
+- Zhiyun onboarding now migrates a just-provisioned live session from its
+  temporary direct link to the shared gateway on the next ownership acquisition.
+  The generic onboarding selector now also accepts candidates for an active,
+  saved, unpaired record; previously those rows were displayed but taps were
+  rejected because selection was restricted to pending Add operations.
+- Native tests passed 96/96, including a saved-record Forget and candidate
+  reselection regression. The full Montserrat `bleep` profile built with
+  146,308 bytes of RAM and 2,022,754 bytes of flash reported, then uploaded to
+  `/dev/cu.usbserial-211240` with the firmware hash verified and NVS left
+  unwritten.
+- On the panel, **Forget**, fixture Bluetooth reset, and selecting `PL105_...`
+  completed pairing. A subsequent three-target **Desk** scene reached all
+  targets ready in 12,185 ms through the shared Aputure/Zhiyun gateway; the
+  X60RGB, X100, and Canon start and stop steps each received their existing
+  protocol confirmation. This proves the repaired connection and command path
+  at the bench, not physical light output or reliability at the shooting
+  position. Repeating the scene there remains the next hardware check.
+
 ### 2026-08-16: Stable 0.3.6 signed release
 
 - Merged the release preparation with explicit merge commit `f72a9df`, pushed

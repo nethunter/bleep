@@ -87,6 +87,7 @@ int main(int, char**) {
   RUN_TEST(test_onboarding_candidates_are_bounded_deduplicated_and_stable);
   RUN_TEST(test_single_onboarding_candidate_auto_selects_after_settling);
   RUN_TEST(test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate);
+  RUN_TEST(test_saved_unpaired_device_can_select_onboarding_candidate);
   RUN_TEST(test_mesh_store_round_trip_at_device_capacity);
   RUN_TEST(test_zhiyun_light_frames_and_confirmed_state_replies);
   RUN_TEST(test_zhiyun_light_identity_and_advertisement_match);
