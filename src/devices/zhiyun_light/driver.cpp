@@ -9,6 +9,12 @@
 #include "devices/aputure_light/runtime.h"
 #include "devices/zhiyun_light/ble_match.h"
 
+#if ARDUINO_USB_CDC_ON_BOOT
+#define ZHIYUN_DRIVER_LOG Serial0
+#else
+#define ZHIYUN_DRIVER_LOG Serial
+#endif
+
 namespace studio {
 
 InstanceProfile ZhiyunLightDriver::instanceProfile(
@@ -48,6 +54,10 @@ bool ZhiyunLightDriver::migrateToSharedGateway(
       !studio::mesh::repository().begin() ||
       studio::mesh::findNode(studio::mesh::repository().data(),
                              record.instanceId) == nullptr) {
+    ZHIYUN_DRIVER_LOG.printf(
+        "zhiyun_driver event=migrate_skipped instance=%lu shared=%u paired=%u\n",
+        static_cast<unsigned long>(record.instanceId),
+        session.sharedGateway ? 1u : 0u, record.paired ? 1u : 0u);
     return false;
   }
 
@@ -59,6 +69,9 @@ bool ZhiyunLightDriver::migrateToSharedGateway(
           record.instanceId, record.bleAddress, record.bleAddressType,
           record.bleName[0] != '\0' ? record.bleName : record.displayName,
           record.paired)) {
+    ZHIYUN_DRIVER_LOG.printf(
+        "zhiyun_driver event=migrate_fallback instance=%lu reason=shared_client\n",
+        static_cast<unsigned long>(record.instanceId));
     return session.client.activate(
         record.instanceId, record.bleAddress, record.bleAddressType,
         record.bleName[0] != '\0' ? record.bleName : record.displayName,
@@ -67,6 +80,9 @@ bool ZhiyunLightDriver::migrateToSharedGateway(
 
   aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
   if (gateway == nullptr || !gateway->acquireGateway(record)) {
+    ZHIYUN_DRIVER_LOG.printf(
+        "zhiyun_driver event=migrate_fallback instance=%lu reason=gateway\n",
+        static_cast<unsigned long>(record.instanceId));
     session.client.deactivate();
     aputure_light::releaseRuntimeIfIdle();
     return session.client.activate(
@@ -79,6 +95,8 @@ bool ZhiyunLightDriver::migrateToSharedGateway(
   session.gatewayAttached = false;
   session.gatewayGeneration = 0xffffffffu;
   session.gatewayAttachRetryAt = 0;
+  ZHIYUN_DRIVER_LOG.printf("zhiyun_driver event=migrated instance=%lu\n",
+                           static_cast<unsigned long>(record.instanceId));
   return true;
 }
 
@@ -109,6 +127,10 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
       studio::mesh::findNode(studio::mesh::repository().data(),
                              record.instanceId) != nullptr;
   session->sharedGateway = record.paired && hasMeshNode;
+  ZHIYUN_DRIVER_LOG.printf(
+      "zhiyun_driver event=activate instance=%lu paired=%u mesh_node=%u shared=%u\n",
+      static_cast<unsigned long>(record.instanceId), record.paired ? 1u : 0u,
+      hasMeshNode ? 1u : 0u, session->sharedGateway ? 1u : 0u);
   if (session->sharedGateway) {
     aputure_light::AputureLightRuntime* gateway = aputure_light::runtime();
     if (gateway == nullptr || !gateway->acquireGateway(record)) {
@@ -170,6 +192,10 @@ bool ZhiyunLightDriver::activate(const DeviceRecord& record) {
 bool ZhiyunLightDriver::resume(const DeviceRecord& record) {
   Session* session = find(record.instanceId);
   if (session == nullptr) return false;
+  ZHIYUN_DRIVER_LOG.printf(
+      "zhiyun_driver event=resume instance=%lu shared=%u paired=%u\n",
+      static_cast<unsigned long>(record.instanceId),
+      session->sharedGateway ? 1u : 0u, record.paired ? 1u : 0u);
   session->record = record;
   if (!session->sharedGateway && record.paired &&
       studio::mesh::repository().begin() &&
@@ -213,6 +239,7 @@ void ZhiyunLightDriver::loop() {
           aputure_light::runtimeIfActive()) {
     runtime->loop();
   }
+  bool sharedInitializationInFlight = false;
   for (Session* session : sessions_) {
     if (session == nullptr) continue;
     if (session->sharedGateway) {
@@ -226,6 +253,10 @@ void ZhiyunLightDriver::loop() {
         session->gatewayAttachRetryAt = 0;
       } else if (!session->gatewayAttached ||
                  session->gatewayGeneration != generation) {
+        if (sharedInitializationInFlight) {
+          session->client.loop();
+          continue;
+        }
         const uint32_t now = millis();
         if (session->gatewayGeneration == generation &&
             static_cast<int32_t>(now - session->gatewayAttachRetryAt) < 0) {
@@ -241,6 +272,13 @@ void ZhiyunLightDriver::loop() {
       }
     }
     session->client.loop();
+    const zhiyun_light::ZhiyunLightState::Phase phase =
+        session->client.state().phase;
+    if (session->sharedGateway && session->gatewayAttached &&
+        (phase == zhiyun_light::ZhiyunLightState::Phase::Initializing ||
+         phase == zhiyun_light::ZhiyunLightState::Phase::ReadingState)) {
+      sharedInitializationInFlight = true;
+    }
     if (session->compoundStage == Session::CompoundStage::Look &&
         !session->client.state().commandPending) {
       if (session->client.state().lastCommandFailed ||

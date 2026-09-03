@@ -656,11 +656,13 @@ the replacement.
   post-provision discovery, retained direct-client lifecycle, `0xFEE9` transport,
   frame scanner, CRC, initialization state machine, power, brightness, and CCT
   control. A profile supplies the state selector byte and identity markers.
-- Gateway boundary: the mixed X100/X60RGB capture proves one `0xFEE9` gateway
-  can route multiple members, but selector `00`/`01` still covaries with model
-  and onboarding order. ADR-030 supersedes the temporary per-instance
-  `BleSlotKey` boundary after the selector-zero X60RGB test and shared-client
-  implementation.
+- Gateway boundary: the mixed X100/X60RGB vendor-app capture proves one
+  `0xFEE9` gateway can route members in a vendor-configured Zhiyun topology. It
+  does not prove that PB-GATT provisioning into the same standards mesh creates
+  that proprietary topology. Direct panel-mesh probes returned each physical
+  gateway's local state for both selector `00` and `01`; ADR-030's shared
+  Zhiyun-client boundary is therefore blocked pending vendor-configuration
+  research or a return to one direct connection per fixture.
   A later live test provisioned X60RGB into the same panel-owned standards mesh
   as MC Pro and Ace 25c; one X60RGB BLE connection both returned its own
   `0xFEE9` state and routed authenticated responses from the other brands.
@@ -681,16 +683,25 @@ the replacement.
 
 ## ADR-030: One panel-owned mesh is one cross-brand transport group
 
-- Status: Experimental; mixed-mesh hardware control verified, embedded soak
-  gate open.
+- Status: Partially superseded by hardware evidence. Standard Mesh Proxy
+  sharing is verified for Sidus-family access traffic; proprietary multi-member
+  Zhiyun `0xFEE9` sharing is not valid for the panel-provisioned topology.
 - Naming: ADR-038 calls the Sidus-family logical driver `Aputure Light`; Zhiyun
   remains a separate logical driver on the same transport group.
-- Decision: Every Amaran, Aputure, and Zhiyun fixture provisioned into the one
-  Ble(e)p-owned Bluetooth Mesh shares `BleSlotKey {PanelOwnedMesh, 1}`. Saved
-  Zhiyun sessions attach their proprietary `0xFEE9` service to the mesh
-  runtime's retained native proxy client, while Sidus-family access messages
-  use Mesh Proxy Data In/Out on the same connection. PB-GATT onboarding remains
-  a temporary exclusive operation and is not a second retained device slot.
+- Decision: Amaran and Aputure fixtures may share
+  `BleSlotKey {PanelOwnedMesh, 1}` for standards Mesh Proxy traffic. The current
+  shared Zhiyun implementation remains experimental and must not claim
+  per-member control: panel-owned PB-GATT provisioning did not reproduce the
+  vendor app's proprietary cross-member routing. PB-GATT onboarding remains a
+  temporary exclusive operation.
+- Zhiyun initialization: identity, firmware, and status requests do not carry a
+  member selector and therefore describe the physical proxy fixture. Shared
+  sessions run that required gateway setup sequence but accept either supported
+  MOLUS gateway identity, then establish logical-member readiness from the
+  selector-addressed state replies. Shared member initialization is serialized
+  and each member observes a short post-setup quiet interval because interleaved
+  setup traffic dropped a selector-0 reply. Direct onboarding retains the
+  stricter model-qualified identity check.
 - Routing: Persist routing independently from product identity. Each
   Sidus-family node receives a deterministic vendor-model control group derived
   from its provisioned address. ADR-039 supersedes this ADR's common-group
@@ -712,12 +723,19 @@ the replacement.
   comes only from the physically correlated vendor status. Zhiyun values are
   confirmed only by selector/sequence-correlated `0xFEE9` replies. Missing
   replies expire reachability; they never imply Off.
-- Boundaries: The first-Zhiyun selector-zero result disproves model-derived
-  selectors but does not prove same-model allocation beyond the persisted
-  ordinal hypothesis. Amaran configuration still needs decoded status-gated
-  composition enforcement, and the embedded shared runtime still needs reboot,
-  fallback-gateway, multiple-Zhiyun, and four-slot coexistence soaks before
-  promotion.
+- Zhiyun confirmation: sequence, command, selector, and value correlation on a
+  shared physical link did not identify the intended remote fixture. X60RGB's
+  direct link returned its own 50%/Off state for selector 1; X100's direct link
+  returned its own 52%/Off state for both selectors 0 and 1. The X60RGB gateway
+  also reported selector-1 Off while the X100 physically remained On at 52%.
+  Until proprietary topology setup is decoded, state from one `0xFEE9` link is
+  attributable only to that physical gateway.
+- Boundaries: persisted ordinal Zhiyun selectors are not a valid routing
+  mechanism for independently panel-provisioned fixtures. The immediate safe
+  implementation choice is one direct `0xFEE9` connection per Zhiyun fixture,
+  which consumes one BLE slot each; retaining one shared connection requires a
+  separate reverse-engineering tranche for the vendor topology setup. Amaran
+  configuration still needs decoded status-gated composition enforcement.
 
 ## ADR-031: Local settings stay radio-free and factory reset erases all NVS
 

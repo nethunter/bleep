@@ -97,8 +97,24 @@ power off, seq 0x020b
 Unlike the captured X100 session, X60RGB setters produced correlated replies
 with the same sequence and command. Ble(e)p uses those captured replies to
 confirm RGB hue, saturation, and brightness in that captured semantic order.
-CCT and power retain the shared read-after-write path so both supported models
-use the same conservative state publication rule.
+An embedded two-member scene initially appeared to show the selector-0 X60RGB
+returning correlated brightness, CCT, and power setter replies with the captured
+`01 80 01` response prefix. Physical observation disproved that attribution:
+the X60RGB gateway reported selector-1 Off while the X100 remained visibly On
+at 52%. A direct host connection to the X60RGB then returned its own 5600 K,
+50%, Off state when queried with selector 1. A direct X100 connection returned
+its own 5600 K, 52%, Off state for both selectors 0 and 1. These independently
+panel-provisioned fixtures therefore do not expose each other through the
+captured proprietary selector mechanism.
+
+The earlier vendor-app capture still proves that cross-member `0xFEE9` routing
+can exist, but it was established by ZY Vega and may depend on additional
+vendor topology configuration not reproduced by standards PB-GATT provisioning.
+For the current panel-owned topology, a reply is attributable only to the
+physical gateway that owns the GATT link. Shared multi-member setter and
+readback confirmation are blocked; reliable control requires either one direct
+connection per fixture or a separate reverse-engineering tranche for the
+missing vendor setup.
 
 ## Routed control through an X100
 

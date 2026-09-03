@@ -81,7 +81,7 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   void handleProvisioningBytes(const uint8_t* data, size_t length);
   void handleDisconnect();
   void returnToOnboardingPicker(const char* error = nullptr);
-  bool rollbackPendingProvision();
+  void discardProvisioningSnapshot();
   void drainNotifications();
   bool writeFrame(const FrameBytes& frame);
   bool sendQuery(uint16_t command, const uint8_t* payload = nullptr,
@@ -92,10 +92,17 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   bool retryCctVerification();
   void handleFrame(const ParsedFrame& frame);
   void finishInitialization();
+  void markInitializationReady();
   void finishCommand(bool success, const char* error = nullptr);
   void markProtocolReady();
   void markProtocolFailed();
   uint16_t nextSequence();
+  uint32_t verificationDelayMs() const {
+    return sharedTransport_ ? 750u : 250u;
+  }
+  uint8_t writeReplySelector() const {
+    return state_.model == MolusModel::X60Rgb ? 1u : selector();
+  }
   uint8_t selector() const { return routingSelector_; }
   const char* identityMarker() const;
 
@@ -143,6 +150,7 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   uint32_t verifyAtMs_ = 0;
   uint32_t responseDeadlineMs_ = 0;
   uint32_t provisioningDeadlineMs_ = 0;
+  uint32_t initializationReadyAtMs_ = 0;
   studio::mesh::PbGattProvisioner provisioner_;
   uint8_t provisioningBytes_[160] = {};
   size_t provisioningLength_ = 0;

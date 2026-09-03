@@ -23,12 +23,61 @@ short, factual, and reproducible.
   `/dev/cu.usbserial-211240` with the firmware hash verified and NVS left
   unwritten.
 - On the panel, **Forget**, fixture Bluetooth reset, and selecting `PL105_...`
-  completed pairing. A subsequent three-target **Desk** scene reached all
-  targets ready in 12,185 ms through the shared Aputure/Zhiyun gateway; the
-  X60RGB, X100, and Canon start and stop steps each received their existing
-  protocol confirmation. This proves the repaired connection and command path
-  at the bench, not physical light output or reliability at the shooting
-  position. Repeating the scene there remains the next hardware check.
+  initially completed pairing, and a bench scene reached all targets ready and
+  received the existing protocol confirmations. A cold restart at the shooting
+  position failed, and a bench cold-start reproduction proved that X60RGB
+  instance 20 restored as shared while X100 instance 32 incorrectly restored
+  as direct. Read-only NVS inspection found an erased two-node mesh snapshot
+  followed by the active one-node snapshot: post-provision onboarding cleanup
+  had rolled back X100 after the fixture had already accepted its new keys.
+- Zhiyun cleanup now discards only the in-memory pre-provision snapshot after
+  Provisioning Complete; it no longer restores that snapshot over the durable
+  two-node mesh after a later control-service failure, cancellation, or session
+  teardown. Native tests remain 96/96 and the full Montserrat image builds at
+  146,308 bytes of RAM and 2,023,072 bytes of flash. The corrected image was
+  uploaded with its hash verified and NVS preserved.
+- After the fresh repair and a cold restart, serial confirmed that both X60RGB
+  instance 20 and X100 instance 32 restored as shared mesh members. The Desk
+  scene then failed X100 initialization because its selector-less `0x2003`
+  request returned the valid `plx104` identity of the physical X60RGB gateway.
+  Skipping those gateway-wide setup queries also prevented notifications, so
+  shared sessions instead run the full setup sequence, accept either supported
+  MOLUS gateway identity, and require the later selector-addressed state replies
+  for logical-member readiness. Direct onboarding keeps strict model identity
+  validation. Local firmware now also exposes `scene start <id>`, `scene stop`,
+  and `scene cancel` over its debug serial port; release-channel builds ignore
+  those commands.
+- A serial-driven cold-boot bench run then exposed interleaved member setup and
+  post-write readback drops. Shared Zhiyun initialization is now serialized and
+  observes a 300 ms quiet interval before readiness. The then-current matcher
+  treated selector-0 X60RGB CCT and power `01 80 01` setter replies as
+  confirmations, while X100 used 750 ms delayed selector-addressed readback.
+  After flashing that image, `scene start 9` and `scene stop` reported all three
+  devices confirmed. The later isolated-command trace below disproved the
+  X60RGB member attribution, so that run is no longer an acceptance result.
+  Native tests passed 96/96, the full Montserrat image
+  built with 146,364 bytes of RAM and 2,025,198 bytes of flash reported, and the
+  upload hash verified while NVS remained preserved. One shooting-position
+  cold restart, scene run, and visual fixture check remain for the final gate.
+- Local debug serial now also accepts `device on <instance-id>` and
+  `device off <instance-id>`. Each command takes a temporary sequence lease,
+  waits for protocol readiness, dispatches the action, waits for the driver's
+  device-level completion, logs the result, and releases the lease; it refuses
+  targets already owned by a scene. Release-channel builds ignore the console.
+  Native tests passed 96/96, the full Montserrat image built at 146,380 bytes of
+  RAM and 2,026,828 bytes of flash, and the image uploaded with hashes verified.
+- Those commands isolated a shared-routing defect, and operator observation
+  provided the decisive boundary: after the panel reported both Off, X60RGB was
+  physically Off at 50% but X100 remained On at 52%. A read-only host connection
+  to X100 returned its real 5600 K, 52%, On state. A direct Off write followed
+  by a fresh direct read returned 52%, Off. Direct selector probes then returned
+  X100's local state for selectors 0 and 1, while X60RGB returned its own 50%/
+  Off state for selector 1. Standards PB-GATT provisioning into one network did
+  not reproduce ZY Vega's proprietary cross-member routing. The current shared
+  Zhiyun connection cannot provide per-fixture confirmation; one direct
+  `0xFEE9` connection per fixture is the immediate reliable design, while
+  reverse-engineering the vendor topology is a separate tranche. X100 direct
+  optical Off still awaits operator confirmation.
 
 ### 2026-08-16: Stable 0.3.6 signed release
 

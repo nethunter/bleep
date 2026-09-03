@@ -127,9 +127,30 @@ The retained gateway link proves only that the phone can reach a Zhiyun mesh
 entry point. It does not by itself prove that every member is powered or
 reachable. The capture showed immediate device-originated replies to the X100
 initial-state reads and direct X60RGB identity/state traffic during onboarding.
-Rapid routed X60RGB slider writes did not each produce an immediately
-correlatable reply through the gateway, although periodic `0x1201` traffic and
-other notifications continued.
+An embedded two-member reproduction later connected through the selector-0
+X60RGB gateway while initializing the selector-1 X100. The selector-less
+`0x2003` reply contained `plx104`, proving that identity describes the physical
+gateway rather than the routed logical member. The full generic setup sequence
+is still needed to prime notifications. Shared sessions therefore accept either
+supported MOLUS gateway identity and establish logical-member readiness from
+the later selector-addressed state replies. Direct onboarding still requires
+the model-qualified identity response.
+Interleaving both members' setup requests dropped a selector-0 reply, so the
+embedded shared driver initializes one logical member at a time and observes a
+300 ms quiet interval before publishing readiness. The same scene capture
+showed X100 shared setters returning acknowledgments followed by delayed
+selector-1 reads; the then-current code treated matching values as confirmation.
+The physical check below disproved attribution of those reads to X100.
+Subsequent physical observation showed that the shared selector-1 Off readback
+was false attribution: X100 remained visibly On at 52%. A direct host
+connection read the actual X100 as 5600 K, 52%, On; a direct power-Off write
+returned no immediate setter reply, as expected, and a new direct connection
+then read Off at 52%. The same direct link returned those X100 values for both
+selector 0 and selector 1. A reciprocal selector-1 query through the X60RGB
+returned the X60RGB's own 50%/Off state. The panel-provisioned fixtures therefore
+do not share the vendor app's proprietary member-routing topology even though
+they share standards Bluetooth Mesh keys. Until that missing setup is decoded,
+only a fixture's direct `0xFEE9` link provides attributable state and control.
 
 Until a routed per-member status exchange is decoded, state should distinguish:
 
@@ -278,7 +299,11 @@ and attach to the panel-owned mesh runtime's one retained gateway client.
 command, and selector correlation owns its state. PB-GATT onboarding remains a
 temporary direct connection; after a newly provisioned record is committed,
 its next ownership acquisition migrates that live onboarding session onto the
-shared gateway. A saved fixture accepted while already advertising `0x1828`
+shared gateway. Once the fixture returns Provisioning Complete and the new node
+is durably saved, later control-service failure, cancellation, or session
+teardown preserves that node: restoring the pre-provision snapshot would orphan
+a fixture that has already committed the new keys. A saved fixture accepted
+while already advertising `0x1828`
 has no panel-owned mesh node and therefore remains direct. It can be moved onto
 the panel-owned mesh without changing its instance or scene references by
 clearing pairing, Bluetooth-resetting the fixture, and selecting its `0x1827`

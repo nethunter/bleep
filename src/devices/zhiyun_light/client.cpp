@@ -16,6 +16,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
+#if ARDUINO_USB_CDC_ON_BOOT
+#define ZHIYUN_LIGHT_LOG Serial0
+#else
+#define ZHIYUN_LIGHT_LOG Serial
+#endif
+
 namespace zhiyun_light {
 namespace {
 
@@ -168,6 +174,7 @@ void ZhiyunLightClient::detachShared() {
   notifyCharacteristic_ = nullptr;
   awaitingResponse_ = false;
   operation_ = Operation::None;
+  initializationReadyAtMs_ = 0;
   state_.link = ZhiyunLightState::Link::Disconnected;
   state_.phase = ZhiyunLightState::Phase::Idle;
   state_.commandPending = false;
@@ -207,7 +214,7 @@ bool ZhiyunLightClient::resumeConnection() {
 }
 
 void ZhiyunLightClient::deactivate() {
-  rollbackPendingProvision();
+  discardProvisioningSnapshot();
   connectRequested_ = false;
   if (!sharedTransport_ && linkHandle_ != studio::ble::kInvalidLinkHandle)
     studio::ble::bleCentral().release(linkHandle_);
@@ -229,6 +236,7 @@ void ZhiyunLightClient::deactivate() {
   operation_ = Operation::None;
   provisioner_.cancel();
   provisioningDeadlineMs_ = 0;
+  initializationReadyAtMs_ = 0;
   provisioningLink_ = false;
   scanAfterProvision_ = false;
   provisioningLength_ = 0;
@@ -243,6 +251,12 @@ void ZhiyunLightClient::loop() {
   drainNotifications();
   if (!connectRequested_) return;
   const uint32_t now = millis();
+  if (state_.phase == ZhiyunLightState::Phase::ReadingState &&
+      initializationReadyAtMs_ != 0 &&
+      static_cast<int32_t>(now - initializationReadyAtMs_) >= 0) {
+    initializationReadyAtMs_ = 0;
+    markInitializationReady();
+  }
   if (setupPending_ && static_cast<int32_t>(now - setupAtMs_) >= 0) {
     setupPending_ = false;
     if (client_ == nullptr || !client_->isConnected() || !completeConnect()) {
@@ -276,6 +290,12 @@ void ZhiyunLightClient::loop() {
   }
   if (awaitingResponse_ &&
       static_cast<int32_t>(now - responseDeadlineMs_) >= 0) {
+    ZHIYUN_LIGHT_LOG.printf(
+        "zhiyun_light event=response_timeout instance=%lu operation=%u "
+        "step=%u command=0x%04x selector=%u shared=%u\n",
+        static_cast<unsigned long>(instanceId_),
+        static_cast<unsigned>(operation_), step_, expectedCommand_, selector(),
+        sharedTransport_ ? 1u : 0u);
     if (operation_ == Operation::Initialize) {
       if (onboardingSelectionActive_) {
         returnToOnboardingPicker("Initialization timeout");
@@ -378,13 +398,36 @@ bool ZhiyunLightClient::sendInitializationStep() {
     expectedCommand_ = commands[step_];
     awaitingResponse_ = true;
     responseDeadlineMs_ = millis() + 2000;
+    if (sharedTransport_) {
+      ZHIYUN_LIGHT_LOG.printf(
+          "zhiyun_light event=init_send instance=%lu step=%u command=0x%04x "
+          "sequence=%u selector=%u\n",
+          static_cast<unsigned long>(instanceId_), step_, commands[step_],
+          sequence, selector());
+    }
     return true;
   }
   if (step_ == 3) {
     const uint8_t modePayload[] = {selector(), 0x80, 0x00, 0x00};
-    return sendQuery(kCommandMode, modePayload, sizeof(modePayload));
+    const bool sent = sendQuery(kCommandMode, modePayload, sizeof(modePayload));
+    if (sent && sharedTransport_) {
+      ZHIYUN_LIGHT_LOG.printf(
+          "zhiyun_light event=init_send instance=%lu step=%u command=0x%04x "
+          "sequence=%u selector=%u\n",
+          static_cast<unsigned long>(instanceId_), step_, kCommandMode,
+          expectedSequence_, selector());
+    }
+    return sent;
   }
-  return sendQuery(commands[step_]);
+  const bool sent = sendQuery(commands[step_]);
+  if (sent && sharedTransport_) {
+    ZHIYUN_LIGHT_LOG.printf(
+        "zhiyun_light event=init_send instance=%lu step=%u command=0x%04x "
+        "sequence=%u selector=%u\n",
+        static_cast<unsigned long>(instanceId_), step_, commands[step_],
+        expectedSequence_, selector());
+  }
+  return sent;
 }
 
 bool ZhiyunLightClient::completeConnect() {
@@ -545,14 +588,39 @@ void ZhiyunLightClient::handleProvisioningBytes(const uint8_t* data, size_t leng
 }
 
 void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
+  if (sharedTransport_ && state_.commandPending) {
+    ZHIYUN_LIGHT_LOG.printf(
+        "zhiyun_light event=command_frame instance=%lu response=%u "
+        "sequence=%u command=0x%04x awaiting=%u expected_sequence=%u "
+        "expected_command=0x%04x payload=",
+        static_cast<unsigned long>(instanceId_), frame.response ? 1u : 0u,
+        frame.sequence, frame.command, awaitingResponse_ ? 1u : 0u,
+        expectedSequence_, expectedCommand_);
+    for (size_t i = 0; i < frame.payloadLength; ++i) {
+      ZHIYUN_LIGHT_LOG.printf("%02x", frame.payload[i]);
+    }
+    ZHIYUN_LIGHT_LOG.println();
+  }
   if (!frame.response || !awaitingResponse_ ||
       frame.sequence != expectedSequence_ || frame.command != expectedCommand_) {
     return;
   }
   awaitingResponse_ = false;
   if (operation_ == Operation::Initialize) {
+    if (sharedTransport_) {
+      ZHIYUN_LIGHT_LOG.printf(
+          "zhiyun_light event=init_response instance=%lu step=%u "
+          "command=0x%04x sequence=%u selector=%u\n",
+          static_cast<unsigned long>(instanceId_), step_, frame.command,
+          frame.sequence, selector());
+    }
     bool valid = true;
-    if (step_ == 0) valid = identityContains(frame, identityMarker());
+    if (step_ == 0) {
+      valid = sharedTransport_
+                  ? (identityContains(frame, "pl105") ||
+                     identityContains(frame, "plx104"))
+                  : identityContains(frame, identityMarker());
+    }
     else if (frame.command == kCommandBrightness)
       valid = parseBrightness(frame, state_.brightness, selector());
     else if (frame.command == kCommandCct)
@@ -560,6 +628,15 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
     else if (frame.command == kCommandPower)
       valid = parsePower(frame, state_.on, selector());
     if (!valid) {
+      ZHIYUN_LIGHT_LOG.printf(
+          "zhiyun_light event=unexpected_response instance=%lu step=%u "
+          "command=0x%04x selector=%u payload=",
+          static_cast<unsigned long>(instanceId_), step_, frame.command,
+          selector());
+      for (size_t i = 0; i < frame.payloadLength; ++i) {
+        ZHIYUN_LIGHT_LOG.printf("%02x", frame.payload[i]);
+      }
+      ZHIYUN_LIGHT_LOG.println();
       if (onboardingSelectionActive_) {
         returnToOnboardingPicker("Unexpected Zhiyun response");
         return;
@@ -590,12 +667,19 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
   bool valid = false;
   if (operation_ == Operation::Power) {
     bool actual = false;
-    valid = parsePower(frame, actual, selector()) && actual == desiredPower_;
+    const bool writeReply = state_.model == MolusModel::X60Rgb;
+    valid = parsePower(frame, actual,
+                       writeReply ? writeReplySelector() : selector(),
+                       writeReply) &&
+            actual == desiredPower_;
     if (valid) state_.on = actual;
   } else if (operation_ == Operation::Cct) {
+    const bool writeReply = state_.model == MolusModel::X60Rgb;
     if (step_ == 0) {
       float actual = 0.0f;
-      valid = parseBrightness(frame, actual, selector()) &&
+      valid = parseBrightness(
+                  frame, actual,
+                  writeReply ? writeReplySelector() : selector(), writeReply) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
       state_.verificationField = 1;
       state_.readbackBrightness = actual;
@@ -607,24 +691,32 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
         step_ = 1;
         verificationAttempts_ = 0;
         state_.verificationField = 2;
-        if (!writeFrame(
-                buildCctWrite(nextSequence(), desiredKelvin_, selector()))) {
+        const uint16_t sequence = nextSequence();
+        if (!writeFrame(buildCctWrite(sequence, desiredKelvin_, selector()))) {
           finishCommand(false, "CCT write failed");
+        } else if (writeReply) {
+          expectedSequence_ = sequence;
+          expectedCommand_ = kCommandCct;
+          awaitingResponse_ = true;
+          responseDeadlineMs_ = millis() + 2000;
         } else {
-          verifyAtMs_ = millis() + 250;
+          verifyAtMs_ = millis() + verificationDelayMs();
         }
         return;
       }
     } else {
       uint16_t actual = 0;
-      valid = parseCct(frame, actual, selector()) && actual == desiredKelvin_;
+      valid = parseCct(frame, actual,
+                       writeReply ? writeReplySelector() : selector(),
+                       writeReply) &&
+              actual == desiredKelvin_;
       state_.readbackKelvin = actual;
       if (valid) {
         state_.kelvin = actual;
         state_.mode = ZhiyunLightState::Mode::Cct;
       }
     }
-    if (!valid && retryCctVerification()) return;
+    if (!valid && !writeReply && retryCctVerification()) return;
     if (!valid && step_ == 0 &&
         desiredBrightness_ > state_.readbackBrightness + 0.05f &&
         std::fabs(state_.readbackBrightness - state_.brightness) <= 0.05f) {
@@ -638,21 +730,21 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
   } else if (operation_ == Operation::Rgb) {
     if (step_ == 0) {
       float actual = 0.0f;
-      valid = parseHue(frame, actual, selector(), true) &&
+      valid = parseHue(frame, actual, writeReplySelector(), true) &&
               std::fabs(actual - desiredHue_) <= 0.05f;
       state_.verificationField = 3;
       state_.readbackHue = static_cast<uint16_t>(actual + 0.5f);
       if (valid) state_.hue = state_.readbackHue;
     } else if (step_ == 1) {
       float actual = 0.0f;
-      valid = parseSaturation(frame, actual, selector(), true) &&
+      valid = parseSaturation(frame, actual, writeReplySelector(), true) &&
               std::fabs(actual - desiredSaturation_) <= 0.05f;
       state_.verificationField = 4;
       state_.readbackSaturation = static_cast<uint8_t>(actual + 0.5f);
       if (valid) state_.saturation = state_.readbackSaturation;
     } else {
       float actual = 0.0f;
-      valid = parseBrightness(frame, actual, selector(), true) &&
+      valid = parseBrightness(frame, actual, writeReplySelector(), true) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
       state_.verificationField = 1;
       state_.readbackBrightness = actual;
@@ -685,6 +777,19 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
 }
 
 void ZhiyunLightClient::finishInitialization() {
+  operation_ = Operation::None;
+  if (sharedTransport_) {
+    // The proprietary gateway can drop a member write issued in the same loop
+    // turn as another member's final setup reply. Keep readiness false until
+    // the shared characteristic has had a short quiet interval.
+    state_.phase = ZhiyunLightState::Phase::ReadingState;
+    initializationReadyAtMs_ = millis() + 300;
+    return;
+  }
+  markInitializationReady();
+}
+
+void ZhiyunLightClient::markInitializationReady() {
   state_.phase = ZhiyunLightState::Phase::Ready;
   state_.confirmed = true;
   state_.hasSavedDevice = true;
@@ -692,7 +797,6 @@ void ZhiyunLightClient::finishInitialization() {
   state_.error[0] = '\0';
   haveTarget_ = true;
   pairingChanged_ = true;
-  operation_ = Operation::None;
   delete provisioningSnapshot_;
   provisioningSnapshot_ = nullptr;
   onboardingSelectionActive_ = false;
@@ -701,7 +805,8 @@ void ZhiyunLightClient::finishInitialization() {
 
 bool ZhiyunLightClient::setPower(bool on) {
   if (!protocolReady() || state_.commandPending) return false;
-  const FrameBytes frame = buildPowerWrite(nextSequence(), on, selector());
+  const uint16_t sequence = nextSequence();
+  const FrameBytes frame = buildPowerWrite(sequence, on, selector());
   if (!writeFrame(frame)) return false;
   desiredPower_ = on;
   operation_ = Operation::Power;
@@ -711,7 +816,14 @@ bool ZhiyunLightClient::setPower(bool on) {
   state_.requestedKelvin = 0;
   state_.readbackKelvin = 0;
   state_.verificationField = 0;
-  verifyAtMs_ = millis() + 250;
+  if (state_.model == MolusModel::X60Rgb) {
+    expectedSequence_ = sequence;
+    expectedCommand_ = kCommandPower;
+    awaitingResponse_ = true;
+    responseDeadlineMs_ = millis() + 2000;
+  } else {
+    verifyAtMs_ = millis() + verificationDelayMs();
+  }
   return true;
 }
 
@@ -721,8 +833,8 @@ bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness) {
   const uint16_t normalizedKelvin = normalizeCct(kelvin);
   // The X100 can acknowledge two immediate writes while dropping the first
   // state change. Apply and confirm brightness before sending CCT.
-  if (!writeFrame(
-          buildBrightnessWrite(nextSequence(), brightness, selector())))
+  const uint16_t sequence = nextSequence();
+  if (!writeFrame(buildBrightnessWrite(sequence, brightness, selector())))
     return false;
   desiredBrightness_ = brightness;
   desiredKelvin_ = normalizedKelvin;
@@ -736,7 +848,14 @@ bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness) {
   verificationAttempts_ = 0;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
-  verifyAtMs_ = millis() + 250;
+  if (state_.model == MolusModel::X60Rgb) {
+    expectedSequence_ = sequence;
+    expectedCommand_ = kCommandBrightness;
+    awaitingResponse_ = true;
+    responseDeadlineMs_ = millis() + 2000;
+  } else {
+    verifyAtMs_ = millis() + verificationDelayMs();
+  }
   return true;
 }
 
@@ -813,7 +932,7 @@ bool ZhiyunLightClient::retryCctVerification() {
   if (operation_ != Operation::Cct || verificationAttempts_ >= kMaxRetries)
     return false;
   ++verificationAttempts_;
-  verifyAtMs_ = millis() + 250;
+  verifyAtMs_ = millis() + verificationDelayMs();
   return true;
 }
 
@@ -837,7 +956,6 @@ void ZhiyunLightClient::finishCommand(bool success, const char* error) {
 void ZhiyunLightClient::startScan() {
   if (provisioningSnapshot_ != nullptr) {
     returnToOnboardingPicker();
-    if (provisioningSnapshot_ != nullptr) return;
   }
   begin();
   connectRequested_ = initialized_;
@@ -859,14 +977,7 @@ void ZhiyunLightClient::forgetDevice() {
 }
 
 bool ZhiyunLightClient::cancelOnboarding() {
-  if (!rollbackPendingProvision()) {
-    state_.phase = ZhiyunLightState::Phase::Failed;
-    state_.lastCommandFailed = true;
-    std::strncpy(state_.error, "Mesh rollback save failed",
-                 sizeof(state_.error) - 1);
-    state_.error[sizeof(state_.error) - 1] = '\0';
-    return false;
-  }
+  discardProvisioningSnapshot();
   provisioner_.cancel();
   candidates_.clear();
   haveTarget_ = false;
@@ -945,14 +1056,7 @@ void ZhiyunLightClient::beginScan() {
 }
 
 void ZhiyunLightClient::returnToOnboardingPicker(const char* error) {
-  if (!rollbackPendingProvision()) {
-    state_.phase = ZhiyunLightState::Phase::Failed;
-    state_.lastCommandFailed = true;
-    std::strncpy(state_.error, "Mesh rollback save failed",
-                 sizeof(state_.error) - 1);
-    state_.error[sizeof(state_.error) - 1] = '\0';
-    return;
-  }
+  discardProvisioningSnapshot();
   provisioner_.cancel();
   candidates_.clear();
   haveTarget_ = false;
@@ -976,19 +1080,13 @@ void ZhiyunLightClient::returnToOnboardingPicker(const char* error) {
   }
 }
 
-bool ZhiyunLightClient::rollbackPendingProvision() {
-  if (provisioningSnapshot_ == nullptr) return true;
-  const uint32_t sequenceHighWater =
-      studio::mesh::repository().data().network.sequenceHighWater;
-  studio::mesh::StoreData restored = *provisioningSnapshot_;
-  if (sequenceHighWater >
-      restored.network.sequenceHighWater) {
-    restored.network.sequenceHighWater = sequenceHighWater;
-  }
-  if (!studio::mesh::repository().replace(restored)) return false;
+void ZhiyunLightClient::discardProvisioningSnapshot() {
+  // Provisioning Complete is irreversible from this controller: the fixture
+  // has already committed the new keys. The newly persisted node must survive
+  // later control-service failure, cancellation, or session teardown so a
+  // retry can rediscover it instead of leaving an orphaned mesh member.
   delete provisioningSnapshot_;
   provisioningSnapshot_ = nullptr;
-  return true;
 }
 
 void ZhiyunLightClient::beginConnect() {
