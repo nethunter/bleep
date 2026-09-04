@@ -102,7 +102,7 @@ void refresh() {
                       ? "PAIRING..."
                       : "DISCONNECTED";
     view.detail = state != nullptr ? "PRESS POWER TO WAKE"
-                                   : "CONNECT GPS REMOTE";
+                                   : "PAIR CAMERA REMOTE";
     view.actionLabel = "WAITING";
     view.powerEnabled = state != nullptr && !state->powerCommandPending;
     recorder_shell::apply(view);

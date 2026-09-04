@@ -372,11 +372,15 @@ int main() {
   if (!capture("03_camera_families")) {
     return 1;
   }
+  picker_shell::simScrollDeviceList(-82);
+  if (!capture("03_camera_families_scrolled")) {
+    return 1;
+  }
   picker_shell::hide();
   const studio::DriverId cameraDrivers[] = {
       studio::DriverId::GoPro, studio::DriverId::Insta360,
-      studio::DriverId::DjiOsmo, studio::DriverId::SonyCamera,
-      studio::DriverId::PhoneCamera};
+      studio::DriverId::Insta360Mini, studio::DriverId::DjiOsmo,
+      studio::DriverId::SonyCamera, studio::DriverId::PhoneCamera};
   for (studio::DriverId driverId : cameraDrivers) {
     ui::simShowAddDevice();
     picker_shell::simChooseDriver(driverId);

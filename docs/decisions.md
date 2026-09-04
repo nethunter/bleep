@@ -1320,6 +1320,38 @@ the replacement.
   builds are software evidence. A real old-recovery-to-new-main-to-new-recovery
   cycle plus power loss during the factory write remain hardware acceptance.
 
+## ADR-049: Insta360 GPS and Mini Remote modes are distinct catalog drivers over one runtime
+
+- Status: Accepted implementation; flashed-panel Mini validation remains open.
+- Catalog identity: Preserve `DriverId::Insta360 = 11` and stable ID
+  `insta360.gps_remote` for existing records. Add `DriverId::Insta360Mini = 15`
+  with stable ID `insta360.mini_remote`. The Cameras picker exposes **Insta360
+  GPS Remote** and **Insta360 Mini Remote** separately because compatible
+  models select different remote modes in the camera UI.
+- Shared runtime: Both logical drivers use one lazy Insta360 session runtime,
+  one `0xCE80`/HID GATT server, and the same bounded callback queue. The Mini
+  adapter owns no session array or protocol buffer. GPS and Mini sessions keep
+  their selected profile in per-instance state. If both profiles need a
+  disconnected pairing identity, the one Insta360 advertiser alternates them
+  in 12-second windows; established links remain connected.
+- Wire split: GPS advertises `Insta360 Remote (Bleep)` with the captured GPS
+  scan response and sends shutter toggle `... 01 02 00`. Mini advertises the
+  captured `Insta360 Mini Remote` primary packet plus HID scan response and
+  sends shutter toggle `... 01 00 00`. Both consume the shared conservative
+  camera-state reducer: GPS `0x10 0x80` display frames and Mini `0x55` phase
+  frames.
+- Power: Both profiles expose the shared captured shutdown notification
+  `... 01 00 03` and serial-addressed ORBIT wake advertisement. X5 supplies
+  packet-capture and physical evidence for that path. The operator also
+  confirmed that the physical Mini Remote powered the X6 off and on; a
+  flashed-panel X6 cycle is still required before attributing that result to
+  Ble(e)p's implementation.
+- Compatibility: The mode lists photographed from the supplied third-party
+  controller manual are candidate-routing evidence, not model verification.
+  X6 Mini routing is additionally supported by the live X6 capture. Existing
+  per-model support labels do not change until the corresponding panel checks
+  pass.
+
 ## Open decisions
 
 These remain unresolved until their roadmap spikes complete:

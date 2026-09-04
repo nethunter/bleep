@@ -5,6 +5,72 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-04: Separate Insta360 GPS Remote and Mini Remote implementation
+
+- Added distinct `Insta360 GPS Remote` and `Insta360 Mini Remote` catalog
+  entries while preserving GPS `DriverId::Insta360 = 11` and stable ID
+  `insta360.gps_remote`; Mini uses `DriverId::Insta360Mini = 15` and
+  `insta360.mini_remote`. Both adapters share one lazy CE80/HID GATT server,
+  callback queue, camera scanner, state reducer, and eight-slot combined
+  session array. When both disconnected identities are needed, the same
+  advertiser alternates them in 12-second windows.
+- GPS retains `Insta360 Remote (Bleep)` and shutter
+  `FC EF FE 86 00 03 01 02 00`. Mini uses the captured primary/scan-response
+  bytes for `Insta360 Mini Remote` and shutter
+  `FC EF FE 86 00 03 01 00 00`. Both expose guarded shutdown
+  `FC EF FE 86 00 03 01 00 03` and serial-addressed ORBIT wake. The shared
+  decoder accepts GPS `0x10 0x80` display frames and Mini `0x55` mode/phase
+  frames; status changes remain camera-confirmed.
+- Recorded the supplied third-party controller manual's separate model lists as
+  candidate routing, not hardware proof. Its source image is 2268x4032 with
+  SHA-256 `a4cba64e143ee9d57d5d856b33b75bf0f4564b5be83cbd590f13dffa3ea096bd`.
+  X6 is additionally routed to Mini from the live capture. The operator
+  confirmed that the physical Mini Remote powers the X6 off and on; the X6
+  shutdown bytes and Ble(e)p panel lifecycle remain separate verification
+  gates.
+- Verification: native tests passed 101/101, including both catalog records,
+  all photographed mode-routing candidates, both advertising/shutter vectors,
+  X6 ORBIT construction, shared camera-state decoding, and manager reachability.
+  The `ui_sim` build and complete screenshot run passed; visual inspection of
+  `03_camera_families_scrolled.png` confirmed both exact full labels fit the
+  round picker. Full Montserrat `bleep` built successfully at 147,116 bytes RAM
+  (44.9%) and 2,034,194 bytes flash (69.0%). The corrected build flashed
+  successfully to `/dev/cu.usbserial-211240`; physical X6 pairing, Start/Stop,
+  reported status, shutdown, and wake are still awaiting an operator run.
+- First X6 Mini panel result: Bleep's power notification physically shut down
+  the camera, but the X6 retained the BLE link past the ten-second confirmation
+  deadline, so the UI incorrectly showed `POWER OFF FAILED / CAMERA STILL
+  CONNECTED`. The Mini path now recognizes the capture-backed
+  `FE EF FE 56 00 01 13` shutdown-acceptance write and asks NimBLE to terminate
+  that stale link; the disconnect event then completes `CAMERA OFF` and makes
+  ORBIT wake available. Native tests remain 101/101, the full build succeeds at
+  147,116 bytes RAM (44.9%) and 2,034,416 bytes flash (69.0%), and the patched
+  firmware flashed successfully to `/dev/cu.usbserial-211240`. The corrected
+  shutdown/off UI and subsequent wake still need the operator retest.
+
+### 2026-09-04: Insta360 X6 Mini Remote protocol capture
+
+- A Nordic BLE sniffer captured the physical Insta360 Mini Remote advertising,
+  the X6-initiated reconnect, CE82 notification subscription, two X6
+  initialization writes, remote-only Start/Stop, camera-local Start/Stop, and
+  X6 state writes. Raw captures remain outside the repository; their packet
+  counts, timestamps, and SHA-256 hashes are recorded in the Mini protocol
+  note.
+- The X6 uses the same CE80 layout and Mini shutter toggle documented for X5:
+  CE82 handle `0x004C` notified `FC EF FE 86 00 03 01 00 00` for both Start and
+  Stop, while the X6 wrote `FE EF FE 55 00 07 00 SS 00 00 00 00 00` to CE81
+  handle `0x004F`. Captured video phases were idle `00`, starting `01`,
+  recording `02`, and stopping/saving `04`. A separate `0x63` CE81 frame
+  carried a recording-seconds counter and phase-like byte; those field meanings
+  remain Research.
+- The final clean remote-only cycle captured both shutter packets and the
+  starting, recording, elapsed-time, and idle reports; the operator confirmed
+  the X6 physically started and stopped. A camera-local Stop independently
+  produced stopping/saving then idle. The cached reconnect was unencrypted in
+  the trace, but fresh pairing, full X6 service discovery, bond requirements,
+  other capture modes, Ble(e)p implementation, and a flashed-panel X6 test
+  remain open. Documentation only; no firmware or tests changed.
+
 ### 2026-09-04: Tascam X8 connection time breakdown
 
 - Eight captured X8 links fall into three cases. Awake and unqueued: connect

@@ -24,6 +24,7 @@ enum class DriverId : uint16_t {
   DjiOsmo = 12,
   SonyCamera = 13,
   PhoneCamera = 14,
+  Insta360Mini = 15,
   // Internal transport identity. Never persisted as a device driver.
   PanelOwnedMesh = 0xfffe,
 };

@@ -432,7 +432,7 @@ void test_tascam_scanner_and_confirmed_state() {
 }
 
 void test_driver_catalog_exposes_shark_and_canon() {
-  TEST_ASSERT_EQUAL_UINT32(12, studio::DriverCatalog::count());
+  TEST_ASSERT_EQUAL_UINT32(13, studio::DriverCatalog::count());
   const studio::DriverDescriptor* descriptor =
       studio::DriverCatalog::find(studio::DriverId::SharkNanoII);
   TEST_ASSERT_NOT_NULL(descriptor);
@@ -526,7 +526,7 @@ void test_driver_catalog_exposes_shark_and_canon() {
   const studio::DriverDescriptor* insta360Driver =
       studio::DriverCatalog::find(studio::DriverId::Insta360);
   TEST_ASSERT_NOT_NULL(insta360Driver);
-  TEST_ASSERT_EQUAL_STRING("Insta360", insta360Driver->model);
+  TEST_ASSERT_EQUAL_STRING("Insta360 GPS Remote", insta360Driver->model);
   TEST_ASSERT_BITS_HIGH(
       studio::capabilityBit(studio::Capability::RecordStart) |
           studio::capabilityBit(studio::Capability::RecordStop) |
@@ -535,6 +535,16 @@ void test_driver_catalog_exposes_shark_and_canon() {
   TEST_ASSERT_BITS_LOW(
       studio::capabilityBit(studio::Capability::RecordTrigger),
       insta360Driver->capabilities);
+  const studio::DriverDescriptor* insta360Mini =
+      studio::DriverCatalog::find(studio::DriverId::Insta360Mini);
+  TEST_ASSERT_NOT_NULL(insta360Mini);
+  TEST_ASSERT_EQUAL_STRING("Insta360 Mini Remote", insta360Mini->model);
+  TEST_ASSERT_EQUAL_STRING("insta360.mini_remote", insta360Mini->stableId);
+  TEST_ASSERT_BITS_HIGH(
+      studio::capabilityBit(studio::Capability::RecordStart) |
+          studio::capabilityBit(studio::Capability::RecordStop) |
+          studio::capabilityBit(studio::Capability::RecordingState),
+      insta360Mini->capabilities);
   TEST_ASSERT_EQUAL_STRING(
       "DJI Osmo", studio::DriverCatalog::find(studio::DriverId::DjiOsmo)->model);
   TEST_ASSERT_EQUAL_STRING(
@@ -561,12 +571,13 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
   FakeDriver zhiyun(studio::DriverId::ZhiyunLight);
   FakeDriver goPro(studio::DriverId::GoPro);
   FakeDriver insta360(studio::DriverId::Insta360);
+  FakeDriver insta360Mini(studio::DriverId::Insta360Mini);
   FakeDriver dji(studio::DriverId::DjiOsmo);
   FakeDriver sony(studio::DriverId::SonyCamera);
   FakeDriver phone(studio::DriverId::PhoneCamera);
   studio::DeviceDriver* drivers[] = {
       &shark, &canonSmart, &tascam, &canonTrigger, &homeAssistant,
-      &aputure, &zhiyun, &goPro, &insta360, &dji,
+      &aputure, &zhiyun, &goPro, &insta360, &insta360Mini, &dji,
       &sony, &phone};
   studio::DeviceManager manager(backend, drivers,
                                 sizeof(drivers) / sizeof(drivers[0]));
@@ -581,6 +592,15 @@ void test_manager_keeps_every_compiled_camera_driver_reachable() {
       manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_TRUE(
       manager.ownedBy(instanceId, studio::ConnectionOwner::Foreground));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.cancelPendingAdd(instanceId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(manager.beginAdd(studio::DriverId::Insta360Mini,
+                                        "Mini Remote", instanceId)));
+  TEST_ASSERT_TRUE(
+      manager.acquire(instanceId, studio::ConnectionOwner::Foreground));
   TEST_ASSERT_EQUAL_INT(
       static_cast<int>(studio::RegistryStatus::Ok),
       static_cast<int>(manager.cancelPendingAdd(instanceId)));
@@ -812,8 +832,34 @@ void test_dji_osmo_protocol_matches_official_connection_vector() {
 
 void test_insta360_gps_remote_protocol() {
   TEST_ASSERT_TRUE(insta360::matchesCameraName("X5 123456"));
+  TEST_ASSERT_TRUE(insta360::matchesCameraName("X6 123456"));
   TEST_ASSERT_TRUE(insta360::matchesCameraName("GO 3 654321"));
   TEST_ASSERT_TRUE(insta360::matchesCameraName("GO Ultra 123456"));
+  const char* sharedModels[] = {
+      "X5 123456", "X4 Air 123456", "X4 123456", "X3 123456",
+      "Ace Pro 2 123456", "GO 3S 123456"};
+  for (const char* name : sharedModels) {
+    TEST_ASSERT_TRUE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Gps));
+    TEST_ASSERT_TRUE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Mini));
+  }
+  const char* gpsOnlyModels[] = {
+      "ONE X2 123456", "Ace Pro 123456", "Ace 123456",
+      "ONE RS 123456", "ONE R 123456", "GO 3 123456"};
+  for (const char* name : gpsOnlyModels) {
+    TEST_ASSERT_TRUE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Gps));
+    TEST_ASSERT_FALSE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Mini));
+  }
+  const char* miniOnlyModels[] = {"X6 123456", "GO Ultra 123456"};
+  for (const char* name : miniOnlyModels) {
+    TEST_ASSERT_FALSE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Gps));
+    TEST_ASSERT_TRUE(insta360::supportsRemoteProtocol(
+        name, insta360::RemoteProtocol::Mini));
+  }
   TEST_ASSERT_TRUE(insta360::isGoUltra("Insta360 GO Ultra"));
   TEST_ASSERT_FALSE(insta360::isGoUltra("GO 3 654321"));
   TEST_ASSERT_EQUAL_STRING(insta360::kNotifyUuid,
@@ -823,22 +869,37 @@ void test_insta360_gps_remote_protocol() {
   TEST_ASSERT_EQUAL_STRING(insta360::kInfoUuid,
                            insta360::kGattCharacteristicOrder[2]);
   TEST_ASSERT_EQUAL_STRING("Insta360 Remote (Bleep)",
-                           insta360::kAdvertisedName);
+                           insta360::kGpsAdvertisedName);
+  TEST_ASSERT_EQUAL_STRING("Insta360 Mini Remote",
+                           insta360::kMiniAdvertisedName);
   TEST_ASSERT_EQUAL_UINT16(0x0180, insta360::kAdvertisedAppearance);
   const uint8_t advertisement[] = {
       0x02,0x01,0x06,0x18,0x09,
       'I','n','s','t','a','3','6','0',' ','R','e','m','o','t','e',' ',
       '(','B','l','e','e','p',')'};
-  TEST_ASSERT_EQUAL_UINT32(28, sizeof(insta360::kAdvertisementData));
+  TEST_ASSERT_EQUAL_UINT32(28, sizeof(insta360::kGpsAdvertisementData));
   TEST_ASSERT_EQUAL_UINT8_ARRAY(advertisement,
-                                insta360::kAdvertisementData,
+                                insta360::kGpsAdvertisementData,
                                 sizeof(advertisement));
   const uint8_t scanResponse[] = {
       0x03,0x19,0x80,0x01,0x03,0x03,0x80,0xce};
-  TEST_ASSERT_EQUAL_UINT32(8, sizeof(insta360::kScanResponseData));
+  TEST_ASSERT_EQUAL_UINT32(8, sizeof(insta360::kGpsScanResponseData));
   TEST_ASSERT_EQUAL_UINT8_ARRAY(scanResponse,
-                                insta360::kScanResponseData,
+                                insta360::kGpsScanResponseData,
                                 sizeof(scanResponse));
+  const uint8_t miniAdvertisement[] = {
+      0x02,0x01,0x06,0x03,0x19,0x80,0x01,0x15,0x09,
+      'I','n','s','t','a','3','6','0',' ','M','i','n','i',' ','R','e','m','o','t','e'};
+  const uint8_t miniScanResponse[] = {
+      0x03,0x03,0x12,0x18,0x02,0x0a,0x00};
+  TEST_ASSERT_EQUAL_UINT32(29, sizeof(insta360::kMiniAdvertisementData));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(miniAdvertisement,
+                                insta360::kMiniAdvertisementData,
+                                sizeof(miniAdvertisement));
+  TEST_ASSERT_EQUAL_UINT32(7, sizeof(insta360::kMiniScanResponseData));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(miniScanResponse,
+                                insta360::kMiniScanResponseData,
+                                sizeof(miniScanResponse));
   uint8_t wakeAdvertisement[insta360::kWakeAdvertisementDataLength] = {};
   uint8_t wakeScanResponse[insta360::kWakeScanResponseDataLength] = {};
   TEST_ASSERT_TRUE(insta360::buildWakeAdvertisementData(
@@ -859,6 +920,9 @@ void test_insta360_gps_remote_protocol() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(capturedWakeScanResponse,
                                 wakeScanResponse,
                                 sizeof(capturedWakeScanResponse));
+  TEST_ASSERT_TRUE(insta360::buildWakeAdvertisementData(
+      "X6 ABC123", wakeAdvertisement, wakeScanResponse));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY("ABC123", wakeAdvertisement + 19, 6);
   TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
       nullptr, wakeAdvertisement, wakeScanResponse));
   TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
@@ -871,12 +935,21 @@ void test_insta360_gps_remote_protocol() {
       "X5 AB-CD1", wakeAdvertisement, wakeScanResponse));
   TEST_ASSERT_FALSE(insta360::buildWakeAdvertisementData(
       "Camera ABC123", wakeAdvertisement, wakeScanResponse));
-  const uint8_t expected[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x02,0x00};
-  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, insta360::kShutterCommand,
-                                sizeof(expected));
+  const uint8_t gpsShutter[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x02,0x00};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(gpsShutter, insta360::kGpsShutterCommand,
+                                sizeof(gpsShutter));
+  const uint8_t miniShutter[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x00,0x00};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(miniShutter, insta360::kMiniShutterCommand,
+                                sizeof(miniShutter));
   const uint8_t powerOff[] = {0xfc,0xef,0xfe,0x86,0x00,0x03,0x01,0x00,0x03};
   TEST_ASSERT_EQUAL_UINT8_ARRAY(powerOff, insta360::kPowerOffCommand,
                                 sizeof(powerOff));
+  const uint8_t powerOffAccepted[] = {
+      0xfe,0xef,0xfe,0x56,0x00,0x01,0x13};
+  TEST_ASSERT_TRUE(insta360::isPowerOffAccepted(
+      powerOffAccepted, sizeof(powerOffAccepted)));
+  TEST_ASSERT_FALSE(insta360::isPowerOffAccepted(
+      powerOffAccepted, sizeof(powerOffAccepted) - 1));
 
   insta360::State provisional;
   insta360::assumeVideoIdle(provisional);

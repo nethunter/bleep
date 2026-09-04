@@ -412,11 +412,13 @@ This experimental tranche extends Phase 5 without changing its Canon gates:
   registration/query, state-confirmed Set Shutter, confirmed Sleep, and
   reconnect-to-wake power control;
 - implement Phone Camera as a bonded, per-peer BLE HID shutter peripheral;
-- implement capture-correct Insta360 GPS Remote peripheral emulation for X5,
-  using the operator-confirmed `Insta360 Remote (Bleep)` identity and captured
-  CE82/CE81/CE83 declaration order, GPS display-frame state synchronization,
-  optimistic immediate Start, and confirmed Stop; keep the separate GO Ultra
-  target visibly experimental until hardware proves compatibility;
+- expose distinct Insta360 GPS Remote and Mini Remote choices over one shared
+  peripheral runtime. GPS uses the operator-confirmed `Insta360 Remote
+  (Bleep)` identity, GPS shutter vector, and display-frame state; Mini uses its
+  capture-exact name/HID advertising, Mini shutter vector, and `0x55` phase
+  state. Both share the CE82/CE81/CE83 declaration order and guarded
+  shutdown/ORBIT wake path; keep untested model/profile combinations visibly
+  experimental until hardware proves compatibility;
 - implement DJI's published Osmo controller handshake, recording controls, and
   camera-status subscription for Action 5 Pro and Osmo 360 candidates;
 - keep Sony onboarding blocked on a clear research screen until its
@@ -428,7 +430,10 @@ bonded reconnect, multi-instance routing, forget/re-pair, cancellation, and
 heap/coexistence tests. The Insta360 GPS-remote connection and basic shutter
 were operator-confirmed; the newly decoded display-state synchronization,
 exact GPS identity, power behavior, and remaining coexistence gates stay
-open. A GoPro MAX2 desktop harness and flashed panel passed connection,
+open. The X6 Mini protocol is capture-backed, including shutter and reported
+state, and the operator confirmed the physical Mini remote's power behavior;
+the split Ble(e)p implementation still needs a flashed-panel X6 lifecycle
+check. A GoPro MAX2 desktop harness and flashed panel passed connection,
 confirmed initial Encoding state, state-confirmed Start/Stop, and observed
 physical recording. Published Sleep/wake control is implemented in firmware
 and simulator; a flashed MAX2 visibly slept, woke, reconnected after boot, and

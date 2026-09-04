@@ -1,14 +1,46 @@
 #include "devices/insta360/protocol.h"
+
 #include <cstring>
+
 namespace insta360 {
-namespace { bool begins(const char* value, const char* prefix) { return value && std::strncmp(value, prefix, std::strlen(prefix)) == 0; } }
-bool matchesCameraName(const char* name) {
-  return begins(name, "X3 ") || begins(name, "X4 ") || begins(name, "X5 ") ||
-         begins(name, "RS ") || begins(name, "ONE ") || begins(name, "GO 3") ||
-         begins(name, "Insta360 GO 3") || begins(name, "GO Ultra") ||
-         begins(name, "Insta360 GO Ultra");
+namespace {
+
+bool begins(const char* value, const char* prefix) {
+  return value &&
+         std::strncmp(value, prefix, std::strlen(prefix)) == 0;
 }
-bool isGoUltra(const char* name) { return name && (std::strstr(name, "GO Ultra") || std::strstr(name, "GO ULTRA")); }
+
+}  // namespace
+
+bool supportsRemoteProtocol(const char* name, RemoteProtocol protocol) {
+  const bool shared = begins(name, "X3 ") || begins(name, "X4 ") ||
+                      begins(name, "X4 Air ") || begins(name, "X5 ") ||
+                      begins(name, "Ace Pro 2 ") || begins(name, "GO 3S ") ||
+                      begins(name, "Insta360 GO 3S ");
+  if (protocol == RemoteProtocol::Mini) {
+    return shared || begins(name, "X6 ") || begins(name, "GO Ultra ") ||
+           begins(name, "Insta360 GO Ultra ");
+  }
+  return shared || begins(name, "ONE X2 ") || begins(name, "Ace Pro ") ||
+         begins(name, "Ace ") || begins(name, "ONE RS ") ||
+         begins(name, "ONE R ") || begins(name, "RS ") ||
+         begins(name, "ONE ") || begins(name, "GO 3 ") ||
+         begins(name, "Insta360 GO 3 ");
+}
+
+bool matchesCameraName(const char* name) {
+  return supportsRemoteProtocol(name, RemoteProtocol::Gps) ||
+         supportsRemoteProtocol(name, RemoteProtocol::Mini);
+}
+bool isGoUltra(const char* name) {
+  return name &&
+         (std::strstr(name, "GO Ultra") || std::strstr(name, "GO ULTRA"));
+}
+
+bool isPowerOffAccepted(const uint8_t* data, size_t len) {
+  return data != nullptr && len == sizeof(kPowerOffAccepted) &&
+         std::memcmp(data, kPowerOffAccepted, len) == 0;
+}
 
 bool buildWakeAdvertisementData(
     const char* cameraName,

@@ -118,6 +118,9 @@ const DeviceUiHooks kDeviceUis[] = {
     {studio::DriverId::Insta360, insta360_ui::show, insta360_ui::hide,
      insta360_ui::release, insta360_ui::active, insta360_ui::tick,
      insta360_ui::handleShortPress, insta360_ui::handleLongPress},
+    {studio::DriverId::Insta360Mini, insta360_ui::show, insta360_ui::hide,
+     insta360_ui::release, insta360_ui::active, insta360_ui::tick,
+     insta360_ui::handleShortPress, insta360_ui::handleLongPress},
 #endif
 #if CONFIG_DRIVER_DJI_OSMO
     {studio::DriverId::DjiOsmo, dji_osmo_ui::show, dji_osmo_ui::hide,

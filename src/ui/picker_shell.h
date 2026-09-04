@@ -31,6 +31,7 @@ bool handleBack();
 #ifdef UI_SIMULATOR
 void simShowCategory(Mode mode);
 void simShowDeviceList(Mode mode, studio::DeviceType category);
+void simScrollDeviceList(int32_t y);
 void simShowActions(Mode mode, studio::InstanceId instanceId);
 void simShowLightColor(Mode mode, studio::InstanceId instanceId, bool rgb);
 void simShowWait();
