@@ -5,6 +5,40 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-04: Tascam X8 connection time breakdown
+
+- Eight captured X8 links fall into three cases. Awake and unqueued: connect
+  0.5-0.8 s, GATT setup 0.7 s, session init 0.05 s, ready in 2.1 s. Awake but
+  queued behind the Canon's connect and bonding (ADR-021 serialization):
+  2.0-4.1 s of waiting first, ready in 5.1-5.7 s; when the camera is asleep
+  its first attempt runs the whole connect timeout and the recorder waits all
+  of it. Asleep: the first poke fails after 0.9-1.3 s (0x3E) or the link dies
+  3 s later (0x208 supervision timeout), the AK-BT1 then advertises nothing
+  the panel sees for 6-13 s, and the rediscovered connect plus 0.9-1.1 s setup
+  brings the total to 10-25 s.
+- Changes: Canon Smart `connectTimeoutMs` 4000 -> 2500 and watchdog 6000 ->
+  4000 (no successful establishment exceeded 2.1 s and no wake failure
+  surfaced later than 2.8 s in any capture), so a sleeping camera blocks the
+  queued recorder for 2.5 s instead of 4 s and retries sooner. The central
+  retries the post-connect parameter update once after 400 ms when the first
+  request fails (`setup_parameters result=fallback`, seen on every cold X8
+  link and caused by the dongle's own update colliding with ours), so GATT
+  setup can run at the fast interval. The X8 client now logs every matching
+  advertisement sighting (`tascam adv addr= rssi=`) so a wake capture can
+  tell dongle silence from scan-duty misses.
+- With the shorter timeout a sleeping camera's first attempt failed at 2.6 s
+  and the queued recorder connected right after (ready at 4.3 s versus 5.1 s
+  the run before). The same run showed why a drowsy camera itself is slow:
+  after four pokes it bonded in 0.45 s, but handshake discovery took 2.3 s
+  and core discovery 4.7 s (0.13-0.3 s when awake) while both parameter
+  requests failed, so the link stayed at the peer's slow interval. The
+  parameter retry now backs off 400 ms, 1 s, 2 s (three attempts) instead of
+  giving up after one.
+- Open: the 6-13 s post-failure silence is dongle behaviour and was not
+  captured with sightings yet (the dongle stayed awake across four attempts);
+  a gentler initial connection (longer interval and supervision timeout) and
+  a continuous scan while a wake is pending are the remaining candidates.
+
 ### 2026-09-04: Canon device screen "disconnects three times" while waking
 
 - Reproduced from the local console (`device show <id>` opens the same

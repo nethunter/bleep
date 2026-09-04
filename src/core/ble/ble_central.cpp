@@ -104,6 +104,27 @@ void BleCentral::release(LinkHandle link) {
 
 void BleCentral::loop(uint32_t nowMs) {
   nowMs_ = nowMs;
+  for (size_t i = 0; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
+    Slot& slot = slots_[i];
+    if (slot.delegate == nullptr || slot.setupParametersRetryAtMs == 0 ||
+        static_cast<int32_t>(nowMs - slot.setupParametersRetryAtMs) < 0) {
+      continue;
+    }
+    slot.setupParametersRetryAtMs = 0;
+    if (slot.phase == LinkPhase::Connected && !slot.protocolReady) {
+      const bool tuned = backend_.updateConnectionParameters(
+          handleFor(i), slot.policy.setupParameters);
+      logTiming(slot.policy.diagnosticTag, handleFor(i),
+                "setup_parameters_retry", slot.setupParametersRetries,
+                nowMs - slot.timingStartedMs, tuned ? "ok" : "fallback");
+      // A drowsy peer can keep its own update in flight for seconds; back off
+      // 400 ms, 1 s, 2 s before giving up on the fast setup interval.
+      if (!tuned && ++slot.setupParametersRetries < 3) {
+        slot.setupParametersRetryAtMs =
+            nowMs + (slot.setupParametersRetries == 1 ? 1000u : 2000u);
+      }
+    }
+  }
   // The backend may still be completing asynchronous client destruction after
   // the last logical link was released. Keep pumping it so teardown can finish
   // and an immediate reacquire does not race stale NimBLE clients.
@@ -460,6 +481,8 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
                   "setup_parameters", 0,
                   nowMs - slot->timingStartedMs,
                   tuned ? "ok" : "fallback");
+        slot->setupParametersRetries = 0;
+        slot->setupParametersRetryAtMs = tuned ? 0 : nowMs + 400;
       }
       break;
     case EventType::ConnectFailed:
@@ -486,6 +509,7 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
       slot->connectQueued = false;
       slot->securityPending = false;
       slot->protocolReady = false;
+      slot->setupParametersRetryAtMs = 0;
       logTiming(slot->policy.diagnosticTag, event.link, "disconnected",
                 nowMs - slot->stageStartedMs,
                 nowMs - slot->timingStartedMs, "failed");

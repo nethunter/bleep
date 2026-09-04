@@ -123,8 +123,12 @@ bool CanonBleClient::begin() {
   if (notifyQueue_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.security = studio::ble::SecurityPolicy::BondNoMitm;
-  policy.connectTimeoutMs = 4000;
-  policy.connectWatchdogMs = 6000;
+  // Every successful establishment in the captures completed within 2.1 s
+  // and every wake failure surfaced within 2.8 s; a body that stays silent
+  // for 4 s is off or asleep, and while the initiator waits no other link can
+  // connect (ADR-021), so the recorder queued behind it paid the full 4 s.
+  policy.connectTimeoutMs = 2500;
+  policy.connectWatchdogMs = 4000;
   policy.directAttemptsBeforeScan = 1;
   policy.alwaysDirect = lockedAddr_[0] != '\0';
   // A just-woken body answers the first pokes with HCI 0x3E and then stays

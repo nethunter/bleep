@@ -12,6 +12,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
+#if ARDUINO_USB_CDC_ON_BOOT
+#define TASCAM_LOG Serial0
+#else
+#define TASCAM_LOG Serial
+#endif
+
 namespace tascam_x8 {
 
 namespace {
@@ -376,6 +382,14 @@ bool TascamX8Client::sendData(const FrameBytes& frame) {
 void TascamX8Client::onBleAdvertisement(
     studio::ble::LinkHandle link,
     const studio::ble::Advertisement& advertisement) {
+  if (link == linkHandle_ && matchesAdvertisement(advertisement)) {
+    // Sightings tell wake diagnosis whether the AK-BT1 was silent or merely
+    // missed by the scan duty cycle.
+    TASCAM_LOG.printf("tascam adv addr=%s type=%u rssi=%d\n",
+                      advertisement.address.value,
+                      static_cast<unsigned>(advertisement.address.type),
+                      static_cast<int>(advertisement.rssi));
+  }
   if (link != linkHandle_ ||
       !matchesSavedAdvertisement(advertisement,
                                  haveTarget_ ? targetAddr_ : nullptr,

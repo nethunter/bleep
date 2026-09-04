@@ -69,6 +69,10 @@ class BleCentral {
     bool timingActive = false;
     uint32_t timingStartedMs = 0;
     uint32_t stageStartedMs = 0;
+    // A peripheral often runs its own parameter update right after connect,
+    // which makes the first request fail (EALREADY); retry once shortly after.
+    uint32_t setupParametersRetryAtMs = 0;
+    uint8_t setupParametersRetries = 0;
   };
 
   static size_t indexFor(LinkHandle link);
