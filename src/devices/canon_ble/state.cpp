@@ -12,6 +12,7 @@ void resetTransientState(CanonBleState& state) {
   state.pairingRejected = false;
   state.protocolFailed = false;
   state.claimedPeerVisible = false;
+  state.retryPending = false;
 }
 
 void markCommandQueued(CanonBleState& state, bool start) {

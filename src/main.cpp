@@ -438,6 +438,28 @@ void runDebugCommand(char* command) {
     return;
   }
 #endif
+  static constexpr char kDeviceShowPrefix[] = "device show ";
+  if (std::strncmp(command, kDeviceShowPrefix,
+                   sizeof(kDeviceShowPrefix) - 1) == 0) {
+    char* end = nullptr;
+    const unsigned long value =
+        std::strtoul(command + sizeof(kDeviceShowPrefix) - 1, &end, 10);
+    if (end == command + sizeof(kDeviceShowPrefix) - 1 || *end != '\0' ||
+        value == 0) {
+      DEBUG_PORT.println("debug_device event=show result=invalid_id");
+      return;
+    }
+    // Same path as tapping the row in Devices: foreground ownership and the
+    // device's own control screen.
+    ui::showDevice(static_cast<studio::InstanceId>(value));
+    DEBUG_PORT.printf("debug_device event=show instance=%lu\n", value);
+    return;
+  }
+  if (std::strcmp(command, "device home") == 0) {
+    ui::showHome();
+    DEBUG_PORT.println("debug_device event=home result=ok");
+    return;
+  }
   if (std::strcmp(command, "heap") == 0) {
     const studio::SystemInfo info = studio::systemInfo();
     DEBUG_PORT.printf(

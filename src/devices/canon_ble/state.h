@@ -48,6 +48,9 @@ struct CanonBleState {
   // True while scanning if the only visible Canon bodies are already claimed by
   // other device records (so a new instance cannot pair them).
   bool claimedPeerVisible = false;
+  // A direct connect attempt failed (typically HCI 0x3E while the body wakes
+  // its radio) and the central is waiting to retry the same address.
+  bool retryPending = false;
   char deviceName[40] = "";
 };
 

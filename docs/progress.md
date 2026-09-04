@@ -5,6 +5,24 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-04: Canon device screen "disconnects three times" while waking
+
+- Reproduced from the local console (`device show <id>` opens the same
+  screen the Devices row does; `device home` returns). With the body awake
+  the screen path connected at 1.0 s and was session-ready at 2.2 s, then
+  held for 75 s with no drops. With the body drowsy the first poke failed
+  with HCI 0x3E (574) and the second connected; a fully asleep body needs
+  two or three pokes. Between pokes the central sits in its retry wait, the
+  Canon client reported the link as plain Disconnected, and the screen showed
+  `DISCONNECTED / SMARTPHONE BLE` for 1.5 s before `CONNECTING...` for the
+  next attempt. That flicker is what read as three disconnect/reconnect
+  cycles; the link never dropped after it was established.
+- `CanonBleState::retryPending` is now set while a saved body's direct retry
+  is scheduled, and the Canon screen shows `WAKING CAMERA... / RETRYING LINK`
+  for that state instead of DISCONNECTED. The recorder shell traces status
+  changes to the UART (`recorder_ui status=... detail=...`) so captures show
+  what the operator saw. Native tests 99/99; `bleep` and `ui_sim` build.
+
 ### 2026-09-04: Update-check heap floor, HA state read, backoff A/B
 
 - Instrumented the boot update check (its logs had been going to the USB CDC

@@ -115,6 +115,11 @@ void refresh() {
     } else if (runtime.link == studio::LinkState::Connecting) {
       view.status = "CONNECTING...";
       view.detail = "SECURE HANDSHAKE";
+    } else if (state != nullptr && state->retryPending) {
+      // A sleeping body answers the first pokes with 0x3E and stays silent
+      // for several seconds; keep showing progress instead of DISCONNECTED.
+      view.status = "WAKING CAMERA...";
+      view.detail = "RETRYING LINK";
     } else if (state != nullptr && state->pairingRejected) {
       view.status = "PAIRING REJECTED";
       view.detail = "TRY AGAIN";

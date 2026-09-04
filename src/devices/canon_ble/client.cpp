@@ -217,6 +217,13 @@ void CanonBleClient::loop() {
       state_.link = Link::Connecting;
       state_.phase = State::Phase::Bonding;
     }
+    // Between wake pokes the link is genuinely down, but the operator is
+    // watching a connection in progress, not a disconnect.
+    state_.retryPending =
+        haveTarget_ && (phase == studio::ble::LinkPhase::WaitingRetry ||
+                        phase == studio::ble::LinkPhase::WaitingConnect);
+  } else {
+    state_.retryPending = false;
   }
   if (connectRequested_ && newHandshake_ && scanCandidatePending_ &&
       static_cast<int32_t>(now - scanDwellUntilMs_) >= 0) {
