@@ -107,6 +107,12 @@ void shootingNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
 
 }  // namespace
 
+namespace {
+uint16_t gRetryBackoffCapMs = 1500;
+}  // namespace
+
+void setRetryBackoffCapForDebug(uint16_t capMs) { gRetryBackoffCapMs = capMs; }
+
 bool CanonBleClient::begin() {
   if (initialized_) {
     return true;
@@ -117,10 +123,18 @@ bool CanonBleClient::begin() {
   if (notifyQueue_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
   policy.security = studio::ble::SecurityPolicy::BondNoMitm;
-  policy.connectTimeoutMs = 4000;
-  policy.connectWatchdogMs = 6000;
+  // Every successful establishment in the captures completed within 2.1 s
+  // and every wake failure surfaced within 2.8 s; a body that stays silent
+  // for 4 s is off or asleep, and while the initiator waits no other link can
+  // connect (ADR-021), so the recorder queued behind it paid the full 4 s.
+  policy.connectTimeoutMs = 2500;
+  policy.connectWatchdogMs = 4000;
   policy.directAttemptsBeforeScan = 1;
   policy.alwaysDirect = lockedAddr_[0] != '\0';
+  // A just-woken body answers the first pokes with HCI 0x3E and then stays
+  // silent for a fixed 7-9 s regardless of how long the panel waits, so the
+  // growing backoff only delays the attempt that finally succeeds.
+  policy.retryBackoffCapMs = gRetryBackoffCapMs;
   policy.diagnosticTag = "canon_smart";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
@@ -162,6 +176,8 @@ bool CanonBleClient::activate(const char* address, uint8_t addressType,
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   securityFails_ = 0;
+  remoteRejections_ = 0;
+  setupRetries_ = 0;
   bondRecoveryPending_ = false;
   clearIgnoredAddresses();
   if (haveTarget_) {
@@ -206,6 +222,13 @@ void CanonBleClient::loop() {
       state_.link = Link::Connecting;
       state_.phase = State::Phase::Bonding;
     }
+    // Between wake pokes the link is genuinely down, but the operator is
+    // watching a connection in progress, not a disconnect.
+    state_.retryPending =
+        haveTarget_ && (phase == studio::ble::LinkPhase::WaitingRetry ||
+                        phase == studio::ble::LinkPhase::WaitingConnect);
+  } else {
+    state_.retryPending = false;
   }
   if (connectRequested_ && newHandshake_ && scanCandidatePending_ &&
       static_cast<int32_t>(now - scanDwellUntilMs_) >= 0) {
@@ -244,11 +267,24 @@ void CanonBleClient::loop() {
       return;
     }
     if (!completeConnect()) {
+      constexpr uint8_t kSetupRetryLimit = 2;
+      if (!newHandshake_ && haveTarget_ && setupRetries_ < kSetupRetryLimit) {
+        // Saved body accepted the link and bonded but its GATT server never
+        // answered discovery (ATT timeout). Reconnect instead of parking the
+        // screen on CONNECTION FAILED with a manual Retry.
+        ++setupRetries_;
+        CANON_LOG.printf("canon setup retry %u/%u addr=%s\n",
+                         static_cast<unsigned>(setupRetries_),
+                         static_cast<unsigned>(kSetupRetryLimit), targetAddr_);
+        studio::ble::bleCentral().disconnect(linkHandle_, true, 1500);
+        return;
+      }
       CANON_LOG.printf("canon setup failed newHandshake=%d addr=%s\n",
                     newHandshake_ ? 1 : 0, targetAddr_);
       failProtocol();
       return;
     }
+    setupRetries_ = 0;
     CANON_LOG.printf("canon setup ok phase=%d\n", static_cast<int>(state_.phase));
   }
 
@@ -324,6 +360,9 @@ void CanonBleClient::loop() {
 }
 
 void CanonBleClient::retry() {
+  remoteRejections_ = 0;
+  setupRetries_ = 0;
+  state_.pairingRejected = false;
   if (newHandshake_ || targetAddr_[0] == '\0') {
     startScan();
     return;
@@ -1118,6 +1157,22 @@ void CanonBleClient::onBleEvent(studio::ble::LinkHandle link,
       ignoreAddress(targetAddr_);
       haveTarget_ = false;
       targetAddr_[0] = '\0';
+    } else if (!newHandshake_ && haveTarget_ && event.reason == 531 &&
+               connectRequested_ &&
+               (state_.phase == State::Phase::Idle ||
+                state_.phase == State::Phase::Bonding)) {
+      // A saved body that accepts the link and hangs up before bonding has
+      // handed its smartphone registration to another remote. Give it a few
+      // tries for a wake glitch, then stop and ask for a new pairing instead
+      // of burning the whole sequence connect budget.
+      constexpr uint8_t kRemoteRejectionLimit = 3;
+      if (++remoteRejections_ >= kRemoteRejectionLimit) {
+        CANON_LOG.printf("canon pairing rejected by camera addr=%s count=%u\n",
+                         targetAddr_,
+                         static_cast<unsigned>(remoteRejections_));
+        state_.pairingRejected = true;
+        connectRequested_ = false;
+      }
     }
     const bool expectedPowerOff =
         state_.phase == State::Phase::PoweringOff && !connectRequested_;
@@ -1135,6 +1190,7 @@ void CanonBleClient::onBleEvent(studio::ble::LinkHandle link,
       handleSecurityFailure();
     } else {
       securityFails_ = 0;
+      remoteRejections_ = 0;
       adoptResolvedIdentity();
       setupPending_ = true;
       setupAtMs_ = millis();

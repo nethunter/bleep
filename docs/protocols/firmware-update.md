@@ -135,7 +135,16 @@ interpreting tag format. Private keys are `OTA_SIGNING_PRIVATE_KEY` secrets in
 the `development` and approval-protected `stable` environments. Each signed
 release publishes `bleep-update.bin` for main and `bleep-recovery.bin` for the
 fixed recovery refresh; both hashes, sizes, and URLs are covered by the same
-canonical signature.
+canonical signature. Since 2026-09-04 the packager also emits
+`bleep-update.bundle`: the exact canonical manifest bytes followed by one line
+holding the detached signature in base64. Firmware fetches the bundle first
+(one asset download, so one TLS handshake to `github.com` instead of two) and
+falls back to `bleep-update.json` plus `bleep-update.sig` when a release
+answers 404. Measured on the ESP32-C3, Wi-Fi takes about 46 KB of heap and
+each `github.com` handshake (Sectigo P-384 chain) another 55-75 KB, leaving
+0-20 KB at the trough; the `githubusercontent.com` hops (ISRG chain) are far
+lighter. Handshake exhaustion surfaces as `mbedtls_ssl_handshake returned
+-0x2700` and a failed check that retries later.
 
 The one-time migration bundle writes bootloader `0x0000`, partition table
 `0x8000`, blank OTA metadata `0xE000`, recovery `0x10000`, blank journal

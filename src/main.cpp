@@ -22,6 +22,9 @@
 #include "wifi_configuration.h"
 #include "ui.h"
 #include "portal_service.h"
+#if CONFIG_DRIVER_CANON_BLE
+#include "devices/canon_ble/client.h"
+#endif
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define DEBUG_PORT Serial0
@@ -412,6 +415,70 @@ void runDebugCommand(char* command) {
   if (std::strcmp(command, "scene cancel") == 0) {
     studio::scenes().cancel();
     DEBUG_PORT.println("debug_scene event=cancel result=ok");
+    return;
+  }
+  // Bench access to the configuration Portal without touching the panel. The
+  // serial console already requires physical access, so this keeps ADR-027's
+  // physically-entered boundary for the operator while letting a tethered
+  // host open the same screen the Settings tile does.
+#if CONFIG_DRIVER_CANON_BLE
+  static constexpr char kCanonBackoffPrefix[] = "canon backoff ";
+  if (std::strncmp(command, kCanonBackoffPrefix,
+                   sizeof(kCanonBackoffPrefix) - 1) == 0) {
+    char* end = nullptr;
+    const unsigned long value =
+        std::strtoul(command + sizeof(kCanonBackoffPrefix) - 1, &end, 10);
+    if (end == command + sizeof(kCanonBackoffPrefix) - 1 || *end != '\0' ||
+        value > 60000) {
+      DEBUG_PORT.println("debug_canon event=backoff result=invalid_value");
+      return;
+    }
+    canon_ble::setRetryBackoffCapForDebug(static_cast<uint16_t>(value));
+    DEBUG_PORT.printf("debug_canon event=backoff cap_ms=%lu\n", value);
+    return;
+  }
+#endif
+  static constexpr char kDeviceShowPrefix[] = "device show ";
+  if (std::strncmp(command, kDeviceShowPrefix,
+                   sizeof(kDeviceShowPrefix) - 1) == 0) {
+    char* end = nullptr;
+    const unsigned long value =
+        std::strtoul(command + sizeof(kDeviceShowPrefix) - 1, &end, 10);
+    if (end == command + sizeof(kDeviceShowPrefix) - 1 || *end != '\0' ||
+        value == 0) {
+      DEBUG_PORT.println("debug_device event=show result=invalid_id");
+      return;
+    }
+    // Same path as tapping the row in Devices: foreground ownership and the
+    // device's own control screen.
+    ui::showDevice(static_cast<studio::InstanceId>(value));
+    DEBUG_PORT.printf("debug_device event=show instance=%lu\n", value);
+    return;
+  }
+  if (std::strcmp(command, "device home") == 0) {
+    ui::showHome();
+    DEBUG_PORT.println("debug_device event=home result=ok");
+    return;
+  }
+  if (std::strcmp(command, "heap") == 0) {
+    const studio::SystemInfo info = studio::systemInfo();
+    DEBUG_PORT.printf(
+        "debug_heap free_heap=%lu min_free_heap=%lu max_alloc=%lu wifi=%s\n",
+        static_cast<unsigned long>(info.freeHeap),
+        static_cast<unsigned long>(info.minimumFreeHeap),
+        static_cast<unsigned long>(info.largestFreeBlock), info.wifiState);
+    return;
+  }
+  if (std::strcmp(command, "portal start") == 0) {
+    ui::showPortal();
+    DEBUG_PORT.printf("debug_portal event=start active=%u status=%s\n",
+                      portal::active() ? 1u : 0u, portal::statusText());
+    return;
+  }
+  if (std::strcmp(command, "portal stop") == 0) {
+    portal::stop();
+    ui::showHome();
+    DEBUG_PORT.println("debug_portal event=stop result=ok");
     return;
   }
   DEBUG_PORT.println("debug event=command result=unknown");
@@ -809,6 +876,18 @@ void setup() {
 
   studio::devices().begin();
   studio::scenes().begin();
+  // Mixed sequences may start Home Assistant's Wi-Fi while BLE peripherals
+  // are still waking, but only after the BLE runtime holds its contiguous
+  // initialization allocation and with headroom for the Wi-Fi driver's RX
+  // buffers plus the WebSocket client (measured: two BLE links plus Wi-Fi
+  // left ~33 KB free / 15 KB largest block).
+  studio::scenes().setEarlyNetworkPolicy([]() {
+#if CONFIG_BLE_RUNTIME_ENABLED
+    if (studio::ble::bleCentral().activeCount() == 0) return false;
+#endif
+    const studio::SystemInfo info = studio::systemInfo();
+    return info.freeHeap >= 56000 && info.largestFreeBlock >= 40000;
+  });
   wifi_configuration::service().begin();
   ui::init();
   // Paint Home before the updater starts its five-second boot grace period.

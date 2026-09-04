@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -69,6 +70,7 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
         sys.executable, str(ROOT / "scripts/verify_firmware_update.py"),
         "--manifest", str(self.output / "bleep-update.json"),
         "--signature", str(self.output / "bleep-update.sig"),
+        "--bundle", str(self.output / "bleep-update.bundle"),
         "--firmware", str(self.output / "bleep-update.bin"),
         "--recovery", str(self.output / "bleep-recovery.bin"),
         "--public-key", str(self.public_key),
@@ -92,6 +94,10 @@ class FirmwareUpdateToolsTest(unittest.TestCase):
     first = encoded
     self.package()
     self.assertEqual(first, (self.output / "bleep-update.json").read_bytes())
+    bundle = (self.output / "bleep-update.bundle").read_bytes()
+    signature = (self.output / "bleep-update.sig").read_bytes()
+    self.assertEqual(encoded + base64.b64encode(signature) + b"\n", bundle)
+    self.assertLessEqual(len(bundle), 1791)
     self.verify(True)
 
   def test_tampered_firmware_is_rejected(self) -> None:

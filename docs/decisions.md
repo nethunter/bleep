@@ -258,7 +258,7 @@ the replacement.
 
 ## ADR-020: Sequence runs hold concurrent device links
 
-- Status: Accepted (amended 2026-08-04 and 2026-08-09)
+- Status: Accepted (amended 2026-08-04, 2026-08-09, and 2026-09-03)
 - Decision: Opening a sequence run screen prepares every distinct Start/Stop
   target concurrently (`Connecting` → `Ready`). `Ready` requires both a
   physical link and driver-confirmed protocol readiness after required
@@ -283,7 +283,15 @@ the replacement.
   on the run screen. Device screens opened outside the sequence remain blocked
   while it holds links. Sequence-owned target controls are disabled during
   Start/Stop execution, and Start/Stop remain unavailable while any target is
-  not protocol-ready. Settings never cancels an active Start, armed recording,
+  not protocol-ready. A physical target that reports `pairingRejected` (the
+  peer accepts the link and terminates it before bonding, repeatedly) fails
+  preparation immediately with `Re-pair <device>` rather than consuming the
+  connect budget; the operator must re-pair before the sequence can run. Physical targets are acquired recorders first, then lights, then
+  cameras (2026-09-04): the shared central runs one connect at a time, a
+  recorder establishes in under a second when awake, and a sleeping camera
+  holds the procedure through several failed pokes. Step execution keeps the
+  authored order.
+  Settings never cancels an active Start, armed recording,
   Stop, or action failure that still permits authored Stop cleanup. A short
   hardware-button press invokes the enabled
   Start/Stop action; a long press follows the same Back path as touch and never
@@ -319,7 +327,15 @@ the replacement.
   `0x3e` establishment timeouts under simultaneous attempts. Discovery remains
   shared, and a queued target may connect while an established target performs
   protocol initialization. Protocol-specific candidate dwell, ignored-peer,
-  and direct-versus-scan policy remains in each client.
+  and direct-versus-scan policy remains in each client. Clients may also cap
+  the growing direct-retry backoff (`ConnectPolicy::retryBackoffCapMs`) when
+  their peripheral's post-failure silence is a fixed interval; Canon Smart
+  uses 1.5 s. `connectPriority` orders queued connects (recorders ahead of
+  cameras), `directAttemptsBeforeScan = 0` selects listen-first for peers
+  whose blind poke is costly, advertisements carry a `connectable` flag and
+  non-connectable ones never start a connect, and the shared scan runs
+  without duty-cycle pauses for 15 s while a saved peer that just failed to
+  establish is sought (measured AK-BT1 silence after a failed poke: 6-30 s).
 - Measurement boundary (2026-08-04): targeted discovery, next-loop setup,
   readiness telemetry, and best-effort connection parameters are implemented
   without changing ownership. A shared asynchronous GATT executor is deferred
@@ -432,7 +448,17 @@ the replacement.
   sequence started Wi-Fi before the lazy BLE central. NimBLE then failed its
   contiguous `0x7800` allocation (`BLE_INIT: Malloc failed`) and asserted into
   an interrupt-watchdog reset. Preparation now acquires all physical targets
-  before HA targets regardless of authored action order. A subsequent live
+  before HA targets regardless of authored action order. Amendment
+  2026-09-03: the ordering protects NimBLE's initialization allocation, not
+  peripheral wake time, so the platform may supply an early-network policy
+  (`SceneRunner::setEarlyNetworkPolicy`). `main.cpp` permits HA Wi-Fi once
+  the BLE central holds a link and free heap is at least 56 KB with a 40 KB
+  largest block; otherwise HA still waits for every physical target. An
+  early-started HA keeps the full network connect budget measured from the
+  later of its own start and the moment the physical targets became ready.
+  Station joins reuse the last successful channel/BSSID within a boot
+  (`wifi_station_cache`), and the HA runtime turns the radio off through a
+  settled main-loop shutdown instead of an immediate `WIFI_OFF`. A subsequent live
   run proved that two BLE sessions left too little heap for the Wi-Fi driver's
   four required RX buffers. At that tranche the target used two 20-row DMA display strips,
   a 76 KiB LVGL pool, and two 2 KiB HA frame slots. The complete simulator flow
@@ -1202,7 +1228,9 @@ the replacement.
   and 1/6/24-hour network retry sequence. Every updater-owned terminal path
   returns Wi-Fi to `WIFI_OFF`.
 - Consent: Background work fetches only the signed manifest and detached
-  signature. A newer, non-dismissed sequence offers **Install now** or
+  signature (since 2026-09-04 preferably as the single `bleep-update.bundle`
+  asset, falling back to the pair on 404, because each `github.com` TLS
+  handshake runs within a few KB of the ESP32-C3 heap floor). A newer, non-dismissed sequence offers **Install now** or
   **Later**. Installation requires a USB/reboot warning and explicit consent
   before scenes and retained links are released.
 - Storage: Partition schema 2 contains fixed factory recovery at

@@ -46,6 +46,7 @@ struct BleNimbleBackend::Impl {
                    sizeof(event.advertisement.address.value) - 1);
       event.advertisement.address.type = device->getAddressType();
       event.advertisement.rssi = device->getRSSI();
+      event.advertisement.connectable = device->isConnectable();
       const std::vector<uint8_t>& payload = device->getPayload();
       const size_t length =
           std::min(payload.size(), sizeof(event.advertisement.payload));

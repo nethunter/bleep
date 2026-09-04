@@ -352,7 +352,9 @@ outside Portal, active HA ownership, and a bounded updater check the radio is
 explicitly `WIFI_OFF`.
 
 Mixed sequences initialize every physical transport before acquiring any Home
-Assistant target, independent of authored action order. On the ESP32-C3,
+Assistant target, independent of authored action order, unless the platform's
+early-network policy reports that the BLE runtime is already up with enough
+heap; then Home Assistant's Wi-Fi starts while the peripherals are still waking. On the ESP32-C3,
 NimBLE initialization requires a contiguous allocation of roughly `0x7800`
 bytes; starting Wi-Fi first can fragment/deplete the heap and causes the
 underlying BLE library to assert instead of returning a recoverable error.

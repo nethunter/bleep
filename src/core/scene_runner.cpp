@@ -118,6 +118,9 @@ bool SceneRunner::containsTarget(const TargetSet& targets,
 bool SceneRunner::activateTargets(const TargetSet& targets) {
   homeAssistantDeferred_ = false;
   homeAssistantPreparation_ = false;
+  homeAssistantEarly_ = false;
+  homeAssistantStartedMs_ = 0;
+  physicalReadyMs_ = 0;
   bool hasPhysicalTarget = false;
   bool hasHomeAssistantTarget = false;
   for (uint8_t i = 0; i < targets.count; ++i) {
@@ -141,18 +144,45 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
       homeAssistantDeferred_ = true;
       break;
     }
-    for (uint8_t i = 0; i < targets.count; ++i) {
-      const DeviceRecord* record = devices_.find(targets.ids[i]);
+    // Physical pass: recorders and lights first, cameras last. A recorder
+    // establishes in under a second when awake, while a sleeping camera can
+    // hold the single controller connect procedure through several failed
+    // pokes; acquisition order sets the initial connect queue order.
+    InstanceId ordered[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+    uint8_t orderedCount = 0;
+    for (uint8_t rank = 0; rank < 3 && !homeAssistantPass; ++rank) {
+      for (uint8_t i = 0; i < targets.count; ++i) {
+        const DeviceRecord* record = devices_.find(targets.ids[i]);
+        if (record == nullptr || record->driverId == DriverId::HomeAssistant) {
+          continue;
+        }
+        const DeviceType type = devices_.profile(targets.ids[i]).type;
+        const uint8_t targetRank = type == DeviceType::Recorder ? 0
+                                   : type == DeviceType::Camera  ? 2
+                                                                 : 1;
+        if (targetRank == rank) ordered[orderedCount++] = targets.ids[i];
+      }
+    }
+    if (homeAssistantPass) {
+      for (uint8_t i = 0; i < targets.count; ++i) {
+        const DeviceRecord* record = devices_.find(targets.ids[i]);
+        if (record != nullptr && record->driverId == DriverId::HomeAssistant) {
+          ordered[orderedCount++] = targets.ids[i];
+        }
+      }
+    }
+    for (uint8_t i = 0; i < orderedCount; ++i) {
+      const DeviceRecord* record = devices_.find(ordered[i]);
       const bool homeAssistant =
           record != nullptr && record->driverId == DriverId::HomeAssistant;
       if (homeAssistant != homeAssistantPass) {
         continue;
       }
       const bool acquired =
-          devices_.acquire(targets.ids[i], ConnectionOwner::Sequence);
+          devices_.acquire(ordered[i], ConnectionOwner::Sequence);
       const SceneStep diagnosticStep =
-          makeActionStep(targets.ids[i], CommandType::Connect);
-      const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
+          makeActionStep(ordered[i], CommandType::Connect);
+      const DeviceRuntimeState runtime = devices_.runtimeState(ordered[i]);
       logSceneAction("acquire_target", progress_.sceneId, i, &diagnosticStep,
                      acquired ? 0 : 1, &runtime);
       if (!acquired) {
@@ -161,7 +191,7 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
         }
         return false;
       }
-      acquiredIds[acquiredCount++] = targets.ids[i];
+      acquiredIds[acquiredCount++] = ordered[i];
     }
   }
   return true;
@@ -228,6 +258,32 @@ bool SceneRunner::allPhysicalTargetsConnected(const TargetSet& targets,
     }
   }
   return true;
+}
+
+bool SceneRunner::anyTargetRejected(const TargetSet& targets,
+                                    InstanceId& rejected) const {
+  rejected = kInvalidInstanceId;
+  for (uint8_t i = 0; i < targets.count; ++i) {
+    if (devices_.runtimeState(targets.ids[i]).pairingRejected) {
+      rejected = targets.ids[i];
+      return true;
+    }
+  }
+  return false;
+}
+
+void SceneRunner::failRejectedTarget(InstanceId rejected) {
+  // The peer keeps accepting and dropping the link, so waiting out the
+  // connect budget cannot help. Name the device that needs a new pairing.
+  const DeviceRuntimeState runtime = devices_.runtimeState(rejected);
+  logSceneAction("pairing_rejected", progress_.sceneId, 0, nullptr,
+                 static_cast<int>(rejected), &runtime);
+  const DeviceRecord* record = devices_.find(rejected);
+  char detail[48];
+  std::snprintf(detail, sizeof(detail), "Re-pair %s",
+                record != nullptr ? record->displayName : "?");
+  progress_.connectTarget = rejected;
+  fail(SceneRunStatus::ActionFailed, detail);
 }
 
 void SceneRunner::setDetail(const char* text) { copyDetail(progress_.detail, text); }
@@ -634,6 +690,14 @@ void SceneRunner::tick(uint32_t nowMs) {
     phaseStartedMs_ = nowMs;
   }
 
+  if (progress_.phase == ScenePhase::Connecting) {
+    InstanceId rejected = kInvalidInstanceId;
+    if (anyTargetRejected(targets_, rejected)) {
+      failRejectedTarget(rejected);
+      return;
+    }
+  }
+
   if (progress_.phase == ScenePhase::Connecting && homeAssistantDeferred_) {
     InstanceId waiting = kInvalidInstanceId;
     if (!allPhysicalTargetsConnected(targets_, waiting)) {
@@ -651,6 +715,25 @@ void SceneRunner::tick(uint32_t nowMs) {
       if (nowMs - phaseStartedMs_ >=
           CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS) {
         fail(SceneRunStatus::ConnectTimeout, "Connect timeout");
+        return;
+      }
+      // The physical-first order protects NimBLE's contiguous initialization
+      // allocation. Once the platform reports that the BLE runtime is up and
+      // enough heap remains, Wi-Fi may start while the peripherals are still
+      // waking instead of waiting for the slowest of them.
+      if (earlyNetworkPolicy_ != nullptr && earlyNetworkPolicy_()) {
+        homeAssistantDeferred_ = false;
+        homeAssistantEarly_ = true;
+        homeAssistantStartedMs_ = nowMs;
+        if (!activateDeferredHomeAssistantTargets()) {
+          releaseTargets(targets_);
+          fail(SceneRunStatus::ActionFailed, "Activate failed");
+          return;
+        }
+        // The remaining physical wait keeps its own cold-start budget.
+        homeAssistantPreparation_ = false;
+        logSceneAction("home_assistant_early", progress_.sceneId, 0, nullptr,
+                       0);
       }
       return;
     }
@@ -703,10 +786,30 @@ void SceneRunner::tick(uint32_t nowMs) {
     std::snprintf(detail, sizeof(detail), "Connect %s",
                   record != nullptr ? record->displayName : "?");
     setDetail(detail);
-    const uint32_t connectTimeoutMs =
-        homeAssistantPreparation_ ? CONFIG_SCENE_CONNECT_TIMEOUT_MS
-                                  : CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS;
-    if (nowMs - phaseStartedMs_ >= connectTimeoutMs) {
+    InstanceId physicalWaiting = kInvalidInstanceId;
+    const bool physicalPending =
+        !allPhysicalTargetsConnected(targets_, physicalWaiting);
+    if (physicalPending) {
+      const uint32_t connectTimeoutMs =
+          homeAssistantPreparation_ ? CONFIG_SCENE_CONNECT_TIMEOUT_MS
+                                    : CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS;
+      if (nowMs - phaseStartedMs_ >= connectTimeoutMs) {
+        fail(SceneRunStatus::ConnectTimeout, "Connect timeout");
+      }
+      return;
+    }
+    // Only network targets remain. An early-started HA still gets the full
+    // network budget measured from whichever came later: its own start, or
+    // the moment the physical targets stopped competing for the radio.
+    if (physicalReadyMs_ == 0) physicalReadyMs_ = nowMs;
+    uint32_t networkStartedMs = phaseStartedMs_;
+    if (homeAssistantEarly_) {
+      networkStartedMs =
+          static_cast<int32_t>(physicalReadyMs_ - homeAssistantStartedMs_) > 0
+              ? physicalReadyMs_
+              : homeAssistantStartedMs_;
+    }
+    if (nowMs - networkStartedMs >= CONFIG_SCENE_CONNECT_TIMEOUT_MS) {
       fail(SceneRunStatus::ConnectTimeout, "Connect timeout");
     }
     return;

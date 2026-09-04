@@ -11,6 +11,11 @@ class NimBLERemoteCharacteristic;
 
 namespace canon_ble {
 
+// Bench override for the direct-retry backoff cap applied at the next client
+// begin(); 0 restores the unbounded 1.5 s x failures growth. Local builds
+// expose it as `canon backoff <ms>` for A/B timing runs.
+void setRetryBackoffCapForDebug(uint16_t capMs);
+
 class CanonBleClient : public studio::ble::BleCentralDelegate {
  public:
   using Link = CanonBleState::Link;
@@ -111,6 +116,14 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   bool powerOffRequested_ = false;
   bool setupPending_ = false;
   bool bondRecoveryPending_ = false;
+  // Consecutive links a saved camera accepted and then terminated (HCI 0x13
+  // + 0x200) before bonding completed. The camera no longer recognizes this
+  // panel; retrying cannot fix it.
+  uint8_t remoteRejections_ = 0;
+  // Bonded links whose GATT setup found no handshake service. A body that
+  // has just woken its radio sometimes accepts the link and bonding before
+  // its GATT server answers; one reconnect usually recovers it.
+  uint8_t setupRetries_ = 0;
   bool openingShootRequested_ = false;
 
   char targetAddr_[20] = "";

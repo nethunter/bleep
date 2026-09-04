@@ -230,6 +230,7 @@ class FakeDriver : public studio::DeviceDriver {
     state.commandPending = commandPending;
     state.recordingConfirmed = recordingConfirmed;
     state.recording = recording;
+    state.pairingRejected = found && pairingRejected;
     return state;
   }
   const void* specializedState(studio::InstanceId) const override { return nullptr; }
@@ -290,6 +291,7 @@ class FakeDriver : public studio::DeviceDriver {
   int cancelPendingCount = 0;
   bool recordingConfirmed = false;
   bool recording = false;
+  bool pairingRejected = false;
   studio::InstanceId activeInstance = studio::kInvalidInstanceId;
   studio::InstanceId
       activeInstances[studio::DeviceManager::kMaxActiveInstances] = {};

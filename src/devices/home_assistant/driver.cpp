@@ -1,5 +1,7 @@
 #include "devices/home_assistant/driver.h"
 
+#include <Arduino.h>
+
 #include <new>
 #include <cstring>
 
@@ -34,6 +36,7 @@ void HomeAssistantDriver::deactivate(InstanceId instanceId) {
 }
 
 void HomeAssistantDriver::loop() {
+  home_assistant::HomeAssistantClient::pumpShutdown(millis());
   if (client_ != nullptr) client_->loop();
 }
 

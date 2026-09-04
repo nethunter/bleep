@@ -9,6 +9,7 @@ namespace studio::ble {
 namespace {
 constexpr uint32_t kScanBurstMs = 4000;
 constexpr uint32_t kScanPauseMs = 1500;
+constexpr uint32_t kWakeScanContinuousMs = 15000;
 
 bool deadlineReached(uint32_t nowMs, uint32_t deadlineMs) {
   return static_cast<int32_t>(nowMs - deadlineMs) >= 0;
@@ -104,6 +105,27 @@ void BleCentral::release(LinkHandle link) {
 
 void BleCentral::loop(uint32_t nowMs) {
   nowMs_ = nowMs;
+  for (size_t i = 0; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
+    Slot& slot = slots_[i];
+    if (slot.delegate == nullptr || slot.setupParametersRetryAtMs == 0 ||
+        static_cast<int32_t>(nowMs - slot.setupParametersRetryAtMs) < 0) {
+      continue;
+    }
+    slot.setupParametersRetryAtMs = 0;
+    if (slot.phase == LinkPhase::Connected && !slot.protocolReady) {
+      const bool tuned = backend_.updateConnectionParameters(
+          handleFor(i), slot.policy.setupParameters);
+      logTiming(slot.policy.diagnosticTag, handleFor(i),
+                "setup_parameters_retry", slot.setupParametersRetries,
+                nowMs - slot.timingStartedMs, tuned ? "ok" : "fallback");
+      // A drowsy peer can keep its own update in flight for seconds; back off
+      // 400 ms, 1 s, 2 s before giving up on the fast setup interval.
+      if (!tuned && ++slot.setupParametersRetries < 3) {
+        slot.setupParametersRetryAtMs =
+            nowMs + (slot.setupParametersRetries == 1 ? 1000u : 2000u);
+      }
+    }
+  }
   // The backend may still be completing asynchronous client destruction after
   // the last logical link was released. Keep pumping it so teardown can finish
   // and an immediate reacquire does not race stale NimBLE clients.
@@ -187,7 +209,7 @@ bool BleCentral::selectAdvertisement(
   claims_[indexFor(link)] = advertisement.address;
   claimOwners_[indexFor(link)] = link;
   updateScan();
-  return beginConnect(link, *slot);
+  return beginConnect(link, *slot, true);
 }
 
 bool BleCentral::requestConnect(LinkHandle link, const Address& address) {
@@ -400,11 +422,28 @@ void BleCentral::updateScan() {
     scanRunning_ = false;
     scanResumeAtMs_ = nowMs_ + kScanPauseMs;
   }
+  // A saved peer that just failed to establish (a waking AK-BT1 or camera)
+  // re-advertises once, briefly, after several seconds of silence. Skip the
+  // duty-cycle pause while such a wake is pending so that advertisement is
+  // not missed; the window is bounded so battery policy resumes afterwards.
+  bool wakePending = false;
+  for (const Slot& slot : slots_) {
+    if (slot.delegate != nullptr && slot.scanRequested && slot.targetKnown &&
+        (slot.connectFailures > 0 ||
+         slot.policy.directAttemptsBeforeScan == 0) &&
+        nowMs_ - slot.stageStartedMs < kWakeScanContinuousMs) {
+      wakePending = true;
+    }
+  }
   if (scanRunning_ && deadlineReached(nowMs_, scanBurstEndsMs_)) {
-    backend_.stopScan();
-    scanRunning_ = false;
-    scanResumeAtMs_ = nowMs_ + kScanPauseMs;
-    return;
+    if (wakePending) {
+      scanBurstEndsMs_ = nowMs_ + kScanBurstMs;
+    } else {
+      backend_.stopScan();
+      scanRunning_ = false;
+      scanResumeAtMs_ = nowMs_ + kScanPauseMs;
+      return;
+    }
   }
   if (!scanRunning_ &&
       (scanResumeAtMs_ == 0 || deadlineReached(nowMs_, scanResumeAtMs_))) {
@@ -460,6 +499,8 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
                   "setup_parameters", 0,
                   nowMs - slot->timingStartedMs,
                   tuned ? "ok" : "fallback");
+        slot->setupParametersRetries = 0;
+        slot->setupParametersRetryAtMs = tuned ? 0 : nowMs + 400;
       }
       break;
     case EventType::ConnectFailed:
@@ -486,6 +527,7 @@ void BleCentral::handleEvent(const Event& event, uint32_t nowMs) {
       slot->connectQueued = false;
       slot->securityPending = false;
       slot->protocolReady = false;
+      slot->setupParametersRetryAtMs = 0;
       logTiming(slot->policy.diagnosticTag, event.link, "disconnected",
                 nowMs - slot->stageStartedMs,
                 nowMs - slot->timingStartedMs, "failed");
@@ -527,6 +569,10 @@ void BleCentral::scheduleRetry(Slot& slot, uint32_t nowMs,
       slot.connectFailures < 4 ? slot.connectFailures : 4;
   uint32_t delay =
       delayMs != 0 ? delayMs : 1500u * (multiplier ? multiplier : 1);
+  if (delayMs == 0 && slot.policy.retryBackoffCapMs != 0 &&
+      delay > slot.policy.retryBackoffCapMs) {
+    delay = slot.policy.retryBackoffCapMs;
+  }
   // The backoff settles a peripheral we are actively poking. When the next
   // retry can only listen for advertisements, scanning is passive: resume it
   // immediately instead of adding dead time after a failed attempt. Mirrors
@@ -552,9 +598,18 @@ void BleCentral::runRetry(LinkHandle link, Slot& slot, uint32_t) {
   }
 }
 
-bool BleCentral::beginConnect(LinkHandle link, Slot& slot) {
+bool BleCentral::beginConnect(LinkHandle link, Slot& slot,
+                              bool fromAdvertisement) {
   if (!slot.targetKnown) {
     return requestScan(link);
+  }
+  // A policy with no direct attempts listens first and connects only on a
+  // connectable advertisement from the saved address (measured on the AK-BT1:
+  // a blind poke at a drowsy dongle silences it for 10-30 s, but an awake
+  // dongle advertises only every 2-19 s, so recorders keep one direct try).
+  if (!fromAdvertisement && slot.policy.directAttemptsBeforeScan == 0 &&
+      !slot.policy.alwaysDirect) {
+    return requestScan(link, false);
   }
   slot.scanRequested = false;
   if (!slot.timingActive) {
@@ -597,12 +652,17 @@ void BleCentral::startNextQueuedConnect() {
   if (controllerProcedureBusy()) {
     return;
   }
+  size_t best = CONFIG_MAX_ACTIVE_LINKS;
   for (size_t i = 0; i < CONFIG_MAX_ACTIVE_LINKS; ++i) {
     Slot& slot = slots_[i];
-    if (slot.delegate != nullptr && slot.connectQueued) {
-      startConnectNow(handleFor(i), slot);
-      return;
+    if (slot.delegate == nullptr || !slot.connectQueued) continue;
+    if (best == CONFIG_MAX_ACTIVE_LINKS ||
+        slot.policy.connectPriority > slots_[best].policy.connectPriority) {
+      best = i;
     }
+  }
+  if (best < CONFIG_MAX_ACTIVE_LINKS) {
+    startConnectNow(handleFor(best), slots_[best]);
   }
 }
 

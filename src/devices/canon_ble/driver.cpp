@@ -150,6 +150,7 @@ DeviceRuntimeState CanonBleDriver::runtimeState(InstanceId instanceId) const {
   state.recordingConfirmed = clientState.recordingConfirmed;
   state.recording =
       clientState.recording == canon_ble::CanonBleState::Recording::Recording;
+  state.pairingRejected = clientState.pairingRejected;
   return state;
 }
 

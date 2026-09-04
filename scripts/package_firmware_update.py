@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -88,6 +89,11 @@ def main() -> int:
   signature = private_key.sign(encoded, ec.ECDSA(hashes.SHA256()))
   (args.output_dir / "bleep-update.json").write_bytes(encoded)
   (args.output_dir / "bleep-update.sig").write_bytes(signature)
+  # Single-file bundle: the exact signed manifest bytes followed by the base64
+  # signature line. Firmware fetches this first (one TLS hop to github.com
+  # instead of two) and falls back to the .json/.sig pair on 404.
+  (args.output_dir / "bleep-update.bundle").write_bytes(
+      encoded + base64.b64encode(signature) + b"\n")
   shutil.copyfile(args.firmware, args.output_dir / payload_name)
   shutil.copyfile(args.recovery, args.output_dir / recovery_payload_name)
   return 0

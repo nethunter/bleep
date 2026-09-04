@@ -38,11 +38,15 @@ int main(int, char**) {
   RUN_TEST(test_early_recovery_update_preserves_new_main_health_gate);
   RUN_TEST(test_recovery_startup_auto_boots_only_clean_valid_main);
   RUN_TEST(test_recovery_touch_requires_a_settled_release_after_reboot);
+  RUN_TEST(test_update_bundle_splits_manifest_and_base64_signature);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);
   RUN_TEST(test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts);
   RUN_TEST(test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target);
+  RUN_TEST(test_scene_fails_fast_when_physical_target_rejects_pairing);
+  RUN_TEST(test_early_network_policy_starts_home_assistant_while_ble_wakes);
+  RUN_TEST(test_scene_acquires_recorders_before_cameras);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_uses_per_instance_driver_capabilities);
   RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);
@@ -73,6 +77,7 @@ int main(int, char**) {
   RUN_TEST(test_ble_central_ignores_queued_event_from_evicted_link_generation);
   RUN_TEST(test_ble_central_shared_scan_claims_and_independent_release);
   RUN_TEST(test_ble_central_concurrent_links_retry_watchdog_and_security);
+  RUN_TEST(test_ble_central_scan_first_policy_connects_on_advertisement);
   RUN_TEST(test_tascam_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_zhiyun_reconnect_scans_after_one_direct_failure);
   RUN_TEST(test_ble_central_protocol_failure_can_stop_retry);

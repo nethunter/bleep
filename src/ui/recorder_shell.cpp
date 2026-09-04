@@ -1,5 +1,9 @@
 #include "ui/recorder_shell.h"
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
+
 #include "fonts/ui_fonts.h"
 #include "haptic_feedback.h"
 #include "ui/round_page.h"
@@ -250,6 +254,23 @@ bool ownedBy(Owner owner) {
 lv_obj_t* screen() { return root; }
 
 void apply(const View& view) {
+#if defined(ARDUINO)
+  // Trace what the operator sees so serial captures can be matched to the
+  // screen (status/detail strings are static literals).
+  static const char* lastStatus = nullptr;
+  static const char* lastDetail = nullptr;
+  if (view.status != lastStatus || view.detail != lastDetail) {
+    lastStatus = view.status;
+    lastDetail = view.detail;
+#if ARDUINO_USB_CDC_ON_BOOT
+    Serial0.printf("recorder_ui status=\"%s\" detail=\"%s\"\n", view.status,
+                   view.detail);
+#else
+    Serial.printf("recorder_ui status=\"%s\" detail=\"%s\"\n", view.status,
+                  view.detail);
+#endif
+  }
+#endif
   if (root == nullptr) {
     return;
   }

@@ -64,6 +64,7 @@ void simSetSavedWifi(const char* ssid) {
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_system.h>
+#include <esp_netif.h>
 
 #include <cstdio>
 #include <cstring>
@@ -146,6 +147,11 @@ CaptiveDnsServer* dnsServer = nullptr;
 Status currentStatus = Status::Inactive;
 uint32_t lastActivity = 0;
 bool lanMode = false;
+// Deferred radio power-off after stop(); see finishRadioOff().
+bool radioOffPending = false;
+uint32_t radioOffStartedMs = 0;
+constexpr uint32_t kRadioOffSettleMs = 250;
+constexpr uint32_t kRadioOffTimeoutMs = 2000;
 bool switchToLanPending = false;
 bool exitPending = false;
 bool setupScanPending = false;
@@ -1227,7 +1233,18 @@ bool begin() {
   return true;
 }
 
+void finishRadioOff(uint32_t now) {
+  if (!radioOffPending || now - radioOffStartedMs < kRadioOffSettleMs) return;
+  if (WiFi.status() == WL_CONNECTED &&
+      now - radioOffStartedMs < kRadioOffTimeoutMs) {
+    return;
+  }
+  WiFi.mode(WIFI_OFF);
+  radioOffPending = false;
+}
+
 void loop() {
+  finishRadioOff(millis());
   if (currentStatus == Status::Inactive || currentStatus == Status::Error) return;
   if (setupScanPending) {
     finishSetupScan();
@@ -1315,10 +1332,19 @@ void stop() {
   if (currentStatus == Status::Inactive) return;
   destroyServer();
   wifi_scan::cancel();
-  WiFi.disconnect(true, false);
-  WiFi.softAPdisconnect(true);
+  // Never deinitialize the driver in the same call that drops the station:
+  // the tcpip task still owes a DHCP release and sends it through the Wi-Fi
+  // driver (esp_netif_down -> dhcp_release_and_stop -> ieee80211_output),
+  // which faulted at a null driver pointer when Finish & Exit was pressed.
+  // Stop the DHCP client, disconnect, and let loop() power the radio off
+  // once the association is gone.
+  esp_netif_t* station = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (station != nullptr) esp_netif_dhcpc_stop(station);
+  WiFi.disconnect(false, false);
+  WiFi.softAPdisconnect(false);
   MDNS.end();
-  WiFi.mode(WIFI_OFF);
+  radioOffPending = true;
+  radioOffStartedMs = millis();
   lanMode = false;
   switchToLanPending = false;
   setupScanPending = false;
