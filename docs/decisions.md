@@ -286,7 +286,11 @@ the replacement.
   not protocol-ready. A physical target that reports `pairingRejected` (the
   peer accepts the link and terminates it before bonding, repeatedly) fails
   preparation immediately with `Re-pair <device>` rather than consuming the
-  connect budget; the operator must re-pair before the sequence can run.
+  connect budget; the operator must re-pair before the sequence can run. Physical targets are acquired recorders first, then lights, then
+  cameras (2026-09-04): the shared central runs one connect at a time, a
+  recorder establishes in under a second when awake, and a sleeping camera
+  holds the procedure through several failed pokes. Step execution keeps the
+  authored order.
   Settings never cancels an active Start, armed recording,
   Stop, or action failure that still permits authored Stop cleanup. A short
   hardware-button press invokes the enabled
@@ -326,7 +330,12 @@ the replacement.
   and direct-versus-scan policy remains in each client. Clients may also cap
   the growing direct-retry backoff (`ConnectPolicy::retryBackoffCapMs`) when
   their peripheral's post-failure silence is a fixed interval; Canon Smart
-  uses 1.5 s.
+  uses 1.5 s. `connectPriority` orders queued connects (recorders ahead of
+  cameras), `directAttemptsBeforeScan = 0` selects listen-first for peers
+  whose blind poke is costly, advertisements carry a `connectable` flag and
+  non-connectable ones never start a connect, and the shared scan runs
+  without duty-cycle pauses for 15 s while a saved peer that just failed to
+  establish is sought (measured AK-BT1 silence after a failed poke: 6-30 s).
 - Measurement boundary (2026-08-04): targeted discovery, next-loop setup,
   readiness telemetry, and best-effort connection parameters are implemented
   without changing ownership. A shared asynchronous GATT executor is deferred

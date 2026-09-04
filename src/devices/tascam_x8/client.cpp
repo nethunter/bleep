@@ -49,8 +49,13 @@ bool TascamX8Client::begin() {
   }
   if (notifyStream_ == nullptr) return false;
   studio::ble::ConnectPolicy policy;
-  policy.connectTimeoutMs = 4000;
-  policy.connectWatchdogMs = 6000;
+  // Every captured X8 establishment completed within 2.4 s; a longer wait
+  // only holds the controller (and any queued camera) on a silent dongle.
+  policy.connectTimeoutMs = 3000;
+  policy.connectWatchdogMs = 4500;
+  // A recorder establishes in well under a second when awake, so it goes
+  // ahead of cameras that may need several wake pokes.
+  policy.connectPriority = 2;
   // The unbonded AK-BT1 can accept a quick saved-address connection while its
   // radio is awake. After that single attempt, wait for fresh advertisement
   // evidence instead of spending more backoff cycles on a silent radio.
@@ -385,11 +390,13 @@ void TascamX8Client::onBleAdvertisement(
   if (link == linkHandle_ && matchesAdvertisement(advertisement)) {
     // Sightings tell wake diagnosis whether the AK-BT1 was silent or merely
     // missed by the scan duty cycle.
-    TASCAM_LOG.printf("tascam adv addr=%s type=%u rssi=%d\n",
+    TASCAM_LOG.printf("tascam adv addr=%s type=%u rssi=%d connectable=%u\n",
                       advertisement.address.value,
                       static_cast<unsigned>(advertisement.address.type),
-                      static_cast<int>(advertisement.rssi));
+                      static_cast<int>(advertisement.rssi),
+                      advertisement.connectable ? 1u : 0u);
   }
+  if (!advertisement.connectable) return;
   if (link != linkHandle_ ||
       !matchesSavedAdvertisement(advertisement,
                                  haveTarget_ ? targetAddr_ : nullptr,

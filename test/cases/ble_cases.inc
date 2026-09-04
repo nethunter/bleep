@@ -239,24 +239,67 @@ void test_ble_central_concurrent_links_retry_watchdog_and_security() {
   backend.emit(failed);
   central.loop(4702);
   TEST_ASSERT_TRUE(backend.scanRunning());
-  // The usual 4 s burst / 1.5 s pause cycle still applies after the
-  // immediate fallback.
-  central.loop(8701);
-  TEST_ASSERT_TRUE(backend.scanRunning());
+  // A known peer that just failed to establish re-advertises once after a
+  // long silence, so the scan stays continuous for 15 s instead of pausing
+  // between 4 s bursts; the usual duty cycle resumes afterwards.
   central.loop(8702);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(12702);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(16702);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(20701);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(20702);
   TEST_ASSERT_FALSE(backend.scanRunning());
-  central.loop(10201);
+  central.loop(22201);
   TEST_ASSERT_FALSE(backend.scanRunning());
-  central.loop(10202);
+  central.loop(22202);
   TEST_ASSERT_TRUE(backend.scanRunning());
 
   TEST_ASSERT_TRUE(central.requestConnect(
       secondLink, bleAddress("22:33:44:55:66:77")));
-  central.loop(16202);
+  central.loop(28202);
   TEST_ASSERT_TRUE(backend.disconnectCalls(secondLink) > 0);
   central.release(firstLink);
   TEST_ASSERT_FALSE(central.protocolReady(firstLink));
   central.release(secondLink);
+}
+
+void test_ble_central_scan_first_policy_connects_on_advertisement() {
+  studio::ble::FakeBleBackend backend;
+  studio::ble::BleCentral central(backend);
+  BleTestDelegate delegate;
+  studio::ble::ConnectPolicy policy;
+  policy.directAttemptsBeforeScan = 0;
+  const studio::ble::LinkHandle link = central.acquire(delegate, policy);
+
+  // With no direct attempts the central listens and connects on the next
+  // advertisement from the saved address, scanning continuously meanwhile.
+  TEST_ASSERT_TRUE(
+      central.requestConnect(link, bleAddress("11:22:33:44:55:66")));
+  central.loop(1);
+  TEST_ASSERT_EQUAL_UINT32(0, backend.connectCalls(link));
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(4001);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  central.loop(5000);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+
+  studio::ble::Advertisement advertisement;
+  advertisement.address = bleAddress("11:22:33:44:55:66");
+  TEST_ASSERT_TRUE(central.selectAdvertisement(link, advertisement));
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+
+  // A failed establishment goes straight back to listening, no backoff.
+  studio::ble::Event failed;
+  failed.type = studio::ble::EventType::ConnectFailed;
+  failed.link = link;
+  backend.emit(failed);
+  central.loop(5001);
+  TEST_ASSERT_TRUE(backend.scanRunning());
+  TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.release(link);
 }
 
 void test_tascam_reconnect_scans_after_one_direct_failure() {
@@ -276,12 +319,15 @@ void test_tascam_reconnect_scans_after_one_direct_failure() {
   failed.link = link;
   backend.emit(failed);
   // The single direct attempt is followed by passive scanning immediately:
-  // listening does not disturb the peripheral, so no backoff applies.
+  // listening does not disturb the peripheral, so no backoff applies, and
+  // the scan stays continuous while the wake is pending.
   central.loop(1);
   TEST_ASSERT_TRUE(backend.scanRunning());
   TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
   central.loop(1501);
   TEST_ASSERT_EQUAL_UINT32(1, backend.connectCalls(link));
+  central.loop(4001);
+  TEST_ASSERT_TRUE(backend.scanRunning());
   central.release(link);
 }
 

@@ -144,18 +144,45 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
       homeAssistantDeferred_ = true;
       break;
     }
-    for (uint8_t i = 0; i < targets.count; ++i) {
-      const DeviceRecord* record = devices_.find(targets.ids[i]);
+    // Physical pass: recorders and lights first, cameras last. A recorder
+    // establishes in under a second when awake, while a sleeping camera can
+    // hold the single controller connect procedure through several failed
+    // pokes; acquisition order sets the initial connect queue order.
+    InstanceId ordered[CONFIG_MAX_ACTIVE_INSTANCES] = {};
+    uint8_t orderedCount = 0;
+    for (uint8_t rank = 0; rank < 3 && !homeAssistantPass; ++rank) {
+      for (uint8_t i = 0; i < targets.count; ++i) {
+        const DeviceRecord* record = devices_.find(targets.ids[i]);
+        if (record == nullptr || record->driverId == DriverId::HomeAssistant) {
+          continue;
+        }
+        const DeviceType type = devices_.profile(targets.ids[i]).type;
+        const uint8_t targetRank = type == DeviceType::Recorder ? 0
+                                   : type == DeviceType::Camera  ? 2
+                                                                 : 1;
+        if (targetRank == rank) ordered[orderedCount++] = targets.ids[i];
+      }
+    }
+    if (homeAssistantPass) {
+      for (uint8_t i = 0; i < targets.count; ++i) {
+        const DeviceRecord* record = devices_.find(targets.ids[i]);
+        if (record != nullptr && record->driverId == DriverId::HomeAssistant) {
+          ordered[orderedCount++] = targets.ids[i];
+        }
+      }
+    }
+    for (uint8_t i = 0; i < orderedCount; ++i) {
+      const DeviceRecord* record = devices_.find(ordered[i]);
       const bool homeAssistant =
           record != nullptr && record->driverId == DriverId::HomeAssistant;
       if (homeAssistant != homeAssistantPass) {
         continue;
       }
       const bool acquired =
-          devices_.acquire(targets.ids[i], ConnectionOwner::Sequence);
+          devices_.acquire(ordered[i], ConnectionOwner::Sequence);
       const SceneStep diagnosticStep =
-          makeActionStep(targets.ids[i], CommandType::Connect);
-      const DeviceRuntimeState runtime = devices_.runtimeState(targets.ids[i]);
+          makeActionStep(ordered[i], CommandType::Connect);
+      const DeviceRuntimeState runtime = devices_.runtimeState(ordered[i]);
       logSceneAction("acquire_target", progress_.sceneId, i, &diagnosticStep,
                      acquired ? 0 : 1, &runtime);
       if (!acquired) {
@@ -164,7 +191,7 @@ bool SceneRunner::activateTargets(const TargetSet& targets) {
         }
         return false;
       }
-      acquiredIds[acquiredCount++] = targets.ids[i];
+      acquiredIds[acquiredCount++] = ordered[i];
     }
   }
   return true;

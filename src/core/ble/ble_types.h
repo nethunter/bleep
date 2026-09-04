@@ -46,6 +46,10 @@ struct Address {
 struct Advertisement {
   Address address;
   int8_t rssi = 0;
+  // False for ADV_NONCONN_IND / ADV_SCAN_IND: a peer in a low-power
+  // advertising mode that would ignore a CONNECT_IND. Poking such a peer
+  // costs a failed establishment and, on the AK-BT1, 10-30 s of silence.
+  bool connectable = true;
   uint8_t payload[CONFIG_BLE_ADV_PAYLOAD_SIZE] = {};
   uint8_t payloadLength = 0;
 };
@@ -91,6 +95,10 @@ struct ConnectPolicy {
   // keeps the unbounded growth (up to 6 s). Peripherals that fall silent for a
   // fixed interval after a failed establishment gain nothing from longer waits.
   uint16_t retryBackoffCapMs = 0;
+  // When several links wait for the single controller connect procedure, the
+  // highest priority starts first. Recorders and lights establish in well
+  // under a second when awake; cameras wake with several failed pokes.
+  uint8_t connectPriority = 1;
   ConnectionParameters setupParameters = {6, 12, 0, 200};
   // Once protocol setup is complete, favor a calmer 30-50 ms interval. This
   // remains responsive for controller commands while reducing radio wakeups.

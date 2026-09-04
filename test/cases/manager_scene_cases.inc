@@ -1784,3 +1784,51 @@ void test_early_network_policy_starts_home_assistant_while_ble_wakes() {
   scenes.cancel();
   gEarlyNetworkAllowed = false;
 }
+
+void test_scene_acquires_recorders_before_cameras() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  FakeDriver cameraDriver(studio::DriverId::CanonBle);
+  FakeDriver recorderDriver(studio::DriverId::TascamX8);
+  int activationSequence = 0;
+  cameraDriver.activationSequence = &activationSequence;
+  recorderDriver.activationSequence = &activationSequence;
+  studio::DeviceDriver* drivers[] = {&cameraDriver, &recorderDriver};
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId recorderId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::TascamX8, "Recorder",
+                                   recorderId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Camera first", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  // Authored camera-first order must not put the camera's wake pokes ahead
+  // of the recorder's sub-second connect in the controller queue.
+  record.startCount = 2;
+  record.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.startSteps[1] =
+      studio::makeActionStep(recorderId, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  TEST_ASSERT_EQUAL_INT(1, recorderDriver.firstActivationOrder);
+  TEST_ASSERT_EQUAL_INT(2, cameraDriver.firstActivationOrder);
+  scenes.cancel();
+}

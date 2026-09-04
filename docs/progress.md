@@ -34,10 +34,29 @@ short, factual, and reproducible.
   requests failed, so the link stayed at the peer's slow interval. The
   parameter retry now backs off 400 ms, 1 s, 2 s (three attempts) instead of
   giving up after one.
-- Open: the 6-13 s post-failure silence is dongle behaviour and was not
-  captured with sightings yet (the dongle stayed awake across four attempts);
-  a gentler initial connection (longer interval and supervision timeout) and
-  a continuous scan while a wake is pending are the remaining candidates.
+- Sightings finally captured a cold dongle: after the failed poke the AK-BT1
+  was not seen at all for 29 s of continuous scanning, then one connectable
+  advertisement led to a 1.4 s connect. The silence is real, not a scan-duty
+  miss. A scan-first experiment (no blind poke) was worse: an awake dongle was
+  seen advertising only every 2-19 s while a direct connect takes 0.5-0.8 s,
+  so the X8 keeps one direct attempt. Kept from the experiment: the
+  `Advertisement::connectable` flag (non-connectable adverts never trigger a
+  connect), a generic scan-first policy for drivers that want it, and a
+  continuous scan (no 1.5 s pauses) for 15 s while a saved peer that just
+  failed to establish is being sought.
+- Sequence preparation now acquires recorders, then lights, then cameras,
+  independent of authored step order, and `ConnectPolicy::connectPriority`
+  lets the central start the highest-priority queued link first (X8 = 2).
+  Measured: X8 ready at 2.7 s and the camera's connect started right after
+  the X8's physical link instead of the X8 waiting behind the camera; all
+  targets ready at 6.3 s with HA (early start) ready at 0.7 s. X8 connect
+  timeout 4000 -> 3000 ms (watchdog 4500).
+- Open: a gentler initial connection for the drowsy dongle (longer initial
+  interval and supervision timeout) is the remaining candidate for the
+  10-30 s cold case; persisted GATT handles cannot skip discovery under
+  NimBLE-Arduino (notifications are only delivered to characteristic objects
+  it discovered itself), but they can bound each discovery step to one
+  range-limited round trip.
 
 ### 2026-09-04: Canon device screen "disconnects three times" while waking
 
