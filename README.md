@@ -395,6 +395,10 @@ and is never returned to the browser; choose **Change stored token** to replace
 it. Select at most four supported entities.
 
 Sequences can be created, renamed, enabled/disabled, duplicated, and deleted.
+On the panel, **Duplicate** in Sequence Settings immediately opens a complete
+copy named `Old Name (2)`; the Portal suggests the same copy name and lets you
+change it before saving.
+
 **Add Sequence** guides creation through Start actions, generated Stop review,
 and Name. Editing Start regenerates the read-only reverse/inverse Stop
 preview. **Customize Stop** copies that preview into an independent editable

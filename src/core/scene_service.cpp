@@ -1,8 +1,23 @@
 #include "core/scene_service.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace studio {
+namespace {
+
+constexpr char kDuplicateSuffix[] = " (2)";
+
+void makeDuplicateName(const char* source,
+                       char (&name)[kDeviceNameCapacity]) {
+  constexpr size_t suffixLength = sizeof(kDuplicateSuffix) - 1;
+  constexpr size_t maxBaseLength =
+      kDeviceNameCapacity - 1 - suffixLength;
+  std::snprintf(name, sizeof(name), "%.*s%s",
+                static_cast<int>(maxBaseLength), source, kDuplicateSuffix);
+}
+
+}  // namespace
 
 SceneService::SceneService(IConfigBackend& backend, DeviceManager& devices)
     : store_(backend), devices_(devices), runner_(devices_, registry_) {}
@@ -41,6 +56,17 @@ SceneRegistryStatus SceneService::add(const char* name, SceneId& outId) {
     return SceneRegistryStatus::Invalid;
   }
   return status;
+}
+
+SceneRegistryStatus SceneService::duplicate(SceneId sourceId, SceneId& outId) {
+  const SceneRecord* source = registry_.find(sourceId);
+  if (source == nullptr) {
+    outId = kInvalidSceneId;
+    return SceneRegistryStatus::NotFound;
+  }
+  char name[kDeviceNameCapacity];
+  makeDuplicateName(source->name, name);
+  return duplicate(sourceId, name, outId);
 }
 
 SceneRegistryStatus SceneService::duplicate(SceneId sourceId, const char* name,
