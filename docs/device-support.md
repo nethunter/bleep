@@ -339,7 +339,7 @@ Compatibility evidence is deliberately split from protocol availability:
 | Insta360 X4 | Implemented, supported | Operation through the GPS Remote path is operator-approved. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
 | Insta360 X4 Air | Implemented, supported | Operation through the GPS Remote path is operator-approved. No model-specific capture, complete reconnect/power matrix, or coexistence result is recorded. |
 | Insta360 X5 | Implemented, supported | Pairing, initial state, Start/Stop, reported recording status, shutdown, and physical wake are operator-confirmed. Immediate optimistic Start and wake-return address routing have been added; the latter needs one fresh reconnect check. |
-| Insta360 X6 | Implemented candidate | Mini Remote advertising, shutter toggle, and camera-reported video state are capture-backed; the physical Mini Remote's Start/Stop and power-off/on behavior are operator-confirmed. Ble(e)p's split Mini driver still needs a flashed-panel lifecycle check. |
+| Insta360 X6 | Implemented candidate; discovery and power verified | Exact-name Mini Remote discovery/connection, shutdown, `CAMERA OFF`, and wake/reconnect are operator-confirmed. Shutter toggle and camera-reported video state are capture-backed; explicit Start/Stop and reported status still need a Ble(e)p panel run. |
 | Insta360 GO 3 | Experimental candidate | No model-specific GPS Remote result recorded. |
 | Insta360 GO Ultra | Experimental candidate | The supplied controller manual assigns this model to Mini Remote mode. No model-specific connection or shutter result is recorded. |
 | DJI Osmo Action 5 Pro | Implemented, verified bounded path | Pairing, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
@@ -419,10 +419,13 @@ Compatibility evidence is deliberately split from protocol availability:
   `Insta360 Remote (Bleep)`; its scan response contains appearance `0x0180` and
   proprietary service `0xCE80`. Mini Remote uses the captured complete name
   `Insta360 Mini Remote`, appearance `0x0180`, and HID service `0x1812` in its
-  scan response. Both profiles host service `0xCE80`, which declares
-  CE82 Notify, CE81 Write/Write Without Response, then CE83 Read, matching both
-  the physical captures and the working Mac harness. The camera scans and
-  connects to the panel. GPS Start/Stop notifies `FC EF FE 86 00 03 01 02 00`;
+  scan response. On X6, changing only that name to `Ble(e)p Remote` or
+  `Insta360 Bleep Remote` prevented discovery; restoring the exact captured
+  name restored discovery and connection. Both profiles host service `0xCE80`,
+  which declares CE82 Notify, CE81 Write/Write Without Response, then CE83
+  Read, matching both the physical captures and the working Mac harness. The
+  camera scans and connects to the panel. GPS Start/Stop notifies
+  `FC EF FE 86 00 03 01 02 00`;
   Mini Start/Stop notifies `FC EF FE 86 00 03 01 00 00` on `0xCE82`.
 - Reported state: X5/GPS Remote captures show the camera writing `FE EF FE 10
   80 ...` display updates to `0xCE81`; its video idle frames carry remaining
@@ -447,13 +450,16 @@ Compatibility evidence is deliberately split from protocol availability:
   to 60 seconds. Missing or malformed serials fail clearly. Reconnect is the
   wake confirmation. The command and wake payload are capture-backed on X5.
   The operator confirmed that the physical Mini Remote also powers X6 off and
-  on; Ble(e)p's X6 power lifecycle remains a panel verification gate.
+  on. Ble(e)p's patched Mini path then physically shut down the X6, displayed
+  `CAMERA OFF`, and successfully woke/reconnected it on the next power press.
+  The exact X6 shutdown response remains uncaptured.
 - Candidates: GO 3 remains an untested GPS candidate and is not an alias for GO
   Ultra. GO Ultra is now an untested Mini candidate; current evidence does not
   establish GPS compatibility. A passive X6/Mini Remote capture confirms the
   Mini shutter toggle, camera-reported video transitions, and elapsed timer,
-  and that profile is implemented, but no Ble(e)p panel test exists, so X6 is
-  not in the supported list.
+  and that profile is implemented. Its power lifecycle passed on the Ble(e)p
+  panel, but its control/status and coexistence matrix remains incomplete, so
+  X6 is not in the supported list.
 - Boundary: Start/Stop remain a toggle at the transport layer. Immediate Start
   may use the fresh connection's provisional idle state; Stop requires
   camera-confirmed recording. Unknown state is otherwise not inferred. The GPS
@@ -462,8 +468,8 @@ Compatibility evidence is deliberately split from protocol availability:
   Mac test disproved their absence as an initial-sync blocker on X5. Pairing,
   initial state, Start, Stop, state updates, shutdown, and physical wake are
   operator-confirmed on the panel. The wake-return address-routing correction
-  needs one fresh check; GO 3, GO Ultra, and the X6 Mini panel path remain
-  unverified.
+  needs one fresh check; GO 3 and GO Ultra remain unverified. X6 Mini power is
+  verified, while its explicit Start/Stop and status panel checks remain open.
 - Research references:
   <https://github.com/theserialhobbyist/insta360_m5StickC_remote> and
   <https://github.com/pchwalek/insta360_ble_esp32>.

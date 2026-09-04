@@ -3,9 +3,13 @@
 Status: **Implemented candidate**, capture-backed on Insta360 X5 and X6 cameras
 with an Insta360 Mini Remote. Ble(e)p exposes Mini Remote separately from the
 [GPS Remote](insta360-gps-remote.md), with shared GATT/session/state code and
-profile-specific advertising and shutter vectors. The implementation has
-passed native and target builds but not a flashed-panel Mini lifecycle test.
-The X6 observations do not add X6 to the supported-device list.
+profile-specific advertising and shutter vectors. The current flashed Mini
+build uses the captured exact `Insta360 Mini Remote` name after the custom-name
+compatibility probes documented below failed discovery. Native and target
+builds pass, and exact-name discovery plus the X6 power-off/UI-off/wake
+lifecycle are panel-confirmed. Explicit Start/Stop and reported status still
+need a Ble(e)p panel run before X6 can be promoted from candidate. The X6
+observations do not add X6 to the supported-device list.
 
 ## Evidence and confidence
 
@@ -56,6 +60,28 @@ causes the X5 to select its legacy GPS-remote behavior, which does not supply
 the Mini capture-state stream. Ble(e)p therefore exposes `0xCE80` in its shared
 GATT table while advertising the Mini's name, appearance, and HID service
 identity.
+
+### Custom-name compatibility probe
+
+The captured `Insta360 Mini Remote` name occupies 21 payload bytes. A first
+diagnostic build changed only the complete-name field to `Ble(e)p Remote`; the
+X6 did not show it. That rejects the prefix-free custom name for discovery.
+
+The second diagnostic build preserved the vendor prefix and used the 21-byte
+name `Insta360 Bleep Remote`:
+
+```text
+02 01 06 03 19 80 01 16 09 49 6E 73 74 61 33 36 30 20 42 6C 65 65 70 20 52 65 6D 6F 74 65
+```
+
+Appearance `0x0180`, the HID scan response, GATT table, commands, and state
+decoder were unchanged. The X6 also did not show this identity. Because the
+complete-name field was the only changed discovery input in both probes, the
+observed X6 firmware appears to require the exact `Insta360 Mini Remote` name,
+not merely an `Insta360` prefix. Ble(e)p therefore reverted to the captured
+29-byte advertising packet, which the operator confirmed restored X6 discovery
+and connection. This conclusion is limited to tested X6 discovery; it does not
+establish how every Insta360 model implements its filter.
 
 ## GATT roles
 
@@ -190,10 +216,11 @@ did not drop its controller link before Ble(e)p's ten-second deadline, producing
 `POWER OFF FAILED`. Ble(e)p now recognizes the captured `0x56 ... 13` shutdown
 acceptance on the Mini path and requests local link teardown; the resulting GAP
 disconnect releases the stale link and completes the logical off transition.
-Whether the X6 emits that same acceptance frame is a **Hypothesis** until the
-patched panel test completes. The operator's visible camera result remains the
-physical evidence; a locally requested disconnect alone is not proof of power
-state.
+The patched panel then completed physical X6 shutdown, displayed `CAMERA OFF`,
+and successfully woke/reconnected the camera on the next power press. This is
+**Operator-confirmed (X6 panel)**. The result is consistent with the X6 sending
+the same acceptance frame, but no packet or serial trace was retained to prove
+which disconnect branch completed the transition.
 
 Wake is not another GATT command. The disconnected remote advertises this
 26-byte manufacturer payload, where `SSSSSS` is the six-character serial from
@@ -211,10 +238,11 @@ implementation for older Insta360 cameras.
 
 For the X5 capture, the advertisement shape and reconnect behavior are
 **Confirmed (X5 capture)**. The operator also confirmed that powering the
-physical Mini Remote off and on powered the X6 off and on. That establishes the
-camera behavior, but the X6 shutdown packet and Ble(e)p's shared X6 power path
-still need a dedicated capture/panel cycle. Compatibility of this wake payload
-with other accepted camera names remains **Research**.
+physical Mini Remote off and on powered the X6 off and on. Ble(e)p's shared
+Mini power path is now also panel-confirmed for X6, including correct off UI and
+ORBIT wake/reconnect. The exact X6 shutdown response still needs a dedicated
+packet capture. Compatibility of this wake payload with other accepted camera
+names remains **Research**.
 
 ## Implementation and safety boundaries
 
@@ -226,7 +254,9 @@ with other accepted camera names remains **Research**.
 - Photo phases are kept separate from recording state; a photo transition does
   not imply video stopped.
 - Power-off is rejected while confirmed recording or a photo operation is
-  active. Disconnect confirms off; reconnect confirms on.
+  active. Shutdown acceptance plus link teardown completes the logical off
+  state; the panel cannot independently observe physical power. Reconnect
+  confirms the wake path restored the link.
 - Malformed frames and unrecognized modes or phases do not update state.
 
 ## Unknowns and scope limits
@@ -258,3 +288,6 @@ verify:
    advertisement window;
 6. another active peripheral camera remains connected while wake advertising
    is requested.
+
+Items 4 and 5 are operator-confirmed on X6. The remaining X6 items and the full
+X5 regression/coexistence matrix stay open.

@@ -1322,7 +1322,8 @@ the replacement.
 
 ## ADR-049: Insta360 GPS and Mini Remote modes are distinct catalog drivers over one runtime
 
-- Status: Accepted implementation; flashed-panel Mini validation remains open.
+- Status: Accepted implementation; X6 Mini power is panel-confirmed, while
+  Start/Stop, reported status, and coexistence validation remain open.
 - Catalog identity: Preserve `DriverId::Insta360 = 11` and stable ID
   `insta360.gps_remote` for existing records. Add `DriverId::Insta360Mini = 15`
   with stable ID `insta360.mini_remote`. The Cameras picker exposes **Insta360
@@ -1343,14 +1344,22 @@ the replacement.
 - Power: Both profiles expose the shared captured shutdown notification
   `... 01 00 03` and serial-addressed ORBIT wake advertisement. X5 supplies
   packet-capture and physical evidence for that path. The operator also
-  confirmed that the physical Mini Remote powered the X6 off and on; a
-  flashed-panel X6 cycle is still required before attributing that result to
-  Ble(e)p's implementation.
+  confirmed that the physical Mini Remote powered the X6 off and on. The
+  patched Ble(e)p Mini path subsequently completed physical X6 shutdown,
+  correct `CAMERA OFF` transition, and ORBIT wake/reconnect.
 - Compatibility: The mode lists photographed from the supplied third-party
   controller manual are candidate-routing evidence, not model verification.
   X6 Mini routing is additionally supported by the live X6 capture. Existing
   per-model support labels do not change until the corresponding panel checks
   pass.
+- Diagnostic deviation: A bounded X6 experiment may temporarily replace only
+  the Mini complete-name field to test custom-name acceptance. Prefix-free
+  `Ble(e)p Remote` and prefix-preserving `Insta360 Bleep Remote` were both not
+  shown by the X6. Appearance, HID scan response, GATT, commands, and state were
+  unchanged, so Mini mode must use the captured exact `Insta360 Mini Remote`
+  identity. Restoring that identity restored X6 discovery and connection.
+  Treat exact-name matching as X6-scoped evidence rather than a claim about
+  every Insta360 camera model.
 
 ## Open decisions
 

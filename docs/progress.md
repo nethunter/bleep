@@ -35,8 +35,9 @@ short, factual, and reproducible.
   `03_camera_families_scrolled.png` confirmed both exact full labels fit the
   round picker. Full Montserrat `bleep` built successfully at 147,116 bytes RAM
   (44.9%) and 2,034,194 bytes flash (69.0%). The corrected build flashed
-  successfully to `/dev/cu.usbserial-211240`; physical X6 pairing, Start/Stop,
-  reported status, shutdown, and wake are still awaiting an operator run.
+  successfully to `/dev/cu.usbserial-211240`. At that point, explicit X6
+  Start/Stop and reported-status panel checks were still open; the power result
+  and follow-up fix are recorded below.
 - First X6 Mini panel result: Bleep's power notification physically shut down
   the camera, but the X6 retained the BLE link past the ten-second confirmation
   deadline, so the UI incorrectly showed `POWER OFF FAILED / CAMERA STILL
@@ -45,8 +46,38 @@ short, factual, and reproducible.
   that stale link; the disconnect event then completes `CAMERA OFF` and makes
   ORBIT wake available. Native tests remain 101/101, the full build succeeds at
   147,116 bytes RAM (44.9%) and 2,034,416 bytes flash (69.0%), and the patched
-  firmware flashed successfully to `/dev/cu.usbserial-211240`. The corrected
-  shutdown/off UI and subsequent wake still need the operator retest.
+  firmware flashed successfully to `/dev/cu.usbserial-211240`. The operator
+  retest passed: the X6 physically shut down, Bleep reached `CAMERA OFF`, and
+  the next power press woke and reconnected the camera. This closes the X6 Mini
+  power lifecycle gate; explicit Start/Stop, reported status, and coexistence
+  remain separate panel gates.
+- Custom-name first probe: Mini normal advertising sent the complete
+  name `Ble(e)p Remote` instead of captured `Insta360 Mini Remote`, while
+  preserving appearance `0x0180`, HID scan response, CE80/HID GATT, commands,
+  and state decoding. The captured 29-byte packet remains a tested constant for
+  immediate rollback. X6 discovery and connection with the prefix-free custom
+  name are a hardware `Hypothesis` pending the flashed-panel result. Native
+  tests pass 101/101; full Montserrat `bleep` builds at 147,116 bytes RAM
+  (44.9%) and 2,034,408 bytes flash (69.0%); the diagnostic firmware flashed
+  successfully to `/dev/cu.usbserial-211240`.
+- Custom-name result and second probe: the X6 did not show prefix-free
+  `Ble(e)p Remote`. The second build used `Insta360 Bleep Remote`, which
+  preserves the evidence-backed `Insta360` discovery prefix and fits in 30 of
+  31 legacy advertising bytes with flags and appearance. All other Mini fields
+  and behavior remain unchanged. Native tests pass 101/101, full Montserrat
+  `bleep` builds at 147,116 bytes RAM (44.9%) and 2,034,416 bytes flash (69.0%),
+  and the second diagnostic build flashed successfully to
+  `/dev/cu.usbserial-211240`. The X6 did not show this second identity either.
+  Since the complete-name field was the only discovery input changed in both
+  probes, X6 discovery appears to require the captured exact `Insta360 Mini
+  Remote` value rather than merely the vendor prefix. The implementation has
+  returned to that captured identity; this finding remains scoped to the X6.
+  The rollback passes all 101 native tests, the full Montserrat `bleep` build
+  succeeds at 147,116 bytes RAM (44.9%) and 2,034,416 bytes flash (69.0%), and
+  it flashed successfully to `/dev/cu.usbserial-211240`. The operator confirmed
+  that the restored exact identity appears and connects on the X6. This closes
+  the X6 Mini advertising-name discovery gate; explicit Start/Stop and reported
+  status remain separate panel gates.
 
 ### 2026-09-04: Insta360 X6 Mini Remote protocol capture
 
