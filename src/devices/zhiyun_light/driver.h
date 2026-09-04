@@ -45,13 +45,11 @@ class ZhiyunLightDriver : public DeviceDriver {
     bool gatewayAttached = false;
     uint32_t gatewayGeneration = 0xffffffffu;
     uint32_t gatewayAttachRetryAt = 0;
-    enum class CompoundStage : uint8_t { None, Look, Power };
-    CompoundStage compoundStage = CompoundStage::None;
-    bool compoundFailed = false;
   };
 
   Session* find(InstanceId instanceId);
   const Session* find(InstanceId instanceId) const;
+  bool migrateToSharedGateway(Session& session, const DeviceRecord& record);
   Session* sessions_[kMaxSessions] = {};
   size_t sessionCount_ = 0;
   bool repositoryHeld_ = false;

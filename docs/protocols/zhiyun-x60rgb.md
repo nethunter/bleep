@@ -97,8 +97,24 @@ power off, seq 0x020b
 Unlike the captured X100 session, X60RGB setters produced correlated replies
 with the same sequence and command. Ble(e)p uses those captured replies to
 confirm RGB hue, saturation, and brightness in that captured semantic order.
-CCT and power retain the shared read-after-write path so both supported models
-use the same conservative state publication rule.
+An embedded two-member scene initially appeared to show the selector-0 X60RGB
+returning correlated brightness, CCT, and power setter replies with the captured
+`01 80 01` response prefix. Physical observation disproved that attribution:
+the X60RGB gateway reported selector-1 Off while the X100 remained visibly On
+at 52%. A direct host connection to the X60RGB then returned its own 5600 K,
+50%, Off state when queried with selector 1. A direct X100 connection returned
+its own 5600 K, 52%, Off state for both selectors 0 and 1. These independently
+panel-provisioned fixtures therefore do not expose each other through the
+captured proprietary selector mechanism.
+
+The earlier vendor-app capture still proves that cross-member `0xFEE9` routing
+can exist, but it was established by ZY Vega and may depend on additional
+vendor topology configuration not reproduced by standards PB-GATT provisioning.
+For the current panel-owned topology, a reply is attributable only to the
+physical gateway that owns the GATT link. Shared multi-member setter and
+readback confirmation are blocked; reliable control requires either one direct
+connection per fixture or a separate reverse-engineering tranche for the
+missing vendor setup.
 
 ## Routed control through an X100
 
@@ -119,6 +135,47 @@ Initial state was obtained while its temporary direct link existed, and rapid
 routed slider writes did not each have an immediately correlatable response.
 Per-member reachability and confirmed power therefore require a decoded routed
 reply or timeout policy rather than inference from the shared gateway link.
+
+## 2026-09-03 update: colour and brightness confirmation
+
+The two-fixture capture and panel bench runs replace the earlier setter-reply
+model for colour:
+
+- ZY Vega writes hue `0x1004`, saturation `0x1005`, brightness `0x1001`, CCT
+  `0x1002` and power `0x1008` without waiting for a setter reply, and confirms
+  by reading the field back with the member's own selector (`sel 80 00`). The
+  capture contains no setter reply for any of those five commands.
+- On the panel's shared gateway the fixture does additionally echo each setter
+  with a `sel 80 01` frame. That echo only proves the frame was received, so
+  Ble(e)p ignores it and confirms from the read-back, which reports retained
+  state. Each colour component is written and confirmed before the next.
+- `parseHue` and `parseSaturation` previously defaulted to the write-reply form
+  while every other state parser defaulted to the read form. That mismatch
+  rejected valid hue and saturation read-backs; all five parsers now share the
+  read default and the member's own selector.
+- Hue and saturation are applied whether the fixture is on or off, so a look
+  may be staged before power. Verified on the panel for hue 0, 120, 240 and
+  300 degrees at saturation 100%, and for a saturation-0 white.
+
+The RGB-to-HSI conversion was checked against every swatch in the capture and a
+full 360-degree sweep. Red maps to 0 degrees, blue 240, magenta 300, cyan 180,
+orange 30, and green 120, each at saturation 100%; achromatic inputs return
+saturation 0; every hue round-trips within one degree.
+
+## Supply-dependent brightness ceiling
+
+The fixture silently clamps brightness to what its supply allows and then
+reports the clamped level. On the bench this X60RGB accepted 80% and reported
+80% for a requested 100%, in both the CCT and RGB paths. Ble(e)p now detects
+that from two identical read-backs below the request, records it as the
+instance's maximum, and reports `LIMIT`. The command still fails, because the
+requested value was not delivered; only the reported maximum changes.
+
+The fixture also floors fractional brightness: the vendor app's 84.5% and 77.6%
+read back as 84 and 77. Ble(e)p writes whole percentages, so its read-back
+comparison is exact. CCT is quantized to 100 K: a captured 6050 K write read
+back as 6000 K, which is why control targets are snapped to 100 K before the
+write.
 
 ## Cross-brand panel-owned mesh probe
 

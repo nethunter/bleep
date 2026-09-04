@@ -5,6 +5,10 @@
 #include <lvgl.h>
 #include <LovyanGFX.hpp>
 
+#include <cstdlib>
+#include <cstring>
+
+#include "build_info.h"
 #include "driver_config.h"
 #if CONFIG_BLE_RUNTIME_ENABLED
 #include "core/ble/ble_runtime.h"
@@ -170,6 +174,269 @@ void logRuntimeStats(const char* event) {
                     static_cast<unsigned long>(info.minimumFreeHeap),
                     static_cast<unsigned long>(info.largestFreeBlock),
                     info.wifiState);
+}
+
+enum class DebugDevicePhase : uint8_t {
+  Idle,
+  WaitingForReady,
+  WaitingForDispatch,
+  WaitingForConfirmation,
+};
+
+struct DebugDeviceCommand {
+  DebugDevicePhase phase = DebugDevicePhase::Idle;
+  studio::InstanceId instanceId = studio::kInvalidInstanceId;
+  studio::CommandType command = studio::CommandType::Refresh;
+  int32_t value0 = 0;
+  int32_t value1 = 0;
+  int32_t value2 = 0;
+  uint32_t requestId = 0;
+  uint32_t deadlineMs = 0;
+};
+
+DebugDeviceCommand debugDeviceCommand;
+
+const char* debugDeviceAction(studio::CommandType command) {
+  switch (command) {
+    case studio::CommandType::TurnOn: return "on";
+    case studio::CommandType::TurnOff: return "off";
+    case studio::CommandType::SetLightCct: return "cct";
+    case studio::CommandType::SetLightRgb: return "rgb";
+    default: return "other";
+  }
+}
+
+studio::Capability debugDeviceCapability(studio::CommandType command) {
+  switch (command) {
+    case studio::CommandType::TurnOn: return studio::Capability::TurnOn;
+    case studio::CommandType::SetLightCct: return studio::Capability::SetLightCct;
+    case studio::CommandType::SetLightRgb: return studio::Capability::SetLightRgb;
+    default: return studio::Capability::TurnOff;
+  }
+}
+
+void finishDebugDeviceCommand(const char* result) {
+  DEBUG_PORT.printf(
+      "debug_device event=complete instance=%lu action=%s result=%s\n",
+      static_cast<unsigned long>(debugDeviceCommand.instanceId),
+      debugDeviceAction(debugDeviceCommand.command), result);
+  studio::devices().release(debugDeviceCommand.instanceId,
+                            studio::ConnectionOwner::Sequence);
+  debugDeviceCommand = DebugDeviceCommand{};
+}
+
+void beginDebugDeviceCommand(studio::InstanceId instanceId,
+                             studio::CommandType command, int32_t value0 = 0,
+                             int32_t value1 = 0, int32_t value2 = 0) {
+  if (debugDeviceCommand.phase != DebugDevicePhase::Idle) {
+    DEBUG_PORT.println("debug_device event=begin result=busy");
+    return;
+  }
+  const studio::DeviceRecord* record = studio::devices().find(instanceId);
+  const studio::Capability capability = debugDeviceCapability(command);
+  if (record == nullptr ||
+      (studio::devices().profile(instanceId).capabilities &
+       studio::capabilityBit(capability)) == 0) {
+    DEBUG_PORT.printf(
+        "debug_device event=begin instance=%lu action=%s result=invalid_target\n",
+        static_cast<unsigned long>(instanceId), debugDeviceAction(command));
+    return;
+  }
+  if (studio::scenes().busy() ||
+      studio::devices().ownedBy(instanceId, studio::ConnectionOwner::Sequence)) {
+    DEBUG_PORT.printf(
+        "debug_device event=begin instance=%lu action=%s result=scene_busy\n",
+        static_cast<unsigned long>(instanceId), debugDeviceAction(command));
+    return;
+  }
+  if (!studio::devices().acquire(instanceId,
+                                 studio::ConnectionOwner::Sequence)) {
+    DEBUG_PORT.printf(
+        "debug_device event=begin instance=%lu action=%s result=acquire_failed\n",
+        static_cast<unsigned long>(instanceId), debugDeviceAction(command));
+    return;
+  }
+  debugDeviceCommand.phase = DebugDevicePhase::WaitingForReady;
+  debugDeviceCommand.instanceId = instanceId;
+  debugDeviceCommand.command = command;
+  debugDeviceCommand.value0 = value0;
+  debugDeviceCommand.value1 = value1;
+  debugDeviceCommand.value2 = value2;
+  debugDeviceCommand.deadlineMs = millis() + 30000;
+  DEBUG_PORT.printf(
+      "debug_device event=begin instance=%lu action=%s result=waiting\n",
+      static_cast<unsigned long>(instanceId), debugDeviceAction(command));
+}
+
+void pollDebugDeviceCommand() {
+  if (std::strcmp(build_info::kReleaseChannel, "local") != 0 ||
+      debugDeviceCommand.phase == DebugDevicePhase::Idle)
+    return;
+  if (static_cast<int32_t>(millis() - debugDeviceCommand.deadlineMs) >= 0) {
+    finishDebugDeviceCommand("timeout");
+    return;
+  }
+
+  const studio::DeviceRuntimeState runtime =
+      studio::devices().runtimeState(debugDeviceCommand.instanceId);
+  if (debugDeviceCommand.phase == DebugDevicePhase::WaitingForReady) {
+    if (!runtime.protocolReady) return;
+    studio::DeviceCommand command;
+    command.instanceId = debugDeviceCommand.instanceId;
+    command.type = debugDeviceCommand.command;
+    command.value0 = debugDeviceCommand.value0;
+    command.value1 = debugDeviceCommand.value1;
+    command.value2 = debugDeviceCommand.value2;
+    if (!studio::devices().enqueue(command, &debugDeviceCommand.requestId)) {
+      finishDebugDeviceCommand("queue_full");
+      return;
+    }
+    debugDeviceCommand.phase = DebugDevicePhase::WaitingForDispatch;
+    DEBUG_PORT.printf(
+        "debug_device event=dispatch instance=%lu action=%s request=%lu\n",
+        static_cast<unsigned long>(debugDeviceCommand.instanceId),
+        debugDeviceAction(debugDeviceCommand.command),
+        static_cast<unsigned long>(debugDeviceCommand.requestId));
+    return;
+  }
+
+  if (debugDeviceCommand.phase == DebugDevicePhase::WaitingForDispatch) {
+    studio::CommandResult result;
+    if (!studio::devices().takeResult(debugDeviceCommand.requestId, result))
+      return;
+    if (result.status != studio::CommandStatus::Succeeded) {
+      DEBUG_PORT.printf(
+          "debug_device event=dispatch_result instance=%lu action=%s status=%u\n",
+          static_cast<unsigned long>(debugDeviceCommand.instanceId),
+          debugDeviceAction(debugDeviceCommand.command),
+          static_cast<unsigned>(result.status));
+      finishDebugDeviceCommand("dispatch_failed");
+      return;
+    }
+    debugDeviceCommand.phase = DebugDevicePhase::WaitingForConfirmation;
+    return;
+  }
+
+  if (!runtime.commandPending) {
+    finishDebugDeviceCommand(runtime.commandFailed ? "confirmation_failed"
+                                                   : "confirmed");
+  }
+}
+
+void runDebugCommand(char* command) {
+  if (std::strcmp(build_info::kReleaseChannel, "local") != 0) return;
+
+  static constexpr char kDeviceOnPrefix[] = "device on ";
+  static constexpr char kDeviceOffPrefix[] = "device off ";
+  const char* deviceIdText = nullptr;
+  studio::CommandType deviceCommand = studio::CommandType::Refresh;
+  if (std::strncmp(command, kDeviceOnPrefix, sizeof(kDeviceOnPrefix) - 1) == 0) {
+    deviceIdText = command + sizeof(kDeviceOnPrefix) - 1;
+    deviceCommand = studio::CommandType::TurnOn;
+  } else if (std::strncmp(command, kDeviceOffPrefix,
+                          sizeof(kDeviceOffPrefix) - 1) == 0) {
+    deviceIdText = command + sizeof(kDeviceOffPrefix) - 1;
+    deviceCommand = studio::CommandType::TurnOff;
+  }
+  if (deviceIdText != nullptr) {
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(deviceIdText, &end, 10);
+    if (end == deviceIdText || *end != '\0' || value == 0) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_id");
+      return;
+    }
+    beginDebugDeviceCommand(static_cast<studio::InstanceId>(value),
+                            deviceCommand);
+    return;
+  }
+
+  static constexpr char kCctPrefix[] = "device cct ";
+  static constexpr char kRgbPrefix[] = "device rgb ";
+  const bool isCct =
+      std::strncmp(command, kCctPrefix, sizeof(kCctPrefix) - 1) == 0;
+  const bool isRgb =
+      std::strncmp(command, kRgbPrefix, sizeof(kRgbPrefix) - 1) == 0;
+  if (isCct || isRgb) {
+    // "device cct <instance> <kelvin> <brightness>" and
+    // "device rgb <instance> <rrggbb> <brightness>" exercise the look paths
+    // that scenes use, so colour behaviour can be measured without the panel.
+    const char* cursor = command + (isCct ? sizeof(kCctPrefix) - 1
+                                          : sizeof(kRgbPrefix) - 1);
+    char* end = nullptr;
+    const unsigned long instance = std::strtoul(cursor, &end, 10);
+    if (end == cursor || instance == 0) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_id");
+      return;
+    }
+    cursor = end;
+    const unsigned long value = std::strtoul(cursor, &end, isRgb ? 16 : 10);
+    if (end == cursor) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_value");
+      return;
+    }
+    cursor = end;
+    const unsigned long brightness = std::strtoul(cursor, &end, 10);
+    if (end == cursor || *end != '\0' || brightness > 100) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_brightness");
+      return;
+    }
+    beginDebugDeviceCommand(static_cast<studio::InstanceId>(instance),
+                            isRgb ? studio::CommandType::SetLightRgb
+                                  : studio::CommandType::SetLightCct,
+                            static_cast<int32_t>(value),
+                            static_cast<int32_t>(brightness), 0);
+    return;
+  }
+
+  static constexpr char kStartPrefix[] = "scene start ";
+  if (std::strncmp(command, kStartPrefix, sizeof(kStartPrefix) - 1) == 0) {
+    char* end = nullptr;
+    const unsigned long value =
+        std::strtoul(command + sizeof(kStartPrefix) - 1, &end, 10);
+    if (end == command + sizeof(kStartPrefix) - 1 || *end != '\0') {
+      DEBUG_PORT.println("debug_scene event=start result=invalid_id");
+      return;
+    }
+    const studio::SceneId sceneId = static_cast<studio::SceneId>(value);
+    const studio::SceneRunStatus status = studio::scenes().start(sceneId);
+    DEBUG_PORT.printf("debug_scene event=start scene=%lu status=%u\n", value,
+                      static_cast<unsigned>(status));
+    return;
+  }
+  if (std::strcmp(command, "scene stop") == 0) {
+    const studio::SceneRunStatus status = studio::scenes().stop();
+    DEBUG_PORT.printf("debug_scene event=stop status=%u\n",
+                      static_cast<unsigned>(status));
+    return;
+  }
+  if (std::strcmp(command, "scene cancel") == 0) {
+    studio::scenes().cancel();
+    DEBUG_PORT.println("debug_scene event=cancel result=ok");
+    return;
+  }
+  DEBUG_PORT.println("debug event=command result=unknown");
+}
+
+void pollDebugSerial() {
+  if (std::strcmp(build_info::kReleaseChannel, "local") != 0) return;
+  static char command[48] = {};
+  static size_t length = 0;
+  while (DEBUG_PORT.available() > 0) {
+    const char value = static_cast<char>(DEBUG_PORT.read());
+    if (value == '\r') continue;
+    if (value == '\n') {
+      command[length] = '\0';
+      if (length > 0) runDebugCommand(command);
+      length = 0;
+      continue;
+    }
+    if (length + 1 < sizeof(command)) {
+      command[length++] = value;
+    } else {
+      length = 0;
+      DEBUG_PORT.println("debug event=command result=too_long");
+    }
+  }
 }
 
 bool i2cWrite8(uint8_t addr, uint8_t reg, uint8_t value) {
@@ -563,6 +830,8 @@ void loop() {
 #endif
   studio::devices().loop();
   studio::scenes().loop(now);
+  pollDebugSerial();
+  pollDebugDeviceCommand();
   portal::loop();
   firmware_update::service().setRuntimeIdle(
       !portal::active() && !studio::scenes().busy() &&

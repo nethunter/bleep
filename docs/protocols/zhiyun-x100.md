@@ -127,9 +127,63 @@ The retained gateway link proves only that the phone can reach a Zhiyun mesh
 entry point. It does not by itself prove that every member is powered or
 reachable. The capture showed immediate device-originated replies to the X100
 initial-state reads and direct X60RGB identity/state traffic during onboarding.
-Rapid routed X60RGB slider writes did not each produce an immediately
-correlatable reply through the gateway, although periodic `0x1201` traffic and
-other notifications continued.
+An embedded two-member reproduction later connected through the selector-0
+X60RGB gateway while initializing the selector-1 X100. The selector-less
+`0x2003` reply contained `plx104`, proving that identity describes the physical
+gateway rather than the routed logical member. The full generic setup sequence
+is still needed to prime notifications. Shared sessions therefore accept either
+supported MOLUS gateway identity and establish logical-member readiness from
+the later selector-addressed state replies. Direct onboarding still requires
+the model-qualified identity response.
+Interleaving both members' setup requests dropped a selector-0 reply, so the
+embedded shared driver initializes one logical member at a time and observes a
+300 ms quiet interval before publishing readiness. The same scene capture
+showed X100 shared setters returning acknowledgments followed by delayed
+selector-1 reads; the then-current code treated matching values as confirmation.
+The physical check below disproved attribution of those reads to X100.
+Subsequent physical observation showed that the shared selector-1 Off readback
+was false attribution: X100 remained visibly On at 52%. A direct host
+connection read the actual X100 as 5600 K, 52%, On; a direct power-Off write
+returned no immediate setter reply, as expected, and a new direct connection
+then read Off at 52%. The same direct link returned those X100 values for both
+selector 0 and selector 1. A reciprocal selector-1 query through the X60RGB
+returned the X60RGB's own 50%/Off state. That earlier conclusion was wrong: it
+was produced by a reply-selector defect, not by absent routing. See the update
+below.
+
+### 2026-09-03 update: routing works; the defect was reply-selector matching
+
+A fresh two-fixture ZY Vega capture (`Confirmed`) settles this. The relevant
+rotated HCI log has SHA-256
+`418da13b712fa8141fc0309f9c731497c24f1ef74770fd89e2fed45f67de0b4b` and stays outside the repository; its decoded, key-free timeline
+was produced with `tools/mesh_lab/decode_zhiyun_capture.py`. In that session:
+
+- The X100 (`pl105`) was added first, became the retained gateway, and kept one
+  BLE connection for the whole session. The X60RGB (`plx104`) was added second,
+  provisioned over PB-GATT, exchanged a few Mesh Network PDUs, then disconnected
+  and never reconnected.
+- After the X60RGB disconnected, every control write and every state read for
+  both fixtures went through the one X100 link. Selector `00 80` frames were
+  routed to the X60RGB and selector `01 80` frames addressed the X100 itself.
+  This is direct proof that a panel-order mesh gateway routes to a non-gateway
+  member, contradicting the earlier "no shared routing" reading.
+- The selector is a per-fixture member id, not a model tag. Here the X100 used
+  `01` and the X60RGB used `00`, the reverse of the order-covariant guess in the
+  single-fixture notes. Model and add order still covary, so absolute selector
+  assignment stays a `Hypothesis` pending a second same-model fixture; what is
+  now `Confirmed` is that each member answers on one stable selector and the
+  gateway routes it.
+- Every reply echoes the request's own selector, and power, CCT, and brightness
+  are confirmed by a **read-back** (`sel 80 00` request, matching reply), not by
+  a setter reply. The vendor never relied on setter replies for these three
+  fields on either member.
+
+The embedded driver was then corrected to confirm power/CCT/brightness by
+reading back on each member's own selector, removing a special case that
+demanded the X60RGB's reply on selector 1. On the panel, `device on`/`device
+off` for both members and the **Desk** scene start and stop then reported every
+target confirmed through the one shared gateway. Independent optical
+verification of each fixture remains an operator check.
 
 Until a routed per-member status exchange is decoded, state should distinguish:
 
@@ -276,8 +330,18 @@ Saved Zhiyun fixtures now persist their member selector in mesh-store schema 2
 and attach to the panel-owned mesh runtime's one retained gateway client.
 `0xFEE9` notifications fan out to each logical session, whose unique sequence,
 command, and selector correlation owns its state. PB-GATT onboarding remains a
-temporary direct connection. Same-model selector allocation and concurrent
-multi-Zhiyun behavior still require hardware verification.
+temporary direct connection; after a newly provisioned record is committed,
+its next ownership acquisition migrates that live onboarding session onto the
+shared gateway. Once the fixture returns Provisioning Complete and the new node
+is durably saved, later control-service failure, cancellation, or session
+teardown preserves that node: restoring the pre-provision snapshot would orphan
+a fixture that has already committed the new keys. A saved fixture accepted
+while already advertising `0x1828`
+has no panel-owned mesh node and therefore remains direct. It can be moved onto
+the panel-owned mesh without changing its instance or scene references by
+clearing pairing, Bluetooth-resetting the fixture, and selecting its `0x1827`
+candidate from the reopened saved entry. Same-model selector allocation and
+concurrent multi-Zhiyun behavior still require hardware verification.
 
 Factory-reset onboarding has now been reproduced using standard no-OOB PB-GATT:
 the one-element light received unicast address 2 in a fresh temporary mesh,

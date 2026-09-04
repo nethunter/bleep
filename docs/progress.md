@@ -5,6 +5,159 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-03: Zhiyun colour, brightness and unified look+power
+
+- Reviewed the colour and brightness paths against the same two-fixture capture
+  and screen recording. The vendor confirms hue, saturation, brightness, CCT and
+  power by reading the field back on the member's own selector; it never relies
+  on a setter reply. Ble(e)p now confirms every colour component the same way,
+  one field at a time.
+- Fixed a defect introduced with that change: `parseHue` and `parseSaturation`
+  defaulted to the write-reply form while the other three state parsers defaulted
+  to the read form, so valid hue and saturation read-backs were rejected. All
+  five parsers now share the read default and the member's own selector.
+- Verified the RGB-to-HSI conversion independently. All six captured vendor
+  swatches match exactly (red 0, blue 240, magenta 300, cyan 180, orange 30,
+  green 120 degrees at saturation 100%), achromatic inputs return saturation 0,
+  and a full 360-degree sweep round-trips within one degree. The conversion was
+  not the fault; no change was needed.
+- The fixture clamps brightness to its supply ceiling and reports the clamped
+  level; this X60RGB delivered 80% for a requested 100%. The previous heuristic
+  only fired when the fixture had not moved at all, so the limit went
+  unrecorded. Detection now uses two identical read-backs below the request and
+  covers the RGB path as well as CCT. The command still fails, matching the
+  existing confirmed-state policy; only the reported maximum changes.
+- `SetLightCctAndOn` and `SetLightRgbAndOn` are now one client transaction that
+  confirms the look and then powers the fixture on, replacing the driver's
+  two-stage compound. The look still lands before power, the command stays
+  pending across both halves, and the driver no longer hands off between two
+  separately pending commands.
+- Shared read-back latency was measured at about 70 ms, so the shared
+  verification delay dropped from 750 ms to 300 ms and the state read-back
+  deadline from 2000 ms to 900 ms, with up to three immediate re-reads for a
+  dropped routed reply. A compound Desk step fell from about 6.7 s to about
+  1.2 s, inside the 5000 ms scene action budget.
+- Added `device cct <id> <kelvin> <brightness>` and `device rgb <id> <rrggbb>
+  <brightness>` to the local debug console so look paths can be exercised
+  without the panel. Release-channel builds still ignore the console.
+- Native tests passed 96/96 and the full Montserrat `bleep` image built and
+  uploaded with its hash verified. On hardware: hue 0/120/240/300, white,
+  brightness 1/25/30/40/50/80, and CCT 2700/3200/4050/5600/6500 K confirmed;
+  a requested 100% correctly reported the 80% ceiling; and three consecutive
+  Desk scene start/stop cycles confirmed every target, including two recovered
+  read-back drops. Optical verification of each fixture remains the operator
+  gate.
+
+
+### 2026-09-03: Zhiyun shared-gateway routing fixed from a fresh two-fixture capture
+
+- The Desk scene and direct on/off failed for the panel's two saved Zhiyun
+  fixtures. Using the local debug console (`device on/off <id>`, `scene start`),
+  both members initialized through the one shared mesh gateway but their state
+  confirmations were rejected, so every command reported
+  `confirmation_failed`/`State mismatch`.
+- Captured a fresh ZY Vega session on the connected Pixel (HCI snoop pulled via
+  `adb bugreport`) alongside the operator screen recording, and decoded a
+  key-free timeline with the new `tools/mesh_lab/decode_zhiyun_capture.py`. The
+  vendor keeps one retained gateway link to the first-added fixture and routes
+  the second fixture's control through it: after the X60RGB disconnected, all of
+  its selector-`00` reads and writes flowed over the X100's `0xFEE9` link, while
+  the X100 used selector `01`. Power, CCT, and brightness are confirmed by a
+  read-back on each member's own selector, never by a setter reply.
+- Root cause: `ZhiyunLightClient::writeReplySelector()` hardcoded selector 1 for
+  any X60RGB, and the X60RGB member confirmed on its real selector 0, so valid
+  replies were discarded. The X60RGB-only "write-reply" confirmation path was
+  also wrong; the vendor read-backs both models. Removed `writeReplySelector`
+  and unified power/CCT/brightness confirmation to a read-back on the member's
+  own `selector()`; RGB setter replies now use `selector()` instead of a fixed
+  1. This preserves the shared panel-owned mesh gateway design (ADR-030/041);
+  it does not switch Zhiyun to one direct connection per fixture.
+- Native tests passed 96/96. The full Montserrat `bleep` image built with
+  146,380 bytes of RAM and 2,026,626 bytes of flash reported, then uploaded to
+  `/dev/cu.usbserial-211240` with the firmware hash verified and NVS preserved.
+- After flashing, a cold-boot bench run confirmed every step through the one
+  shared gateway: `device on 20`/`off 20` (selector 0) and `device on 32`/`off
+  32` (selector 1) all reported `confirmed`, and `scene start 9` then `scene
+  stop` reported all three Desk targets confirmed, where step 1 previously
+  failed. Independent optical verification of each fixture at the shooting
+  position remains the operator gate. Absolute selector-to-fixture assignment
+  across a second same-model fixture is still a `Hypothesis`.
+
+
+### 2026-09-03: Zhiyun repair and shared-scene handoff
+
+- Diagnosed a MOLUS X100 that paired and worked nearby but could not reliably
+  join the **Desk** scene at its shooting position. The saved X100 had been
+  accepted as an already-provisioned `0x1828` fixture, so it had no node in the
+  panel-owned mesh and retained an independent direct BLE link while the X60RGB
+  used the shared mesh gateway.
+- Zhiyun onboarding now migrates a just-provisioned live session from its
+  temporary direct link to the shared gateway on the next ownership acquisition.
+  The generic onboarding selector now also accepts candidates for an active,
+  saved, unpaired record; previously those rows were displayed but taps were
+  rejected because selection was restricted to pending Add operations.
+- Native tests passed 96/96, including a saved-record Forget and candidate
+  reselection regression. The full Montserrat `bleep` profile built with
+  146,308 bytes of RAM and 2,022,754 bytes of flash reported, then uploaded to
+  `/dev/cu.usbserial-211240` with the firmware hash verified and NVS left
+  unwritten.
+- On the panel, **Forget**, fixture Bluetooth reset, and selecting `PL105_...`
+  initially completed pairing, and a bench scene reached all targets ready and
+  received the existing protocol confirmations. A cold restart at the shooting
+  position failed, and a bench cold-start reproduction proved that X60RGB
+  instance 20 restored as shared while X100 instance 32 incorrectly restored
+  as direct. Read-only NVS inspection found an erased two-node mesh snapshot
+  followed by the active one-node snapshot: post-provision onboarding cleanup
+  had rolled back X100 after the fixture had already accepted its new keys.
+- Zhiyun cleanup now discards only the in-memory pre-provision snapshot after
+  Provisioning Complete; it no longer restores that snapshot over the durable
+  two-node mesh after a later control-service failure, cancellation, or session
+  teardown. Native tests remain 96/96 and the full Montserrat image builds at
+  146,308 bytes of RAM and 2,023,072 bytes of flash. The corrected image was
+  uploaded with its hash verified and NVS preserved.
+- After the fresh repair and a cold restart, serial confirmed that both X60RGB
+  instance 20 and X100 instance 32 restored as shared mesh members. The Desk
+  scene then failed X100 initialization because its selector-less `0x2003`
+  request returned the valid `plx104` identity of the physical X60RGB gateway.
+  Skipping those gateway-wide setup queries also prevented notifications, so
+  shared sessions instead run the full setup sequence, accept either supported
+  MOLUS gateway identity, and require the later selector-addressed state replies
+  for logical-member readiness. Direct onboarding keeps strict model identity
+  validation. Local firmware now also exposes `scene start <id>`, `scene stop`,
+  and `scene cancel` over its debug serial port; release-channel builds ignore
+  those commands.
+- A serial-driven cold-boot bench run then exposed interleaved member setup and
+  post-write readback drops. Shared Zhiyun initialization is now serialized and
+  observes a 300 ms quiet interval before readiness. The then-current matcher
+  treated selector-0 X60RGB CCT and power `01 80 01` setter replies as
+  confirmations, while X100 used 750 ms delayed selector-addressed readback.
+  After flashing that image, `scene start 9` and `scene stop` reported all three
+  devices confirmed. The later isolated-command trace below disproved the
+  X60RGB member attribution, so that run is no longer an acceptance result.
+  Native tests passed 96/96, the full Montserrat image
+  built with 146,364 bytes of RAM and 2,025,198 bytes of flash reported, and the
+  upload hash verified while NVS remained preserved. One shooting-position
+  cold restart, scene run, and visual fixture check remain for the final gate.
+- Local debug serial now also accepts `device on <instance-id>` and
+  `device off <instance-id>`. Each command takes a temporary sequence lease,
+  waits for protocol readiness, dispatches the action, waits for the driver's
+  device-level completion, logs the result, and releases the lease; it refuses
+  targets already owned by a scene. Release-channel builds ignore the console.
+  Native tests passed 96/96, the full Montserrat image built at 146,380 bytes of
+  RAM and 2,026,828 bytes of flash, and the image uploaded with hashes verified.
+- Those commands isolated a shared-routing defect, and operator observation
+  provided the decisive boundary: after the panel reported both Off, X60RGB was
+  physically Off at 50% but X100 remained On at 52%. A read-only host connection
+  to X100 returned its real 5600 K, 52%, On state. A direct Off write followed
+  by a fresh direct read returned 52%, Off. Direct selector probes then returned
+  X100's local state for selectors 0 and 1, while X60RGB returned its own 50%/
+  Off state for selector 1. Standards PB-GATT provisioning into one network did
+  not reproduce ZY Vega's proprietary cross-member routing. The current shared
+  Zhiyun connection cannot provide per-fixture confirmation; one direct
+  `0xFEE9` connection per fixture is the immediate reliable design, while
+  reverse-engineering the vendor topology is a separate tranche. X100 direct
+  optical Off still awaits operator confirmation.
+
 ### 2026-08-16: Stable 0.3.6 signed release
 
 - Merged the release preparation with explicit merge commit `f72a9df`, pushed

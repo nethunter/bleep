@@ -582,6 +582,36 @@ void test_onboarding_selection_failure_cancel_and_protocol_ready_commit_gate() {
   TEST_ASSERT_FALSE(backend.containsText("Candidate Light"));
 }
 
+void test_saved_unpaired_device_can_select_onboarding_candidate() {
+  MemoryBackend backend;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  driver.onboardingCandidateAvailable = true;
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(backend, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId id = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle,
+                                   "Saved Light", id)));
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+  driver.pairingUpdatePending = true;
+  devices.loop();
+  TEST_ASSERT_TRUE(devices.find(id)->paired);
+
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.clearPairing(id)));
+  TEST_ASSERT_FALSE(devices.find(id)->paired);
+  TEST_ASSERT_TRUE(devices.acquire(id, studio::ConnectionOwner::Foreground));
+
+  studio::OnboardingCandidate candidate;
+  TEST_ASSERT_TRUE(devices.onboardingCandidate(id, 0, candidate));
+  TEST_ASSERT_TRUE(devices.selectOnboardingCandidate(id, candidate.token));
+  TEST_ASSERT_TRUE(driver.onboardingSelected);
+}
+
 void test_mesh_store_round_trip_at_device_capacity() {
   MemoryBackend backend;
   studio::mesh::Store store(backend);

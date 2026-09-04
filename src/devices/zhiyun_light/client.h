@@ -31,8 +31,10 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   const ZhiyunLightState& state() const { return state_; }
   bool protocolReady() const;
   bool setPower(bool on);
-  bool setCct(uint16_t kelvin, uint8_t brightness);
-  bool setRgb(uint32_t rgb, uint8_t brightness);
+  bool setCct(uint16_t kelvin, uint8_t brightness,
+              bool powerOnAfterLook = false);
+  bool setRgb(uint32_t rgb, uint8_t brightness,
+              bool powerOnAfterLook = false);
   bool refresh();
   void cancelPendingCommand();
   bool resumeConnection();
@@ -81,7 +83,7 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   void handleProvisioningBytes(const uint8_t* data, size_t length);
   void handleDisconnect();
   void returnToOnboardingPicker(const char* error = nullptr);
-  bool rollbackPendingProvision();
+  void discardProvisioningSnapshot();
   void drainNotifications();
   bool writeFrame(const FrameBytes& frame);
   bool sendQuery(uint16_t command, const uint8_t* payload = nullptr,
@@ -89,13 +91,22 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   bool sendInitializationStep();
   bool sendVerificationStep();
   bool sendRgbStep();
-  bool retryCctVerification();
+  bool retryVerification(bool afterTimeout = false);
   void handleFrame(const ParsedFrame& frame);
   void finishInitialization();
+  void markInitializationReady();
+  bool beginPowerStage(bool on);
+  void noteBrightnessLimit(float actual);
   void finishCommand(bool success, const char* error = nullptr);
   void markProtocolReady();
   void markProtocolFailed();
   uint16_t nextSequence();
+  uint32_t verificationDelayMs() const {
+    // Routed replies were measured ~70 ms after the read request, and a value
+    // that has not settled simply retries, so the old 750 ms was pure latency
+    // that pushed a compound look past the scene runner's action budget.
+    return sharedTransport_ ? 300u : 250u;
+  }
   uint8_t selector() const { return routingSelector_; }
   const char* identityMarker() const;
 
@@ -131,9 +142,12 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   uint16_t expectedCommand_ = 0;
   bool awaitingResponse_ = false;
   uint8_t verificationAttempts_ = 0;
+  float previousBrightnessReadback_ = -1.0f;
+  uint8_t timeoutRetries_ = 0;
   Operation operation_ = Operation::None;
   uint8_t step_ = 0;
   bool desiredPower_ = false;
+  bool powerOnAfterLook_ = false;
   float desiredBrightness_ = 0.0f;
   uint16_t desiredKelvin_ = 5600;
   uint32_t desiredRgb_ = 0xffffff;
@@ -143,6 +157,7 @@ class ZhiyunLightClient : public studio::ble::BleCentralDelegate,
   uint32_t verifyAtMs_ = 0;
   uint32_t responseDeadlineMs_ = 0;
   uint32_t provisioningDeadlineMs_ = 0;
+  uint32_t initializationReadyAtMs_ = 0;
   studio::mesh::PbGattProvisioner provisioner_;
   uint8_t provisioningBytes_[160] = {};
   size_t provisioningLength_ = 0;

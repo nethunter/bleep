@@ -70,10 +70,13 @@ bool parseBrightness(const ParsedFrame& frame, float& percent,
                      uint8_t selector = 0, bool writeReply = false);
 bool parseCct(const ParsedFrame& frame, uint16_t& kelvin,
               uint8_t selector = 0, bool writeReply = false);
+// Defaults match the other state parsers: the member's own selector and a
+// read reply. Colour setters echo their write, but a read-back is what
+// confirms retained state, so the read form is the default here too.
 bool parseHue(const ParsedFrame& frame, float& degrees,
-              uint8_t selector = 1, bool writeReply = true);
+              uint8_t selector = 0, bool writeReply = false);
 bool parseSaturation(const ParsedFrame& frame, float& percent,
-                     uint8_t selector = 1, bool writeReply = true);
+                     uint8_t selector = 0, bool writeReply = false);
 bool parsePower(const ParsedFrame& frame, bool& on, uint8_t selector = 0,
                 bool writeReply = false);
 bool identityContains(const ParsedFrame& frame, const char* marker);
