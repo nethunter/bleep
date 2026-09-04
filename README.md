@@ -164,17 +164,24 @@ principles:
   exposes RGB hue/saturation. Aputure, X100, X60RGB, and Home Assistant lights
   use the same control screen; the old brand-specific light controls are not
   constructed. Unsupported controls are hidden and HA is power-only.
-- Separate Camera-family entries for GoPro, Insta360, DJI Osmo, Sony Camera,
-  and Phone Camera. GoPro uses the published Open GoPro BLE shutter API;
-  Phone Camera advertises a bonded BLE HID volume-key shutter. Insta360
-  emulates the captured X5 GPS Remote protocol as
-  `Insta360 Remote (Bleep)`, while DJI
+- Separate Camera-family entries for GoPro, Insta360 GPS Remote, Insta360 Mini
+  Remote, DJI Osmo, Sony Camera, and Phone Camera. GoPro uses the published
+  Open GoPro BLE shutter API; Phone Camera advertises a bonded BLE HID
+  volume-key shutter. The two Insta360 choices share one GATT/session runtime
+  but retain separate advertising, shutter vectors, and camera-state formats.
+  Mini mode uses the captured exact `Insta360 Mini Remote` identity: the X6 did
+  not discover either `Ble(e)p Remote` or `Insta360 Bleep Remote` when only the
+  complete-name field changed, then discovered the restored exact identity.
+  Both include guarded shutdown and ORBIT wake. DJI
   implements the published Osmo controller handshake, shows the camera's
   four-digit verification code during first pairing, and supports start/stop
   plus status subscription. Toggle-only cameras expose an explicit `Shutter Toggle` scene
-  action that repeats in generated Stop. Insta360 X5 GPS display state,
-  state-aware Start/Stop, and power behavior await exact-identity hardware
-  verification; Google Pixel 9 reconnect and shutter behavior is
+  action that repeats in generated Stop. Insta360 X6 Mini advertising,
+  state-aware Start/Stop, and status are capture-backed; the physical Mini
+  Remote's X6 power behavior is operator-confirmed. Ble(e)p's Mini path also
+  completes physical X6 shutdown, correct off UI, and wake/reconnect; its
+  Start/Stop and status panel checks remain open. Google Pixel 9
+  reconnect and shutter behavior is
   operator-confirmed. GoPro MAX2 connection, initial recording state, explicit
   Start/Stop, and camera-confirmed Encoding state are operator-confirmed on the
   panel. Published Sleep plus reconnect-to-wake controls are implemented and
@@ -207,8 +214,9 @@ are experimental bounded tranches whose hardware gates remain open. See
 | Insta360 X4 | Supported | Operation through Ble(e)p's GPS Remote path is operator-approved. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
 | Insta360 X4 Air | Supported | Operation through Ble(e)p's GPS Remote path is operator-approved. Model-specific capture, full reconnect/power coverage, and coexistence remain open. |
 | Insta360 X5 | Supported | Pairing, immediate sequence Start, camera-reported recording state, Start/Stop, shutdown, and physical wake are operator-confirmed. The returning wake connection has a new address-routing fix awaiting confirmation. |
+| Insta360 X6 | Experimental candidate; discovery and power verified | Exact-name Mini Remote discovery/connection, shutdown, `CAMERA OFF`, and wake/reconnect are operator-confirmed. Shutter toggle and video state are capture-backed; explicit Start/Stop and status still need a panel run. |
 | Insta360 GO 3 | Experimental candidate | GPS Remote compatibility has not been tested on this model. |
-| Insta360 GO Ultra | Experimental probe | Separate target with no established GPS Remote compatibility or hardware result. |
+| Insta360 GO Ultra | Experimental candidate | The supplied controller manual assigns Mini Remote mode; no model-specific hardware result is recorded. |
 | DJI Osmo Action 5 Pro | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | DJI Osmo 360 | Current, bounded scope | On-panel first-pair verification, explicit recording start/stop, and camera-originated recording status are operator-confirmed. Reconnect, forget/re-pair, and coexistence remain open. |
 | Sony Camera | Research | Separate catalog entry with recoverable capture-required onboarding; no device record is committed until the peripheral-role protocol is verified. |

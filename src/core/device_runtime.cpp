@@ -76,6 +76,8 @@ static_assert(sizeof(GoProDriver) <= 64, "GoPro driver shell must stay dormant")
 #endif
 #if CONFIG_DRIVER_INSTA360
 static_assert(sizeof(Insta360Driver) <= 64, "Insta360 driver shell must stay dormant");
+static_assert(sizeof(Insta360MiniDriver) <= 64,
+              "Insta360 Mini adapter must stay dormant");
 #endif
 #if CONFIG_DRIVER_DJI_OSMO
 static_assert(sizeof(DjiOsmoDriver) <= 64, "DJI Osmo driver shell must stay dormant");
@@ -117,6 +119,7 @@ DeviceManager& devices() {
 #endif
 #if CONFIG_DRIVER_INSTA360
   static Insta360Driver insta360Driver;
+  static Insta360MiniDriver insta360MiniDriver(insta360Driver);
 #endif
 #if CONFIG_DRIVER_DJI_OSMO
   static DjiOsmoDriver djiOsmoDriver;
@@ -154,6 +157,7 @@ DeviceManager& devices() {
 #endif
 #if CONFIG_DRIVER_INSTA360
       &insta360Driver,
+      &insta360MiniDriver,
 #endif
 #if CONFIG_DRIVER_DJI_OSMO
       &djiOsmoDriver,

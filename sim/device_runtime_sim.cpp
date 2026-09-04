@@ -564,15 +564,48 @@ class SimGoProDriver : public DeviceDriver {
 
 class SimInsta360Driver : public DeviceDriver {
  public:
-  DriverId driverId() const override { return DriverId::Insta360; }
-  bool activate(const DeviceRecord& record) override { id_=record.instanceId; state_.link=insta360::State::Link::Connected; return true; }
-  void deactivate(InstanceId id) override { if(id==id_)id_=kInvalidInstanceId; }
+  explicit SimInsta360Driver(DriverId driverId) : driverId_(driverId) {}
+  DriverId driverId() const override { return driverId_; }
+  bool activate(const DeviceRecord& record) override {
+    id_ = record.instanceId;
+    state_.link = insta360::State::Link::Connected;
+    state_.protocol = driverId_ == DriverId::Insta360Mini
+                          ? insta360::RemoteProtocol::Mini
+                          : insta360::RemoteProtocol::Gps;
+    return true;
+  }
+  void deactivate(InstanceId id) override {
+    if (id == id_) id_ = kInvalidInstanceId;
+  }
   void loop() override {}
-  CommandStatus dispatch(const DeviceCommand& c) override { if(c.instanceId!=id_)return CommandStatus::Unavailable;if(c.type!=CommandType::RecordTrigger)return CommandStatus::Unsupported;++state_.triggerCount;return CommandStatus::Succeeded; }
-  DeviceRuntimeState runtimeState(InstanceId id) const override { DeviceRuntimeState r;if(id==id_){r.link=LinkState::Connected;r.protocolReady=true;r.quality=StateQuality::Optimistic;}return r; }
-  const void* specializedState(InstanceId id) const override { return id==id_?&state_:nullptr; }
-  bool consumePairingUpdate(InstanceId,DeviceRecord&) override{return false;}
- private: InstanceId id_=kInvalidInstanceId; insta360::State state_;
+  CommandStatus dispatch(const DeviceCommand& command) override {
+    if (command.instanceId != id_) return CommandStatus::Unavailable;
+    if (command.type != CommandType::RecordTrigger) {
+      return CommandStatus::Unsupported;
+    }
+    ++state_.triggerCount;
+    return CommandStatus::Succeeded;
+  }
+  DeviceRuntimeState runtimeState(InstanceId id) const override {
+    DeviceRuntimeState runtime;
+    if (id == id_) {
+      runtime.link = LinkState::Connected;
+      runtime.protocolReady = true;
+      runtime.quality = StateQuality::Optimistic;
+    }
+    return runtime;
+  }
+  const void* specializedState(InstanceId id) const override {
+    return id == id_ ? &state_ : nullptr;
+  }
+  bool consumePairingUpdate(InstanceId, DeviceRecord&) override {
+    return false;
+  }
+
+ private:
+  DriverId driverId_;
+  InstanceId id_ = kInvalidInstanceId;
+  insta360::State state_;
 };
 
 class SimDjiOsmoDriver : public DeviceDriver {
@@ -599,7 +632,8 @@ HomeAssistantDriver gHomeAssistantDriver;
 AputureLightDriver gAputureLight;
 SimZhiyunLightDriver gZhiyunLightDriver;
 SimGoProDriver gGoProDriver;
-SimInsta360Driver gInsta360Driver;
+SimInsta360Driver gInsta360Driver(DriverId::Insta360);
+SimInsta360Driver gInsta360MiniDriver(DriverId::Insta360Mini);
 SimDjiOsmoDriver gDjiOsmoDriver;
 ActionCameraResearchDriver gSonyCameraDriver(DriverId::SonyCamera);
 ActionCameraResearchDriver gPhoneCameraDriver(DriverId::PhoneCamera);
@@ -607,7 +641,8 @@ DeviceDriver* gDrivers[] = {&gSharkDriver, &gCanonTriggerDriver, &gCanonDriver,
                             &gTascamDriver, &gHomeAssistantDriver,
                             &gAputureLight,
                             &gZhiyunLightDriver, &gGoProDriver,
-                            &gInsta360Driver, &gDjiOsmoDriver,
+                            &gInsta360Driver, &gInsta360MiniDriver,
+                            &gDjiOsmoDriver,
                             &gSonyCameraDriver, &gPhoneCameraDriver};
 static_assert(sizeof(gDrivers) / sizeof(gDrivers[0]) <=
                   DeviceManager::kMaxCompiledDrivers,

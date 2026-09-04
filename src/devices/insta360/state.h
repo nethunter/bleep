@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 namespace insta360 {
+enum class RemoteProtocol : uint8_t { Gps, Mini };
+
 struct State {
   enum class Link : uint8_t { Disconnected, Scanning, Connected };
   enum class Recording : uint8_t { Unknown, Stopped, Starting, Recording, Stopping };
@@ -16,6 +18,7 @@ struct State {
   bool powerCommandPending = false;
   bool powerCommandFailed = false;
   bool goUltraExperimental = false;
+  RemoteProtocol protocol = RemoteProtocol::Gps;
   uint32_t triggerCount = 0;
   char deviceName[40] = "";
 };

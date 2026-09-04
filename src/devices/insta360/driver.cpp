@@ -20,6 +20,7 @@ constexpr uint16_t kNoConnection = 0xffff;
 constexpr uint32_t kCommandTimeoutMs = 10000;
 constexpr uint32_t kWakeTimeoutMs = 60000;
 constexpr uint32_t kInitialSyncTimeoutMs = 15000;
+constexpr uint32_t kRemoteIdentitySliceMs = 12000;
 constexpr size_t kMaxCameraWriteLength = 20;
 constexpr uint8_t kInitialDiagnosticWriteLimit = 16;
 
@@ -50,6 +51,10 @@ const char* capturePhaseName(insta360::CapturePhase phase) {
   }
 }
 
+const char* remoteProtocolName(insta360::RemoteProtocol protocol) {
+  return protocol == insta360::RemoteProtocol::Mini ? "mini" : "gps";
+}
+
 }  // namespace
 
 class Insta360Driver::Runtime : public ble::BleCentralDelegate,
@@ -69,6 +74,7 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     uint8_t length = 0;
     uint16_t actualLength = 0;
     uint16_t subscriptionValue = 0;
+    insta360::RemoteProtocol protocol = insta360::RemoteProtocol::Gps;
     uint8_t data[kMaxCameraWriteLength] = {};
     char address[kBleAddressCapacity] = "";
     char name[kBleNameCapacity] = "";
@@ -100,13 +106,31 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     return initialized_ && ble::bleCentral().requestScan(radio_, true);
   }
 
-  bool advertiseNormal() {
+  bool advertiseNormal(bool gpsNeeded, bool miniNeeded) {
     if (!initialized_ || shutdown_) return false;
-    if (advertisingMode_ != AdvertisingMode::Normal) {
+    if (!gpsNeeded && !miniNeeded) return false;
+    const uint32_t now = millis();
+    insta360::RemoteProtocol desired = insta360::RemoteProtocol::Gps;
+    if (gpsNeeded && miniNeeded) {
+      if (advertisingMode_ == AdvertisingMode::Normal &&
+          !deadlineReached(now, identitySliceDeadlineMs_)) {
+        desired = advertisedProtocol_;
+      } else if (advertisingMode_ == AdvertisingMode::Normal) {
+        desired = advertisedProtocol_ == insta360::RemoteProtocol::Gps
+                      ? insta360::RemoteProtocol::Mini
+                      : insta360::RemoteProtocol::Gps;
+      }
+    } else if (miniNeeded) {
+      desired = insta360::RemoteProtocol::Mini;
+    }
+    if (advertisingMode_ != AdvertisingMode::Normal ||
+        advertisedProtocol_ != desired) {
       ble::releasePeripheralAdvertising(this, millis());
       advertisingMode_ = AdvertisingMode::Normal;
+      advertisedProtocol_ = desired;
+      identitySliceDeadlineMs_ = now + kRemoteIdentitySliceMs;
     }
-    return advertiseGpsIdentity();
+    return advertiseRemoteIdentity(desired);
   }
 
   bool startWake(const char* cameraName) {
@@ -120,6 +144,8 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     if (advertisingMode_ != AdvertisingMode::Wake) {
       ble::releasePeripheralAdvertising(this, millis());
       advertisingMode_ = AdvertisingMode::Wake;
+      advertisedProtocol_ = insta360::RemoteProtocol::Gps;
+      identitySliceDeadlineMs_ = 0;
     }
     return maintainWake();
   }
@@ -149,11 +175,17 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     ble::releasePeripheralAdvertising(this, millis());
     advertisingMode_ = AdvertisingMode::None;
     wakeDeadlineMs_ = 0;
+    identitySliceDeadlineMs_ = 0;
   }
 
   bool notifyCommand(uint16_t handle, const uint8_t* data, size_t len) {
     return notify_ != nullptr && handle != kNoConnection &&
            notify_->notify(data, len, handle);
+  }
+
+  bool disconnectCamera(uint16_t handle) {
+    return server_ != nullptr && handle != kNoConnection &&
+           server_->disconnect(handle);
   }
 
   bool pop(Event& event) {
@@ -256,15 +288,25 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     char name[kBleNameCapacity] = "";
   };
 
-  bool advertiseGpsIdentity() {
+  bool advertiseRemoteIdentity(insta360::RemoteProtocol protocol) {
     ble::PeripheralAdvertisement advertisement;
-    advertisement.diagnosticTag = "insta360";
-    advertisement.rawAdvertisementData = insta360::kAdvertisementData;
-    advertisement.rawAdvertisementDataLength =
-        sizeof(insta360::kAdvertisementData);
-    advertisement.rawScanResponseData = insta360::kScanResponseData;
-    advertisement.rawScanResponseDataLength =
-        sizeof(insta360::kScanResponseData);
+    if (protocol == insta360::RemoteProtocol::Mini) {
+      advertisement.diagnosticTag = "insta360_mini";
+      advertisement.rawAdvertisementData = insta360::kMiniAdvertisementData;
+      advertisement.rawAdvertisementDataLength =
+          sizeof(insta360::kMiniAdvertisementData);
+      advertisement.rawScanResponseData = insta360::kMiniScanResponseData;
+      advertisement.rawScanResponseDataLength =
+          sizeof(insta360::kMiniScanResponseData);
+    } else {
+      advertisement.diagnosticTag = "insta360_gps";
+      advertisement.rawAdvertisementData = insta360::kGpsAdvertisementData;
+      advertisement.rawAdvertisementDataLength =
+          sizeof(insta360::kGpsAdvertisementData);
+      advertisement.rawScanResponseData = insta360::kGpsScanResponseData;
+      advertisement.rawScanResponseDataLength =
+          sizeof(insta360::kGpsScanResponseData);
+    }
     return ble::requestPeripheralAdvertising(this, advertisement, millis());
   }
 
@@ -289,6 +331,7 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
     Event event;
     event.type = type;
     event.handle = info.getConnHandle();
+    event.protocol = advertisedProtocol_;
     NimBLEAddress address = info.getIdAddress();
     if (type == EventType::Connected) {
       const NimBLEAddress currentAddress = info.getAddress();
@@ -344,7 +387,10 @@ class Insta360Driver::Runtime : public ble::BleCentralDelegate,
   uint8_t wakeAdvertisementData_[insta360::kWakeAdvertisementDataLength] = {};
   uint8_t wakeScanResponseData_[insta360::kWakeScanResponseDataLength] = {};
   uint32_t wakeDeadlineMs_ = 0;
+  uint32_t identitySliceDeadlineMs_ = 0;
   AdvertisingMode advertisingMode_ = AdvertisingMode::None;
+  insta360::RemoteProtocol advertisedProtocol_ =
+      insta360::RemoteProtocol::Gps;
   bool initialized_ = false;
   bool shutdown_ = false;
   bool wakeTimedOut_ = false;
@@ -364,9 +410,11 @@ const Insta360Driver::Session* Insta360Driver::sessionFor(InstanceId id) const {
   return nullptr;
 }
 
-Insta360Driver::Session* Insta360Driver::sessionForAddress(const char* address) {
+Insta360Driver::Session* Insta360Driver::sessionForAddress(
+    const char* address, insta360::RemoteProtocol protocol) {
   for (Session* session : sessions_) {
     if (session != nullptr && session->paired &&
+        session->state.protocol == protocol &&
         std::strcmp(session->address, address) == 0) {
       return session;
     }
@@ -381,9 +429,13 @@ Insta360Driver::Session* Insta360Driver::sessionForHandle(uint16_t handle) {
   return nullptr;
 }
 
-Insta360Driver::Session* Insta360Driver::firstAwaiting() {
+Insta360Driver::Session* Insta360Driver::firstAwaiting(
+    insta360::RemoteProtocol protocol) {
   for (Session* session : sessions_) {
-    if (session != nullptr && !session->paired) return session;
+    if (session != nullptr && !session->paired &&
+        session->state.protocol == protocol) {
+      return session;
+    }
   }
   return nullptr;
 }
@@ -421,6 +473,9 @@ bool Insta360Driver::activate(const DeviceRecord& record) {
                  record.bleName[0] != '\0' ? record.bleName
                                             : record.displayName,
                  sizeof(session->state.deviceName) - 1);
+    session->state.protocol = record.driverId == DriverId::Insta360Mini
+                                  ? insta360::RemoteProtocol::Mini
+                                  : insta360::RemoteProtocol::Gps;
     session->state.goUltraExperimental =
         insta360::isGoUltra(session->state.deviceName);
     session->state.link = insta360::State::Link::Scanning;
@@ -462,15 +517,25 @@ void Insta360Driver::loop() {
     if (event.type == Runtime::EventType::CameraWrite) {
       Session* session = sessionForHandle(event.handle);
       if (session == nullptr) continue;
+      if (session->state.protocol == insta360::RemoteProtocol::Mini &&
+          session->state.power == insta360::State::Power::PoweringOff &&
+          insta360::isPowerOffAccepted(event.data, event.length)) {
+        const bool disconnecting = runtime_->disconnectCamera(event.handle);
+        session->commandDeadlineMs = millis() + kCommandTimeoutMs;
+        diagnosticOutput().printf(
+            "insta360_power event=shutdown_accepted handle=%u "
+            "disconnecting=%u\n",
+            event.handle, disconnecting ? 1 : 0);
+        continue;
+      }
       if (session->diagnosticWritesRemaining != 0) {
         --session->diagnosticWritesRemaining;
         ++session->diagnosticWritesSeen;
-        const bool stateCandidate = event.length >= 5 &&
-                                    event.data[0] == 0xfe &&
-                                    event.data[1] == 0xef &&
-                                    event.data[2] == 0xfe &&
-                                    event.data[3] == 0x10 &&
-                                    event.data[4] == 0x80;
+        const bool stateCandidate =
+            event.length >= 5 && event.data[0] == 0xfe &&
+            event.data[1] == 0xef && event.data[2] == 0xfe &&
+            ((event.data[3] == 0x10 && event.data[4] == 0x80) ||
+             event.data[3] == 0x55);
         Print& output = diagnosticOutput();
         output.printf("insta360_sync event=ce81_write handle=%u index=%u len=%u",
                       event.handle, session->diagnosticWritesSeen,
@@ -564,8 +629,9 @@ void Insta360Driver::loop() {
       continue;
     }
 
-    Session* session = sessionForAddress(event.address);
+    Session* session = nullptr;
     if (event.type == Runtime::EventType::Connected) {
+      session = sessionForAddress(event.address, event.protocol);
       if (session == nullptr) {
         session = firstPoweringOn();
         if (session != nullptr) {
@@ -574,7 +640,7 @@ void Insta360Driver::loop() {
               event.handle);
         }
       }
-      if (session == nullptr) session = firstAwaiting();
+      if (session == nullptr) session = firstAwaiting(event.protocol);
       if (session == nullptr) continue;
       runtime_->cancelWake();
       session->connHandle = event.handle;
@@ -601,8 +667,9 @@ void Insta360Driver::loop() {
       session->syncConfirmed = false;
       session->subscriptionEnabled = false;
       diagnosticOutput().printf(
-          "insta360_sync event=connected handle=%u timeout_ms=%lu\n",
-          event.handle, static_cast<unsigned long>(kInitialSyncTimeoutMs));
+          "insta360_sync event=connected handle=%u protocol=%s timeout_ms=%lu\n",
+          event.handle, remoteProtocolName(session->state.protocol),
+          static_cast<unsigned long>(kInitialSyncTimeoutMs));
     } else {
       session = sessionForHandle(event.handle);
       if (session == nullptr) continue;
@@ -638,9 +705,13 @@ void Insta360Driver::loop() {
     }
     if (session->triggerRequested) {
       session->triggerRequested = false;
+      const uint8_t* command =
+          session->state.protocol == insta360::RemoteProtocol::Mini
+              ? insta360::kMiniShutterCommand
+              : insta360::kGpsShutterCommand;
       const bool ok = runtime_->notifyCommand(
-          session->connHandle, insta360::kShutterCommand,
-          sizeof(insta360::kShutterCommand));
+          session->connHandle, command,
+          sizeof(insta360::kGpsShutterCommand));
       session->state.lastTriggerFailed = !ok;
       if (ok) {
         ++session->state.triggerCount;
@@ -718,13 +789,21 @@ void Insta360Driver::updateAdvertising() {
       return;
     }
   }
-  bool needed = false;
+  bool gpsNeeded = false;
+  bool miniNeeded = false;
   for (Session* session : sessions_) {
-    needed |= session != nullptr && session->connHandle == kNoConnection &&
-              session->state.power != insta360::State::Power::Off;
+    if (session == nullptr || session->connHandle != kNoConnection ||
+        session->state.power == insta360::State::Power::Off) {
+      continue;
+    }
+    if (session->state.protocol == insta360::RemoteProtocol::Mini) {
+      miniNeeded = true;
+    } else {
+      gpsNeeded = true;
+    }
   }
-  if (needed) {
-    runtime_->advertiseNormal();
+  if (gpsNeeded || miniNeeded) {
+    runtime_->advertiseNormal(gpsNeeded, miniNeeded);
   } else {
     runtime_->stopAdvertising();
   }

@@ -2,7 +2,9 @@
 
 Status: **Research**, capture-backed on an Insta360 X5 with an Insta360 GPS
 Remote. Ble(e)p implements the captured GATT declaration order under the
-operator-confirmed custom identity. The operator confirms this GPS Remote path
+operator-confirmed custom identity. It is now a distinct catalog driver sharing
+the Insta360 GATT/session runtime with the Mini Remote implementation. The
+operator confirms this GPS Remote path
 works with Insta360 X3, X4, X4 Air, and X5. X5 control and physical wake have
 the detailed evidence below; the returning X5 wake connection has one
 address-routing correction to recheck.

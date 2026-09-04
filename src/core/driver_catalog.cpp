@@ -119,7 +119,16 @@ constexpr DriverDescriptor kDrivers[] = {
     },
 #endif
 #if CONFIG_DRIVER_INSTA360
-    {DriverId::Insta360, "insta360.gps_remote", "Insta360", "Insta360",
+    {DriverId::Insta360, "insta360.gps_remote", "Insta360",
+     "Insta360 GPS Remote",
+     DeviceType::Camera,
+     capabilityBit(Capability::Link) |
+         capabilityBit(Capability::RecordStart) |
+         capabilityBit(Capability::RecordStop) |
+         capabilityBit(Capability::RecordingState),
+     4},
+    {DriverId::Insta360Mini, "insta360.mini_remote", "Insta360",
+     "Insta360 Mini Remote",
      DeviceType::Camera,
      capabilityBit(Capability::Link) |
          capabilityBit(Capability::RecordStart) |

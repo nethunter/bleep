@@ -700,8 +700,12 @@ void refreshDriverList() {
     lv_obj_t* model = lv_label_create(choice);
     lv_label_set_text(model, descriptor->model);
     lv_label_set_long_mode(model, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(model, 140);
-    lv_obj_set_style_text_font(model, UI_FONT_14, 0);
+    lv_obj_set_size(model, 150, 16);
+    const bool longInsta360Name =
+        descriptor->id == studio::DriverId::Insta360 ||
+        descriptor->id == studio::DriverId::Insta360Mini;
+    lv_obj_set_style_text_font(model,
+                               longInsta360Name ? UI_FONT_12 : UI_FONT_14, 0);
     lv_obj_set_style_text_color(
         model, lv_color_hex(available ? kColText : kColMuted), 0);
     lv_obj_align(model, LV_ALIGN_TOP_LEFT, 8, 4);
@@ -1065,6 +1069,12 @@ void simShowDeviceList(Mode showMode, studio::DeviceType showCategory) {
   level = Level::DeviceList;
   selectedDevice = studio::kInvalidInstanceId;
   refresh();
+}
+
+void simScrollDeviceList(int32_t y) {
+  if (level == Level::DeviceList && body != nullptr) {
+    lv_obj_scroll_by(body, 0, y, LV_ANIM_OFF);
+  }
 }
 
 void simShowActions(Mode showMode, studio::InstanceId instanceId) {
