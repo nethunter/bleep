@@ -1219,7 +1219,9 @@ the replacement.
   and 1/6/24-hour network retry sequence. Every updater-owned terminal path
   returns Wi-Fi to `WIFI_OFF`.
 - Consent: Background work fetches only the signed manifest and detached
-  signature. A newer, non-dismissed sequence offers **Install now** or
+  signature (since 2026-09-04 preferably as the single `bleep-update.bundle`
+  asset, falling back to the pair on 404, because each `github.com` TLS
+  handshake runs within a few KB of the ESP32-C3 heap floor). A newer, non-dismissed sequence offers **Install now** or
   **Later**. Installation requires a USB/reboot warning and explicit consent
   before scenes and retained links are released.
 - Storage: Partition schema 2 contains fixed factory recovery at

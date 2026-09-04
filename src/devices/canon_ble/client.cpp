@@ -107,6 +107,12 @@ void shootingNotifyTrampoline(NimBLERemoteCharacteristic* characteristic,
 
 }  // namespace
 
+namespace {
+uint16_t gRetryBackoffCapMs = 1500;
+}  // namespace
+
+void setRetryBackoffCapForDebug(uint16_t capMs) { gRetryBackoffCapMs = capMs; }
+
 bool CanonBleClient::begin() {
   if (initialized_) {
     return true;
@@ -124,7 +130,7 @@ bool CanonBleClient::begin() {
   // A just-woken body answers the first pokes with HCI 0x3E and then stays
   // silent for a fixed 7-9 s regardless of how long the panel waits, so the
   // growing backoff only delays the attempt that finally succeeds.
-  policy.retryBackoffCapMs = 1500;
+  policy.retryBackoffCapMs = gRetryBackoffCapMs;
   policy.diagnosticTag = "canon_smart";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;

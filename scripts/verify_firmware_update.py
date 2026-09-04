@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +18,7 @@ def main() -> int:
   parser = argparse.ArgumentParser()
   parser.add_argument("--manifest", type=Path, required=True)
   parser.add_argument("--signature", type=Path, required=True)
+  parser.add_argument("--bundle", type=Path, default=None)
   parser.add_argument("--firmware", type=Path, required=True)
   parser.add_argument("--recovery", type=Path, required=True)
   parser.add_argument("--public-key", type=Path, required=True)
@@ -34,6 +36,10 @@ def main() -> int:
     public_key.verify(signature, encoded, ec.ECDSA(hashes.SHA256()))
   except InvalidSignature as error:
     raise SystemExit("invalid manifest signature") from error
+  if args.bundle is not None:
+    expected = encoded + base64.b64encode(signature) + b"\n"
+    if args.bundle.read_bytes() != expected:
+      raise SystemExit("bundle does not match manifest and signature")
   manifest = json.loads(encoded)
   if manifest["image_size"] != len(firmware):
     raise SystemExit("firmware length does not match manifest")

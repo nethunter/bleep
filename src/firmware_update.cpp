@@ -154,7 +154,17 @@ FirmwareUpdateService& service() {
 #include <WiFi.h>
 
 #include "wifi_station_cache.h"
+
+#if ARDUINO_USB_CDC_ON_BOOT
+#define FW_LOG Serial0
+#else
+#define FW_LOG Serial
+#endif
 #include <esp_heap_caps.h>
+#include <esp_log.h>
+#include <esp_tls.h>
+
+#include "core/update_bundle.h"
 #include <esp_http_client.h>
 #include <esp_image_format.h>
 #include <esp_netif.h>
@@ -172,7 +182,8 @@ FirmwareUpdateService& service() {
 namespace firmware_update {
 namespace {
 
-constexpr size_t kManifestCapacity = 1536;
+// Manifest (<= 1536 bytes) plus the base64 signature line of a bundle.
+constexpr size_t kManifestCapacity = 1792;
 constexpr size_t kSignatureCapacity = 80;
 constexpr int kCheckReceiveBufferSize = 4096;
 constexpr int kCheckTransmitBufferSize = 2048;
@@ -265,7 +276,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 -----END CERTIFICATE-----
 )CERT";
 
-enum class TransferKind : uint8_t { None, Manifest, Signature, RecoveryImage };
+enum class TransferKind : uint8_t { None, Bundle, Manifest, Signature, RecoveryImage };
 enum class ManifestResult : uint8_t { Invalid, Current, Available };
 enum class OperationKind : uint8_t { None, Check, RecoveryRefresh };
 enum class RecoveryManifestResult : uint8_t { None, Invalid, Current, Pending };
@@ -273,6 +284,7 @@ enum class RecoveryManifestResult : uint8_t { None, Invalid, Current, Pending };
 struct PersistedState {
   uint32_t magic = 0x46575550;
   uint16_t version = 3;
+  // Bit flags; the field was reserved (zero) in every stored v3 record.
   uint16_t reserved = 0;
   uint64_t installedSequence = 0;
   uint64_t availableSequence = 0;
@@ -283,6 +295,22 @@ struct PersistedState {
 
 studio::FirmwareUpdatePolicy policy;
 Snapshot snapshot;
+// PersistedState::reserved flag: the current release answered 404 for the
+// single-file bundle, so skip that probe (one heavy github.com handshake)
+// until a newer release shows up.
+constexpr uint16_t kFlagBundleUnavailable = 1u << 0;
+// The other 15 bits hold a hash of the release sequence the flag refers to,
+// so a newer release clears it and gets probed once.
+uint16_t releaseSequenceTag(uint64_t sequence) {
+  uint32_t hash = 2166136261u;
+  for (int i = 0; i < 8; ++i) {
+    hash ^= static_cast<uint8_t>(sequence >> (i * 8));
+    hash *= 16777619u;
+  }
+  return static_cast<uint16_t>(((hash >> 16) ^ hash) & 0x7FFFu);
+}
+bool bundleMissingThisCheck = false;
+uint64_t lastManifestSequence = 0;
 bool runtimeIdle = false;
 bool automaticEligible = false;
 bool ownsWifi = false;
@@ -300,6 +328,8 @@ size_t manifestLength = 0;
 uint8_t signature[kSignatureCapacity] = {};
 size_t signatureLength = 0;
 char signatureUrl[256] = {};
+char bundleUrl[256] = {};
+const char* manifestUrl = kStableManifestUrl;
 char payloadUrl[320] = {};
 size_t expectedImageSize = 0;
 uint8_t expectedSha[32] = {};
@@ -361,7 +391,11 @@ void loadPersisted() {
   preferences.end();
 }
 
+void logHeap(const char* stage);
+
 void recordCheckResult(const char* result) {
+  FW_LOG.printf("fw_update event=check_result result=\"%s\"\n", result);
+  logHeap("check_result");
   const time_t now = time(nullptr);
   persisted.lastCheckEpoch = now >= 1700000000 ? static_cast<uint64_t>(now) : 0;
   std::strncpy(persisted.lastResult, result, sizeof(persisted.lastResult) - 1);
@@ -448,11 +482,23 @@ void scheduleRecoveryRetry(const char* message, bool retryable) {
   setMessage(Status::Failed, message);
 }
 
+void logHeap(const char* stage) {
+  FW_LOG.printf("fw_update stage=%s free_heap=%u min_free_heap=%u max_alloc=%u\n",
+                stage, static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMinFreeHeap()),
+                static_cast<unsigned>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+}
+
 esp_err_t onHttpEvent(esp_http_client_event_t* event) {
+  if (event->event_id == HTTP_EVENT_ON_CONNECTED) logHeap("tls_connected");
+  else if (event->event_id == HTTP_EVENT_ON_FINISH) logHeap("transfer_finished");
+  else if (event->event_id == HTTP_EVENT_ERROR) logHeap("transfer_error");
   if (event->event_id != HTTP_EVENT_ON_DATA || event->data_len <= 0) return ESP_OK;
   const uint8_t* bytes = static_cast<const uint8_t*>(event->data);
   const size_t length = static_cast<size_t>(event->data_len);
-  if (transferKind == TransferKind::Manifest) {
+  if (transferKind == TransferKind::Manifest ||
+      transferKind == TransferKind::Bundle) {
     if (manifestLength + length >= sizeof(manifest)) return ESP_FAIL;
     std::memcpy(manifest + manifestLength, bytes, length);
     manifestLength += length;
@@ -479,9 +525,23 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
 
 bool startTransfer(const char* url, TransferKind kind) {
   cleanupClient();
+  // Parse the trust roots once and share them across the manifest, signature,
+  // and redirect handshakes instead of re-parsing the PEM bundle inside each
+  // TLS setup; the github.com hops already run within ~1-20 KB of the heap
+  // floor on this board.
+  static bool globalStoreReady = false;
+  if (!globalStoreReady) {
+    globalStoreReady = esp_tls_set_global_ca_store(
+        reinterpret_cast<const unsigned char*>(kUpdateTrustRoots),
+        sizeof(kUpdateTrustRoots)) == ESP_OK;
+  }
   esp_http_client_config_t config = {};
   config.url = url;
-  config.cert_pem = kUpdateTrustRoots;
+  if (globalStoreReady) {
+    config.use_global_ca_store = true;
+  } else {
+    config.cert_pem = kUpdateTrustRoots;
+  }
   config.user_agent = "Bleep-Firmware-Updater/1";
   config.timeout_ms = 5000;
   config.max_redirection_count = 4;
@@ -638,6 +698,7 @@ ManifestResult parseVerifiedManifest() {
       (document["partition_schema"] | 0) != 2 ||
       (document["recovery_schema"] | 0) != 1) return ManifestResult::Invalid;
   const uint64_t sequence = document["release_sequence"] | 0ULL;
+  lastManifestSequence = sequence;
   const size_t imageSize = document["image_size"] | 0U;
   const char* url = document["payload_url"] | "";
   if (imageSize == 0 ||
@@ -680,14 +741,26 @@ bool beginWifi() {
 }
 
 void startManifestRequest() {
+  logHeap("manifest_request");
   const bool development = studio::panelSettings().get().firmwareUpdateChannel ==
                            studio::FirmwareUpdateChannel::Development;
   const char* url = development ? kDevelopmentManifestUrl : kStableManifestUrl;
   manifestLength = 0;
   signatureLength = 0;
+  bundleMissingThisCheck = false;
+  manifestUrl = url;
   std::snprintf(signatureUrl, sizeof(signatureUrl), "%.*s.sig",
                 static_cast<int>(std::strlen(url) - 5), url);
-  if (!startTransfer(url, TransferKind::Manifest)) {
+  // Prefer the single-file bundle (manifest + base64 signature): one asset
+  // download instead of two halves the TLS handshakes to github.com, which
+  // run within a few KB of this board's heap floor. Releases without a bundle
+  // answer 404 and the two-file flow takes over.
+  std::snprintf(bundleUrl, sizeof(bundleUrl), "%.*s.bundle",
+                static_cast<int>(std::strlen(url) - 5), url);
+  const bool probeBundle = (persisted.reserved & kFlagBundleUnavailable) == 0;
+  if (!startTransfer(probeBundle ? bundleUrl : url,
+                     probeBundle ? TransferKind::Bundle
+                                 : TransferKind::Manifest)) {
     fail("Could not start update check");
     return;
   }
@@ -789,7 +862,7 @@ void finishRecoveryRequest() {
   operationKind = OperationKind::None;
   snapshot.progressPercent = 100;
   if (nextStep == studio::RecoveryInstallStep::BootRecovery) {
-    Serial.printf("FW_UPDATE: recovery verified sequence=%llu; booting recovery\n",
+    FW_LOG.printf("FW_UPDATE: recovery verified sequence=%llu; booting recovery\n",
                   static_cast<unsigned long long>(installedRecoverySequence));
     recordCheckResult("Recovery updated; firmware pending");
     setMessage(Status::RebootPending, "Starting updated recovery");
@@ -875,6 +948,15 @@ void handleCompletedTransfer() {
     }
     return;
   }
+  if (code == 404 && finished == TransferKind::Bundle) {
+    FW_LOG.println("fw_update event=bundle_missing fallback=two_file");
+    bundleMissingThisCheck = true;
+    manifestLength = 0;
+    if (!startTransfer(manifestUrl, TransferKind::Manifest)) {
+      fail("Could not start update check");
+    }
+    return;
+  }
   if (code != 200) {
     if (finished == TransferKind::RecoveryImage) {
       scheduleRecoveryRetry(code == 404 ? "Recovery image was not published"
@@ -892,11 +974,37 @@ void handleCompletedTransfer() {
     if (!startTransfer(signatureUrl, TransferKind::Signature)) {
       fail("Could not fetch signature");
     }
-  } else if (finished == TransferKind::Signature) {
+  } else if (finished == TransferKind::Bundle ||
+             finished == TransferKind::Signature) {
+    if (finished == TransferKind::Bundle) {
+      size_t splitManifestLength = 0;
+      if (!studio::splitUpdateBundle(manifest, manifestLength,
+                                     splitManifestLength, signature,
+                                     sizeof(signature), signatureLength)) {
+        fail("Update bundle malformed");
+        return;
+      }
+      manifestLength = splitManifestLength;
+      manifest[manifestLength] = '\0';
+    }
     const ManifestResult result = parseVerifiedManifest();
     if (result == ManifestResult::Invalid) {
       fail("Update signature or target invalid");
       return;
+    }
+    if (finished == TransferKind::Signature) {
+      const uint16_t tag = releaseSequenceTag(lastManifestSequence);
+      if (bundleMissingThisCheck) {
+        // Remember which release lacked the bundle; skip the probe for it.
+        persisted.reserved = static_cast<uint16_t>(kFlagBundleUnavailable | (tag << 1));
+        savePersisted();
+      } else if ((persisted.reserved & kFlagBundleUnavailable) != 0 &&
+                 static_cast<uint16_t>(persisted.reserved >> 1) != tag) {
+        // A different release is published now; it may ship the bundle.
+        persisted.reserved = 0;
+        savePersisted();
+      }
+      bundleMissingThisCheck = false;
     }
     if (result == ManifestResult::Current) {
       persisted.availableSequence = 0;
@@ -944,6 +1052,9 @@ void FirmwareUpdateService::begin() {
   recoveryRefreshFailures = 0;
   cleanupRecoveryWrite(true);
   loadPersisted();
+  // In async mode every poll without pending bytes logs an EAGAIN "error"
+  // from esp_transport; the return codes already carry real failures.
+  esp_log_level_set("TRANSPORT_BASE", ESP_LOG_NONE);
   wifiConfigured();
   const esp_partition_t* running = esp_ota_get_running_partition();
   esp_ota_img_states_t state;
@@ -990,7 +1101,7 @@ void FirmwareUpdateService::runEarlyRecoveryUpdate(
   if (!recoveryRefreshPending) return;
 
   if (callback != nullptr) callback(snapshot);
-  Serial.printf("FW_UPDATE: minimal recovery updater starting; free_heap=%u max_alloc=%u\n",
+  FW_LOG.printf("FW_UPDATE: minimal recovery updater starting; free_heap=%u max_alloc=%u\n",
                 static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(
                     heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
@@ -1005,7 +1116,7 @@ void FirmwareUpdateService::runEarlyRecoveryUpdate(
         finishWifiShutdown(millis());
         delay(5);
       }
-      Serial.printf("FW_UPDATE: minimal recovery updater failed: %s; free_heap=%u "
+      FW_LOG.printf("FW_UPDATE: minimal recovery updater failed: %s; free_heap=%u "
                     "min_free_heap=%u\n",
                     snapshot.message,
                     static_cast<unsigned>(ESP.getFreeHeap()),
@@ -1041,6 +1152,7 @@ void FirmwareUpdateService::loop() {
     }
     if (WiFi.status() == WL_CONNECTED) {
       if (!timeSyncStarted) {
+        logHeap("wifi_connected");
         studio::HomeAssistantConfig config;
         if (wifiConfigured(&config)) {
           wifi_station_cache::rememberCurrent(config.wifiSsid);
@@ -1083,10 +1195,15 @@ void FirmwareUpdateService::loop() {
       setMessage(Status::Deferred, "Update check deferred");
       return;
     }
+    static uint32_t lastHeapSampleMs = 0;
+    if (now - lastHeapSampleMs >= 250) {
+      lastHeapSampleMs = now;
+      logHeap("perform");
+    }
     const esp_err_t result = esp_http_client_perform(client);
     if (result == ESP_OK) handleCompletedTransfer();
     else if (result != ESP_ERR_HTTP_EAGAIN && result != ESP_ERR_HTTP_CONNECTING) {
-      Serial.printf("[fw-update] transfer failed: %s (0x%x)\n",
+      FW_LOG.printf("[fw-update] transfer failed: %s (0x%x)\n",
                     esp_err_to_name(result), static_cast<unsigned>(result));
       if (operationKind == OperationKind::RecoveryRefresh) {
         scheduleRecoveryRetry("Recovery transfer failed", true);
@@ -1203,13 +1320,13 @@ bool FirmwareUpdateService::installAvailable() {
     setMessage(Status::Failed, "Update is already installed");
     return false;
   }
-  Serial.printf("FW_UPDATE: updating recovery sequence=%llu before main sequence=%llu\n",
+  FW_LOG.printf("FW_UPDATE: updating recovery sequence=%llu before main sequence=%llu\n",
                 static_cast<unsigned long long>(expectedRecoverySequence),
                 static_cast<unsigned long long>(snapshot.releaseSequence));
   snapshot.recoveryUpdatePending = true;
   recoveryRefreshPending = true;
   recoveryRefreshFailures = 0;
-  Serial.printf("FW_UPDATE: restarting into minimal updater for recovery sequence=%llu\n",
+  FW_LOG.printf("FW_UPDATE: restarting into minimal updater for recovery sequence=%llu\n",
                 static_cast<unsigned long long>(expectedRecoverySequence));
   if (restartMainForRecoveryUpdate()) return true;
   setMessage(Status::Failed, "Could not restart update service");

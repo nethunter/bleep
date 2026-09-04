@@ -140,7 +140,11 @@ Do not reuse a key between environments, place a private key in repository or
 artifact storage, or make signing continue when the secret is missing. Rotate
 a channel by embedding a newly identified public key first, shipping that trust
 anchor through an already trusted release, and only then switching its
-environment secret. The manifest key IDs currently accepted by firmware are
+environment secret. Release assets are `bleep-update.bin`, `bleep-recovery.bin`,
+`bleep-update.json`, `bleep-update.sig`, and the single-file
+`bleep-update.bundle` (manifest bytes plus a base64 signature line) that the
+panel fetches first; `verify_firmware_update.py --bundle` checks it matches.
+The manifest key IDs currently accepted by firmware are
 `stable-2026-01` and `development-2026-01`.
 
 Both workflows build recovery and main independently, enforce their

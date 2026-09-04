@@ -11,6 +11,11 @@ class NimBLERemoteCharacteristic;
 
 namespace canon_ble {
 
+// Bench override for the direct-retry backoff cap applied at the next client
+// begin(); 0 restores the unbounded 1.5 s x failures growth. Local builds
+// expose it as `canon backoff <ms>` for A/B timing runs.
+void setRetryBackoffCapForDebug(uint16_t capMs);
+
 class CanonBleClient : public studio::ble::BleCentralDelegate {
  public:
   using Link = CanonBleState::Link;

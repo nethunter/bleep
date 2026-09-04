@@ -5,6 +5,54 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-04: Update-check heap floor, HA state read, backoff A/B
+
+- Instrumented the boot update check (its logs had been going to the USB CDC
+  port, not the UART) with a 250 ms heap sampler. Wi-Fi association leaves
+  about 96 KB free; each TLS handshake to `github.com` (Sectigo P-384 chain)
+  then consumes 55-75 KB, while the `githubusercontent.com` hops (ISRG chain)
+  barely move the floor. Across five sampled boots the trough was 13.2 KB,
+  10.7 KB, 0.9 KB, 0.2 KB (handshake failed with `-0x2700`), and 4.7 KB. The
+  earlier "certificate verification" failures were handshake heap exhaustion,
+  not a trust-root problem: all three GitHub chains verify against the
+  embedded roots with OpenSSL. Wi-Fi and mbedTLS buffer sizes are fixed in the
+  prebuilt Arduino core, and sharing one parsed CA store across the
+  handshakes (`esp_tls_set_global_ca_store`) did not move the trough.
+- Structural fix: the packager now also emits `bleep-update.bundle`
+  (canonical manifest bytes plus a base64 signature line). Firmware fetches
+  the bundle first, so a check costs one `github.com` handshake at maximum
+  heap instead of two, and falls back to the `.json`/`.sig` pair on 404 so
+  existing releases keep working. `splitUpdateBundle` in
+  `core/update_bundle.h` is host-tested; `verify_firmware_update.py --bundle`
+  checks the asset in CI. The bundle path itself cannot be exercised until a
+  release ships the asset; the 404 fallback was verified on hardware. Because
+  that probe costs a heavy `github.com` handshake of its own, a 404 sets a
+  persisted flag (`PersistedState::reserved` bit 0, no schema bump) tagged
+  with a 15-bit hash of the release sequence the two-file check then reports;
+  the probe is skipped until a manifest with a different sequence appears.
+  Verified over three boots: probe + 404 + two-file, then two boots that went
+  straight to the two-file flow. The async
+  `esp_transport` EAGAIN read "errors" that flooded the log while a body
+  drained are silenced (`TRANSPORT_BASE` log level none); failures still
+  surface through return codes.
+- Home Assistant initial REST state read: the 20 KB free / 12 KB largest-block
+  gate never passed with Canon, Tascam, and Wi-Fi live (about 30 KB / 9.7 KB),
+  so entities stayed `UNKNOWN`. Lowered to 16 KB / 6 KB (a plain-HTTP GET needs
+  one socket, a 1.4 KB RX buffer, and HTTPClient state); on hardware
+  `rest_state input_boolean.hml_shooting state=off` arrived 1 ms after
+  `auth_ok` and tracked on/off through Start and Stop.
+- Canon backoff A/B (`canon backoff <ms>` console override, default 1500):
+  run A (cap 0) found the camera awake and connected first try (3.0 s), so it
+  measured nothing. Run B (cap 1500) after about 20 minutes idle took three
+  574 wake failures with 1.5 s waits each and connected physically at 13.6 s,
+  protocol-ready at 15.2 s; the uncapped schedule would have waited 1.5 + 3.0
+  + 4.5 s, so the cap saved about 4.5 s of dead time in that run. Evidence is
+  one capped and two historical uncapped wake sequences (8.9 s and 18.4 s);
+  the camera became connectable 9-12 s after the first poke in every case, so
+  faster pokes did not visibly extend its silence. Cap kept at 1.5 s.
+- Native tests passed 99/99 (bundle split added); release tooling unit tests
+  pass; full Montserrat `bleep` built and uploaded with hash verification.
+
 ### 2026-09-03: HML Studio scene failure diagnosis and Home Assistant auth hang fix
 
 - Reproduced the failing **HML Studio** sequence (scene 6: HA entity, Canon EOS

@@ -1,3 +1,5 @@
+#include "core/update_bundle.h"
+
 class MemoryRecoveryJournalBackend : public studio::IRecoveryJournalBackend {
  public:
   MemoryRecoveryJournalBackend() { std::memset(slots_, 0xFF, sizeof(slots_)); }
@@ -195,4 +197,51 @@ void test_recovery_touch_requires_a_settled_release_after_reboot() {
   TEST_ASSERT_TRUE(gate.update(false, 5310));
   TEST_ASSERT_TRUE(gate.armed());
   TEST_ASSERT_TRUE(gate.update(true, 5220));
+}
+
+void test_update_bundle_splits_manifest_and_base64_signature() {
+  // Manifest bytes are exactly what the detached signature covers, including
+  // the trailing newline; the second line carries the signature in base64.
+  const char bundle[] =
+      "{\"channel\":\"stable\",\"schema\":1}\n"
+      "MEUCIQDx8vP09fb3+Pn6+/z9/v8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHwIgEBESExQVFhcYGRobHB0eHyA=\n";
+  size_t manifestLength = 0;
+  uint8_t signature[80] = {};
+  size_t signatureLength = 0;
+  TEST_ASSERT_TRUE(studio::splitUpdateBundle(bundle, sizeof(bundle) - 1,
+                                             manifestLength, signature,
+                                             sizeof(signature),
+                                             signatureLength));
+  TEST_ASSERT_EQUAL_UINT32(std::strlen("{\"channel\":\"stable\",\"schema\":1}\n"),
+                           manifestLength);
+  TEST_ASSERT_EQUAL_UINT32(71, signatureLength);
+  TEST_ASSERT_EQUAL_HEX8(0x30, signature[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x45, signature[1]);
+  TEST_ASSERT_EQUAL_HEX8(0x20, signature[70]);
+
+  // Without the trailing newline the split still works.
+  TEST_ASSERT_TRUE(studio::splitUpdateBundle(bundle, sizeof(bundle) - 2,
+                                             manifestLength, signature,
+                                             sizeof(signature),
+                                             signatureLength));
+  TEST_ASSERT_EQUAL_UINT32(71, signatureLength);
+
+  // Malformed inputs: no signature line, a third line, bad base64, and a
+  // signature larger than the buffer are all rejected.
+  const char onlyManifest[] = "{\"schema\":1}\n";
+  TEST_ASSERT_FALSE(studio::splitUpdateBundle(
+      onlyManifest, sizeof(onlyManifest) - 1, manifestLength, signature,
+      sizeof(signature), signatureLength));
+  const char threeLines[] = "{\"schema\":1}\nMEUC\nextra\n";
+  TEST_ASSERT_FALSE(studio::splitUpdateBundle(
+      threeLines, sizeof(threeLines) - 1, manifestLength, signature,
+      sizeof(signature), signatureLength));
+  const char badBase64[] = "{\"schema\":1}\nME*C\n";
+  TEST_ASSERT_FALSE(studio::splitUpdateBundle(
+      badBase64, sizeof(badBase64) - 1, manifestLength, signature,
+      sizeof(signature), signatureLength));
+  uint8_t tiny[8] = {};
+  TEST_ASSERT_FALSE(studio::splitUpdateBundle(bundle, sizeof(bundle) - 1,
+                                              manifestLength, tiny,
+                                              sizeof(tiny), signatureLength));
 }

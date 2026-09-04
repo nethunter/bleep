@@ -455,8 +455,12 @@ void HomeAssistantClient::refreshInitialStates() {
 }
 
 void HomeAssistantClient::refreshSession(Session& session) {
-  constexpr uint32_t kMinimumRestFreeHeap = 20U * 1024U;
-  constexpr uint32_t kMinimumRestLargestBlock = 12U * 1024U;
+  // A plain-HTTP GET needs one TCP socket, a 1.4 KB WiFiClient RX buffer,
+  // and a few hundred bytes of HTTPClient state. With Canon + Tascam + Wi-Fi
+  // live the panel sits near 30 KB free / 9-10 KB largest block, so the old
+  // 20 KB / 12 KB gate deferred the read indefinitely.
+  constexpr uint32_t kMinimumRestFreeHeap = 16U * 1024U;
+  constexpr uint32_t kMinimumRestLargestBlock = 6U * 1024U;
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t largestBlock = ESP.getMaxAllocHeap();
   if (freeHeap < kMinimumRestFreeHeap ||
@@ -503,6 +507,10 @@ void HomeAssistantClient::refreshSession(Session& session) {
       if (state != nullptr) {
         applyState(session, state);
         session.refreshFailures = 0;
+        HA_LOG.printf("ha event=rest_state entity=%s state=%s free_heap=%lu max_alloc=%lu\n",
+                      session.entityId, state,
+                      static_cast<unsigned long>(ESP.getFreeHeap()),
+                      static_cast<unsigned long>(ESP.getMaxAllocHeap()));
       } else {
         markStateUnknown(session.state);
         retry = true;

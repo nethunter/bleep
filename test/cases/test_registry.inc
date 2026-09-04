@@ -38,6 +38,7 @@ int main(int, char**) {
   RUN_TEST(test_early_recovery_update_preserves_new_main_health_gate);
   RUN_TEST(test_recovery_startup_auto_boots_only_clean_valid_main);
   RUN_TEST(test_recovery_touch_requires_a_settled_release_after_reboot);
+  RUN_TEST(test_update_bundle_splits_manifest_and_base64_signature);
   RUN_TEST(test_home_assistant_profiles_protocol_capacity_and_scene_validation);
   RUN_TEST(test_mixed_scene_activates_physical_transport_before_home_assistant);
   RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);

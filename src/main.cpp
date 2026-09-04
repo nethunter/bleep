@@ -22,6 +22,9 @@
 #include "wifi_configuration.h"
 #include "ui.h"
 #include "portal_service.h"
+#if CONFIG_DRIVER_CANON_BLE
+#include "devices/canon_ble/client.h"
+#endif
 
 #if ARDUINO_USB_CDC_ON_BOOT
 #define DEBUG_PORT Serial0
@@ -418,6 +421,32 @@ void runDebugCommand(char* command) {
   // serial console already requires physical access, so this keeps ADR-027's
   // physically-entered boundary for the operator while letting a tethered
   // host open the same screen the Settings tile does.
+#if CONFIG_DRIVER_CANON_BLE
+  static constexpr char kCanonBackoffPrefix[] = "canon backoff ";
+  if (std::strncmp(command, kCanonBackoffPrefix,
+                   sizeof(kCanonBackoffPrefix) - 1) == 0) {
+    char* end = nullptr;
+    const unsigned long value =
+        std::strtoul(command + sizeof(kCanonBackoffPrefix) - 1, &end, 10);
+    if (end == command + sizeof(kCanonBackoffPrefix) - 1 || *end != '\0' ||
+        value > 60000) {
+      DEBUG_PORT.println("debug_canon event=backoff result=invalid_value");
+      return;
+    }
+    canon_ble::setRetryBackoffCapForDebug(static_cast<uint16_t>(value));
+    DEBUG_PORT.printf("debug_canon event=backoff cap_ms=%lu\n", value);
+    return;
+  }
+#endif
+  if (std::strcmp(command, "heap") == 0) {
+    const studio::SystemInfo info = studio::systemInfo();
+    DEBUG_PORT.printf(
+        "debug_heap free_heap=%lu min_free_heap=%lu max_alloc=%lu wifi=%s\n",
+        static_cast<unsigned long>(info.freeHeap),
+        static_cast<unsigned long>(info.minimumFreeHeap),
+        static_cast<unsigned long>(info.largestFreeBlock), info.wifiState);
+    return;
+  }
   if (std::strcmp(command, "portal start") == 0) {
     ui::showPortal();
     DEBUG_PORT.printf("debug_portal event=start active=%u status=%s\n",
