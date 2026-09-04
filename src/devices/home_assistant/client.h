@@ -34,6 +34,10 @@ class HomeAssistantClient {
   const EntityState* entityState(studio::InstanceId instanceId) const;
   void enqueueFrame(const uint8_t* payload, size_t length);
   void markWebsocketDisconnected();
+  // Completes a deferred station shutdown. Runs from the driver loop even
+  // when no client instance exists, because the last deactivation deletes
+  // the client while the radio still needs its settle time.
+  static void pumpShutdown(uint32_t nowMs);
 
  private:
   struct Session {
@@ -70,6 +74,9 @@ class HomeAssistantClient {
   uint32_t subscriptionId_ = 0;
   uint32_t nextMessageId_ = 10;
   uint32_t wifiDisconnectedAt_ = 0;
+  uint32_t wifiStartedAtMs_ = 0;
+  bool fastJoinAttempt_ = false;
+  bool wifiAssociated_ = false;
   uint32_t retryAt_ = 0;
   uint8_t failures_ = 0;
   studio::HomeAssistantConfig config_;

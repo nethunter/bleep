@@ -1641,3 +1641,146 @@ studio::ble::Advertisement bleAdvertisement128(
   advertisement.payloadLength = 18;
   return advertisement;
 }
+
+void test_scene_fails_fast_when_physical_target_rejects_pairing() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  FakeDriver cameraDriver(studio::DriverId::CanonBle);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  cameraDriver.ready = false;
+  studio::DeviceDriver* drivers[] = {&cameraDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "R6 Mark II",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Rejected", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 2;
+  record.startSteps[0] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  record.startSteps[1] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  scenes.loop(1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+
+  // The camera accepts each link and hangs up before bonding: waiting out the
+  // 60 s physical budget cannot help, so the run fails now and names the
+  // device that needs a new pairing.
+  cameraDriver.pairingRejected = true;
+  scenes.loop(2);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Failed),
+                        static_cast<int>(scenes.progress().phase));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::ActionFailed),
+                        static_cast<int>(scenes.progress().lastStatus));
+  TEST_ASSERT_EQUAL_STRING("Re-pair R6 Mark II", scenes.progress().detail);
+  TEST_ASSERT_EQUAL_UINT32(cameraId, scenes.progress().connectTarget);
+  // HA was never started for a run that cannot complete.
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.activationCount);
+  scenes.cancel();
+}
+
+namespace {
+bool gEarlyNetworkAllowed = false;
+bool earlyNetworkAllowed() { return gEarlyNetworkAllowed; }
+}  // namespace
+
+void test_early_network_policy_starts_home_assistant_while_ble_wakes() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  FakeDriver physicalDriver(studio::DriverId::CanonBle);
+  FakeDriver homeAssistantDriver(studio::DriverId::HomeAssistant);
+  physicalDriver.ready = false;
+  homeAssistantDriver.ready = false;
+  studio::DeviceDriver* drivers[] = {&physicalDriver, &homeAssistantDriver};
+  studio::DeviceManager devices(deviceBackend, drivers, 2);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  studio::InstanceId helperId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.addHomeAssistantEntity(
+          studio::HomeAssistantDomain::InputBoolean, "input_boolean.live",
+          "Live", helperId)));
+
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  scenes.setEarlyNetworkPolicy(earlyNetworkAllowed);
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Early HA", sceneId)));
+  studio::SceneRecord record = *scenes.find(sceneId);
+  record.startCount = 2;
+  record.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  record.startSteps[1] =
+      studio::makeActionStep(helperId, studio::CommandType::TurnOn);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(record)));
+
+  // Policy denies: HA stays deferred exactly as before.
+  gEarlyNetworkAllowed = false;
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneRunStatus::Ok),
+                        static_cast<int>(scenes.prepare(sceneId)));
+  scenes.loop(1);
+  scenes.loop(500);
+  TEST_ASSERT_EQUAL_INT(0, homeAssistantDriver.activationCount);
+  TEST_ASSERT_EQUAL_INT(1, physicalDriver.activationCount);
+
+  // Policy allows: HA starts while the camera is still waking, and the
+  // physical wait keeps its 60 s budget rather than HA's 30 s one.
+  gEarlyNetworkAllowed = true;
+  scenes.loop(1000);
+  TEST_ASSERT_EQUAL_INT(1, homeAssistantDriver.activationCount);
+  TEST_ASSERT_TRUE(devices.ownedBy(helperId, studio::ConnectionOwner::Sequence));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  scenes.loop(CONFIG_SCENE_CONNECT_TIMEOUT_MS + 1500);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+
+  // Camera ready first: HA gets a fresh network budget from that moment.
+  constexpr uint32_t physicalReadyAt = CONFIG_SCENE_PHYSICAL_CONNECT_TIMEOUT_MS - 1000;
+  physicalDriver.ready = true;
+  scenes.loop(physicalReadyAt);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  scenes.loop(physicalReadyAt + CONFIG_SCENE_CONNECT_TIMEOUT_MS - 1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Connecting),
+                        static_cast<int>(scenes.progress().phase));
+  homeAssistantDriver.ready = true;
+  scenes.loop(physicalReadyAt + CONFIG_SCENE_CONNECT_TIMEOUT_MS);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::ScenePhase::Ready),
+                        static_cast<int>(scenes.progress().phase));
+  scenes.cancel();
+  gEarlyNetworkAllowed = false;
+}

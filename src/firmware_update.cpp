@@ -152,6 +152,8 @@ FirmwareUpdateService& service() {
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <WiFi.h>
+
+#include "wifi_station_cache.h"
 #include <esp_heap_caps.h>
 #include <esp_http_client.h>
 #include <esp_image_format.h>
@@ -669,7 +671,7 @@ bool beginWifi() {
     return true;
   }
   WiFi.mode(WIFI_STA);
-  WiFi.begin(config.wifiSsid, config.wifiPassword);
+  wifi_station_cache::begin(config.wifiSsid, config.wifiPassword);
   ownsWifi = true;
   operationStarted = millis();
   timeSyncStarted = false;
@@ -1039,6 +1041,10 @@ void FirmwareUpdateService::loop() {
     }
     if (WiFi.status() == WL_CONNECTED) {
       if (!timeSyncStarted) {
+        studio::HomeAssistantConfig config;
+        if (wifiConfigured(&config)) {
+          wifi_station_cache::rememberCurrent(config.wifiSsid);
+        }
         configTime(0, 0, "pool.ntp.org", "time.nist.gov");
         timeSyncStarted = true;
         operationStarted = now;
@@ -1063,6 +1069,7 @@ void FirmwareUpdateService::loop() {
       if (operationKind == OperationKind::RecoveryRefresh) {
         scheduleRecoveryRetry("Recovery Wi-Fi timed out", true);
       } else {
+        wifi_station_cache::invalidate();
         fail("Wi-Fi connection timed out");
       }
     }

@@ -87,6 +87,10 @@ struct ConnectPolicy {
   // Keep the third attempt direct before paying the discovery latency again.
   uint8_t directAttemptsBeforeScan = 3;
   bool alwaysDirect = false;
+  // Upper bound for the growing 1.5 s x failures direct-retry backoff. Zero
+  // keeps the unbounded growth (up to 6 s). Peripherals that fall silent for a
+  // fixed interval after a failed establishment gain nothing from longer waits.
+  uint16_t retryBackoffCapMs = 0;
   ConnectionParameters setupParameters = {6, 12, 0, 200};
   // Once protocol setup is complete, favor a calmer 30-50 ms interval. This
   // remains responsive for controller commands while reducing radio wakeups.

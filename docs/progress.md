@@ -5,6 +5,112 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-03: HML Studio scene failure diagnosis and Home Assistant auth hang fix
+
+- Reproduced the failing **HML Studio** sequence (scene 6: HA entity, Canon EOS
+  R6 Mark II, 200 ms wait, Tascam X8) on the bench panel over the local debug
+  console with timestamped serial captures. Opening the host serial port resets
+  the panel, so every capture was a cold boot.
+- First cause: the camera rejected the panel. With the camera on, every direct
+  connection was accepted and then terminated by the camera within 50-500 ms
+  (reason 531, remote terminated; some 574), the client never reached bonding,
+  and the sequence failed with `ConnectTimeout` after the 60 s physical budget.
+  With the camera off the same path failed with host timeout reason 13. The
+  operator used Forget and re-paired through Smart Phone Mode: bonding, pairing
+  confirmation, and session ready followed; after the camera dropped the link
+  once, the saved bond reconnected on its own and reached `protocol_ready`.
+- Second cause: with Canon and Tascam ready, the deferred Home Assistant stage
+  received `auth_invalid` for the saved long-lived token (server-side token
+  state is the operator's check). The handler called `disconnectRuntime()`,
+  which zeroed `frameCount_`, and the frame drain then decremented the counter
+  to 255 and replayed the same stale frame forever. The main loop stopped
+  ticking (no periodic runtime stats) and the panel streamed roughly 33,000
+  identical log lines until a reset. Fixed by consuming the frame slot before
+  handling it and stopping the drain once the runtime is torn down.
+- Observations for follow-up, not changed here: a saved Canon that receives
+  repeated 531 rejections retries blindly for the full connect budget instead of
+  reporting that the camera no longer accepts the pairing; the boot-time OTA
+  check over TLS drove minimum free heap to 1-10 KB and left the largest block
+  at about 61 KB (from 102 KB) in every cold boot, and with Canon plus Tascam
+  links up the largest block was 15-23 KB when HA Wi-Fi started.
+- The drain fix was built (146,500 bytes RAM, 2,031,120 bytes flash) and
+  uploaded; a later cold run with the still-invalid token confirmed the panel
+  now keeps running and retries HA every 30 s instead of hanging.
+- Latency work from the same captures (baseline cold run: Canon
+  protocol-ready 2.9 s, Tascam 5.3 s, HA Wi-Fi association 4.1 s serialized
+  after BLE, 3.4 s in a second run):
+  - Saved Canon bodies that accept and terminate the link before bonding three
+    times in a row now report `pairingRejected`; the sequence fails within
+    seconds with the detail `Re-pair <camera>` instead of waiting out the 60 s
+    physical budget. The device screen keeps its existing PAIRING REJECTED
+    state; Retry clears it.
+  - `ConnectPolicy::retryBackoffCapMs` bounds the 1.5 s x failures direct
+    backoff; Canon Smart caps at 1.5 s because a just-woken body stays silent
+    for a fixed 7-9 s regardless of the wait. Not yet A/B measured on a
+    sleeping camera.
+  - `SceneRunner::setEarlyNetworkPolicy` lets the platform start Home
+    Assistant while physical targets are still waking. `main.cpp` allows it
+    once the BLE central holds a link and free heap is at least 56 KB with a
+    40 KB largest block. On hardware HA Wi-Fi began 60 ms after the sequence
+    opened, associated in 386 ms, and reached the WebSocket auth step at
+    0.7 s while Canon became ready at 1.6 s and Tascam at 10.9 s (one 574
+    wake failure). Canon connection and bonding were unaffected by the
+    concurrent Wi-Fi start in this run.
+  - New `wifi_station_cache` remembers the channel and BSSID of the last
+    successful association (RAM only) and passes them to `WiFi.begin`; HA and
+    the updater share it, and a timed-out fast join invalidates it. The boot
+    update check primes the cache, so the first HA join of the boot was
+    already fast; later rejoins associated in 59-70 ms.
+  - HA's `disconnectRuntime()` now stops DHCP, disconnects, and lets a
+    driver-loop pump turn the radio off after a 250 ms settle (2 s bound),
+    mirroring the updater. `wifi:timeout when WiFi un-init, type=4` still
+    appears while BLE links are active; heap after each cycle is unchanged
+    (about 62 KB free, 25 KB largest block), so its cause remains open.
+- Heap answer: the boot update check does not leak (free heap returns to
+  125 KB) but leaves the largest block at 61 KB instead of 106 KB because the
+  first Wi-Fi start creates lwIP and the station netif in mid-heap and
+  Arduino cannot destroy them; HA's first Wi-Fi start creates the same
+  objects. The 1-10 KB minimum during the TLS handshake is bounded by the
+  idle gate. Separately, every observed boot check failed with
+  `mbedtls_ssl_handshake returned -0x2700` (certificate verification) against
+  GitHub, so automatic update checks are not currently succeeding.
+- End-to-end after the operator saved a valid HA token: cold boot, sequence
+  opened with the X8 asleep. HA Wi-Fi started at +0.06 s, associated at
+  +4.2 s (fast join, concurrent with Canon bonding), `auth_ok`, subscription
+  and `protocol_ready` at +4.3 s; Canon protocol-ready at +1.8 s; Tascam at
+  +17.0 s after two 574 wake failures, so every target was ready at 17.0 s
+  with HA fully hidden behind the recorder wake. Start ran HA TurnOn
+  (confirmed 110 ms), Canon RecordStart (116 ms), the authored 200 ms wait,
+  and Tascam RecordStart (105 ms) in 0.55 s total; Stop ran the generated
+  reverse (Tascam 107 ms, wait, Canon 163 ms, HA 166 ms) in 0.60 s. With
+  three targets live, heap sat at about 30 KB free / 9.7 KB largest block and
+  HA's initial REST state read stayed deferred (`rest_deferred`), so entities
+  reported `UNKNOWN` until an event arrives; commands still confirmed.
+- Portal crash: pressing Finish & Exit after saving the token panicked the
+  panel (Load access fault, MTVAL 0x18) in the tcpip task:
+  `esp_netif_down -> dhcp_release_and_stop -> udp_sendto -> ieee80211_output_do`
+  after `WiFi.disconnect(true)` had already deinitialized the driver, the
+  same race the updater's `releaseWifi()` comment describes. `portal::stop()`
+  now stops the DHCP client, disconnects without deinitializing, and
+  `finishRadioOff()` in `portal::loop()` powers the radio off after a 250 ms
+  settle (2 s bound). The token save itself had persisted before the crash.
+  Verified after flashing: a console-driven `portal start` / `portal stop`
+  cycle on a cold boot ended with `wifi=Off`, no panic, and free heap back at
+  124,720 bytes. The same boot recorded a 1,080-byte minimum free heap during
+  the boot update check while Portal was also active, the lowest seen yet.
+- Local debug console gained `portal start` / `portal stop` so a tethered
+  host can open the same Portal screen the Settings tile does (ADR-027's
+  physical-entry boundary is preserved because the console needs USB access).
+  The interactive capture script now forwards lines appended to a command
+  file, so a long session can be driven without reopening the port (which
+  resets the panel).
+- Native tests passed 98/98 (two new cases: pairing-rejected fast fail and
+  the early network policy with separate budgets). Full Montserrat `bleep`
+  built at 146,588 bytes RAM and 2,032,322 bytes flash and was uploaded with
+  hash verification; the `ui_sim` profile also builds. Remaining operator
+  gates: a valid HA token for an end-to-end Start/Stop measurement, a
+  sleeping-camera A/B for the backoff cap, and a live rejected-pairing check.
+
 ### 2026-09-03: Zhiyun colour, brightness and unified look+power
 
 - Reviewed the colour and brightness paths against the same two-fixture capture

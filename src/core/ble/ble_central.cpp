@@ -527,6 +527,10 @@ void BleCentral::scheduleRetry(Slot& slot, uint32_t nowMs,
       slot.connectFailures < 4 ? slot.connectFailures : 4;
   uint32_t delay =
       delayMs != 0 ? delayMs : 1500u * (multiplier ? multiplier : 1);
+  if (delayMs == 0 && slot.policy.retryBackoffCapMs != 0 &&
+      delay > slot.policy.retryBackoffCapMs) {
+    delay = slot.policy.retryBackoffCapMs;
+  }
   // The backoff settles a peripheral we are actively poking. When the next
   // retry can only listen for advertisements, scanning is passive: resume it
   // immediately instead of adding dead time after a failed attempt. Mirrors

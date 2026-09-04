@@ -414,6 +414,22 @@ void runDebugCommand(char* command) {
     DEBUG_PORT.println("debug_scene event=cancel result=ok");
     return;
   }
+  // Bench access to the configuration Portal without touching the panel. The
+  // serial console already requires physical access, so this keeps ADR-027's
+  // physically-entered boundary for the operator while letting a tethered
+  // host open the same screen the Settings tile does.
+  if (std::strcmp(command, "portal start") == 0) {
+    ui::showPortal();
+    DEBUG_PORT.printf("debug_portal event=start active=%u status=%s\n",
+                      portal::active() ? 1u : 0u, portal::statusText());
+    return;
+  }
+  if (std::strcmp(command, "portal stop") == 0) {
+    portal::stop();
+    ui::showHome();
+    DEBUG_PORT.println("debug_portal event=stop result=ok");
+    return;
+  }
   DEBUG_PORT.println("debug event=command result=unknown");
 }
 
@@ -809,6 +825,18 @@ void setup() {
 
   studio::devices().begin();
   studio::scenes().begin();
+  // Mixed sequences may start Home Assistant's Wi-Fi while BLE peripherals
+  // are still waking, but only after the BLE runtime holds its contiguous
+  // initialization allocation and with headroom for the Wi-Fi driver's RX
+  // buffers plus the WebSocket client (measured: two BLE links plus Wi-Fi
+  // left ~33 KB free / 15 KB largest block).
+  studio::scenes().setEarlyNetworkPolicy([]() {
+#if CONFIG_BLE_RUNTIME_ENABLED
+    if (studio::ble::bleCentral().activeCount() == 0) return false;
+#endif
+    const studio::SystemInfo info = studio::systemInfo();
+    return info.freeHeap >= 56000 && info.largestFreeBlock >= 40000;
+  });
   wifi_configuration::service().begin();
   ui::init();
   // Paint Home before the updater starts its five-second boot grace period.

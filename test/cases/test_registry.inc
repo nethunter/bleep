@@ -43,6 +43,8 @@ int main(int, char**) {
   RUN_TEST(test_scene_switch_retains_old_only_links_when_four_resources_fit);
   RUN_TEST(test_mixed_scene_gives_physical_and_home_assistant_separate_timeouts);
   RUN_TEST(test_prepared_scene_edit_preserves_shared_ha_while_adding_ble_target);
+  RUN_TEST(test_scene_fails_fast_when_physical_target_rejects_pairing);
+  RUN_TEST(test_early_network_policy_starts_home_assistant_while_ble_wakes);
   RUN_TEST(test_manager_routes_commands_and_blocks_disabled_device);
   RUN_TEST(test_manager_uses_per_instance_driver_capabilities);
   RUN_TEST(test_manager_keeps_latest_tracked_result_when_result_queue_is_full);

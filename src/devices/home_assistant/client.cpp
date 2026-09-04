@@ -56,6 +56,7 @@ void HomeAssistantClient::deactivate(studio::InstanceId instanceId) {
   if (sessionCount_ == 0) authenticated_ = subscribed_ = false;
 }
 void HomeAssistantClient::loop() {}
+void HomeAssistantClient::pumpShutdown(uint32_t) {}
 studio::CommandStatus HomeAssistantClient::dispatch(
     const studio::DeviceCommand& command) {
   Session* session = sessionFor(command.instanceId);
@@ -107,6 +108,9 @@ void HomeAssistantClient::setFailure(studio::CommandStatus) {}
 #include <HTTPClient.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
+#include <esp_netif.h>
+
+#include "wifi_station_cache.h"
 
 namespace home_assistant {
 namespace {
@@ -147,6 +151,13 @@ bool parseEndpoint(const char* url, char* host, size_t hostCapacity,
   return true;
 }
 
+// Deferred station shutdown shared by every client instance (see
+// HomeAssistantClient::pumpShutdown).
+bool wifiShutdownPending = false;
+uint32_t wifiShutdownStartedMs = 0;
+constexpr uint32_t kWifiShutdownSettleMs = 250;
+constexpr uint32_t kWifiShutdownTimeoutMs = 2000;
+
 void websocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   if (activeClient == nullptr) return;
   if (type == WStype_TEXT) {
@@ -159,6 +170,19 @@ void websocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 }  // namespace
 
 HomeAssistantClient::~HomeAssistantClient() { disconnectRuntime(); }
+
+void HomeAssistantClient::pumpShutdown(uint32_t nowMs) {
+  if (!wifiShutdownPending ||
+      nowMs - wifiShutdownStartedMs < kWifiShutdownSettleMs) {
+    return;
+  }
+  if (WiFi.status() == WL_CONNECTED &&
+      nowMs - wifiShutdownStartedMs < kWifiShutdownTimeoutMs) {
+    return;
+  }
+  WiFi.mode(WIFI_OFF);
+  wifiShutdownPending = false;
+}
 
 HomeAssistantClient::Session* HomeAssistantClient::sessionFor(
     studio::InstanceId instanceId) {
@@ -218,15 +242,22 @@ bool HomeAssistantClient::connectRuntime() {
     HA_LOG.println("ha event=config_unavailable");
     return false;
   }
-  HA_LOG.printf("ha event=wifi_begin free_heap=%lu max_alloc=%lu\n",
-                static_cast<unsigned long>(ESP.getFreeHeap()),
-                static_cast<unsigned long>(ESP.getMaxAllocHeap()));
+  // A shutdown that has not reached WIFI_OFF yet simply becomes a rejoin; the
+  // driver is still initialized, so no un-init/re-init cycle is paid.
+  wifiShutdownPending = false;
   WiFi.mode(WIFI_STA);
   // Keep the retained HA socket responsive while allowing the station radio
   // to enter modem sleep between access-point beacons.
   WiFi.setSleep(true);
-  WiFi.begin(config_.wifiSsid, config_.wifiPassword);
+  fastJoinAttempt_ =
+      wifi_station_cache::begin(config_.wifiSsid, config_.wifiPassword);
+  HA_LOG.printf("ha event=wifi_begin free_heap=%lu max_alloc=%lu fast=%u\n",
+                static_cast<unsigned long>(ESP.getFreeHeap()),
+                static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+                fastJoinAttempt_ ? 1u : 0u);
+  wifiAssociated_ = false;
   wifiStarted_ = true;
+  wifiStartedAtMs_ = nowMs();
   wifiDisconnectedAt_ = nowMs();
   retryAt_ = 0;
   return true;
@@ -239,8 +270,16 @@ void HomeAssistantClient::disconnectRuntime() {
     delete websocket;
     websocket = nullptr;
   }
-  WiFi.disconnect(true, false);
-  WiFi.mode(WIFI_OFF);
+  // Stop DHCP, drop the association, and let pumpShutdown() turn the radio
+  // off after a settle interval. Deinitializing immediately raced the tcpip
+  // task ("wifi:timeout when WiFi un-init"), leaked heap, and left the
+  // driver half-stopped.
+  esp_netif_t* station = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (station != nullptr) esp_netif_dhcpc_stop(station);
+  WiFi.disconnect(false, false);
+  wifiShutdownPending = true;
+  wifiShutdownStartedMs = nowMs();
+  fastJoinAttempt_ = wifiAssociated_ = false;
   wifiStarted_ = websocketStarted_ = authenticated_ = subscribed_ = false;
   wifiDisconnectedAt_ = 0;
   subscriptionId_ = 0;
@@ -539,6 +578,9 @@ void HomeAssistantClient::loop() {
                     static_cast<int>(WiFi.status()),
                     static_cast<unsigned long>(ESP.getFreeHeap()),
                     static_cast<unsigned long>(ESP.getMaxAllocHeap()));
+      // A cached channel/BSSID that no longer answers must not steer the
+      // next attempt; fall back to a full scan.
+      if (fastJoinAttempt_) wifi_station_cache::invalidate();
       disconnectRuntime();
       ++failures_;
       const uint32_t delay = 1000u << (failures_ > 4 ? 4 : failures_);
@@ -547,6 +589,13 @@ void HomeAssistantClient::loop() {
     return;
   }
   wifiDisconnectedAt_ = 0;
+  if (!wifiAssociated_) {
+    wifiAssociated_ = true;
+    wifi_station_cache::rememberCurrent(config_.wifiSsid);
+    HA_LOG.printf("ha event=wifi_connected fast=%u elapsed_ms=%lu\n",
+                  fastJoinAttempt_ ? 1u : 0u,
+                  static_cast<unsigned long>(now - wifiStartedAtMs_));
+  }
   if (!websocketStarted_) {
     if (retryAt_ != 0 && static_cast<int32_t>(now - retryAt_) < 0) return;
     char host[80];
@@ -589,9 +638,14 @@ void HomeAssistantClient::loop() {
     setFailure(studio::CommandStatus::InvalidArgument);
   }
   while (frameCount_ > 0) {
-    processMessage(frames_[frameTail_], frameLengths_[frameTail_]);
+    // Consume the slot before handling it: an `auth_invalid` handler tears the
+    // runtime down and zeroes frameCount_, and decrementing afterwards wrapped
+    // the counter to 255 and replayed the same stale frame forever.
+    const uint8_t index = frameTail_;
     frameTail_ = static_cast<uint8_t>((frameTail_ + 1) % 2);
     --frameCount_;
+    processMessage(frames_[index], frameLengths_[index]);
+    if (!websocketStarted_) return;
   }
   if (subscriptionDirty_) rebuildSubscription();
   for (auto& session : sessions_) {

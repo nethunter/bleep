@@ -125,7 +125,11 @@ principles:
   explicit Custom Stop override, waits, persistent storage, concurrent device
   preparation, and a hardware-button
   trigger. A partial Start failure can run Stop for cleanup and then retry
-  Start; devices already confirmed stopped do not abort that cleanup. There is
+  Start; devices already confirmed stopped do not abort that cleanup. A saved
+  camera that keeps accepting and dropping the link fails preparation within
+  seconds as `Re-pair <camera>` instead of waiting out the connect budget, and
+  Home Assistant's Wi-Fi may start while cameras and recorders are still
+  waking when enough memory is free. There is
   no configured sequence-count ceiling; the registry grows until the panel
   cannot safely allocate or persist another sequence.
 - Experimental local Home Assistant control for four selected lights, switches,

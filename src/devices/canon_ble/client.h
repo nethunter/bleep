@@ -111,6 +111,10 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   bool powerOffRequested_ = false;
   bool setupPending_ = false;
   bool bondRecoveryPending_ = false;
+  // Consecutive links a saved camera accepted and then terminated (HCI 0x13
+  // + 0x200) before bonding completed. The camera no longer recognizes this
+  // panel; retrying cannot fix it.
+  uint8_t remoteRejections_ = 0;
   bool openingShootRequested_ = false;
 
   char targetAddr_[20] = "";

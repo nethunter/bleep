@@ -121,6 +121,10 @@ bool CanonBleClient::begin() {
   policy.connectWatchdogMs = 6000;
   policy.directAttemptsBeforeScan = 1;
   policy.alwaysDirect = lockedAddr_[0] != '\0';
+  // A just-woken body answers the first pokes with HCI 0x3E and then stays
+  // silent for a fixed 7-9 s regardless of how long the panel waits, so the
+  // growing backoff only delays the attempt that finally succeeds.
+  policy.retryBackoffCapMs = 1500;
   policy.diagnosticTag = "canon_smart";
   linkHandle_ = studio::ble::bleCentral().acquire(*this, policy);
   initialized_ = linkHandle_ != studio::ble::kInvalidLinkHandle;
@@ -162,6 +166,7 @@ bool CanonBleClient::activate(const char* address, uint8_t addressType,
   std::strncpy(state_.deviceName, targetName_, sizeof(state_.deviceName) - 1);
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   securityFails_ = 0;
+  remoteRejections_ = 0;
   bondRecoveryPending_ = false;
   clearIgnoredAddresses();
   if (haveTarget_) {
@@ -324,6 +329,8 @@ void CanonBleClient::loop() {
 }
 
 void CanonBleClient::retry() {
+  remoteRejections_ = 0;
+  state_.pairingRejected = false;
   if (newHandshake_ || targetAddr_[0] == '\0') {
     startScan();
     return;
@@ -1118,6 +1125,22 @@ void CanonBleClient::onBleEvent(studio::ble::LinkHandle link,
       ignoreAddress(targetAddr_);
       haveTarget_ = false;
       targetAddr_[0] = '\0';
+    } else if (!newHandshake_ && haveTarget_ && event.reason == 531 &&
+               connectRequested_ &&
+               (state_.phase == State::Phase::Idle ||
+                state_.phase == State::Phase::Bonding)) {
+      // A saved body that accepts the link and hangs up before bonding has
+      // handed its smartphone registration to another remote. Give it a few
+      // tries for a wake glitch, then stop and ask for a new pairing instead
+      // of burning the whole sequence connect budget.
+      constexpr uint8_t kRemoteRejectionLimit = 3;
+      if (++remoteRejections_ >= kRemoteRejectionLimit) {
+        CANON_LOG.printf("canon pairing rejected by camera addr=%s count=%u\n",
+                         targetAddr_,
+                         static_cast<unsigned>(remoteRejections_));
+        state_.pairingRejected = true;
+        connectRequested_ = false;
+      }
     }
     const bool expectedPowerOff =
         state_.phase == State::Phase::PoweringOff && !connectRequested_;
@@ -1135,6 +1158,7 @@ void CanonBleClient::onBleEvent(studio::ble::LinkHandle link,
       handleSecurityFailure();
     } else {
       securityFails_ = 0;
+      remoteRejections_ = 0;
       adoptResolvedIdentity();
       setupPending_ = true;
       setupAtMs_ = millis();

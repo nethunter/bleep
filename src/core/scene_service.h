@@ -38,6 +38,9 @@ class SceneService {
   SceneRunStatus stop();
   void cancel();
 
+  void setEarlyNetworkPolicy(SceneRunner::NetworkStartPolicy policy) {
+    runner_.setEarlyNetworkPolicy(policy);
+  }
   bool busy() const { return runner_.busy(); }
   bool holdsLinks() const { return runner_.holdsLinks(); }
   const SceneProgress& progress() const { return runner_.progress(); }

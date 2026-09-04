@@ -12,6 +12,16 @@ class SceneRunner {
  public:
   SceneRunner(DeviceManager& devices, SceneRegistry& registry);
 
+  // Optional platform hook consulted while physical targets are still
+  // preparing. Returning true means the network transport (Wi-Fi for Home
+  // Assistant) may start now: the BLE runtime has already taken its large
+  // contiguous initialization allocation and enough heap remains. Without a
+  // hook, HA waits until every physical target is protocol-ready.
+  using NetworkStartPolicy = bool (*)();
+  void setEarlyNetworkPolicy(NetworkStartPolicy policy) {
+    earlyNetworkPolicy_ = policy;
+  }
+
   SceneValidationStatus validate(const SceneRecord& record) const;
   SceneValidationStatus validate(SceneId sceneId) const;
 
@@ -45,6 +55,8 @@ class SceneRunner {
   bool allPhysicalTargetsConnected(const TargetSet& targets,
                                    InstanceId& waiting) const;
   bool allTargetsConnected(const TargetSet& targets, InstanceId& waiting) const;
+  bool anyTargetRejected(const TargetSet& targets, InstanceId& rejected) const;
+  void failRejectedTarget(InstanceId rejected);
   void setDetail(const char* text);
   void fail(SceneRunStatus status, const char* detail);
   void finishStop(SceneRunStatus status);
@@ -65,6 +77,12 @@ class SceneRunner {
   uint32_t phaseStartedMs_ = 0;
   uint32_t waitUntilMs_ = 0;
   uint32_t pendingRequestId_ = 0;
+  NetworkStartPolicy earlyNetworkPolicy_ = nullptr;
+  // Set when HA started before the physical targets were ready; HA then gets
+  // its own CONFIG_SCENE_CONNECT_TIMEOUT_MS budget from this instant.
+  uint32_t homeAssistantStartedMs_ = 0;
+  uint32_t physicalReadyMs_ = 0;
+  bool homeAssistantEarly_ = false;
   bool homeAssistantDeferred_ = false;
   bool homeAssistantPreparation_ = false;
   bool waitingForResult_ = false;

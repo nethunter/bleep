@@ -156,6 +156,10 @@ struct DeviceRuntimeState {
   bool commandFailed = false;
   bool recordingConfirmed = false;
   bool recording = false;
+  // The peer accepts the radio link but refuses this panel (for example a
+  // camera whose smartphone registration now belongs to another remote).
+  // Retrying cannot succeed until the operator re-pairs.
+  bool pairingRejected = false;
 };
 
 struct LightControlState {
