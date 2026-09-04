@@ -173,6 +173,7 @@ bool CanonBleClient::activate(const char* address, uint8_t addressType,
   state_.deviceName[sizeof(state_.deviceName) - 1] = '\0';
   securityFails_ = 0;
   remoteRejections_ = 0;
+  setupRetries_ = 0;
   bondRecoveryPending_ = false;
   clearIgnoredAddresses();
   if (haveTarget_) {
@@ -262,11 +263,24 @@ void CanonBleClient::loop() {
       return;
     }
     if (!completeConnect()) {
+      constexpr uint8_t kSetupRetryLimit = 2;
+      if (!newHandshake_ && haveTarget_ && setupRetries_ < kSetupRetryLimit) {
+        // Saved body accepted the link and bonded but its GATT server never
+        // answered discovery (ATT timeout). Reconnect instead of parking the
+        // screen on CONNECTION FAILED with a manual Retry.
+        ++setupRetries_;
+        CANON_LOG.printf("canon setup retry %u/%u addr=%s\n",
+                         static_cast<unsigned>(setupRetries_),
+                         static_cast<unsigned>(kSetupRetryLimit), targetAddr_);
+        studio::ble::bleCentral().disconnect(linkHandle_, true, 1500);
+        return;
+      }
       CANON_LOG.printf("canon setup failed newHandshake=%d addr=%s\n",
                     newHandshake_ ? 1 : 0, targetAddr_);
       failProtocol();
       return;
     }
+    setupRetries_ = 0;
     CANON_LOG.printf("canon setup ok phase=%d\n", static_cast<int>(state_.phase));
   }
 
@@ -343,6 +357,7 @@ void CanonBleClient::loop() {
 
 void CanonBleClient::retry() {
   remoteRejections_ = 0;
+  setupRetries_ = 0;
   state_.pairingRejected = false;
   if (newHandshake_ || targetAddr_[0] == '\0') {
     startScan();

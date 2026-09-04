@@ -22,6 +22,17 @@ short, factual, and reproducible.
   for that state instead of DISCONNECTED. The recorder shell traces status
   changes to the UART (`recorder_ui status=... detail=...`) so captures show
   what the operator saw. Native tests 99/99; `bleep` and `ui_sim` build.
+- An 18-minute-idle reproduction then showed the worse case: four 574 pokes,
+  a physical link at 7.9 s, bonding at 8.5 s, and then `getService()` for the
+  handshake service blocked the main loop for the full 30 s ATT timeout and
+  returned nothing (`handshake service missing`). The client parked on
+  `CONNECTION FAILED / CANON SETUP INCOMPLETE` with a manual Retry. The body
+  had woken its radio and bonded before its GATT server was answering. A
+  saved body whose setup finds no handshake service now disconnects and
+  reconnects automatically (1.5 s delay, at most two retries) before the
+  protocol is marked failed. The 30 s blocking discovery itself is NimBLE's
+  ATT procedure timeout and remains; ADR-021's asynchronous-GATT gate is the
+  place to revisit it if this recurs.
 
 ### 2026-09-04: Update-check heap floor, HA state read, backoff A/B
 

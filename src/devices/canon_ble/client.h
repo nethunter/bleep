@@ -120,6 +120,10 @@ class CanonBleClient : public studio::ble::BleCentralDelegate {
   // + 0x200) before bonding completed. The camera no longer recognizes this
   // panel; retrying cannot fix it.
   uint8_t remoteRejections_ = 0;
+  // Bonded links whose GATT setup found no handshake service. A body that
+  // has just woken its radio sometimes accepts the link and bonding before
+  // its GATT server answers; one reconnect usually recovers it.
+  uint8_t setupRetries_ = 0;
   bool openingShootRequested_ = false;
 
   char targetAddr_[20] = "";
