@@ -50,6 +50,14 @@ Existing sequences retain direct Start and Stop editors. Older development
 two-step light sequences are unsupported on the selected clean-storage
 baseline.
 
+Sequence Settings includes **Duplicate** alongside Rename and the Start/Stop
+editors. A duplicated sequence preserves the enabled state, Start steps, Stop
+mode, and materialized Stop steps, receives a new stable ID, and opens as
+`Old Name (2)`. Names at the 31-character storage limit are shortened before
+the suffix so `(2)` remains visible. The Portal suggests the same name while
+still allowing it to be changed before duplication. The panel action list
+scrolls vertically so Duplicate and Delete remain fully reachable.
+
 Each existing Start or Custom Stop row opens a prefilled step editor. Generated
 Stop is read-only until **Customize Stop** copies it into Custom mode. **Use
 generated Stop** confirms before discarding the override and relinking Stop to

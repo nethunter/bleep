@@ -5,6 +5,28 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-04: Panel scene duplication
+
+- Added **Duplicate** below the Start/Stop editors and directly above Delete
+  in Sequence Settings. It transactionally copies the
+  enabled state, authored Start steps, generated/custom Stop mode, and
+  materialized Stop steps into a new scene with a new stable ID, then opens
+  that copy. The automatic name is `Old Name (2)`; a 31-character source name
+  is shortened before the suffix. The Portal now suggests the same copy name
+  while retaining its editable prompt.
+- Verification: native tests passed 102/102, including exact copy naming,
+  full generated-Stop fidelity, and the name-length boundary. The embedded
+  Portal JavaScript passed a Node syntax check. The `ui_sim` build and complete
+  screenshot traversal passed; `23c_scenes_settings.png` shows the Duplicate
+  row inside the round safe area, and `23d_scenes_settings_scrolled.png`
+  verifies that the action body scrolls far enough to expose and tap Delete.
+  The traversal also exercises Duplicate and verifies every persisted step
+  field. Full Montserrat `bleep` built at
+  147,116 bytes RAM (44.9%) and 2,034,684 bytes flash (69.0%), then flashed to
+  `/dev/cu.usbserial-211240` with image hash verification and a hard reset.
+  A physical touchscreen duplicate and reboot-persistence check remain an
+  operator gate.
+
 ### 2026-09-04: Separate Insta360 GPS Remote and Mini Remote implementation
 
 - Added distinct `Insta360 GPS Remote` and `Insta360 Mini Remote` catalog

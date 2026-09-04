@@ -542,6 +542,20 @@ void onRenameScene(lv_event_t*) {
   ui::promptRename(record->name, onSceneRenameDone);
 }
 
+void onDuplicateScene(lv_event_t*) {
+  if (!canMutateScene()) {
+    return;
+  }
+  studio::SceneId copyId = studio::kInvalidSceneId;
+  if (studio::scenes().duplicate(currentScene, copyId) !=
+      studio::SceneRegistryStatus::Ok) {
+    return;
+  }
+  closeSettings();
+  currentScene = copyId;
+  refreshRun();
+}
+
 void closeSettings() {
   if (settingsOverlay != nullptr) {
     lv_obj_del(settingsOverlay);
@@ -618,6 +632,9 @@ void refreshSettingsBody() {
   lv_obj_set_size(editStart, lv_pct(100), 32);
   lv_obj_t* editStop = makeButton(settingsBody, "Edit Stop", onEditStop);
   lv_obj_set_size(editStop, lv_pct(100), 32);
+  lv_obj_t* duplicate =
+      makeButton(settingsBody, "Duplicate", onDuplicateScene);
+  lv_obj_set_size(duplicate, lv_pct(100), 32);
   lv_obj_t* del = makeButton(settingsBody, "Delete", onDeleteScene, kColDanger);
   lv_obj_set_size(del, lv_pct(100), 32);
   if (!canDeleteScene()) {
@@ -1438,7 +1455,51 @@ void simOpenDeviceControl(studio::InstanceId instanceId) {
   onOpenDeviceControl(&event);
 }
 
-void simDeleteCurrentScene() { onDeleteScene(nullptr); }
+bool scrollLastSettingsActionIntoView(bool requireOverflow) {
+  if (settingsBody == nullptr ||
+      !lv_obj_has_flag(settingsBody, LV_OBJ_FLAG_SCROLLABLE)) {
+    return false;
+  }
+  lv_obj_update_layout(settingsBody);
+  const uint32_t count = lv_obj_get_child_cnt(settingsBody);
+  if (count == 0) {
+    return false;
+  }
+  const lv_coord_t scrollBottom = lv_obj_get_scroll_bottom(settingsBody);
+  lv_obj_t* action = lv_obj_get_child(settingsBody, count - 1);
+  lv_obj_scroll_to_view(action, LV_ANIM_OFF);
+  lv_obj_update_layout(settingsBody);
+  lv_area_t bodyArea;
+  lv_area_t actionArea;
+  lv_obj_get_coords(settingsBody, &bodyArea);
+  lv_obj_get_coords(action, &actionArea);
+  return (!requireOverflow ||
+          (scrollBottom > 0 && lv_obj_get_scroll_y(settingsBody) > 0)) &&
+         actionArea.y1 >= bodyArea.y1 && actionArea.y2 <= bodyArea.y2;
+}
+
+bool simScrollSettingsToDelete() {
+  return scrollLastSettingsActionIntoView(true);
+}
+
+bool simDeleteCurrentScene() {
+  if (!scrollLastSettingsActionIntoView(false)) {
+    return false;
+  }
+  const studio::SceneId sceneId = currentScene;
+  const bool confirming = deleteSceneArmed;
+  const uint32_t count = lv_obj_get_child_cnt(settingsBody);
+  lv_obj_t* action = lv_obj_get_child(settingsBody, count - 1);
+  lv_event_send(action, LV_EVENT_CLICKED, nullptr);
+  return confirming ? studio::scenes().find(sceneId) == nullptr
+                    : deleteSceneArmed;
+}
+
+studio::SceneId simDuplicateCurrentScene() {
+  const studio::SceneId sourceId = currentScene;
+  onDuplicateScene(nullptr);
+  return currentScene != sourceId ? currentScene : studio::kInvalidSceneId;
+}
 
 bool simShowingList() { return visible && view == View::List; }
 

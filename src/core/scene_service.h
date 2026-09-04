@@ -17,6 +17,7 @@ class SceneService {
   const SceneRecord* find(SceneId sceneId) const { return registry_.find(sceneId); }
 
   SceneRegistryStatus add(const char* name, SceneId& outId);
+  SceneRegistryStatus duplicate(SceneId sourceId, SceneId& outId);
   SceneRegistryStatus duplicate(SceneId sourceId, const char* name,
                                 SceneId& outId);
   SceneRegistryStatus remove(SceneId sceneId);

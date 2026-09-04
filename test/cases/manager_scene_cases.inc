@@ -668,6 +668,63 @@ void test_admin_mutations_roll_back_when_persistence_fails() {
   TEST_ASSERT_NOT_NULL(scenes.find(sceneId));
 }
 
+void test_scene_duplicate_uses_numbered_name() {
+  MemoryBackend deviceBackend;
+  MemoryBackend sceneBackend;
+  FakeDriver driver(studio::DriverId::CanonBle);
+  studio::DeviceDriver* drivers[] = {&driver};
+  studio::DeviceManager devices(deviceBackend, drivers, 1);
+  TEST_ASSERT_TRUE(devices.begin());
+
+  studio::InstanceId cameraId = studio::kInvalidInstanceId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::RegistryStatus::Ok),
+      static_cast<int>(devices.add(studio::DriverId::CanonBle, "Camera",
+                                   cameraId)));
+  studio::SceneService scenes(sceneBackend, devices);
+  TEST_ASSERT_TRUE(scenes.begin());
+  studio::SceneId sceneId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("Old Name", sceneId)));
+  studio::SceneRecord source = *scenes.find(sceneId);
+  source.startCount = 1;
+  source.startSteps[0] =
+      studio::makeActionStep(cameraId, studio::CommandType::RecordStart);
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.replace(source)));
+
+  studio::SceneId copyId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.duplicate(sceneId, copyId)));
+  const studio::SceneRecord* copy = scenes.find(copyId);
+  TEST_ASSERT_NOT_NULL(copy);
+  TEST_ASSERT_NOT_EQUAL(sceneId, copyId);
+  TEST_ASSERT_EQUAL_STRING("Old Name (2)", copy->name);
+  TEST_ASSERT_EQUAL_UINT8(1, copy->startCount);
+  TEST_ASSERT_EQUAL_UINT32(cameraId, copy->startSteps[0].targetId);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStart),
+                        static_cast<int>(copy->startSteps[0].command));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::SceneStopMode::Generated),
+                        static_cast<int>(copy->stopMode));
+  TEST_ASSERT_EQUAL_UINT8(1, copy->stopCount);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(studio::CommandType::RecordStop),
+                        static_cast<int>(copy->stopSteps[0].command));
+
+  studio::SceneId longId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.add("1234567890123456789012345678901", longId)));
+  studio::SceneId longCopyId = studio::kInvalidSceneId;
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(studio::SceneRegistryStatus::Ok),
+      static_cast<int>(scenes.duplicate(longId, longCopyId)));
+  TEST_ASSERT_EQUAL_STRING("123456789012345678901234567 (2)",
+                           scenes.find(longCopyId)->name);
+}
+
 void test_manager_holds_concurrent_active_links() {
   MemoryBackend backend;
   FakeDriver canonDriver(studio::DriverId::CanonBle);

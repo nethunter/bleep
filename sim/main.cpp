@@ -1304,6 +1304,53 @@ int main() {
   if (!capture("23c_scenes_settings")) {
     return 1;
   }
+  if (!scene_ui::simScrollSettingsToDelete()) {
+    std::fprintf(stderr,
+                 "Sequence Settings could not scroll Delete into view\n");
+    return 1;
+  }
+  if (!capture("23d_scenes_settings_scrolled")) {
+    return 1;
+  }
+  const studio::SceneRecord beforeDuplicate = *studio::scenes().find(sceneId);
+  const size_t sceneCountBeforeDuplicate = studio::scenes().count();
+  const studio::SceneId duplicateId = scene_ui::simDuplicateCurrentScene();
+  const studio::SceneRecord* duplicate = studio::scenes().find(duplicateId);
+  const auto stepsMatch = [](const studio::SceneStep* left,
+                             const studio::SceneStep* right, uint8_t count) {
+    for (uint8_t i = 0; i < count; ++i) {
+      if (left[i].type != right[i].type ||
+          left[i].targetId != right[i].targetId ||
+          left[i].command != right[i].command ||
+          left[i].waitMs != right[i].waitMs ||
+          left[i].value0 != right[i].value0 ||
+          left[i].value1 != right[i].value1 ||
+          left[i].value2 != right[i].value2) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (duplicateId == studio::kInvalidSceneId || duplicate == nullptr ||
+      studio::scenes().count() != sceneCountBeforeDuplicate + 1 ||
+      std::strcmp(duplicate->name, "HML Studio (2)") != 0 ||
+      duplicate->enabled != beforeDuplicate.enabled ||
+      duplicate->startCount != beforeDuplicate.startCount ||
+      duplicate->stopCount != beforeDuplicate.stopCount ||
+      duplicate->stopMode != beforeDuplicate.stopMode ||
+      !stepsMatch(duplicate->startSteps, beforeDuplicate.startSteps,
+                  beforeDuplicate.startCount) ||
+      !stepsMatch(duplicate->stopSteps, beforeDuplicate.stopSteps,
+                  beforeDuplicate.stopCount)) {
+    std::fprintf(stderr,
+                 "Sequence Settings did not duplicate the complete sequence\n");
+    return 1;
+  }
+  if (studio::scenes().remove(duplicateId) !=
+      studio::SceneRegistryStatus::Ok) {
+    std::fprintf(stderr, "Failed to remove duplicated simulator fixture\n");
+    return 1;
+  }
   // Exercise the initially-disconnected preparation and timeout path even
   // though earlier device screenshots now leave protocol-ready links retained.
   studio::devices().deactivateAll();
@@ -1486,13 +1533,19 @@ int main() {
                  "Delete regression did not begin from sequence preparation\n");
     return 1;
   }
-  scene_ui::simDeleteCurrentScene();
+  if (!scene_ui::simDeleteCurrentScene()) {
+    std::fprintf(stderr, "Could not tap the visible sequence Delete button\n");
+    return 1;
+  }
   if (studio::scenes().find(sceneId) == nullptr) {
     std::fprintf(stderr, "Delete confirmation removed sequence on first tap\n");
     return 1;
   }
   if (!capture("27c_scenes_delete_confirm")) return 1;
-  scene_ui::simDeleteCurrentScene();
+  if (!scene_ui::simDeleteCurrentScene()) {
+    std::fprintf(stderr, "Could not confirm sequence deletion\n");
+    return 1;
+  }
   if (studio::scenes().find(sceneId) != nullptr ||
       studio::scenes().holdsLinks() ||
       studio::devices().ownedBy(canonId, studio::ConnectionOwner::Sequence) ||

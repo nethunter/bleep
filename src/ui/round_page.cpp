@@ -65,8 +65,9 @@ lv_obj_t* createRoundPageMenuBody(lv_obj_t* parent, lv_coord_t rowGap) {
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_scrollbar_mode(body, LV_SCROLLBAR_MODE_OFF);
-  lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(body, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(body, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_add_flag(body, LV_OBJ_FLAG_SCROLLABLE);
   return body;
 }
 

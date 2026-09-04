@@ -55,6 +55,7 @@ int main(int, char**) {
   RUN_TEST(test_manager_routes_explicit_tascam_record_commands);
   RUN_TEST(test_removed_registry_stays_empty_after_restart);
   RUN_TEST(test_admin_mutations_roll_back_when_persistence_fails);
+  RUN_TEST(test_scene_duplicate_uses_numbered_name);
   RUN_TEST(test_manager_holds_concurrent_active_links);
   RUN_TEST(test_manager_retains_ready_sessions_and_evicts_safe_lru);
   RUN_TEST(test_manager_counts_shared_mesh_as_one_ble_slot);
