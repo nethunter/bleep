@@ -182,6 +182,7 @@ void ZhiyunLightClient::detachShared() {
 }
 
 void ZhiyunLightClient::cancelPendingCommand() {
+  powerOnAfterLook_ = false;
   awaitingResponse_ = false;
   operation_ = Operation::None;
   verifyAtMs_ = 0;
@@ -307,10 +308,15 @@ void ZhiyunLightClient::loop() {
                    sizeof(state_.error) - 1);
       state_.error[sizeof(state_.error) - 1] = '\0';
       markProtocolFailed();
-    } else {
-      finishCommand(false, "No state confirmation");
+      awaitingResponse_ = false;
+      return;
     }
     awaitingResponse_ = false;
+    // One routed reply is occasionally dropped on the shared gateway. Re-issue
+    // the read-back a bounded number of times before reporting failure, so a
+    // single lost notification does not fail an otherwise applied command.
+    if (retryVerification(true)) return;
+    finishCommand(false, "No state confirmation");
   }
   if (state_.commandPending && !awaitingResponse_ && verifyAtMs_ != 0 &&
       static_cast<int32_t>(now - verifyAtMs_) >= 0) {
@@ -374,7 +380,11 @@ bool ZhiyunLightClient::sendQuery(uint16_t command, const uint8_t* payload,
   expectedSequence_ = sequence;
   expectedCommand_ = command;
   awaitingResponse_ = true;
-  responseDeadlineMs_ = millis() + 2000;
+  // Initialization has no external deadline, but a state read-back competes
+  // with the scene runner's action budget. Routed replies arrive well inside
+  // 900 ms, so a shorter deadline buys retries instead of one long stall.
+  responseDeadlineMs_ =
+      millis() + (operation_ == Operation::Initialize ? 2000u : 900u);
   return true;
 }
 
@@ -667,19 +677,12 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
   bool valid = false;
   if (operation_ == Operation::Power) {
     bool actual = false;
-    const bool writeReply = state_.model == MolusModel::X60Rgb;
-    valid = parsePower(frame, actual,
-                       writeReply ? writeReplySelector() : selector(),
-                       writeReply) &&
-            actual == desiredPower_;
+    valid = parsePower(frame, actual, selector()) && actual == desiredPower_;
     if (valid) state_.on = actual;
   } else if (operation_ == Operation::Cct) {
-    const bool writeReply = state_.model == MolusModel::X60Rgb;
     if (step_ == 0) {
       float actual = 0.0f;
-      valid = parseBrightness(
-                  frame, actual,
-                  writeReply ? writeReplySelector() : selector(), writeReply) &&
+      valid = parseBrightness(frame, actual, selector()) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
       state_.verificationField = 1;
       state_.readbackBrightness = actual;
@@ -694,11 +697,6 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
         const uint16_t sequence = nextSequence();
         if (!writeFrame(buildCctWrite(sequence, desiredKelvin_, selector()))) {
           finishCommand(false, "CCT write failed");
-        } else if (writeReply) {
-          expectedSequence_ = sequence;
-          expectedCommand_ = kCommandCct;
-          awaitingResponse_ = true;
-          responseDeadlineMs_ = millis() + 2000;
         } else {
           verifyAtMs_ = millis() + verificationDelayMs();
         }
@@ -706,45 +704,35 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
       }
     } else {
       uint16_t actual = 0;
-      valid = parseCct(frame, actual,
-                       writeReply ? writeReplySelector() : selector(),
-                       writeReply) &&
-              actual == desiredKelvin_;
+      valid = parseCct(frame, actual, selector()) && actual == desiredKelvin_;
       state_.readbackKelvin = actual;
       if (valid) {
         state_.kelvin = actual;
         state_.mode = ZhiyunLightState::Mode::Cct;
       }
     }
-    if (!valid && !writeReply && retryCctVerification()) return;
-    if (!valid && step_ == 0 &&
-        desiredBrightness_ > state_.readbackBrightness + 0.05f &&
-        std::fabs(state_.readbackBrightness - state_.brightness) <= 0.05f) {
-      // The fixture silently rejects brightness above the power source's
-      // ceiling (for example, 60% with a 60 W USB-C supply). Seven stable
-      // readbacks distinguish that limit from normal setter latency.
-      state_.brightnessLimited = true;
-      state_.maxBrightness =
-          static_cast<uint8_t>(state_.readbackBrightness + 0.5f);
-    }
+    if (!valid && step_ == 0) noteBrightnessLimit(state_.readbackBrightness);
+    if (!valid && retryVerification()) return;
   } else if (operation_ == Operation::Rgb) {
     if (step_ == 0) {
       float actual = 0.0f;
-      valid = parseHue(frame, actual, writeReplySelector(), true) &&
-              std::fabs(actual - desiredHue_) <= 0.05f;
+      // Hue and saturation are whole-degree/percent writes; allow half a unit
+      // so a float round trip through the fixture still matches.
+      valid = parseHue(frame, actual, selector(), false) &&
+              std::fabs(actual - desiredHue_) <= 0.5f;
       state_.verificationField = 3;
       state_.readbackHue = static_cast<uint16_t>(actual + 0.5f);
       if (valid) state_.hue = state_.readbackHue;
     } else if (step_ == 1) {
       float actual = 0.0f;
-      valid = parseSaturation(frame, actual, writeReplySelector(), true) &&
-              std::fabs(actual - desiredSaturation_) <= 0.05f;
+      valid = parseSaturation(frame, actual, selector(), false) &&
+              std::fabs(actual - desiredSaturation_) <= 0.5f;
       state_.verificationField = 4;
       state_.readbackSaturation = static_cast<uint8_t>(actual + 0.5f);
       if (valid) state_.saturation = state_.readbackSaturation;
     } else {
       float actual = 0.0f;
-      valid = parseBrightness(frame, actual, writeReplySelector(), true) &&
+      valid = parseBrightness(frame, actual, selector()) &&
               std::fabs(actual - desiredBrightness_) <= 0.05f;
       state_.verificationField = 1;
       state_.readbackBrightness = actual;
@@ -754,8 +742,11 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
         state_.mode = ZhiyunLightState::Mode::Rgb;
       }
     }
+    if (!valid && step_ == 2) noteBrightnessLimit(state_.readbackBrightness);
+    if (!valid && retryVerification()) return;
     if (valid && step_ < 2) {
       ++step_;
+      verificationAttempts_ = 0;
       if (!sendRgbStep()) finishCommand(false, "RGB write failed");
       return;
     }
@@ -772,6 +763,16 @@ void ZhiyunLightClient::handleFrame(const ParsedFrame& frame) {
       if (!sendVerificationStep()) finishCommand(false, "Refresh failed");
       return;
     }
+  }
+  if (valid && powerOnAfterLook_ &&
+      (operation_ == Operation::Cct || operation_ == Operation::Rgb)) {
+    // One transaction: the look is confirmed first, then the same command
+    // powers the fixture on. A scene therefore never shows the previous look,
+    // and the driver never hands off between two separately pending commands.
+    powerOnAfterLook_ = false;
+    if (beginPowerStage(true)) return;
+    finishCommand(false, "Power write failed");
+    return;
   }
   finishCommand(valid, valid ? nullptr : "State mismatch");
 }
@@ -803,31 +804,36 @@ void ZhiyunLightClient::markInitializationReady() {
   markProtocolReady();
 }
 
-bool ZhiyunLightClient::setPower(bool on) {
-  if (!protocolReady() || state_.commandPending) return false;
+bool ZhiyunLightClient::beginPowerStage(bool on) {
   const uint16_t sequence = nextSequence();
-  const FrameBytes frame = buildPowerWrite(sequence, on, selector());
-  if (!writeFrame(frame)) return false;
+  if (!writeFrame(buildPowerWrite(sequence, on, selector()))) return false;
   desiredPower_ = on;
   operation_ = Operation::Power;
   step_ = 0;
-  state_.commandPending = true;
-  state_.lastCommandFailed = false;
-  state_.requestedKelvin = 0;
-  state_.readbackKelvin = 0;
+  verificationAttempts_ = 0;
+  timeoutRetries_ = 0;
   state_.verificationField = 0;
-  if (state_.model == MolusModel::X60Rgb) {
-    expectedSequence_ = sequence;
-    expectedCommand_ = kCommandPower;
-    awaitingResponse_ = true;
-    responseDeadlineMs_ = millis() + 2000;
-  } else {
-    verifyAtMs_ = millis() + verificationDelayMs();
-  }
+  // The vendor gateway confirms power for every member the same way: it writes
+  // the setter, then reads the member's own selector back. The two-fixture ZY
+  // Vega capture showed the routed X60RGB member (selector 0) answering reads
+  // on selector 0, never emitting a write-reply, so both models read back.
+  verifyAtMs_ = millis() + verificationDelayMs();
   return true;
 }
 
-bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness) {
+bool ZhiyunLightClient::setPower(bool on) {
+  if (!protocolReady() || state_.commandPending) return false;
+  powerOnAfterLook_ = false;
+  state_.requestedKelvin = 0;
+  state_.readbackKelvin = 0;
+  if (!beginPowerStage(on)) return false;
+  state_.commandPending = true;
+  state_.lastCommandFailed = false;
+  return true;
+}
+
+bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness,
+                               bool powerOnAfterLook) {
   if (!protocolReady() || state_.commandPending || kelvin < kMinKelvin ||
       kelvin > kMaxKelvin || brightness > 100) return false;
   const uint16_t normalizedKelvin = normalizeCct(kelvin);
@@ -844,28 +850,32 @@ bool ZhiyunLightClient::setCct(uint16_t kelvin, uint8_t brightness) {
   state_.readbackKelvin = 0;
   state_.verificationField = 1;
   operation_ = Operation::Cct;
+  powerOnAfterLook_ = powerOnAfterLook;
   step_ = 0;
   verificationAttempts_ = 0;
+  timeoutRetries_ = 0;
+  previousBrightnessReadback_ = -1.0f;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
-  if (state_.model == MolusModel::X60Rgb) {
-    expectedSequence_ = sequence;
-    expectedCommand_ = kCommandBrightness;
-    awaitingResponse_ = true;
-    responseDeadlineMs_ = millis() + 2000;
-  } else {
-    verifyAtMs_ = millis() + verificationDelayMs();
-  }
+  verifyAtMs_ = millis() + verificationDelayMs();
   return true;
 }
 
-bool ZhiyunLightClient::setRgb(uint32_t rgb, uint8_t brightness) {
+bool ZhiyunLightClient::setRgb(uint32_t rgb, uint8_t brightness,
+                               bool powerOnAfterLook) {
   if (!protocolReady() || state_.commandPending ||
       !supportsRgb(state_.model) || rgb > 0xffffff || brightness > 100)
     return false;
   desiredRgb_ = rgb;
   rgbToHsv(rgb, desiredHue_, desiredSaturation_);
   desiredBrightness_ = brightness;
+  ZHIYUN_LIGHT_LOG.printf(
+      "zhiyun_light event=rgb_request instance=%lu rgb=0x%06lx hue=%u "
+      "saturation=%u brightness=%u\n",
+      static_cast<unsigned long>(instanceId_),
+      static_cast<unsigned long>(rgb), static_cast<unsigned>(desiredHue_),
+      static_cast<unsigned>(desiredSaturation_),
+      static_cast<unsigned>(brightness));
   state_.requestedBrightness = brightness;
   state_.readbackBrightness = 0.0f;
   state_.requestedHue = desiredHue_;
@@ -874,7 +884,11 @@ bool ZhiyunLightClient::setRgb(uint32_t rgb, uint8_t brightness) {
   state_.readbackSaturation = 0;
   state_.verificationField = 1;
   operation_ = Operation::Rgb;
+  powerOnAfterLook_ = powerOnAfterLook;
   step_ = 0;
+  verificationAttempts_ = 0;
+  timeoutRetries_ = 0;
+  previousBrightnessReadback_ = -1.0f;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
   if (sendRgbStep()) return true;
@@ -886,6 +900,8 @@ bool ZhiyunLightClient::refresh() {
   if (!protocolReady() || state_.commandPending) return false;
   operation_ = Operation::Refresh;
   step_ = 0;
+  verificationAttempts_ = 0;
+  timeoutRetries_ = 0;
   state_.commandPending = true;
   state_.lastCommandFailed = false;
   if (sendVerificationStep()) return true;
@@ -895,7 +911,11 @@ bool ZhiyunLightClient::refresh() {
 
 bool ZhiyunLightClient::sendVerificationStep() {
   uint16_t command = kCommandPower;
-  if (operation_ == Operation::Cct || operation_ == Operation::Refresh) {
+  if (operation_ == Operation::Rgb) {
+    command = step_ == 0 ? kCommandHue
+                         : (step_ == 1 ? kCommandSaturation
+                                       : kCommandBrightness);
+  } else if (operation_ == Operation::Cct || operation_ == Operation::Refresh) {
     command = step_ == 0 ? kCommandBrightness
                         : (step_ == 1 ? kCommandCct : kCommandPower);
   }
@@ -905,38 +925,79 @@ bool ZhiyunLightClient::sendVerificationStep() {
 bool ZhiyunLightClient::sendRgbStep() {
   if (operation_ != Operation::Rgb || step_ > 2) return false;
   const uint16_t sequence = nextSequence();
-  uint16_t command = kCommandHue;
   FrameBytes frame;
   if (step_ == 0) {
     state_.verificationField = 3;
     frame = buildHueWrite(sequence, desiredHue_, selector());
   } else if (step_ == 1) {
     state_.verificationField = 4;
-    command = kCommandSaturation;
     frame = buildSaturationWrite(sequence, desiredSaturation_, selector());
   } else {
     state_.verificationField = 1;
-    command = kCommandBrightness;
     frame = buildBrightnessWrite(sequence, desiredBrightness_, selector());
   }
+  ZHIYUN_LIGHT_LOG.printf(
+      "zhiyun_light event=rgb_step instance=%lu step=%u hue=%u saturation=%u "
+      "brightness=%g selector=%u\n",
+      static_cast<unsigned long>(instanceId_), step_,
+      static_cast<unsigned>(desiredHue_),
+      static_cast<unsigned>(desiredSaturation_),
+      static_cast<double>(desiredBrightness_), selector());
   if (!writeFrame(frame)) return false;
-  expectedSequence_ = sequence;
-  expectedCommand_ = command;
-  awaitingResponse_ = true;
-  responseDeadlineMs_ = millis() + 2000;
+  // Hue, saturation and brightness setters are unacknowledged exactly like
+  // power and CCT: the two-fixture vendor capture contains no setter reply for
+  // any of them. Confirm each field with its own read-back before the next
+  // write, so a dropped colour component cannot be reported as success.
+  verifyAtMs_ = millis() + verificationDelayMs();
   return true;
 }
 
-bool ZhiyunLightClient::retryCctVerification() {
+bool ZhiyunLightClient::retryVerification(bool afterTimeout) {
   constexpr uint8_t kMaxRetries = 7;
-  if (operation_ != Operation::Cct || verificationAttempts_ >= kMaxRetries)
+  // A lost reply gets a few immediate re-reads, not the full mismatch budget:
+  // the scene runner fails a step after CONFIG_SCENE_ACTION_TIMEOUT_MS, so the
+  // recovery must stay well inside it. Three 900 ms attempts do.
+  constexpr uint8_t kMaxTimeoutRetries = 3;
+  if (operation_ == Operation::None || operation_ == Operation::Initialize)
     return false;
+  if (afterTimeout) {
+    if (timeoutRetries_ >= kMaxTimeoutRetries) return false;
+    ++timeoutRetries_;
+    verifyAtMs_ = millis();
+    return true;
+  }
+  if (verificationAttempts_ >= kMaxRetries) return false;
   ++verificationAttempts_;
   verifyAtMs_ = millis() + verificationDelayMs();
   return true;
 }
 
+void ZhiyunLightClient::noteBrightnessLimit(float actual) {
+  // The fixture silently clamps brightness to its supply ceiling and then
+  // reports that clamped level. Two identical readbacks below the request
+  // separate a real ceiling from ordinary setter latency, and unlike the
+  // previous heuristic this still holds when the fixture did move, just not
+  // as far as asked (100% requested, 80% delivered on a limited supply).
+  if (actual + 0.05f >= desiredBrightness_) {
+    previousBrightnessReadback_ = actual;
+    return;
+  }
+  if (previousBrightnessReadback_ >= 0.0f &&
+      std::fabs(previousBrightnessReadback_ - actual) <= 0.05f) {
+    state_.brightnessLimited = true;
+    state_.maxBrightness = static_cast<uint8_t>(actual + 0.5f);
+    state_.brightness = actual;
+    ZHIYUN_LIGHT_LOG.printf(
+        "zhiyun_light event=brightness_limit instance=%lu requested=%g "
+        "delivered=%g\n",
+        static_cast<unsigned long>(instanceId_),
+        static_cast<double>(desiredBrightness_), static_cast<double>(actual));
+  }
+  previousBrightnessReadback_ = actual;
+}
+
 void ZhiyunLightClient::finishCommand(bool success, const char* error) {
+  powerOnAfterLook_ = false;
   awaitingResponse_ = false;
   verifyAtMs_ = 0;
   state_.commandPending = false;

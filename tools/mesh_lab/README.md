@@ -108,3 +108,23 @@ Pass `--power on` or `--power off` only when a deliberate physical state
 change is intended. The probe follows the write with an independent readback.
 X60RGB also accepts `--hue`, `--saturation`, and `--brightness`; each setter is
 followed by an independent readback.
+
+`decode_zhiyun_capture.py` timelines a ZY Vega Android HCI snoop log (from an
+`adb bugreport`) for Zhiyun mesh research. It requires `tshark` on `PATH` and
+prints one line per event: LE connect/disconnect with the peer address, PB-GATT
+provisioning PDUs, Mesh Proxy/Network PDUs (classified but left encrypted), and
+the cleartext `0xFEE9` frames decoded into direction, sequence, command, member
+selector, and payload. Pass `--video-start HH:MM:SS` (phone local time of the
+screen recording's first frame) to print the matching recording offset beside
+every event, and `--all-att` to include unrecognized ATT traffic.
+
+```sh
+python3 tools/mesh_lab/decode_zhiyun_capture.py /private/path/btsnoop_hci.log \
+  --video-start 20:23:24
+```
+
+The tool prints raw radio addresses, so keep its output outside the repository
+with the rest of the private capture material. The two-fixture capture decoded
+with it proved that the vendor routes a second Zhiyun member's control through
+the first fixture's retained `0xFEE9` gateway link, each member on its own
+stable selector; see `docs/protocols/zhiyun-x100.md`.

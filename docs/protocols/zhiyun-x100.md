@@ -147,10 +147,43 @@ connection read the actual X100 as 5600 K, 52%, On; a direct power-Off write
 returned no immediate setter reply, as expected, and a new direct connection
 then read Off at 52%. The same direct link returned those X100 values for both
 selector 0 and selector 1. A reciprocal selector-1 query through the X60RGB
-returned the X60RGB's own 50%/Off state. The panel-provisioned fixtures therefore
-do not share the vendor app's proprietary member-routing topology even though
-they share standards Bluetooth Mesh keys. Until that missing setup is decoded,
-only a fixture's direct `0xFEE9` link provides attributable state and control.
+returned the X60RGB's own 50%/Off state. That earlier conclusion was wrong: it
+was produced by a reply-selector defect, not by absent routing. See the update
+below.
+
+### 2026-09-03 update: routing works; the defect was reply-selector matching
+
+A fresh two-fixture ZY Vega capture (`Confirmed`) settles this. The relevant
+rotated HCI log has SHA-256
+`418da13b712fa8141fc0309f9c731497c24f1ef74770fd89e2fed45f67de0b4b` and stays outside the repository; its decoded, key-free timeline
+was produced with `tools/mesh_lab/decode_zhiyun_capture.py`. In that session:
+
+- The X100 (`pl105`) was added first, became the retained gateway, and kept one
+  BLE connection for the whole session. The X60RGB (`plx104`) was added second,
+  provisioned over PB-GATT, exchanged a few Mesh Network PDUs, then disconnected
+  and never reconnected.
+- After the X60RGB disconnected, every control write and every state read for
+  both fixtures went through the one X100 link. Selector `00 80` frames were
+  routed to the X60RGB and selector `01 80` frames addressed the X100 itself.
+  This is direct proof that a panel-order mesh gateway routes to a non-gateway
+  member, contradicting the earlier "no shared routing" reading.
+- The selector is a per-fixture member id, not a model tag. Here the X100 used
+  `01` and the X60RGB used `00`, the reverse of the order-covariant guess in the
+  single-fixture notes. Model and add order still covary, so absolute selector
+  assignment stays a `Hypothesis` pending a second same-model fixture; what is
+  now `Confirmed` is that each member answers on one stable selector and the
+  gateway routes it.
+- Every reply echoes the request's own selector, and power, CCT, and brightness
+  are confirmed by a **read-back** (`sel 80 00` request, matching reply), not by
+  a setter reply. The vendor never relied on setter replies for these three
+  fields on either member.
+
+The embedded driver was then corrected to confirm power/CCT/brightness by
+reading back on each member's own selector, removing a special case that
+demanded the X60RGB's reply on selector 1. On the panel, `device on`/`device
+off` for both members and the **Desk** scene start and stop then reported every
+target confirmed through the one shared gateway. Independent optical
+verification of each fixture remains an operator check.
 
 Until a routed per-member status exchange is decoded, state should distinguish:
 

@@ -279,20 +279,6 @@ void ZhiyunLightDriver::loop() {
          phase == zhiyun_light::ZhiyunLightState::Phase::ReadingState)) {
       sharedInitializationInFlight = true;
     }
-    if (session->compoundStage == Session::CompoundStage::Look &&
-        !session->client.state().commandPending) {
-      if (session->client.state().lastCommandFailed ||
-          !session->client.setPower(true)) {
-        session->compoundFailed = true;
-        session->compoundStage = Session::CompoundStage::None;
-      } else {
-        session->compoundStage = Session::CompoundStage::Power;
-      }
-    } else if (session->compoundStage == Session::CompoundStage::Power &&
-               !session->client.state().commandPending) {
-      session->compoundFailed = session->client.state().lastCommandFailed;
-      session->compoundStage = Session::CompoundStage::None;
-    }
   }
 }
 
@@ -300,7 +286,6 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
   Session* session = find(command.instanceId);
   if (session == nullptr) return CommandStatus::Unavailable;
   zhiyun_light::ZhiyunLightClient& client = session->client;
-  session->compoundFailed = false;
   switch (command.type) {
     case CommandType::Connect:
       if (session->sharedGateway) {
@@ -328,22 +313,23 @@ CommandStatus ZhiyunLightDriver::dispatch(const DeviceCommand& command) {
       if (!zhiyun_light::validCctCommand(command.value0, command.value1,
                                         command.value2))
         return CommandStatus::InvalidArgument;
-      if (!client.setCct(static_cast<uint16_t>(command.value0),
-                         static_cast<uint8_t>(command.value1)))
-        return CommandStatus::Unavailable;
-      if (command.type == CommandType::SetLightCctAndOn)
-        session->compoundStage = Session::CompoundStage::Look;
-      return CommandStatus::Succeeded;
+      // The look and the following power-on are one client transaction, so the
+      // fixture never shows its previous look and the command stays pending
+      // until both halves are confirmed.
+      return client.setCct(static_cast<uint16_t>(command.value0),
+                           static_cast<uint8_t>(command.value1),
+                           command.type == CommandType::SetLightCctAndOn)
+                 ? CommandStatus::Succeeded
+                 : CommandStatus::Unavailable;
     case CommandType::SetLightRgb:
     case CommandType::SetLightRgbAndOn:
       if (!zhiyun_light::validRgbCommand(command.value0, command.value1))
         return CommandStatus::InvalidArgument;
-      if (!client.setRgb(static_cast<uint32_t>(command.value0),
-                         static_cast<uint8_t>(command.value1)))
-        return CommandStatus::Unavailable;
-      if (command.type == CommandType::SetLightRgbAndOn)
-        session->compoundStage = Session::CompoundStage::Look;
-      return CommandStatus::Succeeded;
+      return client.setRgb(static_cast<uint32_t>(command.value0),
+                           static_cast<uint8_t>(command.value1),
+                           command.type == CommandType::SetLightRgbAndOn)
+                 ? CommandStatus::Succeeded
+                 : CommandStatus::Unavailable;
     default:
       return CommandStatus::Unsupported;
   }
@@ -353,8 +339,6 @@ void ZhiyunLightDriver::cancelPendingCommand(InstanceId instanceId) {
   Session* session = find(instanceId);
   if (session == nullptr) return;
   session->client.cancelPendingCommand();
-  session->compoundStage = Session::CompoundStage::None;
-  session->compoundFailed = false;
 }
 
 DeviceRuntimeState ZhiyunLightDriver::runtimeState(InstanceId instanceId) const {
@@ -379,9 +363,8 @@ DeviceRuntimeState ZhiyunLightDriver::runtimeState(InstanceId instanceId) const 
   runtime.protocolReady = session->client.protocolReady();
   runtime.quality = state.confirmed ? StateQuality::Confirmed
                                     : StateQuality::Unknown;
-  runtime.commandPending = state.commandPending ||
-                           session->compoundStage != Session::CompoundStage::None;
-  runtime.commandFailed = session->compoundFailed || state.lastCommandFailed;
+  runtime.commandPending = state.commandPending;
+  runtime.commandFailed = state.lastCommandFailed;
   return runtime;
 }
 
@@ -400,9 +383,8 @@ bool ZhiyunLightDriver::lightControlState(InstanceId instanceId,
   out.supportsRgb = zhiyun_light::supportsRgb(state.model);
   out.on = state.on;
   out.stateKnown = state.confirmed;
-  out.commandPending = state.commandPending ||
-                       session->compoundStage != Session::CompoundStage::None;
-  out.commandFailed = state.lastCommandFailed || session->compoundFailed;
+  out.commandPending = state.commandPending;
+  out.commandFailed = state.lastCommandFailed;
   out.quality = state.confirmed ? StateQuality::Confirmed : StateQuality::Unknown;
   out.minKelvin = zhiyun_light::kMinKelvin;
   out.maxKelvin = zhiyun_light::kMaxKelvin;

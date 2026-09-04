@@ -187,6 +187,9 @@ struct DebugDeviceCommand {
   DebugDevicePhase phase = DebugDevicePhase::Idle;
   studio::InstanceId instanceId = studio::kInvalidInstanceId;
   studio::CommandType command = studio::CommandType::Refresh;
+  int32_t value0 = 0;
+  int32_t value1 = 0;
+  int32_t value2 = 0;
   uint32_t requestId = 0;
   uint32_t deadlineMs = 0;
 };
@@ -194,7 +197,22 @@ struct DebugDeviceCommand {
 DebugDeviceCommand debugDeviceCommand;
 
 const char* debugDeviceAction(studio::CommandType command) {
-  return command == studio::CommandType::TurnOn ? "on" : "off";
+  switch (command) {
+    case studio::CommandType::TurnOn: return "on";
+    case studio::CommandType::TurnOff: return "off";
+    case studio::CommandType::SetLightCct: return "cct";
+    case studio::CommandType::SetLightRgb: return "rgb";
+    default: return "other";
+  }
+}
+
+studio::Capability debugDeviceCapability(studio::CommandType command) {
+  switch (command) {
+    case studio::CommandType::TurnOn: return studio::Capability::TurnOn;
+    case studio::CommandType::SetLightCct: return studio::Capability::SetLightCct;
+    case studio::CommandType::SetLightRgb: return studio::Capability::SetLightRgb;
+    default: return studio::Capability::TurnOff;
+  }
 }
 
 void finishDebugDeviceCommand(const char* result) {
@@ -208,15 +226,14 @@ void finishDebugDeviceCommand(const char* result) {
 }
 
 void beginDebugDeviceCommand(studio::InstanceId instanceId,
-                             studio::CommandType command) {
+                             studio::CommandType command, int32_t value0 = 0,
+                             int32_t value1 = 0, int32_t value2 = 0) {
   if (debugDeviceCommand.phase != DebugDevicePhase::Idle) {
     DEBUG_PORT.println("debug_device event=begin result=busy");
     return;
   }
   const studio::DeviceRecord* record = studio::devices().find(instanceId);
-  const studio::Capability capability =
-      command == studio::CommandType::TurnOn ? studio::Capability::TurnOn
-                                             : studio::Capability::TurnOff;
+  const studio::Capability capability = debugDeviceCapability(command);
   if (record == nullptr ||
       (studio::devices().profile(instanceId).capabilities &
        studio::capabilityBit(capability)) == 0) {
@@ -242,6 +259,9 @@ void beginDebugDeviceCommand(studio::InstanceId instanceId,
   debugDeviceCommand.phase = DebugDevicePhase::WaitingForReady;
   debugDeviceCommand.instanceId = instanceId;
   debugDeviceCommand.command = command;
+  debugDeviceCommand.value0 = value0;
+  debugDeviceCommand.value1 = value1;
+  debugDeviceCommand.value2 = value2;
   debugDeviceCommand.deadlineMs = millis() + 30000;
   DEBUG_PORT.printf(
       "debug_device event=begin instance=%lu action=%s result=waiting\n",
@@ -264,6 +284,9 @@ void pollDebugDeviceCommand() {
     studio::DeviceCommand command;
     command.instanceId = debugDeviceCommand.instanceId;
     command.type = debugDeviceCommand.command;
+    command.value0 = debugDeviceCommand.value0;
+    command.value1 = debugDeviceCommand.value1;
+    command.value2 = debugDeviceCommand.value2;
     if (!studio::devices().enqueue(command, &debugDeviceCommand.requestId)) {
       finishDebugDeviceCommand("queue_full");
       return;
@@ -324,6 +347,44 @@ void runDebugCommand(char* command) {
     }
     beginDebugDeviceCommand(static_cast<studio::InstanceId>(value),
                             deviceCommand);
+    return;
+  }
+
+  static constexpr char kCctPrefix[] = "device cct ";
+  static constexpr char kRgbPrefix[] = "device rgb ";
+  const bool isCct =
+      std::strncmp(command, kCctPrefix, sizeof(kCctPrefix) - 1) == 0;
+  const bool isRgb =
+      std::strncmp(command, kRgbPrefix, sizeof(kRgbPrefix) - 1) == 0;
+  if (isCct || isRgb) {
+    // "device cct <instance> <kelvin> <brightness>" and
+    // "device rgb <instance> <rrggbb> <brightness>" exercise the look paths
+    // that scenes use, so colour behaviour can be measured without the panel.
+    const char* cursor = command + (isCct ? sizeof(kCctPrefix) - 1
+                                          : sizeof(kRgbPrefix) - 1);
+    char* end = nullptr;
+    const unsigned long instance = std::strtoul(cursor, &end, 10);
+    if (end == cursor || instance == 0) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_id");
+      return;
+    }
+    cursor = end;
+    const unsigned long value = std::strtoul(cursor, &end, isRgb ? 16 : 10);
+    if (end == cursor) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_value");
+      return;
+    }
+    cursor = end;
+    const unsigned long brightness = std::strtoul(cursor, &end, 10);
+    if (end == cursor || *end != '\0' || brightness > 100) {
+      DEBUG_PORT.println("debug_device event=begin result=invalid_brightness");
+      return;
+    }
+    beginDebugDeviceCommand(static_cast<studio::InstanceId>(instance),
+                            isRgb ? studio::CommandType::SetLightRgb
+                                  : studio::CommandType::SetLightCct,
+                            static_cast<int32_t>(value),
+                            static_cast<int32_t>(brightness), 0);
     return;
   }
 
