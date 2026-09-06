@@ -43,7 +43,7 @@ view of the printable enclosure, a lights/camera/audio sequence illustration,
 and a brightness preview. It introduces the current DIY project and links to
 exact-model compatibility, the owner's guide, and build instructions. See the
 website README for local preview and deployment commands. Manufacturer logos
-use the site's monochrome palette, and the phone-family section distinguishes
+use the site's monochrome palette, and camera compatibility distinguishes
 Pixel 9's tested path from experimental iPhone, Galaxy, and other candidates.
 
 ## Where it started

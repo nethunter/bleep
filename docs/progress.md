@@ -5,6 +5,21 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Present phones as cameras
+
+- On operator correction, folded iPhone, Galaxy, Pixel, OnePlus, and Xiaomi/Redmi
+  into the homepage Cameras category. Removed the separate Phones category and
+  compatibility section; phone candidates now appear next to the existing Pixel
+  camera entry in the standard matrix. Preserved evidence labels and camera
+  setup sources. The old `#phones` anchor now targets that matrix row.
+- Removed unused phone-section CSS and advanced shared CSS URLs to
+  `20260906-7`. Homepage has exactly Cameras, Lighting, Audio, and Motion.
+  Browser checks pass at 320/390/768/1440 px, with no JavaScript errors or
+  mobile compatibility Axe violations. Visually reviewed the camera category.
+  Artifact and whitespace checks pass. Full Montserrat `bleep` build passed
+  using the shared environment: 147,220 bytes RAM, 2,038,518 bytes flash.
+  No firmware behavior or support status changed; no native tests or flash.
+
 ### 2026-09-06: Authentic equipment logos and visible phone families
 
 - Replaced the six typeset equipment names with manufacturer artwork for Canon,
