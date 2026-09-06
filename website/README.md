@@ -139,8 +139,9 @@ identifies equipment; it does not imply manufacturer endorsement.
 | `ifootage.png` | <https://www.ifootagegear.com/cdn/shop/files/cropped-ifootage-logo_2017_300x_c243c7f7-d24a-4d2c-9e1e-efef87ae692d.png?v=1613520184&width=600> | Original transparent PNG. |
 | `gopro.svg` | <https://gopro.com/en/us/> | Extracted the inline header-logo SVG. |
 
-The homepage Phones row links to `compatibility.html#phones`. iPhone, Samsung
-Galaxy, OnePlus, and Xiaomi/Redmi are named examples of the **existing
+Phones appear within the homepage Cameras category and alongside the camera
+rows in the compatibility matrix. iPhone, Samsung Galaxy, OnePlus, and
+Xiaomi/Redmi are named examples of the **existing
 experimental iOS/Android candidates** in `docs/device-support.md`, not newly
 supported devices or expanded verification. Pixel 9 retains its observed
 reconnect/shutter evidence; other Pixel models remain unverified. Manufacturer
