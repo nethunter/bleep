@@ -28,6 +28,13 @@ short, factual, and reproducible.
   compiled in the shared environment recorded below: 147,220 bytes RAM and
   2,038,518 bytes flash. Native tests were not needed for website-only work;
   no hardware was flashed or phone compatibility physically tested.
+- Rebased onto current `origin/main` without conflicts, merged from `main`
+  with `--no-ff` as `5857f20`, and pushed. Firebase Hosting released 54 files.
+  Live HTML, compatibility page, versioned CSS, and all six logos match the
+  reviewed bytes. Production browser checks pass at all five widths, including
+  the clean-URL phone anchor, five family cards, six logos, and homepage plus
+  compatibility desktop/mobile Axe scans. No browser JavaScript/CSP errors;
+  live mobile logos visually inspected. Artifact check passes (441 files).
 
 ### 2026-09-06: Remove rotating-screen depth artifacts
 
