@@ -69,7 +69,9 @@ USB-C socket, and SS12D00 power switch are exported from the STEP assembly with
 `tools/export_website_components.py` (Python 3.12, `cadquery-ocp==7.8.1.1`,
 `vtk==9.3.1`). The display cover fills the 42.1 mm case opening; its rounded
 shoulder rises from z=0 to the flat touch face at z=1.9 mm. The animated
-32.8 mm display sits at z=1.92 mm to avoid depth fighting with the cover.
+32.8 mm display and its annular border replace the cover's solid front cap
+at z=1.9 mm, eliminating overlapping triangles beneath the screen. Camera
+clipping planes follow the device bounds to preserve mobile depth precision.
 The model adds a dark socket mouth and insulating tongue to the
 single-material connector CAD part to match the physical reference. Raw user
 photos are not included in the repository. `ui-sequence.png` is an

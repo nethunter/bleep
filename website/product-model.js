@@ -28,6 +28,19 @@ async function loadPart(name, material) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  if (name === "display-cover") {
+    // Replace the solid front cap with the screen and its annular border.
+    // Leaving CAD triangles immediately underneath causes mobile depth fighting.
+    const indices = [];
+    for (let face = 0; face < count; face++) {
+      const offset = face * 9;
+      const isFront = [2, 5, 8].every(
+        (axis) => Math.abs(positions[offset + axis] - 1.9) < 0.001,
+      );
+      if (!isFront) indices.push(face * 3, face * 3 + 1, face * 3 + 2);
+    }
+    geometry.setIndex(indices);
+  }
   return new THREE.Mesh(geometry, material);
 }
 
@@ -134,9 +147,9 @@ export async function mountProduct(wrap) {
     texture.colorSpace = THREE.SRGBColorSpace;
     resources.add(texture);
     const screenMaterial = new THREE.MeshBasicMaterial({ map: texture });
-    // The CAD cover fills the 42.1 mm opening and rolls up to a flat face at
-    // z=1.9 mm. Keep the active display just above it to avoid depth fighting.
-    addMesh(new THREE.CircleGeometry(16.4, 96), screenMaterial, 0, 0, 1.92);
+    // Adjacent surfaces share an edge, with no solid cover beneath the pixels.
+    addMesh(new THREE.RingGeometry(16.4, 17.05, 96), charcoal, 0, 0, 1.9);
+    addMesh(new THREE.CircleGeometry(16.4, 96), screenMaterial, 0, 0, 1.9);
     const metal = new THREE.MeshStandardMaterial({
       color: 0x4c4e46,
       metalness: 0.75,
@@ -157,7 +170,7 @@ export async function mountProduct(wrap) {
     assembly.add(group);
     assembly.rotation.set(initial.x, initial.y, -0.22);
     scene.add(assembly);
-    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(30, 1, 168, 388);
     camera.position.set(0, 0, 290);
     scene.add(new THREE.HemisphereLight(0xfff9e8, 0x636a63, 3));
     const key = new THREE.DirectionalLight(0xfff9ee, 4);
@@ -198,6 +211,10 @@ export async function mountProduct(wrap) {
       camera.aspect = width / height;
       // Keep the entire enclosure visible on narrow portrait canvases.
       camera.position.z = Math.max(278, 155 / camera.aspect);
+      // Bound the whole rotating device while preserving depth precision on
+      // mobile GPUs; a near plane at 0.1 wastes almost all available precision.
+      camera.near = camera.position.z - 110;
+      camera.far = camera.position.z + 110;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
       requestDraw();
