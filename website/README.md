@@ -121,3 +121,29 @@ firebase deploy --only hosting --project hml-studio
 ```
 
 A local preview or successful build is not a production deployment.
+
+### Equipment logos and phone-family presentation (2026-09-06)
+
+`assets/brands/` contains locally hosted manufacturer artwork, displayed as
+CSS alpha masks in the site's ink color. Original letterforms and proportions
+are preserved. SVG view boxes are tightened to the artwork; Canon's separate
+“Global” header label is omitted. The iFootage PNG is unchanged. Logo use
+identifies equipment; it does not imply manufacturer endorsement.
+
+| File | Official source | Preparation |
+| --- | --- | --- |
+| `canon.svg` | <https://global.canon/01cmn/img/common/logo-sp.svg> | Extracted the five Canon wordmark paths; omitted separate Global text. |
+| `amaran.svg` | <https://amarancreators.com/> | Extracted the inline `amaran Logo` SVG from the header. |
+| `insta360.svg` | <https://res.insta360.com/static/1a22851807665e5431fd7f77b62a9102/Insta360_Primary%20logo%20-%20Black%26transparent%20-%20Online.pdf> | Converted official vector PDF using Poppler `pdftocairo -svg`; cropped view box to paths. |
+| `tascam.svg` | <https://tascam.com/wp-content/themes/tascam/assets/img/logo.svg> | Added/tightened the view box. |
+| `ifootage.png` | <https://www.ifootagegear.com/cdn/shop/files/cropped-ifootage-logo_2017_300x_c243c7f7-d24a-4d2c-9e1e-efef87ae692d.png?v=1613520184&width=600> | Original transparent PNG. |
+| `gopro.svg` | <https://gopro.com/en/us/> | Extracted the inline header-logo SVG. |
+
+The homepage Phones row links to `compatibility.html#phones`. iPhone, Samsung
+Galaxy, OnePlus, and Xiaomi/Redmi are named examples of the **existing
+experimental iOS/Android candidates** in `docs/device-support.md`, not newly
+supported devices or expanded verification. Pixel 9 retains its observed
+reconnect/shutter evidence; other Pixel models remain unverified. Manufacturer
+camera-setting links support only the volume-key convention, not Ble(e)p BLE
+pairing, reconnect, video behavior, or exact-model compatibility. Support
+classifications, firmware, and manual content are unchanged.

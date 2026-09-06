@@ -22,7 +22,7 @@
     <title>Device compatibility — Ble(e)p</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/fonts/fonts.css?v=20260906-1" />
-    <link rel="stylesheet" href="styles.css?v=20260906-3" />
+    <link rel="stylesheet" href="styles.css?v=20260906-6" />
     <script src="script.js?v=20260906-3" defer></script>
   </head>
   <body class="compatibility-page">
@@ -120,6 +120,86 @@
             <dd>No generally usable saved-device path is claimed yet.</dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        class="phone-section section"
+        id="phones"
+        aria-labelledby="phone-title"
+      >
+        <p class="eyebrow">PHONE CAMERA / THE SHUTTER IN YOUR HAND</p>
+        <div class="phone-heading">
+          <h2 id="phone-title">Your phone.<br /><em>Part of the shoot.</em></h2>
+          <p>
+            Phone Camera mode sends a Bluetooth volume-up key to trigger the
+            shutter. Keep your camera app open and set its volume button to take
+            a photo. Pairing and camera-app behavior vary by phone.
+          </p>
+        </div>
+        <div class="phone-families">
+          <article class="phone-family">
+            <span class="status status-experimental">Experimental</span>
+            <h3>iPhone</h3>
+            <p>
+              Apple Camera uses the volume buttons to take a photo. Ble(e)p
+              pairing and shutter tests are still pending.
+            </p>
+            <a
+              href="https://support.apple.com/en-ie/guide/iphone/-iph263472f78/ios"
+              >Apple camera guide ↗</a
+            >
+          </article>
+          <article class="phone-family">
+            <span class="status status-experimental">Experimental</span>
+            <h3>Samsung Galaxy</h3>
+            <p>
+              Set Camera → Settings → Shooting methods → Press Volume buttons to
+              take pictures or record video. Exact-model testing is pending.
+            </p>
+            <a href="https://www.samsung.com/us/support/answer/ANS10001353/"
+              >Galaxy camera settings ↗</a
+            >
+          </article>
+          <article class="phone-family">
+            <span class="status status-verified">Pixel 9 verified</span>
+            <h3>Google Pixel</h3>
+            <p>
+              Pixel 9 has confirmed reconnect and shutter operation in a mixed
+              sequence. Other Pixel models still need testing.
+            </p>
+            <a href="#phone-pixel-evidence">See Pixel 9 evidence ↗</a>
+          </article>
+          <article class="phone-family">
+            <span class="status status-experimental">Experimental</span>
+            <h3>OnePlus</h3>
+            <p>
+              Choose Shutter for the camera's volume-button function, where
+              available. Ble(e)p testing is pending.
+            </p>
+            <a
+              href="https://service.oneplus.com/content/dam/support/user-manuals/common/OnePlus_9RT_5G_User_Manual_EN.pdf"
+              >OnePlus camera guide ↗</a
+            >
+          </article>
+          <article class="phone-family">
+            <span class="status status-experimental">Experimental</span>
+            <h3>Xiaomi / Redmi</h3>
+            <p>
+              Check Camera's Volume buttons function and select the shutter
+              option. Availability varies; Ble(e)p testing is pending.
+            </p>
+            <a href="https://www.mi.com/ph/support/faq/details/KA-503450/"
+              >Redmi camera settings ↗</a
+            >
+          </article>
+        </div>
+        <p class="phone-boundary">
+          Pixel 9 is the tested phone today. The other families are candidates
+          for the same Phone Camera mode, based on their documented volume-key
+          controls. A phone's built-in volume button working does not yet
+          confirm its Bluetooth shutter behavior with Ble(e)p. Recording state
+          is not reported back to the panel.
+        </p>
       </section>
 
       <section class="matrix-section" aria-labelledby="matrix-title">
@@ -288,7 +368,7 @@
                   Reconnect, forget/re-pair, and coexistence cycles remain open.
                 </td>
               </tr>
-              <tr>
+              <tr id="phone-pixel-evidence">
                 <th scope="row" data-label="Device / path">
                   <span class="device-family">Phone shutter</span>Google Pixel 9
                 </th>
