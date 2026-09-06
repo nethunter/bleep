@@ -5,6 +5,30 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Authentic equipment logos and visible phone families
+
+- Replaced the six typeset equipment names with manufacturer artwork for Canon,
+  amaran, Insta360, Tascam, iFootage, and GoPro. Assets are self-hosted and
+  rendered as ink-colored CSS masks with their original proportions. Official
+  source URLs and extraction details are recorded in `website/README.md`.
+  SVGs contain local vector paths only; no embedded scripts or remote assets.
+- Added a homepage Phones row linking to a dedicated compatibility section for
+  iPhone, Samsung Galaxy, Google Pixel, OnePlus, and Xiaomi/Redmi. Manufacturer
+  camera-setting sources explain the volume-key convention. These are named
+  examples of the existing experimental iOS/Android candidates, not additions
+  to the Supported list: Pixel 9 retains its verified reconnect/shutter evidence,
+  while other families and other Pixel models remain unverified. No firmware,
+  support classification, or manual changes are made by this website tranche.
+- Desktop/mobile screenshots reviewed. Checks pass at 320, 390, 768, 1024,
+  and 1440 px; fixed a discovered 768 px logo-strip overflow. All six logos,
+  five phone-family cards, and the homepage-to-phone-section link are present.
+  Homepage and compatibility desktop/mobile Axe checks report no violations;
+  browser JavaScript error capture is clean. Shared CSS URLs use `20260906-6`.
+  Repository artifact and whitespace checks pass. Full Montserrat `bleep`
+  compiled in the shared environment recorded below: 147,220 bytes RAM and
+  2,038,518 bytes flash. Native tests were not needed for website-only work;
+  no hardware was flashed or phone compatibility physically tested.
+
 ### 2026-09-06: Remove rotating-screen depth artifacts
 
 - The operator's phone screenshot exposed depth fighting between the animated
