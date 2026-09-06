@@ -39,7 +39,8 @@ finished-product availability.
   Hidden/offscreen/context-lost views stop the clock, and unchanged frames
   sleep between transitions. Failed tour loading retains the static screen.
 - `product-model.js`: Three.js rendering from the actual top/bottom/button STL
-  exports and USB-C socket and power-switch parts extracted from the STEP assembly. Drag, arrow buttons, and keyboard arrows rotate the device; Home or
+  exports and display cover, USB-C socket, and power-switch parts extracted
+  from the STEP assembly. Drag, arrow buttons, and keyboard arrows rotate the device; Home or
   Reset restores it. Render work stops offscreen and when the tab is hidden.
 - `assets/device-poster.svg`: lightweight illustrated fallback for unavailable
   WebGL, failed model assets, disabled JavaScript, or Save-Data.
@@ -63,10 +64,13 @@ third-party runtime requests.
 The top, bottom, and button STL files under `assets/models/` are byte-for-byte copies of the
 matching `hardware/Bleep Remote {Top,Bottom,Button}.stl` files. When the enclosure
 changes, refresh these copies together and inspect the assembled model. The
-original assembly coordinates must be preserved. The USB-C socket and SS12D00
-power switch are exported from the STEP assembly with
+original assembly coordinates must be preserved. The LCD-MIANBAN display cover,
+USB-C socket, and SS12D00 power switch are exported from the STEP assembly with
 `tools/export_website_components.py` (Python 3.12, `cadquery-ocp==7.8.1.1`,
-`vtk==9.3.1`). The model adds a dark socket mouth and insulating tongue to the
+`vtk==9.3.1`). The display cover fills the 42.1 mm case opening; its rounded
+shoulder rises from z=0 to the flat touch face at z=1.9 mm. The animated
+32.8 mm display sits at z=1.92 mm to avoid depth fighting with the cover.
+The model adds a dark socket mouth and insulating tongue to the
 single-material connector CAD part to match the physical reference. Raw user
 photos are not included in the repository. `ui-sequence.png` is an
 existing firmware UI screenshot used as the static fallback. `assets/screens/`

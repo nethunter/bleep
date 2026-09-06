@@ -5,6 +5,26 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Fit the website display to its raised cover
+
+- Replaced the undersized, flat 38.2 mm backing with the actual LCD-MIANBAN
+  cover exported from `hardware/Bleep Remote.step`. Its 42.1 mm diameter
+  matches the shell opening, and its rounded shoulder rises 1.9 mm above the
+  case, matching the operator's side photo. Moved the animated display to
+  z=1.92 mm above that face. The export script now reproduces this component.
+  Main/model JavaScript URLs use `20260906-4` to bypass immutable caches.
+- Visually inspected angled, side, and mobile views. Browser checks pass for
+  changing screen pixels, paused-frame stability, all five functions,
+  offscreen pause/resume, reduced motion, optional-tour failure fallback,
+  and widths 320/360/390/768/1440. Desktop/mobile Axe checks and JavaScript
+  error capture are clean. JavaScript syntax and repository artifact checks
+  pass. No firmware logic changed; native tests were not rerun.
+- Full Montserrat `bleep` compiled using the shared main-checkout Python
+  environment and PlatformIO core recorded below: 147,220 bytes RAM and
+  2,038,518 bytes flash. No hardware was flashed. These checks verify the
+  website illustration, not physical-device operation. Integration and
+  production verification follow below after deployment.
+
 ### 2026-09-06: Website merged and deployed
 
 - On explicit operator approval, committed the complete reviewed redesign as

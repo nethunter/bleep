@@ -115,7 +115,7 @@ brightness?.addEventListener("input", () => {
 // The poster and all marketing content work before, or without, WebGL.
 const model = document.querySelector("[data-model-wrap]");
 if (model && !navigator.connection?.saveData) {
-  import("./product-model.js?v=20260906-3")
+  import("./product-model.js?v=20260906-4")
     .then((module) => module.mountProduct(model))
     .catch(() => {
       document.querySelector("[data-model-controls]").hidden = true;
