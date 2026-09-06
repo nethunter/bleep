@@ -41,7 +41,14 @@ finished-product availability.
 - `product-model.js`: Three.js rendering from the actual top/bottom/button STL
   exports and display cover, USB-C socket, and power-switch parts extracted
   from the STEP assembly. Drag, arrow buttons, and keyboard arrows rotate the device; Home or
-  Reset restores it. Render work stops offscreen and when the tab is hidden.
+  Reset restores it. Body finishes (Ivory, Graphite, Sand, Stone, Orange) and
+  button colors (Orange, Blue, Black) change independently through labeled
+  swatches. Stone uses procedural object-space speckles, preserving alignment
+  across the two shell parts. Clicking the model's side button depresses it
+  and releases in one short animation; Enter/Space on the canvas provides the
+  same push. Dragging rotates the enclosure. No separate Press control is rendered,
+  and the push does not change the screen tour. Render work stops offscreen
+  and when the tab is hidden.
 - `assets/device-poster.svg`: lightweight illustrated fallback for unavailable
   WebGL, failed model assets, disabled JavaScript, or Save-Data.
 - `compatibility.html`: existing dated evidence ledger, restyled without
@@ -50,8 +57,8 @@ finished-product availability.
 The sequence and brightness interactions are marketing illustrations, not
 remote hardware controls or firmware UI emulators. Camera and audio start in
 order, not with frame synchronization. The model uses the real enclosure
-geometry, a firmware screenshot, illustrative fasteners, and an orange button
-material; it is not a promise of a manufactured finish.
+geometry, firmware screenshots, illustrative fasteners, and selectable finish
+materials; it is not a promise of a manufactured finish.
 
 ## Assets and maintenance
 
