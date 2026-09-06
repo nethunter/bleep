@@ -26,6 +26,13 @@ short, factual, and reproducible.
   Full Montserrat `bleep` compiled in the shared environment recorded below:
   147,220 bytes RAM and 2,038,518 bytes flash. No firmware logic changed;
   native tests were not rerun and no hardware was flashed.
+- Rebased onto current `origin/main` (no incoming changes), merged from
+  `main` with `--no-ff` as `da609b1`, and pushed. Firebase Hosting released
+  48 files successfully. Production HTML and versioned renderer match local
+  bytes at `https://bleep.hml.tech`; model loading, five functions, mobile
+  navigation/width, compatibility, custom 404, and CSP pass without browser
+  JavaScript errors. The website correction is deployed; physical-phone
+  confirmation remains with the operator.
 
 ### 2026-09-06: Fit the website display to its raised cover
 
