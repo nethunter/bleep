@@ -1,202 +1,617 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Ble(e)p is an open, local-first studio controller that connects cameras, lights, recorders, motion gear, and Home Assistant from one tiny panel.">
-    <meta name="theme-color" content="#050708">
-    <meta property="og:title" content="Ble(e)p — One tiny panel. Your whole studio.">
-    <meta property="og:description" content="Open, local-first control and automation for cameras, lights, recorders, motion gear, and Home Assistant.">
-    <meta property="og:image" content="https://bleep.hml.tech/assets/og-card.png">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://bleep.hml.tech/">
-    <title>Ble(e)p — One tiny panel. Your whole studio.</title>
-    <link rel="icon" href="assets/favicon.png" type="image/png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260812-2">
-    <script src="script.js?v=20260812-2" defer></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Meet Ble(e)p. The little studio controller that puts lights, cameras, audio, and motion on your cue. Open source. Local control. More time making."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta property="og:title" content="Ble(e)p — Your studio. On cue." />
+    <meta
+      property="og:description"
+      content="Lights. Camera. A little Ble(e)p. Put your studio on cue with one small, open-source controller."
+    />
+    <meta
+      property="og:image"
+      content="https://bleep.hml.tech/assets/og-card.png"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://bleep.hml.tech/" />
+    <title>Ble(e)p — Your studio. On cue.</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="assets/fonts/fonts.css?v=20260906-1" />
+    <link rel="stylesheet" href="styles.css?v=20260906-3" />
+    <script src="script.js?v=20260906-3" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-
     <header class="site-header" data-header>
-      <a class="brand" href="#top" aria-label="Ble(e)p home">
-        <img src="assets/logo-wide.png" alt="Ble(e)p">
-      </a>
-      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
-        <span></span><span></span><span></span>
-        <span class="sr-only">Open navigation</span>
+      <a class="brand" href="index.html" aria-label="Ble(e)p home"
+        >ble<span>(e)</span>p<span class="brand-period">.</span></a
+      >
+      <button
+        class="nav-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-nav"
+        data-nav-toggle
+      >
+        Menu <span aria-hidden="true">+</span>
       </button>
-      <nav class="site-nav" id="site-nav" data-nav>
-        <a href="#why">Why Bleep</a>
-        <a href="#capabilities">Capabilities</a>
-        <a href="compatibility.html">Compatibility</a>
-        <a href="#hardware">Build it</a>
-        <a class="nav-cta" href="https://github.com/nethunter/bleep">GitHub <span aria-hidden="true">↗</span></a>
+      <nav class="site-nav" id="site-nav" data-nav aria-label="Main navigation">
+        <a href="#experience">The experience</a
+        ><a href="compatibility.html">Your gear</a
+        ><a href="#details">The little details</a
+        ><a class="nav-cta" href="#get-bleep"
+          >Meet your Ble(e)p <span aria-hidden="true">↗</span></a
+        >
       </nav>
     </header>
-
     <main id="main">
       <section class="hero" id="top">
-        <div class="hero-grid" aria-hidden="true"></div>
-        <picture>
-          <source srcset="assets/hero-product-2x.webp" type="image/webp">
-          <img class="hero-photo" src="assets/hero-product.png" alt="Ble(e)p controller lit in cyan and orange on a dark studio surface">
-        </picture>
-        <div class="hero-copy reveal">
-          <p class="eyebrow"><span class="live-dot"></span> Open firmware / active development</p>
-          <h1>One tiny panel.<br><em>Your whole studio.</em></h1>
-          <p class="hero-lede">Ble(e)p adds open, local-first control and automation to studio gear. Trigger cameras, set lights, run motion, start recorders, and coordinate them in sequences—from one physical panel.</p>
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="live-dot"></span> A small controller. A big creative
+            streak.
+          </p>
+          <h1>
+            Your studio.<br />On
+            <span class="cue-word"
+              >cue<svg viewBox="0 0 240 25" aria-hidden="true">
+                <path d="M4 17Q110-1 235 10M18 23Q111 6 204 16" /></svg></span
+            ><span class="orange">.</span>
+          </h1>
+          <p class="hero-lede">
+            Get the lights right. Roll the cameras. Make your move. Ble(e)p
+            brings your gear together, so you can stay in the creative part.
+          </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/nethunter/bleep">Explore the project <span aria-hidden="true">↗</span></a>
-            <a class="button button-secondary" href="downloads/bleep-instruction-manual.pdf">Read the owner’s guide <span aria-hidden="true">↓</span></a>
+            <a class="button button-dark" href="#experience"
+              >See it in action <span aria-hidden="true">↘</span></a
+            ><a class="text-link" href="#get-bleep"
+              >Make it yours <span aria-hidden="true">↗</span></a
+            >
           </div>
-          <dl class="hero-stats" aria-label="Project facts">
-            <div><dt>24</dt><dd>saved devices</dd></div>
-            <div><dt>4</dt><dd>live BLE links</dd></div>
-            <div><dt>0</dt><dd>cloud required</dd></div>
-          </dl>
+          <p class="hero-note">
+            Open source. Local control. Entirely your thing.
+          </p>
         </div>
-
-        <div class="hero-object reveal" data-delay="1">
-          <div class="orbit orbit-one"></div>
-          <div class="orbit orbit-two"></div>
-          <div class="signal signal-a"><span>LIGHT</span><b></b></div>
-          <div class="signal signal-b"><span>CAMERA</span><b></b></div>
-          <div class="signal signal-c"><span>AUDIO</span><b></b></div>
-          <div class="signal signal-d"><span>MOTION</span><b></b></div>
-          <p class="object-caption"><span>ESP32-C3</span><span>240 × 240 TOUCH</span><span>BLE + WI-FI</span></p>
-        </div>
-
-        <a class="scroll-cue" href="#why" aria-label="Continue to why Bleep">
-          <span>Scroll to route signal</span><i></i>
-        </a>
-      </section>
-
-      <section class="manifesto section" id="why">
-        <div class="section-label reveal"><span>01</span> The problem</div>
-        <div class="manifesto-copy reveal">
-          <p>Most studio gear is designed to work alone. When remote control exists at all, it is usually trapped in a single-purpose app or proprietary protocol.</p>
-          <h2>Ble(e)p adds the missing layer: <em>control and automation across the room.</em></h2>
-        </div>
-        <div class="principles">
-          <article class="principle reveal">
-            <span class="principle-number">01 / LOCAL</span>
-            <h3>Your studio stays yours.</h3>
-            <p>Device links, state, and sequences run on the controller. Normal operation doesn’t depend on somebody else’s cloud.</p>
-          </article>
-          <article class="principle reveal" data-delay="1">
-            <span class="principle-number">02 / HONEST</span>
-            <h3>An ACK is not an outcome.</h3>
-            <p>Ble(e)p separates a packet being delivered from a camera recording, a light changing, or hardware actually moving.</p>
-          </article>
-          <article class="principle reveal" data-delay="2">
-            <span class="principle-number">03 / OPEN</span>
-            <h3>New gear gets a driver.</h3>
-            <p>Protocol evidence, isolated integrations, and host tests make the platform useful beyond one manufacturer—or one panel.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="capabilities section" id="capabilities">
-        <div class="section-heading reveal">
-          <div class="section-label"><span>02</span> What it controls</div>
-          <h2>Direct control when you need it. Automation when you don’t.</h2>
-          <p>Operate one device from a purpose-built screen, or prepare an entire sequence and start the room with one press.</p>
-        </div>
-
-        <div class="capability-stage">
-          <div class="capability-tabs reveal" role="tablist" aria-label="Bleep capability examples">
-            <button role="tab" aria-selected="true" aria-controls="panel-sequences" id="tab-sequences" data-tab="sequences"><span>01</span> Sequences</button>
-            <button role="tab" aria-selected="false" aria-controls="panel-lights" id="tab-lights" data-tab="lights"><span>02</span> Lights</button>
-            <button role="tab" aria-selected="false" aria-controls="panel-cameras" id="tab-cameras" data-tab="cameras"><span>03</span> Cameras</button>
-            <button role="tab" aria-selected="false" aria-controls="panel-motion" id="tab-motion" data-tab="motion"><span>04</span> Motion</button>
+        <div class="product-stage" data-product-stage>
+          <div class="stage-rings" aria-hidden="true">
+            <i></i><i></i><i></i>
           </div>
-
-          <div class="capability-display reveal" data-delay="1">
-            <div class="display-halo"></div>
-            <article class="capability-panel is-active" id="panel-sequences" role="tabpanel" aria-labelledby="tab-sequences" data-panel="sequences">
-              <img src="assets/ui-sequence.png" alt="Ble(e)p sequence screen showing two ready devices and Start and Stop controls">
-              <div><p class="panel-kicker">Prepare together. Trigger once.</p><h3>Sequences</h3><p>Coordinate recording, lighting, motion, waits, and Home Assistant actions in a repeatable order. Generated Stop runs the safe inverse.</p></div>
-            </article>
-            <article class="capability-panel" id="panel-lights" role="tabpanel" aria-labelledby="tab-lights" data-panel="lights" hidden>
-              <img src="assets/ui-light.png" alt="Ble(e)p RGB light control with hue and brightness controls">
-              <div><p class="panel-kicker">One language for the look.</p><h3>Lights</h3><p>A shared control surface exposes only what each fixture can do: power, brightness, CCT, tint, or RGB—without hiding brand-specific transport beneath it.</p></div>
-            </article>
-            <article class="capability-panel" id="panel-cameras" role="tabpanel" aria-labelledby="tab-cameras" data-panel="cameras" hidden>
-              <img src="assets/ui-home.png" alt="Ble(e)p Home screen with Devices, Groups, Scenes, and Portal">
-              <div><p class="panel-kicker">Record across ecosystems.</p><h3>Cameras</h3><p>Control verified paths for Canon, Insta360 X5, DJI Osmo, GoPro, and a Google Pixel 9—while keeping unverified models clearly labeled.</p></div>
-            </article>
-            <article class="capability-panel" id="panel-motion" role="tabpanel" aria-labelledby="tab-motion" data-panel="motion" hidden>
-              <img src="assets/ui-motion.png" alt="Ble(e)p Shark Nano II run screen with standby, loop, and direction controls">
-              <div><p class="panel-kicker">Put motion on your mark.</p><h3>Motion</h3><p>Specialized Shark Nano II controls keep keypoints, positioning, speed, direction, loops, and run progress close at hand.</p></div>
-            </article>
+          <p class="stage-tag">MEET YOUR NEW<br />STUDIO SIDEKICK.</p>
+          <div class="model-wrap" data-model-wrap>
+            <img
+              class="model-poster"
+              src="assets/device-poster.svg"
+              alt="Ble(e)p’s ivory handheld enclosure, round touchscreen, and side button"
+              width="480"
+              height="800"
+            />
+          </div>
+          <span class="product-callout"
+            >Small enough to hold.<br />Made to run the show.<svg
+              viewBox="0 0 110 60"
+              aria-hidden="true"
+            >
+              <path d="M5 5Q60 0 90 46m-15-9 17 12 2-21" /></svg
+          ></span>
+          <div
+            class="screen-tour"
+            data-screen-tour
+            hidden
+            role="group"
+            aria-label="Device screen demo"
+          >
+            <div>
+              <span data-screen-name>Sequences</span
+              ><small data-screen-detail>Cue the whole take</small>
+            </div>
+            <button
+              type="button"
+              data-screen-pause
+              aria-label="Pause screen demo"
+            >
+              <span aria-hidden="true">Ⅱ</span>
+            </button>
+            <button
+              type="button"
+              data-screen-next
+              aria-label="Show next device function"
+            >
+              <span aria-hidden="true">→</span>
+            </button>
+            <p class="sr-only" data-screen-announcement aria-live="polite"></p>
+          </div>
+          <div class="model-controls" data-model-controls hidden>
+            <button
+              type="button"
+              data-rotate="-1"
+              aria-label="Rotate device left"
+            >
+              ↶</button
+            ><span data-model-hint>Drag to explore</span
+            ><button
+              type="button"
+              data-rotate="1"
+              aria-label="Rotate device right"
+            >
+              ↷</button
+            ><button
+              type="button"
+              data-model-reset
+              aria-label="Reset device view"
+            >
+              Reset
+            </button>
+          </div>
+          <span class="stage-index">BLE(E)P / STUDIO CONTROLLER</span>
+        </div>
+        <div class="hero-bottom">
+          <span>LESS SETUP. MORE “THAT’S THE SHOT.”</span
+          ><a href="#experience"
+            >Take a closer look <span aria-hidden="true">↓</span></a
+          >
+        </div>
+      </section>
+      <section
+        class="brand-strip"
+        aria-label="Selected compatible equipment brands"
+      >
+        <p>GOOD COMPANY<br />FOR YOUR GEAR.</p>
+        <div>
+          <span>Canon</span><span class="brand-amaran">amaran</span
+          ><span>Insta360</span><span class="brand-tascam">TASCAM</span
+          ><span>iFootage</span><span>GoPro</span>
+        </div>
+        <a href="compatibility.html">Check your model ↗</a>
+      </section>
+      <section class="experience section" id="experience">
+        <div class="section-top">
+          <p class="eyebrow">01 / FIND YOUR FLOW</p>
+          <span class="small-note">Made for the person behind everything.</span>
+        </div>
+        <div class="experience-heading">
+          <h2>One good idea.<br />A whole studio <em>ready.</em></h2>
+          <p>
+            When you’re the director, camera operator, and talent, every trip
+            across the room breaks the flow. Set up a sequence. Take your place.
+            Give your gear the cue.
+          </p>
+        </div>
+        <div class="studio-demo" data-demo data-step="0">
+          <div class="demo-toolbar">
+            <span><i class="live-dot"></i> THE ONE-PERSON STUDIO</span
+            ><span class="demo-label">INTERACTIVE ILLUSTRATION</span>
+          </div>
+          <div class="studio-scene">
+            <svg
+              class="studio-art"
+              viewBox="0 0 1000 520"
+              role="img"
+              aria-labelledby="studio-title studio-description"
+            >
+              <title id="studio-title">Your studio, on one cue</title>
+              <desc id="studio-description">
+                An illustrated set with two lights, a camera on a tripod, an
+                audio recorder, and a subject. Play the sequence to see each
+                step.
+              </desc>
+              <defs>
+                <linearGradient id="floor" x2="0" y2="1">
+                  <stop stop-color="#2b302c" />
+                  <stop offset="1" stop-color="#191e1b" />
+                </linearGradient>
+                <linearGradient id="backdrop" x2="1" y2="1">
+                  <stop stop-color="#74776b" />
+                  <stop offset="1" stop-color="#424a40" />
+                </linearGradient>
+                <linearGradient id="beam" x2="1" y2="1">
+                  <stop stop-color="#e4f798" stop-opacity=".4" />
+                  <stop offset="1" stop-color="#e4f798" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M60 359 460 160 950 342 541 510Z"
+                fill="url(#floor)"
+                stroke="#51594c"
+              />
+              <g stroke="#383f36" fill="none">
+                <path
+                  d="m160 407 402-205m-296 249 398-210m-294 251 400-211M149 315l492 175M242 269l492 175M344 218l492 175"
+                />
+              </g>
+              <path
+                d="M413 110Q413 78 442 90L713 191v153q0 36 55 55l-229 109q-50-20-50-63V279Z"
+                fill="url(#backdrop)"
+              />
+              <path
+                d="M413 110v206q0 35 76 63"
+                stroke="#939886"
+                fill="none"
+                opacity=".4"
+              />
+              <ellipse
+                cx="570"
+                cy="363"
+                rx="54"
+                ry="21"
+                fill="#191e1b"
+                opacity=".5"
+              />
+              <g class="subject">
+                <path
+                  d="m548 298-5 60 19 6 9-49 10 51 20-8-16-67"
+                  fill="#252d27"
+                />
+                <path
+                  d="M541 226q25-20 51 5l6 70q-32 17-64-2Z"
+                  fill="#d3d0ba"
+                />
+                <path
+                  d="m541 231-22 48 11 8 22-37m39-13 20 45-12 9-22-37"
+                  fill="#c0bba1"
+                />
+                <circle cx="567" cy="204" r="22" fill="#bf9f80" />
+                <path
+                  d="M546 202q-6-35 29-24 18 5 13 31l-11-18-31 12"
+                  fill="#2a2c23"
+                />
+              </g>
+              <g class="light-beam">
+                <path d="m265 177 280 9 114 220-70 23Z" fill="url(#beam)" />
+                <path d="m770 208-252 62 22 119 92 4Z" fill="url(#beam)" />
+              </g>
+              <g stroke="#969d88" stroke-width="3" fill="none">
+                <path
+                  d="M259 205v174m0-40-34 49m34-49 38 41m-38-41 5 60M778 239v153m0-36-30 47m30-47 35 31m-35-31 4 51"
+                />
+              </g>
+              <g class="studio-light">
+                <path
+                  d="m207 126 56-23 44 37-10 62-49 20-45-35Z"
+                  fill="#343d31"
+                  stroke="#8c9680"
+                  stroke-width="2"
+                />
+                <path
+                  class="lamp-face"
+                  d="m213 131 51-19 34 30-8 54-41 17-37-30Z"
+                  fill="#76816b"
+                />
+                <path
+                  d="m741 177 36-15 32 25-3 43-36 17-30-26Z"
+                  fill="#343d31"
+                  stroke="#8c9680"
+                />
+                <path
+                  class="lamp-face"
+                  d="m748 182 29-12 24 20-3 35-27 13-23-20Z"
+                  fill="#76816b"
+                />
+              </g>
+              <g fill="none" stroke="#727d69" stroke-width="4">
+                <path d="M350 362v50m0-18-40 57m40-57 49 41m-49-41 1 68" />
+              </g>
+              <g class="studio-camera">
+                <path d="m321 367 52-22 27 10-52 23Z" fill="#c0c6ac" />
+                <path d="M350 364v-42" stroke="#a8b198" stroke-width="7" />
+                <path
+                  d="m320 291 43-19 37 16v37l-43 20-37-17Z"
+                  fill="#303a2d"
+                  stroke="#adb69d"
+                  stroke-width="2"
+                />
+                <path
+                  d="m320 291 37 16 43-19M357 307v38"
+                  stroke="#69785b"
+                  fill="none"
+                />
+                <path
+                  d="m365 302 23-10 12 8v23l-23 11-12-9Z"
+                  fill="#111912"
+                  stroke="#6d7e61"
+                />
+                <ellipse cx="391" cy="311" rx="9" ry="13" fill="#42523b" />
+                <circle
+                  class="camera-led"
+                  cx="331"
+                  cy="310"
+                  r="4"
+                  fill="#87937b"
+                />
+              </g>
+              <g transform="translate(693 379)">
+                <path
+                  d="m0 0 42-19 31 14v53L30 67 0 53Z"
+                  fill="#313b2c"
+                  stroke="#9aa789"
+                />
+                <path
+                  d="m0 0 30 14L73-5M30 14v53"
+                  fill="none"
+                  stroke="#87957a"
+                />
+                <path d="m38 25 24-11v16L38 41Z" fill="#111a12" />
+                <g class="audio-meter" stroke="#dff27d" stroke-width="3">
+                  <path d="m42 34 0-6m5 4v-9m5 7V19m5 8v-8" />
+                </g>
+                <circle
+                  class="audio-led"
+                  cx="47"
+                  cy="46"
+                  r="4"
+                  fill="#87937b"
+                />
+              </g>
+              <g
+                class="scene-labels"
+                fill="#bdc6ac"
+                font-family="monospace"
+                font-size="12"
+                letter-spacing="2"
+              >
+                <text x="167" y="87">01 / LIGHTS</text>
+                <text x="305" y="255">02 / CAMERA</text>
+                <text x="717" y="478">03 / AUDIO</text>
+              </g>
+            </svg>
+            <div class="scene-caption">
+              <span class="scene-caption-dot"></span
+              ><span data-scene-caption>Your next take starts here.</span>
+            </div>
+          </div>
+          <div class="demo-bottom">
+            <div class="demo-steps" aria-label="Sequence steps">
+              <button
+                type="button"
+                data-scene-step="1"
+                disabled
+                aria-pressed="false"
+              >
+                <span>01</span> Set the lights</button
+              ><button
+                type="button"
+                data-scene-step="2"
+                disabled
+                aria-pressed="false"
+              >
+                <span>02</span> Roll the camera</button
+              ><button
+                type="button"
+                data-scene-step="3"
+                disabled
+                aria-pressed="false"
+              >
+                <span>03</span> Bring in the sound
+              </button>
+            </div>
+            <button class="button button-lime" type="button" data-play-demo>
+              <span aria-hidden="true">▶</span> Play the sequence
+            </button>
+          </div>
+          <p class="sr-only" data-demo-status aria-live="polite">
+            Illustration ready. Play the sequence or choose a step.
+          </p>
+        </div>
+        <p class="demo-footnote">
+          Your devices. Your order. Your timing. An example sequence; available
+          actions depend on your exact gear.
+        </p>
+      </section>
+      <section class="control-section section" id="details">
+        <div class="section-top">
+          <p class="eyebrow">02 / A LITTLE MORE HANDS-ON</p>
+          <span class="small-note">A satisfying amount of control.</span>
+        </div>
+        <div class="control-grid">
+          <div class="control-copy">
+            <h2>Less phone.<br />More <em>in the zone.</em></h2>
+            <p>
+              A round touchscreen for the fine adjustments. A physical button
+              for the moment that matters. All in a controller that fits right
+              into your studio routine.
+            </p>
+            <a class="text-link" href="downloads/bleep-instruction-manual.pdf"
+              >Take a tour in the owner’s guide ↗</a
+            >
+            <div class="detail-facts">
+              <div><strong>1.28″</strong><span>round touchscreen</span></div>
+              <div><strong>100%</strong><span>open-source firmware</span></div>
+            </div>
+          </div>
+          <div class="touch-playground" data-light-playground>
+            <div class="touch-top">
+              <span>FIND YOUR LIGHT</span><span>TRY THE DIAL ↓</span>
+            </div>
+            <div class="touch-orbit">
+              <div class="touch-screen">
+                <span>STUDIO LIGHT</span
+                ><strong data-brightness-value>65<span>%</span></strong
+                ><span>BRIGHTNESS</span>
+                <div class="screen-bars" aria-hidden="true"></div>
+              </div>
+            </div>
+            <label class="brightness-label" for="brightness"
+              >Your look, a touch away.</label
+            ><input
+              id="brightness"
+              type="range"
+              min="5"
+              max="100"
+              value="65"
+              aria-label="Illustrated light brightness"
+            />
+            <p>Interactive preview · controls vary by fixture</p>
           </div>
         </div>
       </section>
-
-      <section class="signal-strip" aria-label="Supported device families">
-        <div class="signal-track">
-          <span>iFootage</span><i></i><span>Canon</span><i></i><span>Tascam</span><i></i><span>Insta360</span><i></i><span>DJI Osmo</span><i></i><span>GoPro</span><i></i><span>Aputure</span><i></i><span>Zhiyun</span><i></i><span>Home Assistant</span><i></i>
-          <span aria-hidden="true">iFootage</span><i aria-hidden="true"></i><span aria-hidden="true">Canon</span><i aria-hidden="true"></i><span aria-hidden="true">Tascam</span><i aria-hidden="true"></i><span aria-hidden="true">Insta360</span><i aria-hidden="true"></i><span aria-hidden="true">DJI Osmo</span><i aria-hidden="true"></i><span aria-hidden="true">GoPro</span><i aria-hidden="true"></i><span aria-hidden="true">Aputure</span><i aria-hidden="true"></i><span aria-hidden="true">Zhiyun</span><i aria-hidden="true"></i><span aria-hidden="true">Home Assistant</span><i aria-hidden="true"></i>
+      <section class="belief-strip">
+        <div>
+          <span aria-hidden="true">↗</span>
+          <h3>Your studio stays yours.</h3>
+          <p>
+            Control runs locally on Ble(e)p.<br />No cloud needed for the take.
+          </p>
+        </div>
+        <div>
+          <span aria-hidden="true">↔</span>
+          <h3>Different brands. One flow.</h3>
+          <p>
+            Bring supported gear together.<br />Build a sequence around how you
+            work.
+          </p>
+        </div>
+        <div>
+          <span aria-hidden="true">✳</span>
+          <h3>Made to be made your own.</h3>
+          <p>
+            Open firmware. Printable enclosure.<br />A little room for your big
+            ideas.
+          </p>
         </div>
       </section>
-
-      <section class="hardware section" id="hardware">
-        <div class="hardware-art reveal">
-          <div class="family-backdrop"></div>
-          <img src="assets/controller-family.png" alt="Concept lineup of Ble(e)p controllers in several enclosure colors">
-          <span class="annotation annotation-a">ROUND TOUCH UI <i></i></span>
-          <span class="annotation annotation-b">PHYSICAL TRIGGER <i></i></span>
-          <span class="annotation annotation-c">OPEN HARDWARE TARGET <i></i></span>
+      <section class="gear-section section" id="gear">
+        <div>
+          <p class="eyebrow">03 / ALREADY IN GOOD COMPANY</p>
+          <h2>Big studio energy.<br /><em>Meet your gear.</em></h2>
+          <p>
+            Cameras, lights, recorders, motion gear. Ble(e)p is growing one real
+            device at a time. Find your exact model before you build.
+          </p>
+          <a class="button button-dark" href="compatibility.html"
+            >Find your gear <span aria-hidden="true">↗</span></a
+          >
         </div>
-        <div class="hardware-copy reveal" data-delay="1">
-          <div class="section-label"><span>03</span> Build it</div>
-          <h2>Real firmware.<br>Accessible hardware.</h2>
-          <p>Ble(e)p currently runs on the ESP32-C3 CrowPanel 1.28-inch round display. Flash the full firmware, add your devices on-panel, and shape the controller around your own studio.</p>
-          <ul>
-            <li><span>01</span> ESP32-C3 + 240 × 240 round touch display</li>
-            <li><span>02</span> Bluetooth LE central and peripheral roles</li>
-            <li><span>03</span> Optional GPIO trigger and haptic feedback</li>
-            <li><span>04</span> Apache-2.0 licensed firmware</li>
-          </ul>
-          <div class="hardware-actions">
-            <a class="button button-primary" href="https://github.com/nethunter/bleep">Get the source <span aria-hidden="true">↗</span></a>
-            <a class="text-link" href="downloads/bleep-instruction-manual.pdf">Owner’s guide <span aria-hidden="true">→</span></a>
+        <div class="gear-list">
+          <a href="compatibility.html"
+            ><span>01</span>
+            <h3>Cameras</h3>
+            <p>Canon · Insta360 · DJI Osmo · GoPro</p>
+            <b aria-hidden="true">↗</b></a
+          ><a href="compatibility.html"
+            ><span>02</span>
+            <h3>Lighting</h3>
+            <p>Selected amaran & Aputure fixtures</p>
+            <b aria-hidden="true">↗</b></a
+          ><a href="compatibility.html"
+            ><span>03</span>
+            <h3>Audio</h3>
+            <p>Tascam Portacapture X8 + AK-BT1</p>
+            <b aria-hidden="true">↗</b></a
+          ><a href="compatibility.html"
+            ><span>04</span>
+            <h3>Motion</h3>
+            <p>iFootage Shark Nano II</p>
+            <b aria-hidden="true">↗</b></a
+          >
+        </div>
+      </section>
+      <section class="get-section section" id="get-bleep">
+        <p class="eyebrow">YOUR NEXT STUDIO PROJECT</p>
+        <h2>Make a little<br /><span>Ble(e)p.</span></h2>
+        <div class="get-bottom">
+          <p>
+            For makers. For filmmakers. For “I could build that.”<br />Ble(e)p
+            is an open-source DIY project in active development. Get the
+            firmware, print the enclosure, and make room for a new studio
+            sidekick.
+          </p>
+          <div>
+            <a
+              class="button button-dark"
+              href="https://github.com/nethunter/bleep"
+              >Build your Ble(e)p <span aria-hidden="true">↗</span></a
+            ><a
+              class="text-link"
+              href="https://github.com/nethunter/bleep/tree/main/hardware"
+              >Parts & enclosure files ↗</a
+            >
           </div>
         </div>
       </section>
-
-      <section class="status section">
-        <div class="status-card reveal">
-          <div class="status-code">0.3.0</div>
-          <div class="status-copy">
-            <div class="section-label"><span>04</span> Status signal</div>
-            <h2>Built in public.<br>Tested on real gear.</h2>
-            <p>Ble(e)p is active firmware development, not a finished consumer product. Stable paths and experiments live side by side; exact support notes tell you which is which.</p>
-            <a class="button button-secondary" href="compatibility.html">See compatibility matrix <span aria-hidden="true">→</span></a>
-          </div>
-          <div class="status-pulse" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        </div>
-      </section>
-
-      <section class="closing section">
-        <p class="eyebrow reveal">Bluetooth Links Everything, Eventually, Probably.</p>
-        <h2 class="reveal" data-delay="1">Less one-device-at-a-time.<br><em>More making.</em></h2>
-        <div class="closing-actions reveal" data-delay="2">
-          <a class="button button-primary" href="https://github.com/nethunter/bleep">Explore Ble(e)p on GitHub <span aria-hidden="true">↗</span></a>
-          <a class="button button-secondary" href="https://www.youtube.com/@hml">Watch Hacking Modern Life <span aria-hidden="true">↗</span></a>
+      <section class="faq-section section">
+        <p class="eyebrow">A FEW THINGS YOU MIGHT BE WONDERING</p>
+        <div class="faq-list">
+          <details>
+            <summary>
+              Can I buy a finished Ble(e)p?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              Ble(e)p is currently a DIY project. The firmware, printable
+              enclosure files, parts list, and assembly instructions are
+              available on GitHub. Start with the
+              <a href="https://github.com/nethunter/bleep/tree/main/hardware"
+                >hardware guide</a
+              >
+              to see what’s involved.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Will it work with my camera or lights?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              Support is specific to the model and control mode. Check the
+              <a href="compatibility.html">compatibility list</a> for your exact
+              equipment and the functions that have been tested. A brand name
+              alone doesn’t guarantee compatibility.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Do I need my phone or the internet?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              Normal studio control and sequences run locally on Ble(e)p. A
+              phone or computer can help with setup through its temporary
+              Portal. Some integrations use your local Wi-Fi network;
+              downloading firmware updates needs internet access.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Can one press start everything at once?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              One press can start an ordered sequence of supported actions, with
+              waits where you want them. Steps run in order, so this isn’t
+              frame-synchronized recording. You can review the generated Stop
+              sequence or customize it for your setup.
+            </p>
+          </details>
         </div>
       </section>
     </main>
-
     <footer class="site-footer">
-      <a class="footer-brand" href="#top"><img src="assets/logo-wide.png" alt="Ble(e)p"></a>
-      <p>Open, local-first studio control.<br>Built by Hacking Modern Life.</p>
-      <div class="footer-links"><a href="compatibility.html">Compatibility</a><a href="https://github.com/nethunter/bleep">GitHub</a><a href="https://www.youtube.com/@hml">YouTube</a><a href="downloads/bleep-instruction-manual.pdf">Owner’s guide</a></div>
-      <p class="copyright">© <span data-year></span> HML Studio · Apache-2.0</p>
+      <div class="footer-top">
+        <a class="brand" href="#top" aria-label="Ble(e)p home"
+          >ble<span>(e)</span>p<span class="brand-period">.</span></a
+        >
+        <p>
+          A little device for the things you make.<br />By Hacking Modern Life.
+        </p>
+        <a class="back-top" href="#top" aria-label="Back to top">↑</a>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span data-year>2026</span> HML Studio</span>
+        <nav aria-label="Footer navigation">
+          <a href="https://github.com/nethunter/bleep">GitHub ↗</a
+          ><a href="https://www.youtube.com/@hml">YouTube ↗</a
+          ><a href="compatibility.html">Compatibility</a
+          ><a href="downloads/bleep-instruction-manual.pdf">Owner’s guide</a>
+        </nav>
+        <span>BLUETOOTH LINKS EVERYTHING, EVENTUALLY, PROBABLY.</span>
+      </div>
     </footer>
   </body>
 </html>

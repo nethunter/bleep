@@ -5,6 +5,98 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Animated website device screen
+
+- Replaced the model's static display with a 240x240 canvas texture cycling
+  through Sequences, Lighting, Cameras, Audio, and Motion. Each chapter uses
+  two fresh, unmodified `ui_sim` captures, with short illustrative tap pulses
+  where appropriate and crossfades between actual UI states. The screen tour
+  is a marketing illustration, not a live controller or physical-device capture.
+  The screenshot-to-source mapping is recorded in `website/README.md`.
+- Added labeled Pause/Play and Next controls above the model. Autoplay freezes
+  offscreen, in hidden tabs, and during WebGL context loss; paused frames stay
+  fixed, and unchanged hold frames do not continually re-upload textures.
+  Reduced motion disables autoplay while retaining manual function selection.
+  Failed optional tour loading leaves the original static model screen usable.
+  HTML, styles, main script, model, and tour assets use the `20260906-3` URLs.
+- `ui_sim` built and its complete traversal passed; all ten website screenshots
+  match the generated files byte-for-byte. Phone preview of the screen and tour
+  controls was visually inspected. Full Montserrat `bleep` compiled with the
+  previously recorded shared PlatformIO environment/toolchain: 147,220 bytes
+  RAM and 2,038,518 bytes flash. JavaScript syntax, whitespace, and repository
+  artifact checks pass. No firmware logic changed, so native protocol/state
+  tests were not rerun; no flash or production deployment was performed.
+- Browser checks under the configured Firebase CSP confirmed changing screen
+  pixels, identical pixels while paused, all five manual selections, automatic
+  chapter advance, offscreen freeze/resume, reduced-motion behavior, and static
+  model fallback when the tour module is blocked. No JavaScript errors or Axe
+  WCAG 2 A/AA and 2.1 AA violations on desktop/mobile; 320, 360, 390, 768, and
+  1440-pixel widths remain free of horizontal overflow.
+- Next safe task: operator review of the automatic screen tour on the existing
+  Wi-Fi preview, then continue the requested website review.
+
+### 2026-09-06: Website model USB-C and power-switch correction
+
+- The operator's side photo exposed missing non-printed components in the
+  website model. Extracted the actual `TYPE_C_20241129` connector and SS12D00
+  power-switch shapes from `hardware/Bleep Remote.step`, preserving nested
+  assembly transforms. Added both to the Three.js assembly with a metal socket
+  rim, dark socket opening/insulating tongue, and black switch finish. Printed
+  shell geometry is unchanged. Raw reference photos remain outside the repo.
+- Added `tools/export_website_components.py` for reproducible component exports;
+  verified it with temporary Python 3.12, cadquery-ocp 7.8.1.1, and VTK 9.3.1.
+  Bumped the HTML script and dynamic model URLs to `20260906-2` so existing
+  previews reload the correction. The Wi-Fi preview remains available at
+  `http://192.168.1.27:8766/` on the current host network.
+- Desktop and 390-pixel mobile side/profile browser renders show both components
+  aligned with the enclosure cutouts; visually inspected against the supplied
+  photo. The updated model loads without JavaScript errors. Syntax, local
+  artifact, and whitespace checks pass. The required full Montserrat `bleep`
+  build passes using the same toolchain/environment recorded below: 147,220
+  bytes RAM and 2,038,518 bytes flash. No firmware behavior change, native-test
+  rerun, flash, or production deployment. Next safe task: operator review of
+  the corrected rotating model on mobile.
+
+### 2026-09-06: Marketing website redesign
+
+- Rebuilt the homepage around “Your studio. On cue.” with ivory/orange/olive
+  art direction, self-hosted Archivo Black/Manrope/DM Mono fonts, product-led
+  copy, a real enclosure model, lights/camera/audio sequence illustration,
+  brightness preview, exact-model compatibility links, DIY build CTA, and FAQ.
+  Restyled the compatibility ledger and 404 page. Existing support claims and
+  the manual source/PDF are unchanged; the outdated hero count was removed.
+- The 3D model uses byte-identical copies of the actual enclosure STL exports
+  and the existing sequence screenshot. Three.js 0.180.0 and its MIT license
+  are vendored; font OFL licenses are included. Drag, keyboard arrows, rotation
+  buttons, and reset work. Rendering is demand-driven and pauses offscreen or
+  in hidden tabs; missing assets/WebGL, Save-Data, or disabled JavaScript leave
+  a static SVG illustration. These are visual previews, not hardware controls.
+- Browser verification used installed Chrome through Playwright at 320, 360,
+  390, 768, 1024, and 1440 CSS pixels. No horizontal overflow or JavaScript
+  errors; keyboard/drag rotation, reset, mobile menu/Escape/link closing,
+  sequence play/pause/replay and step selection, brightness keyboard input,
+  FAQ, reduced-motion final state, missing-model fallback, and JavaScript-off
+  content passed. Firebase CSP was applied during checks; all dependencies
+  are served locally. Axe WCAG 2 A/AA and 2.1 AA checks reported zero violations
+  on desktop/mobile homepage, desktop/mobile compatibility ledger, and mobile
+  404 page. Final desktop/phone homepage, studio illustration, and compatibility
+  screenshots were visually inspected. Every local HTML asset/link/fragment and
+  unique ID passed; all three website STL copies match the hardware sources.
+- Full Montserrat `bleep` compiled successfully using
+  `PLATFORMIO_CORE_DIR=/Users/nethunter/dev/bleep/.platformio-core
+  /Users/nethunter/dev/bleep/.venv/bin/python -m platformio run -e bleep`.
+  This fresh worktree resolved Espressif32 7.0.1, Arduino framework
+  3.20017.241212, LVGL 8.4.0, LovyanGFX 1.2.28, NimBLE-Arduino 2.5.1,
+  WebSockets 2.7.3, and ArduinoJson 7.4.3. Result: 147,220 bytes static RAM
+  (44.9%) and 2,038,518 bytes flash (69.1%). No firmware behavior changed,
+  so native protocol/state tests were not rerun. Repository artifact and
+  JavaScript syntax checks passed.
+- Scoped under the standalone September marketing tranche in the roadmap.
+  No flash, merge, push, release, or Firebase deployment was performed. The
+  local preview is served at `http://127.0.0.1:8765/`. Next safe task: review
+  the design, then follow the repository rebase/merge policy and deploy when
+  requested; production behavior remains unverified.
+
 ### 2026-09-04: Panel scene duplication
 
 - Added **Duplicate** below the Start/Stop editors and directly above Delete

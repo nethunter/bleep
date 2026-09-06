@@ -526,6 +526,17 @@ Completion gate:
   logic;
 - hardware behavior and limitations are documented.
 
+## Standalone tranche: September 2026 marketing website
+
+A user-requested redesign of `website/` promotes the current DIY studio
+controller through a real enclosure model, an illustrative lights/camera/audio
+sequence, and clear build and exact-model compatibility paths. This tranche
+changes no firmware architecture, support classifications, or manual content.
+Its gates are responsive visual review, keyboard and reduced-motion behavior,
+static/WebGL failure fallbacks, local links, Firebase CSP compatibility, and the
+required full Montserrat build. Deployment is a separate action; this tranche
+does not close any firmware or hardware phase gate.
+
 ## Phase 9: Release hardening
 
 Work:
