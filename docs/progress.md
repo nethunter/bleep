@@ -19,6 +19,11 @@ short, factual, and reproducible.
   Artifact and whitespace checks pass. Full Montserrat `bleep` build passed
   using the shared environment: 147,220 bytes RAM, 2,038,518 bytes flash.
   No firmware behavior or support status changed; no native tests or flash.
+- Rebased onto current `origin/main`, merged with `--no-ff` as `9da0646`,
+  and pushed. Firebase Hosting released 54 files successfully. Live browser
+  checks confirm four equipment categories, phones within Cameras, the matrix
+  row in place of the removed section, mobile fit, and no JavaScript errors
+  or mobile Axe violations at `https://bleep.hml.tech`.
 
 ### 2026-09-06: Authentic equipment logos and visible phone families
 
