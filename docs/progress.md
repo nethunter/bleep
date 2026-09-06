@@ -31,6 +31,13 @@ short, factual, and reproducible.
   whitespace checks pass. Full Montserrat `bleep` build passed using the shared
   environment: 147,220 bytes RAM, 2,038,518 bytes flash. No firmware behavior
   changed, native tests were not needed, and no hardware was flashed.
+- Rebased onto current `origin/main`, merged from `main` with `--no-ff` as
+  `55835ee`, and pushed. Firebase Hosting released 54 files. Live HTML, CSS,
+  and main/model JavaScript match the reviewed bytes. Production checks
+  confirm independent Stone/Blue selection, a mouse click on the actual CAD
+  button followed by automatic release, no separate Press control, mobile
+  layout fit, and no JavaScript/CSP errors. Live mobile screenshot reviewed;
+  artifact check passes (441 tracked files).
 
 ### 2026-09-06: Present phones as cameras
 
