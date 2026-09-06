@@ -2019,3 +2019,115 @@ html:not(.js) #brightness {
     font-size: 7px;
   }
 }
+
+/* Finish choices stay within the product stage, close to the device. */
+.product-stage:has([data-finish-controls]:not([hidden])) {
+  min-height: 750px;
+}
+.product-stage:has([data-finish-controls]:not([hidden])) .model-wrap {
+  inset: 28px 0 115px;
+}
+.product-stage:has([data-finish-controls]:not([hidden])) .model-controls {
+  bottom: 76px;
+}
+.product-stage:has([data-finish-controls]:not([hidden])) .stage-index {
+  bottom: 138px;
+}
+.model-wrap canvas.over-action {
+  cursor: pointer;
+}
+.finish-controls {
+  position: absolute;
+  bottom: 15px;
+  left: 24px;
+  right: 24px;
+  z-index: 4;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.finish-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.finish-group p {
+  font: 10px/1.5 var(--mono);
+  width: 58px;
+}
+.finish-group p span {
+  display: block;
+  font-size: 9px;
+}
+.finish-swatches {
+  display: flex;
+}
+.finish-swatches button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+}
+.swatch-dot {
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--swatch);
+  border: 1px solid #23261e55;
+  transition: transform 150ms;
+}
+.swatch-stone {
+  background-image:
+    radial-gradient(#77786d 0.7px, transparent 1px),
+    radial-gradient(#a0a197 0.6px, transparent 1px);
+  background-size:
+    5px 7px,
+    7px 5px;
+  background-position:
+    0 0,
+    2px 3px;
+}
+.finish-swatches button:hover .swatch-dot {
+  transform: scale(1.12);
+}
+.finish-swatches button[aria-pressed="true"] .swatch-dot {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+@media (max-width: 1150px) {
+  .finish-controls {
+    flex-direction: column;
+    gap: 0;
+    align-items: center;
+  }
+  .finish-group {
+    width: 244px;
+  }
+  .product-stage:has([data-finish-controls]:not([hidden])) .model-wrap {
+    bottom: 165px;
+  }
+  .product-stage:has([data-finish-controls]:not([hidden])) .model-controls {
+    bottom: 116px;
+  }
+  .product-stage:has([data-finish-controls]:not([hidden])) .stage-index {
+    bottom: 180px;
+  }
+}
+@media (max-width: 600px) {
+  .product-stage:has([data-finish-controls]:not([hidden])) {
+    min-height: 730px;
+  }
+  .product-stage:has([data-finish-controls]:not([hidden])) .model-wrap {
+    top: 48px;
+  }
+  .product-stage:has([data-finish-controls]:not([hidden])) .product-callout {
+    display: none;
+  }
+  .model-controls {
+    gap: 5px;
+  }
+}

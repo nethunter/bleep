@@ -22,8 +22,8 @@
     <title>Ble(e)p — Your studio. On cue.</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/fonts/fonts.css?v=20260906-1" />
-    <link rel="stylesheet" href="styles.css?v=20260906-7" />
-    <script src="script.js?v=20260906-5" defer></script>
+    <link rel="stylesheet" href="styles.css?v=20260906-8" />
+    <script src="script.js?v=20260906-8" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -133,7 +133,7 @@
               aria-label="Rotate device left"
             >
               ↶</button
-            ><span data-model-hint>Drag to explore</span
+            ><span data-model-hint>Drag to spin</span
             ><button
               type="button"
               data-rotate="1"
@@ -147,6 +147,101 @@
             >
               Reset
             </button>
+          </div>
+          <div class="finish-controls" data-finish-controls hidden>
+            <div class="finish-group" role="group" aria-label="Body finish">
+              <p>Body <span data-body-label>Ivory</span></p>
+              <div class="finish-swatches">
+                <button
+                  type="button"
+                  data-body-finish="ivory"
+                  aria-label="Body: Ivory"
+                  aria-pressed="true"
+                  title="Ivory"
+                  style="--swatch: #eee9d9"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  data-body-finish="graphite"
+                  aria-label="Body: Graphite"
+                  aria-pressed="false"
+                  title="Graphite"
+                  style="--swatch: #202321"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  data-body-finish="sand"
+                  aria-label="Body: Sand"
+                  aria-pressed="false"
+                  title="Sand"
+                  style="--swatch: #c9b58f"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  data-body-finish="stone"
+                  aria-label="Body: Stone"
+                  aria-pressed="false"
+                  title="Stone"
+                  style="--swatch: #d3d2cc"
+                >
+                  <span
+                    class="swatch-dot swatch-stone"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+                <button
+                  type="button"
+                  data-body-finish="orange"
+                  aria-label="Body: Orange"
+                  aria-pressed="false"
+                  title="Orange"
+                  style="--swatch: #ed870b"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+            <div class="finish-group" role="group" aria-label="Button finish">
+              <p>Button <span data-button-label>Orange</span></p>
+              <div class="finish-swatches">
+                <button
+                  type="button"
+                  data-button-finish="orange"
+                  aria-label="Button: Orange"
+                  aria-pressed="true"
+                  title="Orange"
+                  style="--swatch: #eb6030"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  data-button-finish="blue"
+                  aria-label="Button: Blue"
+                  aria-pressed="false"
+                  title="Blue"
+                  style="--swatch: #236fa7"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  data-button-finish="black"
+                  aria-label="Button: Black"
+                  aria-pressed="false"
+                  title="Black"
+                  style="--swatch: #151713"
+                >
+                  <span class="swatch-dot" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
           </div>
           <span class="stage-index">BLE(E)P / STUDIO CONTROLLER</span>
         </div>

@@ -41,7 +41,9 @@ async function loadPart(name, material) {
     }
     geometry.setIndex(indices);
   }
-  return new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  return mesh;
 }
 
 export async function mountProduct(wrap) {
@@ -51,17 +53,20 @@ export async function mountProduct(wrap) {
   const scene = new THREE.Scene();
   const resources = new Set();
   const controls = document.querySelector("[data-model-controls]");
+  const finishes = document.querySelector("[data-finish-controls]");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const group = new THREE.Group();
   let frame = 0;
   let visible = true;
   let lost = false;
   let disposed = false;
+  let pressTimer;
   const initial = { x: 0.16, y: -0.4 };
   const target = { ...initial };
   const syncTour = () =>
     screenTour?.setActive(visible && !document.hidden && !lost && !disposed);
   const release = () => {
+    clearTimeout(pressTimer);
     screenTour?.destroy();
     resources.forEach((resource) => resource.dispose());
     renderer?.dispose();
@@ -82,6 +87,36 @@ export async function mountProduct(wrap) {
       roughness: 0.58,
       metalness: 0.05,
     });
+    const stone = { value: 0 };
+    ivory.onBeforeCompile = (shader) => {
+      shader.uniforms.uStone = stone;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          "#include <common>\nvarying vec3 vFinishPosition;",
+        )
+        .replace(
+          "#include <begin_vertex>",
+          "#include <begin_vertex>\nvFinishPosition = position;",
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+          varying vec3 vFinishPosition;
+          uniform float uStone;
+          float finishGrain(vec3 p) {
+            return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+          }`,
+        )
+        .replace(
+          "#include <color_fragment>",
+          `#include <color_fragment>
+          float fleck = step(0.94, finishGrain(floor(vFinishPosition * 3.0)));
+          float grain = finishGrain(floor(vFinishPosition * 16.0));
+          diffuseColor.rgb *= 1.0 - uStone * (fleck * 0.48 + grain * 0.06);`,
+        );
+    };
     const charcoal = new THREE.MeshStandardMaterial({
       color: 0x151713,
       roughness: 0.45,
@@ -115,6 +150,7 @@ export async function mountProduct(wrap) {
     }
     if (results.some((result) => result.status === "rejected"))
       throw new Error("Incomplete model");
+    const actionMesh = group.getObjectByName("button");
     const addMesh = (geometry, material, x, y, z) => {
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, y, z);
@@ -186,9 +222,11 @@ export async function mountProduct(wrap) {
     canvas.setAttribute("role", "img");
     canvas.setAttribute(
       "aria-label",
-      "Interactive 3D Ble(e)p. Drag horizontally or use arrow keys to rotate. Home resets the view.",
+      "Interactive 3D Ble(e)p. Drag or use arrow keys to rotate. Click the side button, or press Enter or Space, to press it. Home resets the view.",
     );
     canvas.tabIndex = 0;
+    let pressTarget = 0;
+    let pressDepth = 0;
     const draw = () => {
       frame = 0;
       if (!visible || document.hidden || lost || disposed) return;
@@ -198,8 +236,13 @@ export async function mountProduct(wrap) {
       const ease = reduced.matches ? 1 : 0.15;
       assembly.rotation.x += (target.x - assembly.rotation.x) * ease;
       assembly.rotation.y += (target.y - assembly.rotation.y) * ease;
+      pressDepth += (pressTarget - pressDepth) * (reduced.matches ? 1 : 0.4);
+      actionMesh.position.set(-0.48 * pressDepth, -0.48 * pressDepth, 0);
       renderer.render(scene, camera);
-      if (distance > 0.001 && !reduced.matches)
+      if (
+        (distance > 0.001 || Math.abs(pressDepth - pressTarget) > 0.001) &&
+        !reduced.matches
+      )
         frame = requestAnimationFrame(draw);
     };
     const requestDraw = () => {
@@ -224,6 +267,44 @@ export async function mountProduct(wrap) {
     renderer.render(scene, camera);
     wrap.classList.add("is-loaded");
     controls.hidden = false;
+    finishes.hidden = false;
+    const bodyColors = {
+      ivory: 0xeee9d9,
+      graphite: 0x202321,
+      sand: 0xc9b58f,
+      stone: 0xd3d2cc,
+      orange: 0xed870b,
+    };
+    const buttonColors = { orange: 0xeb6030, blue: 0x236fa7, black: 0x151713 };
+    const bindFinishes = (kind, colors, material) => {
+      const buttons = finishes.querySelectorAll(`[data-${kind}-finish]`);
+      buttons.forEach((button) =>
+        button.addEventListener("click", () => {
+          const value = button.getAttribute(`data-${kind}-finish`);
+          material.color.setHex(colors[value]);
+          if (kind === "body") stone.value = Number(value === "stone");
+          buttons.forEach((item) =>
+            item.setAttribute("aria-pressed", String(item === button)),
+          );
+          finishes.querySelector(`[data-${kind}-label]`).textContent =
+            button.title;
+          requestDraw();
+        }),
+      );
+    };
+    bindFinishes("body", bodyColors, ivory);
+    bindFinishes("button", buttonColors, orange);
+    const setPressed = (value) => {
+      pressTarget = Number(value);
+      wrap.dataset.buttonPressed = String(value);
+      requestDraw();
+    };
+    const activateAction = () => {
+      if (lost || disposed) return;
+      clearTimeout(pressTimer);
+      setPressed(true);
+      pressTimer = setTimeout(() => setPressed(false), 160);
+    };
     const reset = () => {
       Object.assign(target, initial);
       requestDraw();
@@ -238,6 +319,11 @@ export async function mountProduct(wrap) {
       .querySelector("[data-model-reset]")
       .addEventListener("click", reset);
     canvas.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        if (!event.repeat) activateAction();
+        return;
+      }
       if (
         !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home"].includes(
           event.key,
@@ -253,19 +339,59 @@ export async function mountProduct(wrap) {
       requestDraw();
     });
     let drag = null;
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const hitsAction = (event) => {
+      if (lost || disposed) return false;
+      const rect = canvas.getBoundingClientRect();
+      // A few nearby rays make the narrow side button easier to tap. Each ray
+      // must hit the button first, so the case still occludes it from the back.
+      scene.updateMatrixWorld(true);
+      for (const [dx, dy] of [
+        [0, 0],
+        [-5, 0],
+        [5, 0],
+        [0, -5],
+        [0, 5],
+      ]) {
+        pointer.set(
+          ((event.clientX + dx - rect.left) / rect.width) * 2 - 1,
+          -((event.clientY + dy - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(pointer, camera);
+        if (
+          raycaster.intersectObjects(group.children, false)[0]?.object ===
+          actionMesh
+        )
+          return true;
+      }
+      return false;
+    };
     canvas.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || drag) return;
       drag = {
         id: event.pointerId,
         x: event.clientX,
         y: event.clientY,
         rx: target.x,
         ry: target.y,
+        action: hitsAction(event),
+        moved: false,
       };
       canvas.setPointerCapture(event.pointerId);
     });
     canvas.addEventListener("pointermove", (event) => {
-      if (!drag || event.pointerId !== drag.id) return;
+      if (!drag) {
+        canvas.classList.toggle("over-action", hitsAction(event));
+        return;
+      }
+      if (event.pointerId !== drag.id) return;
+      if (
+        !drag.moved &&
+        Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6
+      )
+        return;
+      drag.moved = true;
       target.y = drag.ry + (event.clientX - drag.x) * 0.009;
       if (event.pointerType === "mouse")
         target.x = Math.max(
@@ -274,11 +400,17 @@ export async function mountProduct(wrap) {
         );
       requestDraw();
     });
-    const endDrag = () => {
+    const endDrag = (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const activate = event.type === "pointerup" && drag.action && !drag.moved;
       drag = null;
+      if (activate) activateAction();
     };
     ["pointerup", "pointercancel", "lostpointercapture"].forEach((name) =>
       canvas.addEventListener(name, endDrag),
+    );
+    canvas.addEventListener("pointerleave", () =>
+      canvas.classList.remove("over-action"),
     );
     const sizeObserver = new ResizeObserver(resize);
     sizeObserver.observe(wrap);
@@ -302,6 +434,10 @@ export async function mountProduct(wrap) {
       frame = 0;
       wrap.classList.remove("is-loaded");
       controls.hidden = true;
+      finishes.hidden = true;
+      drag = null;
+      clearTimeout(pressTimer);
+      setPressed(false);
       canvas.hidden = true;
     });
     canvas.addEventListener("webglcontextrestored", () => {
@@ -311,6 +447,7 @@ export async function mountProduct(wrap) {
       canvas.hidden = false;
       wrap.classList.add("is-loaded");
       controls.hidden = false;
+      finishes.hidden = false;
       requestDraw();
     });
     window.addEventListener("pagehide", (event) => {
@@ -357,6 +494,7 @@ export async function mountProduct(wrap) {
     renderer?.domElement.remove();
     wrap.classList.remove("is-loaded");
     controls.hidden = true;
+    finishes.hidden = true;
     release();
     // A static device illustration remains available if graphics or assets fail.
   }

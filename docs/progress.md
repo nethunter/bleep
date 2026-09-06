@@ -5,6 +5,33 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Finish swatches and illustrated action-button push
+
+- Added independent body swatches (Ivory, Graphite, Sand, Stone, Orange) and
+  button swatches (Orange, Blue, Black), based on the operator's finish photo.
+  Body colors affect both shell parts; the button material remains independent.
+  Stone uses procedural speckles in assembly coordinates. Swatches show the
+  selected name and pressed state, with compact desktop and mobile layouts.
+- Clicking the actual top-right CAD button plays one short inward push and
+  automatic release. There is no separate Press control or held-button UI, and
+  the animation does not change the screen tour. Enter/Space on the focused
+  model provides equivalent keyboard access. Nearby ray samples improve the
+  small button target while respecting enclosure occlusion. Dragging continues
+  to rotate the model. Reduced motion uses an immediate pressed/resting pose.
+- Browser checks verify pixel changes for all finishes, independent selection,
+  a direct CAD-button click, visible push and return to identical resting pixels,
+  keyboard access, rotation, and back occlusion. Screenshots reviewed at desktop
+  and phone sizes. Layout checks pass at 320/390/768/1024/1440 px; desktop/mobile
+  Axe and JavaScript error capture are clean. Existing screen-tour animation,
+  pause, five functions, offscreen behavior, and fallback checks pass.
+- Context-loss checks hide controls, preserve chosen finishes on restoration,
+  and restore button animation. Missing geometry retains the poster; missing
+  optional screen-tour assets retain finish choices and button animation.
+  CSS and main/model JavaScript use `20260906-8` URLs. Syntax, artifact, and
+  whitespace checks pass. Full Montserrat `bleep` build passed using the shared
+  environment: 147,220 bytes RAM, 2,038,518 bytes flash. No firmware behavior
+  changed, native tests were not needed, and no hardware was flashed.
+
 ### 2026-09-06: Present phones as cameras
 
 - On operator correction, folded iPhone, Galaxy, Pixel, OnePlus, and Xiaomi/Redmi
