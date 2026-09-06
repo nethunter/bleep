@@ -5,6 +5,35 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Website merged and deployed
+
+- On explicit operator approval, committed the complete reviewed redesign as
+  `114a317` on `wip/studio-marketing-website`, fetched `origin`, rebased onto
+  current `main` (no incoming changes or conflicts), and merged from `main`
+  with `--no-ff` as `7c4ea55`. Pushed that merge to `origin/main`.
+- The merged revision passes JavaScript syntax and repository artifact checks
+  (434 tracked files). Full Montserrat `bleep` compiled with the same shared
+  PlatformIO environment/toolchain recorded below: 147,220 bytes RAM and
+  2,038,510 bytes flash. No hardware was flashed. GitHub CI run
+  `34014332463` was in progress at deployment verification; no CI completion
+  claim is made here.
+- Deployed from the clean merged website directory using
+  `firebase deploy --only hosting --project hml-studio --non-interactive`.
+  Firebase Hosting uploaded/finalized/released 47 files successfully to the
+  existing `hml-studio` site. The public domain is `https://bleep.hml.tech`;
+  the default hosting URL is `https://hml-studio.web.app`.
+- Live HTTPS/browser checks on the public domain confirmed that HTML, CSS,
+  main/model/tour JavaScript, USB/switch models, a recording screen, and font
+  CSS match local bytes. The 3D model loads; all five screen chapters are
+  selectable; mobile navigation and width fit pass at 390 pixels. The
+  compatibility clean URL and table, custom 404 status/page, and configured
+  CSP pass. No browser JavaScript errors; the deployed desktop hero was
+  visually inspected. These are production website checks, not hardware
+  operating or firmware-release evidence.
+- Website merge/deployment request complete. Future work can continue from
+  the published design; no manual refresh or stable firmware release was
+  requested or performed.
+
 ### 2026-09-06: Animated website device screen
 
 - Replaced the model's static display with a 240x240 canvas texture cycling
