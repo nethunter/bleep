@@ -22,8 +22,15 @@ short, factual, and reproducible.
 - Full Montserrat `bleep` compiled using the shared main-checkout Python
   environment and PlatformIO core recorded below: 147,220 bytes RAM and
   2,038,518 bytes flash. No hardware was flashed. These checks verify the
-  website illustration, not physical-device operation. Integration and
-  production verification follow below after deployment.
+  website illustration, not physical-device operation.
+- Rebasing `wip/fit-raised-device-display` onto current `main` required no
+  changes. Merged with `--no-ff` as `4792449` and pushed to `origin/main`.
+  Firebase Hosting successfully released 48 files to `hml-studio`. Live
+  checks at `https://bleep.hml.tech` confirm matching HTML, JavaScript, and
+  display-cover bytes, a loaded model, all five screen functions, mobile
+  navigation without overflow, compatibility routing, custom 404, and CSP.
+  No browser JavaScript errors. The merged artifact check passes with 435
+  tracked files. Website correction complete; no hardware validation implied.
 
 ### 2026-09-06: Website merged and deployed
 
