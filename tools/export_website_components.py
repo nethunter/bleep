@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the website's USB socket and switch from the mechanical assembly.
+"""Export the website's display cover, USB socket, and switch from the assembly.
 
 Requires Python 3.12, cadquery-ocp==7.8.1.1, and vtk==9.3.1.
 The printed shell STL exports remain authoritative and are not regenerated here.
@@ -18,6 +18,7 @@ from OCP.XCAFDoc import XCAFDoc_DocumentTool
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {
+    "LCD-MIANBAN": "display-cover.stl",
     "TYPE_C_20241129": "usb-port.stl",
     "SPDT slide switch SS12D00": "power-switch.stl",
 }

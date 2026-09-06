@@ -92,6 +92,7 @@ export async function mountProduct(wrap) {
       loadPart("button", orange),
       loadPart("usb-port", socketMetal),
       loadPart("power-switch", charcoal),
+      loadPart("display-cover", charcoal),
     ]);
     for (const result of results) {
       if (result.status === "fulfilled") {
@@ -127,14 +128,15 @@ export async function mountProduct(wrap) {
     );
     socketMouth.rotation.y = -Math.PI / 2;
     addMesh(new THREE.BoxGeometry(0.18, 6.2, 0.5), charcoal, -18.02, 0, -4.18);
-    addMesh(new THREE.CircleGeometry(19.1, 96), charcoal, 0, 0, -0.2);
     const texture = await new THREE.TextureLoader().loadAsync(
       new URL("./assets/ui-sequence.png", import.meta.url).href,
     );
     texture.colorSpace = THREE.SRGBColorSpace;
     resources.add(texture);
     const screenMaterial = new THREE.MeshBasicMaterial({ map: texture });
-    addMesh(new THREE.CircleGeometry(16.4, 96), screenMaterial, 0, 0, 0.05);
+    // The CAD cover fills the 42.1 mm opening and rolls up to a flat face at
+    // z=1.9 mm. Keep the active display just above it to avoid depth fighting.
+    addMesh(new THREE.CircleGeometry(16.4, 96), screenMaterial, 0, 0, 1.92);
     const metal = new THREE.MeshStandardMaterial({
       color: 0x4c4e46,
       metalness: 0.75,
