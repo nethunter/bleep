@@ -5,6 +5,28 @@ short, factual, and reproducible.
 
 ## Current status
 
+### 2026-09-06: Remove rotating-screen depth artifacts
+
+- The operator's phone screenshot exposed depth fighting between the animated
+  display and the cover's solid front cap. Removed the 51 coplanar front-cap
+  triangles at load time and replaced them with an adjacent screen and annular
+  border at z=1.9 mm. The original CAD asset and rounded shoulder are preserved.
+  Camera near/far planes now follow its distance with a 110 mm half-range,
+  rather than wasting mobile depth precision on a 0.1 mm near plane. All model
+  vertices fit within a 59.414 mm rotation radius. Main/model URLs use
+  `20260906-5` for cache invalidation.
+- Browser verification at 390 px width and DPR 3 covered 26 rotation steps.
+  All 11 sampled front-facing views matched an unobstructed-screen reference
+  pixel-for-pixel. Front, angled, and back screenshots were visually inspected;
+  the back properly hides the screen. No JavaScript errors. These are desktop
+  Chromium mobile-emulation checks; the operator's physical phone was not used.
+- Animation, paused pixels, five functions, offscreen pause, reduced motion,
+  optional-tour fallback, responsive widths, and desktop/mobile Axe checks
+  pass. JavaScript syntax, whitespace, and the repository artifact check pass.
+  Full Montserrat `bleep` compiled in the shared environment recorded below:
+  147,220 bytes RAM and 2,038,518 bytes flash. No firmware logic changed;
+  native tests were not rerun and no hardware was flashed.
+
 ### 2026-09-06: Fit the website display to its raised cover
 
 - Replaced the undersized, flat 38.2 mm backing with the actual LCD-MIANBAN
